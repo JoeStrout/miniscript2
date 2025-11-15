@@ -20,7 +20,24 @@ case "$TARGET" in
         mkdir -p generated
         echo "Setup complete."
         ;;
-    
+
+    "parser")
+        echo "Generating parser from grammar..."
+        mkdir -p cs/Parser
+
+        # Generate parser (using hand-written lexer in cs/Lexer.cs)
+        echo "Running GPPG on grammar/miniscript.y..."
+        dotnet tools/gppg/Gppg.dll /out:cs/Parser/MiniScriptParser.cs grammar/miniscript.y
+        if [ $? -ne 0 ]; then
+            echo "Error: Failed to generate parser"
+            exit 1
+        fi
+
+        echo "Parser generation complete."
+        echo "Generated file: cs/Parser/MiniScriptParser.cs"
+        echo "Using hand-written lexer: cs/Lexer.cs"
+        ;;
+
     "cs")
         echo "Building C# version..."
         cd cs
@@ -107,8 +124,9 @@ case "$TARGET" in
         ;;
     
     *)
-        echo "Usage: $0 {setup|cs|transpile|cpp|all|clean|test} [goto_mode]"
+        echo "Usage: $0 {setup|parser|cs|transpile|cpp|all|clean|test} [goto_mode]"
         echo "  setup     - Set up development environment"
+        echo "  parser    - Generate parser from grammar files"
         echo "  cs        - Build C# version only"
         echo "  transpile - Transpile C# to C++"
         echo "  cpp       - Build C++ version only"

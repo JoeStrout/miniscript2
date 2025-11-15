@@ -13,26 +13,31 @@ else
     GOTO_FLAG = 
 endif
 
-CXXFLAGS = -std=gnu++11 -Wall -Wextra -O3 -DNDEBUG -Icore $(GOTO_FLAG)
+CXXFLAGS = -std=gnu++11 -Wall -Wextra -O3 -DNDEBUG -Icore -Icompiler $(GOTO_FLAG)
 CFLAGS = -std=c99 -Wall -Wextra -O3 -DNDEBUG -Icore $(GOTO_FLAG)
-SRCDIR = core
+COREDIR = core
+COMPILERDIR = compiler
 GENDIR = ../generated
 BUILDDIR = ../build/cpp
 OBJDIR = $(BUILDDIR)/obj
 
 # Core C++ and C files (excluding test programs)
-CORE_CPP_SOURCES = $(filter-out $(SRCDIR)/test_%.cpp $(SRCDIR)/debug_%.cpp, $(wildcard $(SRCDIR)/*.cpp))
-CORE_C_SOURCES = $(wildcard $(SRCDIR)/*.c)
-CORE_CPP_OBJECTS = $(CORE_CPP_SOURCES:$(SRCDIR)/%.cpp=$(OBJDIR)/core_%.o)
-CORE_C_OBJECTS = $(CORE_C_SOURCES:$(SRCDIR)/%.c=$(OBJDIR)/core_%.o)
+CORE_CPP_SOURCES = $(filter-out $(COREDIR)/test_%.cpp $(COREDIR)/debug_%.cpp, $(wildcard $(COREDIR)/*.cpp))
+CORE_C_SOURCES = $(wildcard $(COREDIR)/*.c)
+CORE_CPP_OBJECTS = $(CORE_CPP_SOURCES:$(COREDIR)/%.cpp=$(OBJDIR)/core_%.o)
+CORE_C_OBJECTS = $(CORE_C_SOURCES:$(COREDIR)/%.c=$(OBJDIR)/core_%.o)
 CORE_OBJECTS = $(CORE_CPP_OBJECTS) $(CORE_C_OBJECTS)
+
+# Compiler library files
+COMPILER_CPP_SOURCES = $(wildcard $(COMPILERDIR)/*.cpp)
+COMPILER_OBJECTS = $(COMPILER_CPP_SOURCES:$(COMPILERDIR)/%.cpp=$(OBJDIR)/compiler_%.o)
 
 # Generated C++ files (will be populated by transpiler)
 GEN_SOURCES = $(wildcard $(GENDIR)/*.g.cpp)
 GEN_OBJECTS = $(GEN_SOURCES:$(GENDIR)/%.g.cpp=$(OBJDIR)/gen_%.o)
 
 # All objects
-OBJECTS = $(CORE_OBJECTS) $(GEN_OBJECTS)
+OBJECTS = $(CORE_OBJECTS) $(COMPILER_OBJECTS) $(GEN_OBJECTS)
 
 # Target executable
 TARGET = $(BUILDDIR)/MS2Proto3
@@ -78,14 +83,18 @@ $(DEBUG_TRIVIAL): $(CORE_OBJECTS) $(OBJDIR)/core_debug_trivial.o | $(BUILDDIR)
 	$(CXX) $(CORE_OBJECTS) $(OBJDIR)/core_debug_trivial.o -o $@
 
 # Core C++ object files
-$(OBJDIR)/core_%.o: $(SRCDIR)/%.cpp | $(OBJDIR)
+$(OBJDIR)/core_%.o: $(COREDIR)/%.cpp | $(OBJDIR)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 # Core C object files
-$(OBJDIR)/core_%.o: $(SRCDIR)/%.c | $(OBJDIR)
+$(OBJDIR)/core_%.o: $(COREDIR)/%.c | $(OBJDIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-# Generated C++ object files  
+# Compiler library C++ object files
+$(OBJDIR)/compiler_%.o: $(COMPILERDIR)/%.cpp | $(OBJDIR)
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+# Generated C++ object files
 $(OBJDIR)/gen_%.o: $(GENDIR)/%.g.cpp | $(OBJDIR)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 

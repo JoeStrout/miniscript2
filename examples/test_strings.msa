@@ -1,0 +1,103 @@
+# Program to test various string functionality
+
+
+@testConcat:
+	# "abc" + "def" == "abcdef"
+	LOAD r0, "String concatenation"
+	LOAD r1, "abc"
+	LOAD r2, "def"
+	ADD r1, r1, r2
+	LOAD r3, "abcdef"
+	IFNE r1, r3
+	RETURN
+	
+	LOAD r0, 0  # all good!
+	RETURN
+
+@testConcatNumber:
+	# "abc" + 1 == "abc1"
+	LOAD r0, "String Concat Number (string + number)"
+	LOAD r1, "abc"
+	LOAD r2, 1
+	ADD r1, r1, r2
+	LOAD r3, "abc1"
+	IFNE r1, r3
+	RETURN
+
+	# 1 + "abc" == "1abc"
+	LOAD r0, "String Concat Number (number + string)"
+	LOAD r1, "abc"
+	LOAD r2, 1
+	ADD r1, r2, r1
+	LOAD r3, "1abc"
+	IFNE r1, r3
+	RETURN
+
+	LOAD r0, 0  # all good!
+	RETURN
+
+
+@testMult:
+	# "abc" * 2 == "abcabc"
+	LOAD r0, "String * 2"
+	LOAD r1, "abc"
+	LOAD r2, 2
+	MULT r1, r1, r2
+	LOAD r3, "abcabc"
+	IFNE r1, r3
+	RETURN
+	
+	# "abcdef" * 0.5 = "abc"
+	LOAD r0, "String * 0.5"
+	LOAD r1, "abcdef"
+	LOAD r2, 0.5
+	MULT r1, r1, r2
+	LOAD r3, "abc"
+	IFNE r1, r3
+	RETURN
+	
+	# All good!
+	LOAD r0, 0
+	RETURN
+
+@testDiv:
+	# "abcdef" / 2 = "abc"
+	LOAD r0, "String / 2"
+	LOAD r1, "abcdef"
+	LOAD r2, 2
+	DIV r1, r1, r2
+	LOAD r3, "abc"
+	IFNE r1, r3
+	RETURN
+	
+	# "abcdef" / 0.5 = "abcdefabcdef"
+	LOAD r0, "String / 0.5"
+	LOAD r1, "abcdef"
+	LOAD r2, 0.5
+	DIV r1, r1, r2
+	LOAD r3, "abcdefabcdef"
+	IFNE r1, r3
+	RETURN
+	
+	# All good!
+	LOAD r0, 0
+	RETURN
+
+@main:
+	CALLF 0, @testConcat
+	BRTRUE r0, error
+	CALLF 0, @testConcatNumber
+	BRTRUE r0, error
+	CALLF 0, @testMult
+	BRTRUE r0, error
+	CALLF 0, @testDiv
+	BRTRUE r0, error
+	LOAD r0, "✅ All tests passed!"
+	RETURN
+
+error:
+	LOAD r1, "Test failure: "
+	ADD r0, r1, r0
+	RETURN
+	
+	

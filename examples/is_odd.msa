@@ -1,0 +1,11 @@
+# Simple assembly program that tests if r0 contains an odd integer
+# Register r0 will be overwritten with the result:
+#   -> 0, even
+#   -> 1, odd
+
+@main:
+	LOAD r0, 5       # Load integer to test in r0
+    LOAD r1, 2       # We will divide by 2
+
+	MOD r0, r0, r1   # r0 = r0 % r1 (ie. 5 % 2 = 1)
+	RETURN           # Return r0 (1 = odd, 0 = even)

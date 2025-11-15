@@ -1,0 +1,46 @@
+# Testing IF-branches.
+# -> 0 = no error
+# -> 1 = error
+
+@main:
+    LOAD r0, 1
+    LOAD r1, 1
+    LOAD r2, 2
+    LOAD r3, 3
+
+    ## Failure testing! NONE of these should branch unless there is an error!
+    
+    # IFLT
+    IFLT r2, r0      # r, r
+    JUMP done
+    IFLT r2, -500    # r, imm
+    JUMP done
+    IFLT 500, r2     # imm, r
+    JUMP done
+
+    # IFLE
+    IFLE r2, r1      # r, r
+    JUMP done
+    IFLE r2, -500    # r, imm
+    JUMP done
+    IFLE 500, r2     # imm, r
+    JUMP done
+
+    # IFEQ
+    IFEQ r2, r1      # r, r
+    JUMP done
+    IFEQ r2, 9    # r, imm
+    JUMP done
+
+    # IFNE
+    IFNE r2, r2     # r, r
+    JUMP done
+    IFNE r2, 2      # r, imm
+    JUMP done
+
+    ## SUCCESS: All the above tests succeeded. We can return 0.
+
+success:
+    LOAD r0, 0
+done:
+    RETURN

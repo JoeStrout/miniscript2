@@ -1,0 +1,17 @@
+@spam:   # spam(repeatCount) -> null
+	LOAD r1, "Spam "
+	MULT r1, r1, r0
+	CALLFN 1, "print"
+	RETURN
+	
+
+@main:
+	LOAD r0, 1
+	CALLF 0, @spam
+	LOAD r0, 2
+	CALLF 0, @spam
+	LOAD r0, 3
+	CALLF 0, @spam
+	LOAD r0, "Spam, spam, spam, baked beans, and spam!"
+	CALLFN 0, "print"
+	RETURN

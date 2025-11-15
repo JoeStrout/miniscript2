@@ -1,0 +1,24 @@
+@main:
+    LOAD r5, 10       # Just 10 iterations instead of 750,000
+    LOAD r4, 0        # Counter
+
+    outer_loop:
+        # Calculate factorial of 5 instead of 20
+        LOAD r2, 5        # Factorial input
+        LOAD r0, r2       # This will hold our answer
+        LOAD r1, 1
+
+        check:
+            IFLT r2, 2
+            JUMP done_inner
+            SUB r2, r2, r1
+            MULT r0, r0, r2
+            JUMP check
+
+        done_inner:
+            # Increment outer counter and check if done
+            ADD r4, r4, r1  # r4++
+            IFLT r4, r5     # if r4 < r5, continue
+            JUMP outer_loop
+
+    RETURN

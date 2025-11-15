@@ -1,0 +1,17 @@
+# Test string interning, which should happen for strings more than 5
+# bytes long, but less than 128.  Each unique such string should be
+# in the intern table only once, no matter how many times it appears.
+
+@main:
+	LOAD r0, "Testy McTester"
+	LOAD r1, "Testy McTester"
+	LOAD r2, "Testy McTester"
+	IFEQ r0, r2
+	JUMP equal
+	LOAD r3, "Nope"
+	CALLFN 3, "print"
+	RETURN
+equal:
+	LOAD r3, "Yep"
+	CALLFN 3, "print"
+	RETURN

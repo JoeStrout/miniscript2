@@ -1,0 +1,28 @@
+# Test program with function calls
+# Tests CALLF and RETURN instructions
+
+@add:
+	.param x=0
+	.param y=1
+	ADD r0, r0, r1   # return r0 + r1
+	RETURN
+
+@main:
+	# Direct call via CALLF... something the compiler probably won't be able to do:
+	LOAD r0, 4
+	LOAD r1, 3
+	CALLF 0, @add   # should get 7 in r0
+	
+	# Call via a FuncRef: more like what compiled code would do
+	FUNCREF r2, @add
+	NAME r2, "add"        # add = function(x,y=1) ...
+	LOAD r3, 5
+    NAME r3, "foo"        # foo = 5
+
+	ARGBLK 2        # set up a call, with 2 arguments
+	ARG r3
+	ARG 1
+	CALL r1, r5, r2   # invoke add (in r2), with params at r5, storing result in r1 
+	
+	MULT r0, r0, r1  # multiply r0 and r1 to get 42
+	RETURN

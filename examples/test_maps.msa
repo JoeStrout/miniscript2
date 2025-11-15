@@ -1,0 +1,58 @@
+# Test map functionality with INDEX and IDXSET operations
+# Create a map with initial capacity 8
+MAP r1, 8
+
+# Add some key-value pairs to the map
+# r1["name"] = "Alice"
+LOAD r2, "name"
+LOAD r3, "Alice"
+IDXSET r1, r2, r3
+
+# r1["age"] = 25
+LOAD r2, "age"
+LOAD r3, 25
+IDXSET r1, r2, r3
+
+# r1["city"] = "Boston"
+LOAD r2, "city"
+LOAD r3, "Boston"
+IDXSET r1, r2, r3
+
+# Update an existing key
+# r1["age"] = 26
+LOAD r2, "age"
+LOAD r3, 26
+IDXSET r1, r2, r3
+
+# Retrieve and print values:
+
+# Print the map itself
+LOAD r4, r1
+CALLFN 4, "print"
+
+# Get r1["name"] and print it
+LOAD r2, "name"
+INDEX r4, r1, r2
+CALLFN 4, "print"
+
+# Get r1["age"] and print it
+LOAD r2, "age"
+INDEX r4, r1, r2
+CALLFN 4, "print"
+
+# Get r1["city"] and print it
+LOAD r2, "city"
+INDEX r4, r1, r2
+CALLFN 4, "print"
+
+# Remove "age" (it's rude!)
+LOAD r2, r1
+LOAD r3, "age"
+CALLFN 2, "remove"
+CALLFN 2, "print"   # and print result (1/0)
+
+# Print the map again
+LOAD r4, r1
+CALLFN 4, "print"
+
+RETURN

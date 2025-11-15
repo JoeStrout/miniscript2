@@ -1,0 +1,25 @@
+# Recursive Fibonacci implementation
+
+@fib:
+	LOAD r1, 2				# r1 = 2
+	IFLT r0, r1				# if r0 < r1 then return
+	RETURN
+	
+	LOAD r1, 1				# r1 = 1
+	SUB r1, r0, r1			# r1 = n - r1
+	CALLF 1, @fib			# r1 = fib(r1)
+	
+	LOAD r2, 2				# r2 = 2
+	SUB r2, r0, r2			# r2 = n - r2
+	CALLF 2, @fib			# r2 = fib(r2)
+	
+	ADD r0, r1, r2			# r0 = r1 + r2
+
+done:
+	RETURN					# return r0
+	
+
+@main:
+	LOAD r0, 33				# Fibonacci number to find
+	CALLF 0, @fib			# r0 = fib(r0)
+	RETURN					# return r0

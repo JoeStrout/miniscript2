@@ -1,0 +1,16 @@
+@main:
+    LOAD r0, 50
+    BRLT r0, 0, negative
+    BRLT r0, 100, positive
+    JUMP large
+    
+negative:
+    LOAD r0, "The number is negative."
+    JUMP done
+positive:
+    LOAD r0, "The number is positive but less than 100."
+    JUMP done
+large:
+    LOAD r0, "The number is positive and large!"
+done:
+    RETURN

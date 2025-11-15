@@ -1,0 +1,5 @@
+# Minimal "hello world" program in MiniScript assembly language.
+
+@main:
+	LOAD r0, "Hello world!"
+	RETURN

@@ -1,0 +1,74 @@
+# C/C++ build products
+*.o
+*.so
+*.dylib
+*.dll
+*.dSYM
+*.a
+
+# Executables
+*.exe
+*_nanbox
+*_classic
+example_shadow_stack
+ms2vm
+ms2asm
+Program
+test_vm
+
+# Claude Code settings
+.claude/
+
+# C/C++ BUild Products
+build/
+
+# Generated (transpiled) files... not entirely sure whether we want
+# to push these to github or not, but probably not in this prototype.
+MS2Proto3/generated/
+
+# C# / .NET / Mono Build Products
+*.exe
+*.dll
+*.pdb
+*.xml
+
+# .NET Project Build Directories
+bin/
+obj/
+out/
+
+# .NET Test Projects
+NanBoxTests/
+TestProject*/
+
+# Visual Studio / Visual Studio Code
+.vs/
+.vscode/
+*.user
+*.suo
+*.cache
+
+# Mono Compiler Outputs
+*.exe.mdb
+*.dll.mdb
+
+# Debug Symbols
+*.dSYM/
+
+# JetBrains Rider
+.idea/
+*.sln.iml
+
+# macOS
+.DS_Store
+
+# Temporary Files
+*.tmp
+*.temp
+*~
+
+# Log Files
+*.log
+
+# Internal Stuff
+InternalNotes

@@ -1,0 +1,36 @@
+# Iterative Fibonacci benchmark
+# Calculates fib(n) many times for benchmarking
+# Result stored in r0
+
+@main:
+	LOAD r5, 500000  # Number of iterations for benchmarking
+	LOAD r6, 0       # Outer counter
+	LOAD r7, 1       # used for incrementing by 1
+	
+	outer_loop:
+		LOAD r0, 30      # n = 30 (compute fib(30))
+		LOAD r1, 0       # a = 0 (first Fibonacci number)
+		LOAD r2, 1       # b = 1 (second Fibonacci number)
+		
+		# Handle base cases
+		LOAD r3, 2       # Load 2 for comparison  
+		BRLT r0, r3, next_iter  # if n < 2, return n
+		
+		# Iterative loop: for i = 2 to n
+		LOAD r4, 2       # i = 2 (loop counter)
+		
+		loop:
+			ADD r3, r1, r2    # r3 = a + b (next Fibonacci number)
+			LOAD r1, r2       # a = b
+			LOAD r2, r3       # b = r3
+			ADD r4, r4, r7    # i = i + 1
+			BRLE r4, r0, loop # if i <= n, continue loop
+				
+		end:
+			LOAD r0, r2       # Return result from r2
+			
+		next_iter:
+			ADD r6, r6, r7    # Increment outer counter
+			BRLT r6, r5, outer_loop # if r6 < r5, continue
+
+	RETURN

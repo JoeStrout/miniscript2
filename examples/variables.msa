@@ -1,0 +1,123 @@
+# Test of variable/closure support.  Every register has
+# an optional name associated with it, which can be set
+# at the same times as its value using ASSIGN.
+
+
+# In this test function, we'll assign a few local variables,
+# and then return locals.  The caller should be able to see
+# those locals even though the function has returned.
+@returnLocalsTest:
+	LOAD r1, "yep"
+	NAME r1, "works"
+	
+	LOAD r2, 12
+	ASSIGN r3, r2, "twelve"
+	
+	LOCALS r0
+	RETURN
+
+
+# Here's a function that receives a map, and changes "answer"
+# in that map to 42.  It also prints the value of "foo" in
+# that same map.  (We'll call this and pass in locals,
+# to see that it really can see and change the caller's locals.)
+@fooAnswerTest:
+	# print "foo: " + r0["foo"]
+	LOAD r1, "foo"
+	INDEX r2, r0, r1
+	LOAD r1, "foo: "
+	ADD r1, r1, r2
+	CALLFN 1, "print"
+	
+	# r0["answer"] = 42
+	LOAD r1, "answer"
+	LOAD r2, 42
+	IDXSET r0, r1, r2
+	
+	RETURN
+
+# testFoo prepares "foo" and a (wrong) "answer", then calls fooAnswerTest(locals),
+# which should stuff the correct value into "answer".
+@testFoo:
+	# answer = -1  (using ASSIGN)
+	LOAD r0, -1
+	ASSIGN r1, r0, "answer"
+	
+	# foo = "bar"  (using NAME, just to exercise both ways)
+	LOAD r2, "bar"
+	NAME r2, "foo"
+	
+	# call fooAnswerTest(locals)
+	LOCALS r3
+	CALLF 3, @fooAnswerTest
+	
+	# print answer
+	LOAD r3, r1
+	CALLFN 3, "print"
+	
+	RETURN
+
+# Define a function that removes "x" from any map passed in.
+@removeX:
+	LOAD r1, "x"
+	CALLFN 0, "remove"
+	RETURN
+	
+# Now, this function creates a variable "x", but then passes locals
+# to @removeX, which removes it.  A subsequent access of variable "x"
+# (through LOADV, which MiniScript should use for any non-invoking
+# variable reference) should then fail.
+@testAccessAfterRemoval:
+	LOAD r1, 123
+	NAME r1, "x"
+	LOAD r2, 456
+	NAME r2, "y"
+	
+	LOADV r0, r1, "x"    # should work (as x is defined now)
+	
+	LOCALS r3
+	CALLF 3, @removeX    # undefines x
+	
+	LOADV r0, r1, "x"    # should throw an error
+	RETURN
+
+# Simulate implicit invocation of a function stored in a variable.
+# MiniScript code:
+#		ultimateAnswer = function; return 42; end function
+#		testImplicit = function
+#			x = @ultimateAnswer
+#			return x	// should return 42
+#		end function
+
+@ultimateAnswer:
+	LOAD r0, 42                  # return 42
+	RETURN
+
+@testImplicit:
+	FUNCREF r1, @ultimateAnswer
+	NAME r1, "x"                 # x = @ultimateAnswer
+	LOADC r0, r1, "x"            # return x
+	RETURN
+
+
+@main:
+	LOAD r0, 42
+	NAME r0, "temp"              # temp = 42
+
+	ASSIGN r1, r0, "meaning"     # meaning = temp
+	
+	LOCALS r2                    # get locals in r2
+	CALLFN 2, "print"            # print locals
+	
+	CALLF 3, @returnLocalsTest   # call returnLocalsTest, get result in r3
+	CALLFN 3, "print"            # print result
+	
+	CALLF 3, @testFoo
+
+	CALLF 3, @testImplicit
+	LOAD r0, r3
+
+# Uncomment this to test runtime "undefined identifier" error:	
+#	CALLF 3, @testAccessAfterRemoval
+	
+	RETURN

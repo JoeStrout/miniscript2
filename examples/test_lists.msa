@@ -1,0 +1,83 @@
+# Program to test various list functionality
+
+@make123:
+	# Create and return the list [1, 2, 3]
+	LIST r0, 3
+	LOAD r1, 1
+	PUSH r0, r1
+	LOAD r1, 2
+	PUSH r0, r1
+	LOAD r1, 3
+	PUSH r0, r1
+	RETURN
+
+@testCreation:
+	# Create the list [1, 2, 3] in r1
+	LOAD r0, "List creation"
+	CALLF 1, @make123
+	
+	# Now check it.
+	# (This would be a lot easier if we could call the str intrinsic, but
+	# we can't do that yet, so...)
+	LOAD r3, 0
+	INDEX r2, r1, r3   # r2 = r1[0]
+	IFNE r2, 1
+	RETURN
+	
+	LOAD r3, 1
+	INDEX r2, r1, r3   # r2 = r1[1]
+	IFNE r2, 2
+	RETURN
+	
+	LOAD r3, 2
+	INDEX r2, r1, r3   # r2 = r1[2]
+	IFNE r2, 3
+	RETURN
+
+	LOAD r0, 0  # all good!
+	RETURN
+
+@testIdxSet:
+	LOAD r0, "IdxSet"
+	# Create the list [1, 2, 3] in r1
+	CALLF 1, @make123
+	
+	# Set and then check with a positive index
+	LOAD r2, 1
+	LOAD r3, 42
+	IDXSET r1, r2, r3  # r1[r2] = r3, i.e. r1[1] = 42
+	LOAD r2, 1
+	INDEX r2, r1, r2   # r2 = r1[1]
+	IFNE r2, 42
+	RETURN
+
+	LOAD r0, 0  # all good!
+	RETURN
+	
+@main:
+	CALLF 0, @testCreation
+	BRTRUE r0, error
+	CALLF 0, @testIdxSet
+	BRTRUE r0, error
+	
+	LIST r0, 5    # create empty list with internal capacity = 5
+	LOAD r1, 1
+	PUSH r0, r1    # push 1
+	LOAD r1, 2
+	PUSH r0, r1    # push 2
+	LOAD r1, 4
+	PUSH r0, r1    # push 4
+	LOAD r1, 1
+	INDEX r2, r0, r1   # r2 = r0[1], which should be 2
+	PUSH r0, r2	       # push that onto r0
+	LIST r1, 1
+	PUSH r1, r0
+	LOAD r0, r1
+	RETURN
+
+error:
+	LOAD r1, "Test failure: "
+	ADD r0, r1, r0
+	RETURN
+	
+	

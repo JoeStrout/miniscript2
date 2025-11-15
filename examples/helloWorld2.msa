@@ -1,0 +1,8 @@
+# Slightly less minimal "hello world" program,
+# demonstrating string concatenation.
+
+@main:
+	LOAD r1 "Hello "
+	LOAD r2 "World!"
+	ADD r0, r1, r2
+	RETURN

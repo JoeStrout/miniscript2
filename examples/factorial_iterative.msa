@@ -1,0 +1,31 @@
+@main:
+    LOAD r5, 750000   # Number of iterations for benchmarking
+    LOAD r4, 0        # Counter
+    
+    outer_loop:
+        # Calculate factorial of 20
+        LOAD r2, 20       # Factorial input
+        LOAD r0, r2       # This will hold our answer
+        LOAD r1, 1
+
+        initialcheck:
+            IFLT r2, 2
+            JUMP ret1
+
+        check:
+            IFLT r2, 2
+            JUMP done_inner
+            SUB r2, r2, r1
+            MULT r0, r0, r2
+            JUMP check    
+
+        ret1:
+            LOAD r0, r1 # Special case where the initial value is <2
+        
+        done_inner:
+            # Increment outer counter and check if done
+            ADD r4, r4, r1  # r4++
+            IFLT r4, r5     # if r4 < r5, continue
+            JUMP outer_loop
+
+    RETURN

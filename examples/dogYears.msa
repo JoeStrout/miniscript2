@@ -1,0 +1,13 @@
+@main:
+	LOAD r0, "Enter your age: "
+	CALLFN 0, "input"
+	CALLFN 0, "val"
+	LOAD r1, 7
+	MULT r1, r0, r1
+	LOAD r0, "That's "
+	ADD r0, r0, r1
+	LOAD r2, " in dog years!"
+	ADD r0, r0, r2
+	CALLFN 0, "print"
+	RETURN
+	

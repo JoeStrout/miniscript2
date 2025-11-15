@@ -1,0 +1,80 @@
+# MiniScript code:
+#	makeCounter = function(name)
+#       count = 0
+#       globals.count += 1
+#		f = function
+#           outer.count += 1
+#			print name + " " + count
+#		end function
+#		return @f
+#	end function
+#
+#   count = 0
+#	f1 = makeCounter("foo")
+#	f2 = makeCounter("bar")
+#   print "global count: " + count   // prints "global count: 2"
+#	f1  // prints "foo 1"
+#	f2  // prints "bar 1"
+#	f1  // prints "foo 2"
+
+@fDef:
+    OUTER r1
+	LOAD r2, "count"
+	INDEX r3, r1, r2      # r3 = outer.count
+	LOAD r4, 1
+	ADD r3, r3, r4        # r3 += 1
+	IDXSET r1, r2, r3     # outer.name = r3
+	LOADV r0, r0, "name"  # won't match here, so will search outer
+	LOAD r4, " "
+	ADD r0, r0, r4        # append a space to value we found
+	ADD r0, r0, r3        # and then the count from above
+	CALLFN 0, "print"     # print result
+	RETURN
+
+@makeCounter:
+	.param name           # r1
+
+	LOAD r2, 0            # count = 0
+	NAME r2, "count"
+
+	LOAD r3, "count"
+	GLOBALS r4
+	INDEX r5, r4, r3     # r5 = globals.count
+	LOAD r6, 1
+	ADD r5, r5, r6       # r5 += 1
+	IDXSET r4, r3, r5    # globals.count = r5
+
+	FUNCREF r0, @fDef    # return @fDef (with local closure)
+	RETURN
+
+@main:
+	FUNCREF r1, @makeCounter
+	NAME r1, "makeCounter"    # makeCounter = function(...)
+	
+	LOAD r5, 0                # global count = 0
+	NAME r5, "count"
+
+	LOAD r4, "foo"
+	ARGBLK 1
+	ARG r4
+	CALL r2, r6, r1
+	NAME r2, "f1"             # f1 = makeCounter("foo")
+	
+	LOAD r4, "bar"
+	ARGBLK 1
+	ARG r4
+	CALL r3, r6, r1
+	NAME r3, "f2"            # f2 = makeCounter("bar")
+	
+	LOAD r0, "global count: "
+	ADD r0, r0, r5
+	CALLFN 0, "print"
+
+	LOADC r0, r2, "f1"        # f1
+	LOADC r0, r3, "f2"        # f2
+	LOADC r0, r2, "f1"        # f1
+
+	LOAD r0, "Closure test complete."
+	CALLFN 0, "print"
+	RETURN
+

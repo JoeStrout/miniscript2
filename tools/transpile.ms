@@ -7,7 +7,7 @@ import "fancyMatch"  // overrides standard string.match and string.fill
 TAB = char(9)
 
 debugPrint = function(s)
-	//print s
+	print s
 end function
 
 Context = {}
@@ -66,6 +66,8 @@ Converter.fail = function(errMsg)
 end function
 
 Converter.processLine = function(line)
+	if line.startsWith("#line") or line.startsWith("#pragma") then return // no-op
+	
 	// Start by splitting off the comment, if any
 	// (ToDo: lex this properly in a string-literal-savvy way)
 	parts = line.split("//", 2)
@@ -194,7 +196,44 @@ Converter.processLine = function(line)
 		debugPrint "Context down: " + self.context + " (code block depth " + self.codeBlockDepth + ")"
 	end if
 
+	// Special-case extra code for certain files
+	if self.filename == "MiniScriptParser.cs" then
+		self.processParserLine
+	end if
+
 end function
+
+// Do extra processing for a line in MiniScriptParser.cs.  Mostly because that
+// file is itself auto-generated (by GPPG), and so we have no opportunity to
+// insert special "CPP:" or "CS:" directives.  But it has a very limited and
+// regular form, so... we just bake the extra heuristics in here.
+Converter.processParserLine = function
+	if self.line == "namespace MiniScript" then
+		// Add "using" clauses to simplify access to QUT::Gppg classes.
+		for cls in ["State", "Rule", "LexLocation", "ShiftReduceParser"]
+			self.hLines.push "using QUT::Gppg::" + cls + ";"
+		end for
+	else if self.line.startsWith("public enum Tokens ") then
+		self.hLines.push self.line.replace("public enum", "enum class")
+		self.context = Context.CLASS
+		self.className = "Tokens"
+	else if self.context == Context.CLASS and self.className == "Tokens" and 
+	        self.line.contains("=") then
+		// more enum values, too compact for our usual patterns to match
+		self.hLines.push self.line
+	else if self.line == "static Parser()" then
+		// Replace the static constructor with a regular constructor and
+		// an InitStaticData method.
+		self.hLines[-1] = "  public: Parser();"
+		self.hLines.push "  private: static void InitStaticData();"
+		self.cppLines[-1] = "  Parser::Parser() { InitStaticData(); }"
+		self.cppLines.push "  void Parser::InitStaticData() {"
+		self.cppLines.push "    if (initialized) return;"
+		self.cppLines.push "    initialized = true;"
+	end if
+	
+end function
+
 
 // Process a line of code *not* found within a method.
 Converter.processNonmethodLine = function
@@ -203,6 +242,9 @@ Converter.processNonmethodLine = function
 	if self.match("using ≤lib≥;", "", "") then
 		if not self.didIncludes then
 			self.hLines.push "#include ""core_includes.h"""
+			if self.filename == "MiniScriptParser.cs" then
+				self.hLines.push "#include ""ShiftReduceParserCode.h"""
+			end if
 			self.cppLines.push "#include """ + (self.filename - ".cs" + ".g.h") + """"
 			if self.filename == "Program.cs" then  // ToDo: find better way to decide this
 				self.cppLines.push "#include ""IOHelper.g.h"""
@@ -224,7 +266,7 @@ Converter.processNonmethodLine = function
 	  self.match("class ≤name≥", "class ≤name≥", "") then
 		self.context = Context.CLASS
 		debugPrint "Context: " + self.context + " (code block depth " + self.codeBlockDepth + ")"
-		self.className = self.m.name
+		self.className = self.m.name.split(":")[0]		
 		if not self.classNames.contains(self.className) then
 			self.classNames.push self.className
 		end if
@@ -273,11 +315,17 @@ Converter.processNonmethodLine = function
 	  "≤scope≥: ≤type≥ ≤name≥ = ≤value≥;", "") then return self.checkType
 
 	// static class field, with and without default value
-	if self.context == Context.CLASS and self.match("≤scope:w≥ static ≤type:w≥ ≤name:w≥;",
-	  "≤scope≥: static ≤type≥ ≤name≥;", "") then return self.checkType
-	if self.context == Context.CLASS and self.match("≤scope:w≥ static ≤type:w≥ ≤name:w≥ = ≤value≥;",
-	  "≤scope≥: static ≤type≥ ≤name≥;", "≤type≥ ≤className≥::≤name≥ = ≤value≥;") then return self.checkType
-
+	if self.context == Context.CLASS then
+		if self.match("≤scope:w≥ static ≤type:w≥ ≤name:w≥;",
+	      "≤scope≥: static ≤type≥ ≤name≥;", "") then return self.checkType
+		if self.match("≤scope:w≥ static ≤type:w≥ ≤name:w≥ = ≤value≥;",
+	      "≤scope≥: static ≤type≥ ≤name≥;", 
+	      "≤type≥ ≤className≥::≤name≥ = ≤value≥;") then return self.checkType
+		if self.match("≤scope:w≥ static ≤type:w≥ *≤name:w≥ = ≤value≥;",
+	      "≤scope≥: static ≤type≥ *≤name≥;", 
+	      "≤type≥ *≤className≥::≤name≥ = ≤value≥;") then return self.checkType
+	end if
+	
 	// (static) const class field with default value
 	if self.context == Context.CLASS and 
 	  self.match("≤scope:w≥ const ≤type:w≥ ≤name:w≥ = ≤value≥;",
@@ -398,6 +446,9 @@ end function
 // Converter.tweakSyntax: do simple syntax transformations that can be done
 // within pretty much any line of code.
 Converter.tweakSyntax = function(line, context)
+	// int array argument initializer list
+	line = line.replace("new int[]{", "{")
+
 	// initialized char array declaration
 	if self.match("char[] ≤name≥ = new char[≤len≥];") then
 		self.m.lenPlus1 = str(self.m.len.val + 1)
@@ -413,6 +464,12 @@ Converter.tweakSyntax = function(line, context)
 	
 	// special case of a Main program args: add the count
 	line = line.replace("string *args", "String args[], int argCount")
+	
+	// skanky things the generated parser code does
+	if self.filename == "MiniScriptParser.cs" then
+		line = line.replace("string", "String")
+		line = line.replace("class Parser: ", "class Parser: public ")
+	end if
 	
 	// static class methods (invoked on the class name itself)
 	for cls in self.classNames
@@ -441,6 +498,9 @@ Converter.tweakSyntax = function(line, context)
 	// defined in core_includes.h.
 	line = line.replace(".MinValue", "MinValue")
 	line = line.replace(".MaxValue", "MaxValue")
+	
+	// `this`, always a pointer
+	line = line.replace("this.", "this->")
 	
 	// Output parameters on method calls
 	line = line.replace("(out ", "(&")
@@ -540,12 +600,23 @@ Converter.convertClass = function(sourcePath)
 	self.hOnly = false
 	self.cppOnly = false
 
-	for line in file.readLines(sourcePath)
-		self.lineNum += 1
+	lines = file.readLines(sourcePath)
+	i = 0
+	while i < lines.len
+		self.lineNum = i + 1
+		line = lines[i]
+		if i + 1 < lines.len and lines[i+1].trim == "{" then
+			// fix a dangling open-brace
+			pos = line.indexOf("//")
+			if pos == null then pos = line.len
+			line = line[:pos] + " {" + line[pos:]
+			i += 1
+		end if
 		//debugPrint line
 		self.processLine line
 		if self.failed then return
-	end for
+		i += 1
+	end while
 
 	if self.hLines.len <= 6 and self.cppLines.len <= 3 then
 		print fileNameBase + ".cs: skipped (C# only)"

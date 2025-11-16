@@ -1,6 +1,6 @@
 # Makefile for GPPG runtime library and MiniScript parser
 CXX = g++
-CXXFLAGS = -std=gnu++11 -Wall -I. -I.. -I../../generated
+CXXFLAGS = -std=gnu++11 -Wall -I. -I.. -I../core -I../../generated
 LDFLAGS =
 
 # Compiler library objects

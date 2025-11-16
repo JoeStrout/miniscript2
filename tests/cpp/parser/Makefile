@@ -1,6 +1,6 @@
 # Parser Tests Makefile
 CXX = g++
-CXXFLAGS = -std=gnu++11 -Wall -I../../.. -I../../../cpp/compiler -I../../../generated
+CXXFLAGS = -std=gnu++11 -Wall -I../../.. -I../../../cpp/compiler -I../../../cpp/core -I../../../generated
 LDFLAGS =
 
 # Paths
@@ -13,11 +13,13 @@ TEST_BUILD_DIR = $(BUILD_DIR)/tests/cpp/parser
 
 # Compiler library objects (built separately)
 COMPILER_OBJS = $(COMPILER_DIR)/ShiftReduceParserCode.o \
-                $(COMPILER_DIR)/MiniScriptParser.o \
                 $(COMPILER_DIR)/MiniScriptLexer.o
 
 # Core library objects (built separately)
 CORE_OBJS = $(CORE_OBJS_DIR)/core_*.o
+
+# Generated parser object (only need the parser, not the whole app)
+PARSER_OBJ = $(CORE_OBJS_DIR)/gen_MiniScriptParser.o
 
 # Test executables
 TEST_PARSER = $(TEST_BUILD_DIR)/test_parser
@@ -28,7 +30,7 @@ $(TEST_BUILD_DIR):
 	mkdir -p $(TEST_BUILD_DIR)
 
 $(TEST_PARSER): test_parser.cpp $(COMPILER_OBJS) | $(TEST_BUILD_DIR)
-	@if [ ! -f $(COMPILER_DIR)/MiniScriptParser.o ]; then \
+	@if [ ! -f $(COMPILER_DIR)/ShiftReduceParserCode.o ]; then \
 		echo "Error: Compiler objects not found. Run 'make' from cpp/compiler/ first."; \
 		exit 1; \
 	fi
@@ -36,7 +38,11 @@ $(TEST_PARSER): test_parser.cpp $(COMPILER_OBJS) | $(TEST_BUILD_DIR)
 		echo "Error: Core objects not found. Run 'make' from cpp/ first."; \
 		exit 1; \
 	fi
-	$(CXX) $(CXXFLAGS) test_parser.cpp $(COMPILER_OBJS) $(CORE_OBJS) -o $(TEST_PARSER)
+	@if [ ! -f $(CORE_OBJS_DIR)/gen_MiniScriptParser.o ]; then \
+		echo "Error: Generated objects not found. Run 'make' from cpp/ first."; \
+		exit 1; \
+	fi
+	$(CXX) $(CXXFLAGS) test_parser.cpp $(COMPILER_OBJS) $(CORE_OBJS) $(PARSER_OBJ) -o $(TEST_PARSER)
 
 test: $(TEST_PARSER)
 	@echo "=== Running Parser Tests ==="

@@ -33,6 +33,10 @@ case "$TARGET" in
             exit 1
         fi
 
+        # Post-process: Replace EOF with END_OF_FILE for consistency with C++
+        echo "Post-processing: Renaming EOF token to END_OF_FILE..."
+        sed -i '' -e 's/,EOF=/,END_OF_FILE=/g' -e 's/\.EOF)/\.END_OF_FILE)/g' cs/Parser/MiniScriptParser.cs
+
         echo "Parser generation complete."
         echo "Generated file: cs/Parser/MiniScriptParser.cs"
         echo "Using hand-written lexer: cs/Lexer.cs"
@@ -114,7 +118,7 @@ case "$TARGET" in
         ;;
     
     "test")
-        echo "Running tests..."
+        echo "Running quick smoke tests..."
         echo "Testing C# version:"
         cd build/cs && echo "These are some words for testing" | ./MS2Proto3
         cd ../..
@@ -122,22 +126,56 @@ case "$TARGET" in
         cd build/cpp && echo "These are some words for testing" | ./MS2Proto3
         cd ../..
         ;;
-    
+
+    "test-all")
+        echo "Running all test suites..."
+        make -C tests all
+        ;;
+
+    "test-cpp")
+        echo "Running C++ test suites..."
+        make -C tests cpp
+        ;;
+
+    "test-cs")
+        echo "Running C# test suites..."
+        make -C tests cs
+        ;;
+
+    "test-parser")
+        echo "Running parser tests..."
+        make -C tests parser
+        ;;
+
+    "test-vm")
+        echo "Running VM tests..."
+        make -C tests vm
+        ;;
+
     *)
-        echo "Usage: $0 {setup|parser|cs|transpile|cpp|all|clean|test} [goto_mode]"
-        echo "  setup     - Set up development environment"
-        echo "  parser    - Generate parser from grammar files"
-        echo "  cs        - Build C# version only"
-        echo "  transpile - Transpile C# to C++"
-        echo "  cpp       - Build C++ version only"
-        echo "  all       - Build everything"
-        echo "  clean     - Clean build artifacts"
-        echo "  test      - Build and test both versions"
+        echo "Usage: $0 {setup|parser|cs|transpile|cpp|all|clean|test|test-*} [goto_mode]"
+        echo ""
+        echo "Build Commands:"
+        echo "  setup       - Set up development environment"
+        echo "  parser      - Generate parser from grammar files"
+        echo "  cs          - Build C# version only"
+        echo "  transpile   - Transpile C# to C++"
+        echo "  cpp         - Build C++ version only"
+        echo "  all         - Build everything"
+        echo "  clean       - Clean build artifacts"
+        echo ""
+        echo "Test Commands:"
+        echo "  test        - Quick smoke test of built executables"
+        echo "  test-all    - Run all test suites (C++ and C#)"
+        echo "  test-cpp    - Run all C++ test suites"
+        echo "  test-cs     - Run all C# test suites"
+        echo "  test-parser - Run parser tests only"
+        echo "  test-vm     - Run VM tests only"
         echo ""
         echo "Optional goto_mode for C++ builds:"
-        echo "  auto      - Auto-detect computed-goto support (default)"
-        echo "  on        - Force computed-goto ON"
-        echo "  off       - Force computed-goto OFF"
+        echo "  auto        - Auto-detect computed-goto support (default)"
+        echo "  on          - Force computed-goto ON"
+        echo "  off         - Force computed-goto OFF"
         exit 1
         ;;
 esac

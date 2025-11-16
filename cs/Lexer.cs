@@ -23,7 +23,7 @@ public class Lexer : AbstractScanner<int, LexLocation> {
 
 		// End of input
 		if (position >= input.Length) {
-			return (int)Tokens.EOF;
+			return (int)Tokens.END_OF_FILE;
 		}
 
 		char c = input[position];

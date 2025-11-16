@@ -217,13 +217,15 @@ private:
 	int nonTerminalsCount;
 	State** states;
 	int statesCount;
-	Rule* rules;
+	Rule** rules;  // Changed to array of pointers (like states)
 	int rulesCount;
 
-protected:
-	// Properties
-	AbstractScanner<TValue, TSpan>* Scanner() { return scanner; }
+public:
+	// Scanner property accessors
+	AbstractScanner<TValue, TSpan>* GetScanner() { return scanner; }
 	void SetScanner(AbstractScanner<TValue, TSpan>* value) { scanner = value; }
+
+protected:
 
 	PushdownPrefixState<TValue>& ValueStack() { return valueStack; }
 	PushdownPrefixState<TSpan>& LocationStack() { return locationStack; }
@@ -231,7 +233,7 @@ protected:
 	bool YYRecovering() const { return recovering; }
 
 	// Initialization methods for derived classes
-	void InitRules(Rule* rulesArray, int count) {
+	void InitRules(Rule** rulesArray, int count) {
 		rules = rulesArray;
 		rulesCount = count;
 	}
@@ -283,7 +285,8 @@ protected:
 	String SymbolToString(int symbol);
 
 public:
-	// Constructor
+	// Constructors
+	ShiftReduceParser();  // Parameterless constructor
 	ShiftReduceParser(AbstractScanner<TValue, TSpan>* scanner);
 	virtual ~ShiftReduceParser();
 
@@ -309,6 +312,19 @@ private:
 // ==============================================================
 // ShiftReduceParser Template Implementation
 // ==============================================================
+
+template<typename TValue, typename TSpan>
+ShiftReduceParser<TValue, TSpan>::ShiftReduceParser()
+	: scanner(nullptr), NextToken(0), FsaState(nullptr),
+	  recovering(false), tokensSinceLastError(0),
+	  errorToken(0), endOfFileToken(0),
+	  nonTerminals(nullptr), nonTerminalsCount(0),
+	  states(nullptr), statesCount(0),
+	  rules(nullptr), rulesCount(0) {
+	CurrentSemanticValue = TValue();
+	CurrentLocationSpan = TSpan();
+	LastSpan = TSpan();
+}
 
 template<typename TValue, typename TSpan>
 ShiftReduceParser<TValue, TSpan>::ShiftReduceParser(AbstractScanner<TValue, TSpan>* scanner)
@@ -403,7 +419,7 @@ void ShiftReduceParser<TValue, TSpan>::Shift(int stateIndex) {
 
 template<typename TValue, typename TSpan>
 void ShiftReduceParser<TValue, TSpan>::Reduce(int ruleNumber) {
-	const Rule& rule = rules[ruleNumber];
+	const Rule& rule = *rules[ruleNumber];  // Dereference pointer
 	int rhLen = rule.RhsLength;
 
 	// Default actions based on production length
@@ -412,12 +428,8 @@ void ShiftReduceParser<TValue, TSpan>::Reduce(int ruleNumber) {
 		CurrentLocationSpan = locationStack.TopElement();
 	} else if (rhLen == 0) {
 		CurrentSemanticValue = TValue();
-		// Merge scanner location with last span for empty production
-		if (&scanner->yylloc != nullptr && &LastSpan != nullptr) {
-			CurrentLocationSpan = scanner->yylloc.Merge(LastSpan);
-		} else {
-			CurrentLocationSpan = TSpan();
-		}
+		// For empty production, merge scanner location with last span
+		CurrentLocationSpan = scanner->yylloc.Merge(LastSpan);
 	} else {
 		// Default: $$ = $1
 		CurrentSemanticValue = valueStack[locationStack.Depth() - rhLen];
@@ -598,7 +610,7 @@ template<typename TValue, typename TSpan>
 void ShiftReduceParser<TValue, TSpan>::DisplayRule(int ruleNumber) {
 	// Debug output - can be no-op
 	// fprintf(stderr, "Reducing stack by rule %d, ", ruleNumber);
-	// DisplayProduction(rules[ruleNumber]);
+	// DisplayProduction(*rules[ruleNumber]);  // Dereference pointer
 }
 
 template<typename TValue, typename TSpan>

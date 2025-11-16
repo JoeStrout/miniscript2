@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net6.0</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Reference the main project to access Parser and Lexer -->
+    <Compile Include="../../../cs/Lexer.cs" Link="Lexer.cs" />
+    <Compile Include="../../../cs/ShiftReduceParserCode.cs" Link="ShiftReduceParserCode.cs" />
+    <Compile Include="../../../cs/Parser/*.cs" Link="Parser/%(Filename)%(Extension)" />
+  </ItemGroup>
+
+</Project>

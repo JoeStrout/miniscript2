@@ -13,7 +13,7 @@ else
     GOTO_FLAG = 
 endif
 
-CXXFLAGS = -std=gnu++11 -Wall -Wextra -O3 -DNDEBUG -Icore -Icompiler $(GOTO_FLAG)
+CXXFLAGS = -std=gnu++11 -Wall -Wextra -O3 -DNDEBUG -Icore -Icompiler -I$(GENDIR) $(GOTO_FLAG)
 CFLAGS = -std=c99 -Wall -Wextra -O3 -DNDEBUG -Icore $(GOTO_FLAG)
 COREDIR = core
 COMPILERDIR = compiler
@@ -32,7 +32,7 @@ CORE_OBJECTS = $(CORE_CPP_OBJECTS) $(CORE_C_OBJECTS)
 COMPILER_CPP_SOURCES = $(wildcard $(COMPILERDIR)/*.cpp)
 COMPILER_OBJECTS = $(COMPILER_CPP_SOURCES:$(COMPILERDIR)/%.cpp=$(OBJDIR)/compiler_%.o)
 
-# Generated C++ files (will be populated by transpiler)
+# Generated C++ files (includes transpiled code and generated parser)
 GEN_SOURCES = $(wildcard $(GENDIR)/*.g.cpp)
 GEN_OBJECTS = $(GEN_SOURCES:$(GENDIR)/%.g.cpp=$(OBJDIR)/gen_%.o)
 

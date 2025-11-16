@@ -1,6 +1,6 @@
 // Test program for the hand-written C++ parser and lexer
 
-#include "MiniScriptParser.h"
+#include "MiniScriptParser.g.h"
 #include "MiniScriptLexer.h"
 #include <iostream>
 #include <string>

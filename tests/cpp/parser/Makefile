@@ -1,11 +1,12 @@
 # Parser Tests Makefile
 CXX = g++
-CXXFLAGS = -std=gnu++11 -Wall -I../../.. -I../../../cpp/compiler
+CXXFLAGS = -std=gnu++11 -Wall -I../../.. -I../../../cpp/compiler -I../../../generated
 LDFLAGS =
 
 # Paths
 PROJECT_ROOT = ../../..
 COMPILER_DIR = $(PROJECT_ROOT)/cpp/compiler
+GENERATED_DIR = $(PROJECT_ROOT)/generated
 BUILD_DIR = $(PROJECT_ROOT)/build
 CORE_OBJS_DIR = $(BUILD_DIR)/cpp/obj
 TEST_BUILD_DIR = $(BUILD_DIR)/tests/cpp/parser

@@ -1,6 +1,6 @@
 # Makefile for GPPG runtime library and MiniScript parser
 CXX = g++
-CXXFLAGS = -std=gnu++11 -Wall -I..
+CXXFLAGS = -std=gnu++11 -Wall -I. -I.. -I../../generated
 LDFLAGS =
 
 # Compiler library objects
@@ -14,10 +14,10 @@ all: $(OBJS)
 ShiftReduceParserCode.o: ShiftReduceParserCode.cpp ShiftReduceParserCode.h
 	$(CXX) $(CXXFLAGS) -c ShiftReduceParserCode.cpp -o $@
 
-MiniScriptParser.o: MiniScriptParser.cpp MiniScriptParser.h ShiftReduceParserCode.h
-	$(CXX) $(CXXFLAGS) -c MiniScriptParser.cpp -o $@
+MiniScriptParser.o: ../../generated/MiniScriptParser.g.cpp ../../generated/MiniScriptParser.g.h ShiftReduceParserCode.h
+	$(CXX) $(CXXFLAGS) -c ../../generated/MiniScriptParser.g.cpp -o $@
 
-MiniScriptLexer.o: MiniScriptLexer.cpp MiniScriptLexer.h MiniScriptParser.h ShiftReduceParserCode.h
+MiniScriptLexer.o: MiniScriptLexer.cpp MiniScriptLexer.h ../../generated/MiniScriptParser.g.h ShiftReduceParserCode.h
 	$(CXX) $(CXXFLAGS) -c MiniScriptLexer.cpp -o $@
 
 clean:

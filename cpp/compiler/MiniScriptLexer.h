@@ -3,7 +3,7 @@
 
 #pragma once
 #include "ShiftReduceParserCode.h"
-#include "MiniScriptParser.h"
+#include "MiniScriptParser.g.h"
 #include <string>
 
 namespace MiniScript {

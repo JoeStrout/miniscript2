@@ -7,8 +7,21 @@
 
 #include "CS_List.h"
 #include "CS_String.h"
+#include "CS_Dictionary.h"
 
 #include <cstdint>
+#include <vector>
+#include <memory>
+
+// C++11 compatibility: make_unique was added in C++14
+#if __cplusplus < 201402L
+namespace std {
+    template<typename T, typename... Args>
+    unique_ptr<T> make_unique(Args&&... args) {
+        return unique_ptr<T>(new T(std::forward<Args>(args)...));
+    }
+}
+#endif
 
 // This module is part of Layer 3B (Host C# Compatibility Layer)
 #define CORE_LAYER_3B

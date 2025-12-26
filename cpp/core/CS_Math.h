@@ -45,11 +45,31 @@ public:
         return std::max(a, b);
     }
 
+	static double Round(double x) {
+		return std::round(x);
+	}
+	
+	static double Abs(double x) {
+		return std::abs(x);
+	}
+	
+	static double Floor(double x) {
+		return std::floor(x);
+	}
+	
+	static double Ceiling(double x) {
+		return std::ceil(x);
+	}
+	
+	static double Pow(double x, double y) {
+		return std::pow(x, y);
+	}
+	
+	static double Cos(double x) {
+		return std::cos(x);
+	}
+	
     // Additional common math functions can be added here as needed
-    // static double Abs(double x) { return std::abs(x); }
-    // static double Floor(double x) { return std::floor(x); }
-    // static double Ceil(double x) { return std::ceil(x); }
-    // etc.
 
 private:
     // Private constructor to prevent instantiation (static class)

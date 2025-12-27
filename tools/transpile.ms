@@ -1,667 +1,1062 @@
-// This program transpiles (a limited subset of) C# code into C++.
-
-import "listUtil"
 import "stringUtil"
-import "fancyMatch"  // overrides standard string.match and string.fill
+import "listUtil"
+import "mapUtil"
+import "fancyMatch"
+import "qa"
 
+//--------------------------------------------------------------------------------
+// Constants
 TAB = char(9)
 
+Scope = {}						// Used for VariableInfo.scope and MethodInfo.scope
+Scope.PUBLIC = "public"
+Scope.PROTECTED = "protected"
+Scope.PRIVATE = "private"
+Scope.LOCAL = "local"
+
+ClassType = {}					// Used for ClassInfo.type
+ClassType.CLASS = "class"
+ClassType.STRUCT = "struct"
+ClassType.ENUM = "enum"
+ClassType.INTERFACE = "interface"
+
+State = {}						// used for Transpiler.state
+State.START = "START"			// at start of file, before namespace
+State.NAMESPACE = "NAMESPACE"	// within the namespace, but not in a class/struct/etc.
+State.CLASS = "CLASS"			// within a class definition
+State.METHOD = "METHOD"			// within a function/method definition
+State.DONE = "DONE"				// past the end of the namespace (pretty much done)
+
+//--------------------------------------------------------------------------------
+// Global data & methods
+debugMode = false
+
 debugPrint = function(s)
-	print s
+	if debugMode then print s
 end function
 
-Context = {}
-Context.START = "START"  // before or after namespace, file scope
-Context.NAMESPACE = "NAMESPACE"  // within a namespace, but not a class
-Context.CLASS = "CLASS"  // within a class, but not within a method
-Context.METHOD = "METHOD" // within a method
-
-Converter = {}
-Converter.context = Context.START
-Converter.codeBlockDepth = 0  // code blocks *within* a method
-Converter.hLines = null
-Converter.cppLines = null
-Converter.addCurly = false
-Converter.className = ""
-Converter.classNames = null // all class names we know about
-Converter.didIncludes = false
-Converter.failed = false
-Converter.lineNum = 0
-Converter.line = ""
-Converter.addCurly = false
-Converter.csOnly = false  // when true, skip conversion entirely
-Converter.hOnly = false   // when true, output only to hLines
-Converter.cppOnly = false // when true, output only to cppLines
-Converter.inVmCase = 0    // when > 1, codeBlockDepth of the current VM_CASE block
-
-Converter.Make = function
-	noob = new self
-	noob.classNames = ["IOHelper", "String", "Math", "List<string>"]
-	return noob
-end function
-
-Converter.match = function(inp, hOut, cppOut)
-	self.m = self.line.match(inp)
-	if not self.m then return false
-	if not self.m.hasIndex("className") then self.m.className = self.className
-	if self.m.hasIndex("params") then
-		self.m.paramNamesOnly = self.removeDefaultValues(self.m.params)
-	end if
-	debugPrint "[" + self.context + "] --> " + inp
-	curly = " {" * self.addCurly
-	if cppOut then
-		self.cppLines.push self.indentation + cppOut.fill(self.m) + curly + self.comment
-	end if
-	if hOut then
-		if hOut[-1] == ";" then curly = "" // header file may have ; instead of {
-		self.hLines.push self.indentation + hOut.fill(self.m) + curly + self.comment
-	end if
-	return true
-end function
-
-Converter.fail = function(errMsg)
-	print "ERROR: " + errMsg
-	print "on line " + self.lineNum + ": " + self.line + " {" * self.addCurly
-	self.failed = true
-end function
-
-Converter.processLine = function(line)
-	if line.startsWith("#line") or line.startsWith("#pragma") then return // no-op
-	
-	// Start by splitting off the comment, if any
-	// (ToDo: lex this properly in a string-literal-savvy way)
-	parts = line.split("//", 2)
-	if parts.len == 2 then
-		line = parts[0]
-		comment = "//" + parts[1]
-	else
-		comment = ""
-	end if
-	
-	// Also split off leading whitespace (indentation)
-	indentation = ""
-	while line and (line[0] == " " or line[0] == TAB)
-		indentation += line[0]
-		line = line[1:]
-	end while
-
-	// If our comment starts with "// CPP:", then ignore the rest of the line
-	// and substitute what appears after that in the CPP code.
-	if comment.startsWith("// CPP:") then
-		line = comment[7:].trimLeft
-		if self.context == Context.METHOD then
-			self.cppLines.push indentation + line
-			if line and line[-1] == "{" then self.codeBlockDepth += 1
-		else
-			self.hLines.push indentation + line
-		end if
-		return
-	end if
-	
-	// Check for other special control comments
-	if comment == "//*** BEGIN CS_ONLY ***" then
-		self.csOnly = true
-	else if comment == "//*** END CS_ONLY ***" then
-		self.csOnly = false
-		return
-	else if line == "/*** BEGIN H_ONLY ***" then
-		debugPrint "H ONLY MODE!"
-		self.hOnly = true
-		return
-	else if line == "*** END H_ONLY ***/" then
-		debugPrint "H ONLY off"
-		self.hOnly = false
-		return
-	else if line == "/*** BEGIN CPP_ONLY ***" then
-		debugPrint "CPP ONLY MODE!"
-		self.cppOnly = true
-		return
-	else if line == "*** END CPP_ONLY ***/" then
-		debugPrint "CPP ONLY off"
-		self.cppOnly = false
-		return
-	end if
-	if self.csOnly then return
-	if self.hOnly then
-		self.hLines.push indentation + line + comment
-		return
-	else if self.cppOnly then
-		self.cppLines.push indentation + line + comment
-		return
-	end if
-
-	// If it's an empty line, or just a comment, then push and we're done
-	if not line then
-		if self.context != Context.METHOD then self.hLines.push indentation + comment
-		self.cppLines.push indentation + comment
-		return
-	end if
-	
-	// Trim trailing whitespace
-	while line and (line[-1] == " " or line[-1] == TAB)
-		comment = line[-1] + comment
-		line = line[:-1]
-	end while
-	
-	debugPrint line
-	
-	// And split off an opening curly too
-	if line[-1] == "{" then
-		self.addCurly = true
-		line = line[:-1]
-		line = line.trimRight
-		if self.context == Context.METHOD then self.codeBlockDepth += 1
-		debugPrint "Context: " + self.context + " (code block depth " + self.codeBlockDepth + ")"
-	else
-		self.addCurly = false
-	end if
-	
-	// Now, process the line
-	self.line = line
-	self.comment = comment
-	self.indentation = indentation
-	
-	// Enforce coding standards
-	self.enforceCodeStandards line + " {" * self.addCurly
-	if self.failed then return
-	
-	// Standard syntax transformations
-	self.line = self.tweakSyntax(line, self.context)
-
-	if self.context == Context.METHOD then
-		self.processMethodLine
-	else
-		self.processNonmethodLine
-	end if
-	
-	// Closing curly: close the open code block or scope
-	if self.line and self.line[0] == "}" then
-		debugPrint "CLOSING CURLY!!"		
-		fullLine = self.indentation + "}" + self.comment
-
-		if self.context == Context.METHOD and self.codeBlockDepth > 0 then
-			self.codeBlockDepth -= 1
-			if self.codeBlockDepth < self.inVmCase then self.inVmCase = 0
-		else if self.context == Context.METHOD then
-			self.context = Context.CLASS
-		else if self.context == Context.CLASS then
-			// add ; after class declaration in .h file; omit from .cpp file
-			self.hLines.push self.indentation + "}; // end of class " + self.className
-			self.context = Context.NAMESPACE
-		else
-			self.hLines.push fullLine
-			self.cppLines.push fullLine
-			self.context = Context.START
-		end if		
-		debugPrint "Context down: " + self.context + " (code block depth " + self.codeBlockDepth + ")"
-	end if
-
-	// Special-case extra code for certain files
-	if self.filename == "MiniScriptParser.cs" then
-		self.processParserLine
-	end if
-
-end function
-
-// Do extra processing for a line in MiniScriptParser.cs.  Mostly because that
-// file is itself auto-generated (by GPPG), and so we have no opportunity to
-// insert special "CPP:" or "CS:" directives.  But it has a very limited and
-// regular form, so... we just bake the extra heuristics in here.
-Converter.processParserLine = function
-	if self.line == "namespace MiniScript" then
-		// Add "using" clauses to simplify access to QUT::Gppg classes.
-		for cls in ["State", "Rule", "LexLocation", "ShiftReduceParser"]
-			self.hLines.push "using QUT::Gppg::" + cls + ";"
-		end for
-	else if self.line.startsWith("public enum Tokens ") then
-		self.hLines.push self.line.replace("public enum", "enum class")
-		self.context = Context.CLASS
-		self.className = "Tokens"
-	else if self.context == Context.CLASS and self.className == "Tokens" and 
-	        self.line.contains("=") then
-		// more enum values, too compact for our usual patterns to match
-		self.hLines.push self.line
-	else if self.line == "static Parser()" then
-		// Replace the static constructor with a regular constructor and
-		// an InitStaticData method.
-		self.hLines[-1] = "  public: Parser();"
-		self.hLines.push "  private: static void InitStaticData();"
-		self.cppLines[-1] = "  Parser::Parser() { InitStaticData(); }"
-		self.cppLines.push "  void Parser::InitStaticData() {"
-		self.cppLines.push "    if (initialized) return;"
-		self.cppLines.push "    initialized = true;"
-	end if
-	
-end function
-
-
-// Process a line of code *not* found within a method.
-Converter.processNonmethodLine = function
-	
-	// using: ignored, but our chance to output standard includes
-	if self.match("using ≤lib≥;", "", "") then
-		if not self.didIncludes then
-			self.hLines.push "#include ""core_includes.h"""
-			if self.filename == "MiniScriptParser.cs" then
-				self.hLines.push "#include ""ShiftReduceParserCode.h"""
-			end if
-			self.cppLines.push "#include """ + (self.filename - ".cs" + ".g.h") + """"
-			if self.filename == "Program.cs" then  // ToDo: find better way to decide this
-				self.cppLines.push "#include ""IOHelper.g.h"""
-			end if
-			self.didIncludes = true
-		end if
-		return
-	end if
-	  
-	// namespace line
-	if self.match("namespace ≤name≥", "namespace ≤name≥", "namespace ≤name≥") then
-		self.context = Context.NAMESPACE
-		debugPrint "Context: " + self.context + " (code block depth " + self.codeBlockDepth + ")"
-		return
-	end if
-
-	// class/struct declaration
-	if self.match("≤qualifiers≥ class ≤name:w≥", "class ≤name≥", "") or
-	  self.match("class ≤name≥", "class ≤name≥", "") then
-		self.context = Context.CLASS
-		debugPrint "Context: " + self.context + " (code block depth " + self.codeBlockDepth + ")"
-		self.className = self.m.name.split(":")[0]		
-		if not self.classNames.contains(self.className) then
-			self.classNames.push self.className
-		end if
-		debugPrint "Got class name: " + self.className + "; all classes: " + self.classNames
-		return
-	end if
-
-	if self.match("≤qualifiers≥ struct ≤name:w≥", "struct ≤name≥", "") or
-	  self.match("struct ≤name≥", "struct ≤name≥", "") then
-		self.context = Context.CLASS
-		debugPrint "Context: " + self.context + " (code block depth " + self.codeBlockDepth + ")"
-		self.className = self.m.name
-		if not self.classNames.contains(self.className) then
-			self.classNames.push self.className
-		end if
-		debugPrint "Got class name: " + self.className + "; all classes: " + self.classNames
-		return
-	end if
-	
-	// enum declaration (becomes a class in C++)
-	if self.match("≤scope≥ enum ≤name≥ : ≤type≥", "enum class ≤name≥ : ≤type≥", "") then
-		if not self.checkType then return
-		self.context = Context.CLASS
-		debugPrint "Context: " + self.context + " (code block depth " + self.codeBlockDepth + ")"
-		self.className = self.m.name
-		if not self.classNames.contains(self.className) then
-			self.classNames.push self.className
-		end if
-		debugPrint "Got class (enum) name: " + self.className + "; all classes: " + self.classNames
-		return
-	end if
-	
-	// enum value
-	if self.match("≤name:w≥ = ≤value≥,", "≤name≥ = ≤value≥,", "") or
-	   self.match("≤name:w≥ = ≤value≥",  "≤name≥ = ≤value≥", "") or
-	   self.match("≤name:w≥,", "≤name≥,", "") or
-	   self.match("≤name:w≥",  "≤name≥", "") then
-		return
-	end if
-	
-	// class field, with and without default value
-	// (note: default values, i.e. i-class member initializers, are valid since C++11)
-	if self.context == Context.CLASS and self.match("≤scope:w≥ ≤type:w≥ ≤name:w≥;",
-	  "≤scope≥: ≤type≥ ≤name≥;", "") then return self.checkType
-	if self.context == Context.CLASS and self.match("≤scope:w≥ ≤type:w≥ ≤name:w≥ = ≤value≥;",
-	  "≤scope≥: ≤type≥ ≤name≥ = ≤value≥;", "") then return self.checkType
-
-	// static class field, with and without default value
-	if self.context == Context.CLASS then
-		if self.match("≤scope:w≥ static ≤type:w≥ ≤name:w≥;",
-	      "≤scope≥: static ≤type≥ ≤name≥;", "") then return self.checkType
-		if self.match("≤scope:w≥ static ≤type:w≥ ≤name:w≥ = ≤value≥;",
-	      "≤scope≥: static ≤type≥ ≤name≥;", 
-	      "≤type≥ ≤className≥::≤name≥ = ≤value≥;") then return self.checkType
-		if self.match("≤scope:w≥ static ≤type:w≥ *≤name:w≥ = ≤value≥;",
-	      "≤scope≥: static ≤type≥ *≤name≥;", 
-	      "≤type≥ *≤className≥::≤name≥ = ≤value≥;") then return self.checkType
-	end if
-	
-	// (static) const class field with default value
-	if self.context == Context.CLASS and 
-	  self.match("≤scope:w≥ const ≤type:w≥ ≤name:w≥ = ≤value≥;",
-	  "≤scope≥: static const ≤type≥ ≤name≥;",
-	  "const ≤type≥ ≤className≥::≤name≥ = ≤value≥;") then return self.checkType
-
-	// static readonly class field with default (usually non-constant) value
-	if self.context == Context.CLASS and 
-	  self.match("≤scope:w≥ static readonly ≤type:w≥ ≤name:w≥ = ≤value≥;",
-	  "≤scope≥: static const ≤type≥ ≤name≥;",
-	  "const ≤type≥ ≤className≥::≤name≥ = ≤value≥;") then return self.checkType
-
-	// class property with expression body
-	if self.context == Context.CLASS and self.match("≤scope:w≥ ≤type:w≥ ≤name:w≥ => ≤expr≥;",
-	  "≤scope≥: ≤type≥ ≤name≥() { return ≤expr≥; }", "") then
-		self.checkType
-		// ToDo: note ≤name≥ in this class as something that will need () where used.
-		return
-	end if
-	
-	// public-get, private-set properties: we turn these into ordinary fields,
-	// which loses the set protection, but it's fine
-	if self.context == Context.CLASS and self.match("≤scope:w≥ ≤type:w≥ ≤name:w≥ { get; private set; }",
-	  "≤scope≥: ≤type≥ ≤name≥;", "") then
-		self.checkType
-		return
-	end if
-	
-	// expression-bodied method
-	if self.match("≤scope:w≥ static ≤rtype:w≥ ≤name:w≥(≤params≥) => ≤expr≥;",
-	  "≤scope≥: static ≤rtype≥ ≤name≥(≤params≥) { return ≤expr≥; }", "") then
-		return
-	end if
-
-	if self.match("≤scope:w≥ ≤rtype:w≥ ≤name:w≥(≤params≥) => ≤expr≥;",
-	  "≤scope≥: ≤rtype≥ ≤name≥(≤params≥) { return ≤expr≥; }", "") then
-		return
-	end if
-
-	// constructor declaration
-	if self.match("≤scope:w≥ ≤name:w≥(≤params≥)",
-	  "≤scope≥: ≤name≥(≤params≥);",
-	  "≤className≥::≤name≥(≤paramNamesOnly≥)") then
-		self.context = Context.METHOD
-		debugPrint "Context: " + self.context + " (code block depth " + self.codeBlockDepth + ")"
-		return
-	end if
-	
-	// conversion operator declaration
-	if self.match("≤scope≥ implicit operator ≤name≥()",
-	 "≤scope≥: operator ≤name≥();", "≤className≥::operator ≤name≥()") then
-		self.context = Context.METHOD
-		debugPrint "Context: " + self.context + " (code block depth " + self.codeBlockDepth + ")"
-		return
-	end if
-	 
-
-	// method declaration
-	if self.match("≤scope:w≥ static ≤rtype:w≥ ≤name:w≥(≤params≥)",
-	  "≤scope≥: static ≤rtype≥ ≤name≥(≤params≥);",
-	  "≤rtype≥ ≤className≥::≤name≥(≤paramNamesOnly≥)") then
-		self.context = Context.METHOD
-		debugPrint "Context: " + self.context + " (code block depth " + self.codeBlockDepth + ")"
-		return
-	end if
-
-	if self.match("≤scope:w≥ ≤rtype:w≥ ≤name:w≥(≤params≥)",
-	  "≤scope≥: ≤rtype≥ ≤name≥(≤params≥);",
-	  "≤rtype≥ ≤className≥::≤name≥(≤paramNamesOnly≥)") then
-	  	if self.m.scope == "static" then return self.fail("scope qualifier required on static method")
-		self.context = Context.METHOD
-		debugPrint "Context: " + self.context + " (code block depth " + self.codeBlockDepth + ")"
-		return
-	end if
-	
-	// override method declaration
-	if self.match("≤scope:w≥ override ≤rtype:w≥ ≤name:w≥(≤params≥)",
-	  "≤scope≥: ≤rtype≥ ≤name≥(≤params≥);",
-	  "≤rtype≥ ≤className≥::≤name≥(≤paramNamesOnly≥)") then
-	  	if self.m.scope == "static" then return self.fail("scope qualifier required on static method")
-		self.context = Context.METHOD
-		debugPrint "Context: " + self.context + " (code block depth " + self.codeBlockDepth + ")"
-		return
-	end if
-end function
-
-// Process a line of code within a method.
-Converter.processMethodLine = function
-	// foreach statement
-	if self.match("foreach (≤type:w≥ ≤var:w≥ in ≤seq≥)", "",
-	  "for (int __≤var≥_idx=0, __≤var≥_qty=≤seq≥.Count(); __≤var≥_idx < __≤var≥_qty; __≤var≥_idx++)") then
-		self.cppLines.push self.indentation + TAB + 
-		  "≤type≥ ≤var≥ = ≤seq≥[__≤var≥_idx];".fill(self.m)
-		return self.checkType
-	end if
-	
-	if self.className == "VM" then
-		// Special case: VM dispatch case
-		if self.match("case Opcode::≤opcode≥:") or self.match("case Opcode.≤opcode≥:") then
-			self.cppLines.push self.indentation + "VM_CASE(≤opcode≥)".fill(self.m) + " {" * self.addCurly;
-			self.inVmCase = self.codeBlockDepth
-			return
-		end if
-		
-		if self.line == "break;" and self.inVmCase then
-			self.cppLines.push self.indentation + "VM_NEXT();"
-			return
-		end if
-	end if
-	
-	// Anything else: copy to CPP file
-	curly = " {" * self.addCurly
-	fullLine = self.indentation + self.line + curly + self.comment
-	self.cppLines.push fullLine
-
-end function
-
-// Converter.tweakSyntax: do simple syntax transformations that can be done
-// within pretty much any line of code.
-Converter.tweakSyntax = function(line, context)
-	// int array argument initializer list
-	line = line.replace("new int[]{", "{")
-
-	// initialized char array declaration
-	if self.match("char[] ≤name≥ = new char[≤len≥];") then
-		self.m.lenPlus1 = str(self.m.len.val + 1)
-		return "char ≤name≥[≤lenPlus1≥]; ≤name≥[≤len≥] = 0;".fill(self.m)
-	end if
-	
-	// other local array declaration
-	m = line.match("≤type:w≥[] ≤name≥ = new ≤type2:w≥[≤count≥];")
-	if m then return "≤type≥ ≤name≥[≤count≥];".fill(m)	  
-
-	// array syntax (especially as seen in parameters)
-	line = line.replace("[] ", " *")
-	
-	// special case of a Main program args: add the count
-	line = line.replace("string *args", "String args[], int argCount")
-	
-	// skanky things the generated parser code does
-	if self.filename == "MiniScriptParser.cs" then
-		line = line.replace("string", "String")
-		line = line.replace("class Parser: ", "class Parser: public ")
-	end if
-	
-	// static class methods (invoked on the class name itself)
-	for cls in self.classNames
-		line = line.replace(cls+".", cls+"::")
+list.find = function(maps, key, valueToFind)
+	// Search the given list of maps for one with [key] = valueToFind.
+	// Return the item, or null if not found.
+	for m in maps
+		if m.get(@key) == @valueToFind then return m
 	end for
-	
-	// Split to list
-	m = line.match("≤pre≥.Split(≤args≥).ToList()≤post≥")
-	if m then line = "≤pre≥.SplitToList(≤args≥)≤post≥".fill(m)
-	
-	// Object creation (assuming a compatible memory-managed type).
-	line = line.replace(" new ", " ")
-	line = line.replace("(new ", "(")
-	if line.startsWith("new ") then line = line[4:]
-	
-	// null --> nullptr
-	line = line.replace(" null", " nullptr")
-	line = line.replace("(null", "(nullptr")
-	
-	// Count and Length -- properties in C#, but methods in C++.
-	// We may need to handle this more generally.  But for now:
-	line = line.replace(".Count", ".Count()")
-	line = line.replace(".Length", ".Length()")
-		
-	// Integer min/max value: just remove the dot, creating constants
-	// defined in core_includes.h.
-	line = line.replace(".MinValue", "MinValue")
-	line = line.replace(".MaxValue", "MaxValue")
-	
-	// `this`, always a pointer
-	line = line.replace("this.", "this->")
-	
-	// Output parameters on method calls
-	line = line.replace("(out ", "(&")
-	line = line.replace(", out ", ", &")
-	
-	// Reference types, using an alias like FuncDefRef to mean FuncDef&
-	if line.contains("Ref ") then
-		words = line.split
-		for i in words.indexes
-			if words[i].endsWith("Ref") then words[i] = words[i][:-3] + "&"
-		end for
-		line = words.join
-	end if
-	
-	// Reference parameters or arguments
-	if context == Context.CLASS then
-		// ref Type foo  -->  Type& foo
-		lastPos = -1
-		while true
-			pos = line.indexOf("(ref ", lastPos)
-			if pos == null then pos = line.indexOf(" ref ", lastPos);
-			if pos == null then break
-			//if lastPos < 0 then print "BEFORE: " + line
-			spacePos = line.indexOf(" ", pos + 5)
-			if spacePos == null then break
-			line = line[:pos+1] + line[pos+5:spacePos] + "& " + line[spacePos+1:]
-			//print "AFTER: " + line
-			lastPos = pos
-		end while
-	else if context == Context.METHOD then
-		// Within a method, just delete " ref "
-		line = line.replace("(ref ", "(")
-		line = line.replace(" ref ", " ")
-	end if
+	return null
+end function
 
+string.splitQuoted = function(delimiter=" ", maxCount=-1, openQuote="""", closeQuote=null)
+	if not self then return [""]
+	if closeQuote == null then closeQuote = openQuote
+	result = []
+	start = 0
+	inQuote = false
+	delimiterLen = delimiter.len
+	i = 0
+	while true
+		if inQuote then
+			// while in a quote, ignore anything but a close quote
+			if self[i] == closeQuote then
+				inQuote = false
+				if not delimiter then
+					result.push self[start:i+1]
+					start = i+1
+				end if
+			end if
+		else
+			// while not in a quote, watch for open quotes or delimiters
+			if self[i] == openQuote then
+				inQuote = true
+			else if not delimiter then
+				result.push self[i]
+			else if self[i:i+delimiterLen] == delimiter then
+				result.push self[start:i]
+				i += delimiterLen - 1
+				start = i + 1
+			end if
+		end if
+		i += 1
+		if i >= self.len or (maxCount > 0 and result.len + 1 == maxCount) then
+			result.push self[start:]
+			return result
+		end if
+	end while
+end function
+				
+
+fixStringInterpolation = function(s)
+	// Look for C#-style string interpolation, and replace it with a
+	// call to our Interp function.  Example:
+	//		$"{greeting}, {name}!"  -->  Interp("{}, {}!", greeting, name)
+	pos0 = -1
+	while true
+		pos0 = s.indexOf("$""", pos0)
+		if pos0 == null then return s
+		pos1 = s.indexOf("""", pos0+1)
+		while pos1 and s[pos1-1] == "\"
+			pos1 = s.indexOf("""", pos1)
+		end while
+		content = s[pos0+2:pos1]  // string content, not including quotes
+		//print "content: " + content
+		args = [content]
+		i = -1
+		while true
+			i = content.indexOf("{", i)
+			if i == null then break
+			i2 = content.indexOf("}", i)
+			args.push content[i+1:i2]
+			content = content[:i+1] + content[i2:]
+		end while
+		args[0] = """" + content + """"
+		revisedContent = "Interp(" + args.join(", ") + ")"
+		//print "revisedContent: " + revisedContent
+		s = s[:pos0] + revisedContent + s[pos1+1:]
+	end while
+	return s
+end function
+
+isIdentifierChar = function(c, isFirstChar)
+	return ("a" <= c <= "z") or ("A" <= c <= "Z") or c == "_" or
+	  (not isFirstChar and ("0" <= c <= "9"))
+end function
+
+_keywords = null
+isKeyword = function(word)
+	if _keywords == null then
+		_keywords = {}
+		for kw in split(
+					"abstract as base bool break byte case catch char checked" +
+					"class const continue decimal default delegate do double else" +
+					"enum event explicit extern false finally fixed float for" +
+					"foreach goto if implicit in int interface internal is lock" +
+					"long namespace new null object operator out override params" +
+					"private protected public readonly ref return sbyte sealed" +
+					"short sizeof stackalloc static string struct switch this" +
+					"throw true try typeof uint ulong unchecked unsafe ushort" +
+					"using virtual void volatile while")
+			_keywords.push kw
+		end for
+	end if
+	return _keywords.hasIndex(word)
+end function
+
+roughTokenize = function(s)
+	// Roughly tokenize the given string, which is mostly about separating
+	// out the identifiers.  Anything that's not an identifier can be lumped
+	// together with whitespace and neighboring operators, etc.  Example:
+	//      "if foo.bar == 40+2 {" 
+	// -->  ["if", " ", "foo", ".", "bar", " == 40+2 {"]
+	result = []
+	tokStart = 0
+	inIdentifier = false
+	inString = false
+	for i in s.indexes
+		c = s[i]
+		if c == """" then inString = not inString
+		if inString then continue
+		if inIdentifier then
+			if isIdentifierChar(c, false) then continue
+			if i then result.push s[tokStart:i]
+			tokStart = i
+			inIdentifier = false
+		else
+			if not isIdentifierChar(c, true) then continue
+			if i then result.push s[tokStart:i]
+			tokStart = i
+			inIdentifier = true
+		end if
+	end for
+	result.push s[tokStart:]
+	return result
+end function
+
+parameterNames = function(s)
+	// Strip types and default values from the given parameter declaration.
+	if not s then return s
+	result = []
+	print s.splitQuoted(",")
+	for param in s.splitQuoted(",")
+		typeAndRest = param.trim.split(" ", 2)
+		nameEtc = typeAndRest[1].split("=", 2)
+		result.push nameEtc[0]
+	end for
+	return result.join(", ")
+end function
+
+//--------------------------------------------------------------------------------
+Line = {}
+Line.full = ""					// full text of line
+Line.m = null					// match map (set by .match method)
+
+Line.indentation = function
+	line = self.full
+	i = 0
+	while i < line.len and (line[i] == " " or line[i] == TAB)
+		i += 1
+	end while
+	self.indentation = line[:i]  // memoize on the instance
+	return self.indentation
+end function
+
+Line.comment = function
+	line = self.full
+	i = 0
+	comment = ""
+	inQuote = false
+	while i < line.len-2
+		if line[i] == """" then inQuote = not inQuote
+		if line[i:i+2] == "//" and not inQuote then
+			comment = line[i:]
+			break
+		end if
+		i += 1
+	end while
+	self.comment = comment  // memoize on the instance
+	return comment
+end function
+
+Line.trimmed = function
+	comment = self.comment
+	if comment.len > 0 then
+		line = self.full[self.indentation.len : -comment.len]
+	else
+		line = self.full[self.indentation.len:]
+	end if
+	line = line.trimRight
+	self.trimmed = line  // again, memoize
 	return line
 end function
 
-Converter.removeDefaultValues = function(paramStr)
-	params = paramStr.split(",")
-	for i in params.indexes
-		eqPos = params[i].indexOf("=")
-		if eqPos != null then params[i] = params[i][:eqPos]
-	end for
-	return params.join(",")
+Line.match = function(pattern, againstFull=false)
+	if againstFull then s = self.full else s = self.trimmed
+	self.m = s.match(pattern)
+	return self.m != null
 end function
 
-// Converter.enforceCodeStandards: examine the given line for things that a
-// C# programmer might do, that we can't convert or just don't want to allow.
-Converter.enforceCodeStandards = function(line)
-	if line == " {" then
-		self.fail "Opening brace on its own line is disallowed"
-	else if line.endsWith("=>") or line.startsWith("=>") then
-		self.fail "Expression-bodied properties or methods must be all on one line"
+Line.Make = function(fullLine)
+	noob = new Line
+	noob.full = fullLine
+	return noob
+end function
+
+//--------------------------------------------------------------------------------
+ClassInfo = {}
+ClassInfo.name = ""
+ClassInfo.type = ClassType.CLASS
+ClassInfo.superclass = ""		// name of superclass, if any
+ClassInfo.fields = null			// list of VariableInfo
+ClassInfo.methods = null		// list of MethodInfo
+ClassInfo.declLines = null		// class declaration lines (header file)
+ClassInfo.wrapperLines = null	// wrapper class declaration lines (header file)
+ClassInfo.storageLines = null	// storage class declaration lines (header file)
+ClassInfo.inlineLines = null	// inline definition lines (header file)
+ClassInfo.defLines = null		// out-of-line definition lines (cpp file)
+ClassInfo.methodLines = null	// reference to either .inlineLines or .defLines
+ClassInfo.nextMethodInline = false
+
+ClassInfo.Make = function(name="")
+	noob = new ClassInfo
+	noob.name = name
+	noob.type = ClassType.CLASS
+	noob.fields = []
+	noob.methods = []
+	noob.clearOutput
+	return noob
+end function
+
+ClassInfo.clearOutput = function
+	self.declLines = []
+	self.wrapperLines = []
+	self.storageLines = []
+	self.inlineLines = []
+	self.defLines = []
+end function
+
+ClassInfo.lookup = function(identifier, allClasses)
+	// Look up the given identifier among our symbols, including inherited ones.
+	cls = self
+	while cls
+		result = list.find(cls.fields, "name", identifier)
+		if result == null then result = list.find(cls.methods, "name", identifier)
+		if result then return result
+		if not cls.superclass then return null
+		cls = list.find(allClasses, "name", cls.superclass)
+	end while
+end function
+
+ClassInfo.rootClass = function(allClasses)
+	cls = self
+	while cls.superclass
+		cls = list.find(allClasses, "name", cls.superclass)
+	end while
+	return cls
+end function
+
+//--------------------------------------------------------------------------------
+VariableInfo = {}				// used for fields, parameters, and local vars
+VariableInfo.name = ""
+VariableInfo.type = ""
+VariableInfo.scope = ""			// Scope.PUBLIC, etc.
+VariableInfo.static = false
+
+VariableInfo.Make = function(name="", type="", scope="")
+	noob = new VariableInfo
+	noob.name = name
+	if type then noob.type = type
+	if scope then noob.scope = scope
+	return noob
+end function
+
+//--------------------------------------------------------------------------------
+MethodInfo = {}
+MethodInfo.name = ""
+MethodInfo.type = "void"		// (return type)
+MethodInfo.scope = ""			// Scope.PUBLIC, etc.
+MethodInfo.static = false
+MethodInfo.params = null		// list of VariableInfo
+MethodInfo.inline = false
+
+MethodInfo.Make = function(name="")
+	noob = new MethodInfo
+	noob.name = name
+	return noob
+end function
+
+
+//--------------------------------------------------------------------------------
+Transpiler = {}
+Transpiler.state = ""
+Transpiler.gatherMode = false	// if true, just gathering symbols
+Transpiler.sourcePath = ""		// file path to .cs file we're processing
+Transpiler.outputFolder = ""	// path to folder for output files
+Transpiler.namespace = ""		// namespace we're processing
+Transpiler.preLines = null		// list of lines (usually comments) before method/field
+Transpiler.line = null			// current line we're processing
+Transpiler.allClasses = null	// list of ClassInfo we're processing (in this file)
+Transpiler.curClass = null		// ClassInfo that's currently being processed
+Transpiler.curMethod = null		// MethodInfo that's currently being processed
+Transpiler.localVars = null		// current set of variables for method we're in
+Transpiler.headerLines = null	// extra lines for top of header file
+Transpiler.cppLines = null		// extra lines for top of .cpp file
+Transpiler.endLines = null		// end of namespace, and anything that comes after
+
+Transpiler.Make = function
+	noob = new Transpiler
+	noob.allClasses = []
+	return noob
+end function
+
+Transpiler.sourceName = function; return file.name(self.sourcePath); end function
+
+// Transpiler.match: match the given pattern against our current line; if found,
+// copy self.line.m to self.m (for convenience), and also fill in className and
+// inline.
+Transpiler.match = function(pattern)
+	if self.line.match(pattern) then
+		self.m = self.line.m
+		if self.curClass then
+			self.m.className = self.curClass.name
+			if self.curClass.nextMethodInline then
+				self.m.inline = "inline "
+			else
+				self.m.inline = ""
+			end if
+		end if
+		return true
 	end if
-end function
-
-disallowedTypes = {
-	"sbyte": "SByte",
-	"byte": "Byte",
-	"short": "Int16",
-	"ushort": "UInt16",
-	"int": "Int32",
-	"uint": "UInt32",
-	"long": "Int64",
-	"ulong": "UInt64" }
-
-// Converter.checkType: ensure that the given type is something we can deal
-// with, and throw and error if it is disallowed.  Return true if OK, 
-// false if failed.
-Converter.checkType = function(type)
-	if type == null then type = self.m["type"]
-	if not disallowedTypes.hasIndex(type) then return true
-	self.fail "Type " + type + " disallowed; use " + disallowedTypes[type] + " instead"
+	self.line.m = null
+	self.m = null
 	return false
 end function
 
-WARNING = [
-	"// AUTO-GENERATED FILE.  DO NOT MODIFY.",
-	"// Transpiled from: ",
-	"",
-]
+// Transpiler.fill: fill the given pattern with values from self.m, and 
+// optionally append the comment, if the current line has one.
+Transpiler.fill = function(pattern, addComment=true)
+	result = pattern.fill(self.m)
+	if addComment and self.line.comment then result += " " + self.line.comment
+	return result
+end function
 
-Converter.convertClass = function(sourcePath)
-	fileNameBase = file.name(sourcePath) - ".cs"
+Transpiler.findClass = function(name)
+	for cl in self.allClasses
+		if cl.name == name then return cl
+	end for
+	return null
+end function
+
+Transpiler.findOrMakeClass = function(name)
+	cl = self.findClass(name)
+	if cl then return cl
+	cl = ClassInfo.Make(name)
+	self.allClasses.push cl
+	return cl
+end function
+
+Transpiler.subclassesOf = function(class)
+	if class isa ClassInfo then class = class.name
+	result = []
+	for cl in self.allClasses
+		if cl.superclass == class then result.push cl
+	end for
+	return result
+end function
+
+Transpiler.lookup = function(identifier, context)
+	// Return info on the given identifier.  If context is given, then look only
+	// at types within that class; otherwise, start with locals and work up to
+	// globals, considering current transpiler state.
+	// Returns a VariableInfo, MethodInfo, or ClassInfo, or null if not recognized.
+
+	// 0. Look in given context (only), if there is one
+	if context isa ClassInfo then
+		return context.lookup(identifier, self.allClasses)
+	end if		
 	
-	guardSymbol = ("__" + file.name(sourcePath) - ".cs" + "_H").upper
-	warning = WARNING[:]
-	warning[1] += file.name(sourcePath)
-	self.hLines = warning + ["#ifndef " + guardSymbol, "#define " + guardSymbol, ""]
-	self.cppLines = warning
-	self.didIncludes = false
-	self.filename = file.name(sourcePath)
-	self.lineNum = 0
-	self.failed = false
-	self.csOnly = false
-	self.hOnly = false
-	self.cppOnly = false
+	// 1. locals, including curMethod parameters
+	for var in self.localVars
+		if var.name == identifier then return var
+	end for
+	
+	// 2. fields and methods of the current class
+	if self.curClass then
+		info = self.curClass.lookup(identifier, self.allClasses)
+		if info then return info
+	end if
+	// 3. class names
+	for cls in self.allClasses
+		if cls.name == identifier then return cls
+	end for
+	// 4. give up :P
+	return null
+end function
 
-	lines = file.readLines(sourcePath)
-	i = 0
-	while i < lines.len
-		self.lineNum = i + 1
-		line = lines[i]
-		if i + 1 < lines.len and lines[i+1].trim == "{" then
-			// fix a dangling open-brace
-			pos = line.indexOf("//")
-			if pos == null then pos = line.len
-			line = line[:pos] + " {" + line[pos:]
-			i += 1
+Transpiler.transformStatement = function(trimmedLine)
+	// Here's one of our hardest tasks: transforming a statement (trimmed
+	// of indentation and comment) from C++ to C#, taking into account all
+	// the symbols we know.  That means resolving identifiers to their 
+	// type, so that we can add () after class field getters, and convert
+	// assignment to class fields to a set_X() call.
+	
+	if not trimmedLine then return trimmedLine
+	
+	// Start with a rough tokenization, separating each identifier and
+	// non-identifier string.
+	tokens = roughTokenize(trimmedLine)
+	//print "TOKENS: " + tokens
+	
+	// Then iterate and analyze each one.  We'll encounter things we don't 
+	// recognize; that's OK.  Just keep track of stuff we do.
+	didAssignment = false
+	curInfo = null
+	for i in tokens.indexes
+		if not tokens[i] then continue
+		if tokens[i] == "." then   // dot operator: resolve var type and continue
+			if curInfo isa VariableInfo then curInfo = self.lookup(curInfo.type)
+			if i and tokens[i-1] == "this" then
+				curInfo = self.curClass
+				tokens[i] = "->"
+			end if
+			continue
+		else if tokens[i] == "new" then
+			// when `new` is followed by the name of a C# class (which we convert
+			// using our storage-wrapper pattern), just remove `new`.
+			cl = self.findClass(tokens[i+2])  // (skipping space)
+			if cl and cl.type == ClassType.CLASS then
+				tokens[i] = ""
+				continue
+			end if
+		else if tokens[i] == "this" and (i+1 >= tokens.len or tokens[i+1] != ".") then
+			tokens[i] = self.curClass.name + "(shared_from_this())";
+			curInfo = self.curClass;
+			continue
+		else if tokens[i][0] == "(" and curInfo then  // method call!
+			curInfo = self.lookup(curInfo.type)	// TODO: type stack, store until ')'
+			//print "METHOD CALL returns: " + curInfo
+			continue
+		else if tokens[i] == "null" then
+			// How we translate null depends on the context...
+			prevTok = tokens[i-1].trim
+			if prevTok == "!=" or prevTok == "==" then
+				// TODO: make helper method to find start of expression at token i-1.
+				// For now we'll just do a crude hack:
+				exprStart = i - 2
+				while exprStart > 1 and tokens[exprStart-1] == "."
+					exprStart -= 2
+				end while
+				tokens[exprStart] = "IsNull(" + tokens[exprStart]
+				if prevTok == "!=" then tokens[exprStart] = "!" + tokens[exprStart]
+				tokens[i-1] = ")"
+				tokens[i] = ""
+				curInfo = null
+				continue
+			end if
 		end if
-		//debugPrint line
-		self.processLine line
-		if self.failed then return
-		i += 1
-	end while
+		nextInfo = self.lookup(tokens[i], curInfo)
+		if self.curClass then curClassName = self.curClass.name else curClassName = ""
+		if curInfo isa ClassInfo and curInfo.type == ClassType.CLASS and
+		  nextInfo isa VariableInfo and curInfo.name != curClassName then
+			// Found a field lookup!  Or maybe an assignment.  Check the next token
+			// to determine which.
+			if i+1 < tokens.len and tokens[i+1].trimLeft.startsWith("= ") then
+				//print "FIELD ASSIGNMENT (" + curInfo.name + "." + nextInfo.name + ") FOUND!!!"
+				// Change this to a set_ call.
+				tokens[i] = "set_" + tokens[i] + "("
+				tokens[i+1] = tokens[i+1][2:].trimLeft
+				nextInfo = null
+				didAssignment = true
+			else
+				//print "FIELD LOOKUP (" + curInfo.name + "." + nextInfo.name + ") FOUND!!!"
+				// Just add () to call the getter.
+				tokens[i] += "()"
+				nextInfo = self.lookup(nextInfo.type)
+			end if
+		end if
+		curInfo = nextInfo
+	end for
+	
+	result = tokens.join("")
+	if didAssignment then
+		// insert closing ')' (for the set_X call) before the semicolon
+		pos = result.lastIndexOf(";")
+		if pos == null then pos = result.len
+		result = result[:pos] + ")" + result[pos:]
+	end if
+	//print "Transformed statement: " + result
+	return result
+	
+end function
 
-	if self.hLines.len <= 6 and self.cppLines.len <= 3 then
-		print fileNameBase + ".cs: skipped (C# only)"
+Transpiler.enterState = function(newState, initAsNew=true)
+	if newState == self.state then return
+	if self.state then self.exitState newState
+	debugPrint "Entering state: " + newState
+	self.state = newState
+	
+	if newState == State.START then
+		self.preLines = []
+		self.line = ""
+		self.headerLines = []
+		self.cppLines = []
+		self.endLines = []
+		self.curClass = null
+		self.curMethod = null
+	
+	else if newState == State.NAMESPACE then
+		self.curClass = null
+		
+	else if newState == State.CLASS then
+		if initAsNew then
+			if self.line and self.line.m and self.line.m.hasIndex("name") then
+				name = self.line.m.name
+			else
+				name = "?"
+			end if
+			self.curClass = self.findOrMakeClass(name)
+			self.curClass.declLines += self.preLines
+			self.preLines = []
+			self.curClass.defLines.push ""
+		end if
+		self.curClass.nextMethodInline = false
+
+	else if newState == State.METHOD then
+		if self.line and self.line.m and self.line.m.hasIndex("name") then
+			name = self.line.m.name
+		else
+			name = "?"
+		end if
+		self.curMethod = MethodInfo.Make(name)
+		if self.curClass.nextMethodInline then
+			self.curClass.methodLines = self.curClass.inlineLines
+		else
+			self.curClass.methodLines = self.curClass.defLines
+		end if
+		self.localVars = []
+
+	end if
+	
+end function
+
+Transpiler.exitState = function(toNewState)
+	debugPrint "Exiting state: " + self.state
+
+	if self.state == State.METHOD then
+		self.localVars = []
+	end if
+
+end function
+
+Transpiler.updateState = function
+	
+	if self.state == State.START then
+		self.updateStateSTART
+	else if self.state == State.NAMESPACE then
+		self.updateStateNAMESPACE
+	else if self.state == State.CLASS then
+		self.updateStateCLASS
+	else if self.state == State.METHOD then
+		self.updateStateMETHOD
+	else if self.state == State.DONE then
+		self.endLines.push self.line.full	// ToDo: support H: and CPP: comments here?
+	end if
+	
+end function
+
+Transpiler.updateStateSTART = function
+	line = self.line
+	comment = self.line.comment
+
+	if comment.startsWith("// CPP: ") then
+		self.cppLines.push comment[8:]
+	else if comment.startsWith("// H: ") then
+		self.headerLines.push comment[6:]
+	else if line.trimmed == "" then
+		self.headerLines.push line.full
+	else if self.match("namespace ≤name≥ {") then
+		self.headerLines.push line.full
+		self.namespace = line.m.name
+		self.enterState State.NAMESPACE
+	else
+		print "Ignored in state START: " + line.full
+	end if
+end function
+
+Transpiler.updateStateNAMESPACE = function
+	line = self.line
+	comment = self.line.comment
+
+	if comment.startsWith("// CPP: ") then
+		self.cppLines.push comment[8:]
+	else if comment.startsWith("// H: ") then
+		self.headerLines.push comment[6:]
+	else if line.trimmed == "" then
+		self.preLines.push line.full
+	// static class
+	else if self.match("≤scope:w≥ static class ≤name:w≥ {") then
+		self.enterState State.CLASS
+		self.curClass.declLines.push line.full
+	// struct
+	else if self.match("≤scope:w≥ struct ≤name:w≥ {") then
+		self.enterState State.CLASS
+		self.curClass.type = ClassType.STRUCT
+		self.curClass.declLines.push line.full
+	// class (abstract)
+	else if self.match("≤scope:w≥ abstract class ≤name:w≥ {") then
+		self.enterState State.CLASS
+		// wrapper class (we'll take care to write this one out before all storage classes later)
+		self.curClass.wrapperLines.push self.fill("struct ≤name≥ {");
+		self.curClass.wrapperLines.push self.fill("	protected: std::shared_ptr<≤name≥Storage> storage;");
+		self.curClass.wrapperLines.push "  public:"
+		self.curClass.wrapperLines.push self.fill("	≤name≥(std::shared_ptr<≤name≥Storage> stor) : storage(stor) {}")
+		self.curClass.wrapperLines.push self.fill("	≤name≥() : storage(nullptr) {}")
+		self.curClass.wrapperLines.push self.fill("	friend bool IsNull(≤name≥ inst) { return inst.storage == nullptr; }")
+		if self.subclassesOf(self.curClass) then
+			self.curClass.wrapperLines.push self.fill("	template<typename WrapperType, typename StorageType>")
+			self.curClass.wrapperLines.push self.fill("	friend WrapperType As(ASTNode node) {")
+			self.curClass.wrapperLines.push self.fill("		StorageType* stor = dynamic_cast<StorageType*>(node.storage.get());")
+			self.curClass.wrapperLines.push self.fill("		if (stor == nullptr) return WrapperType(nullptr);")
+			self.curClass.wrapperLines.push self.fill("		return WrapperType(node.storage);")
+			self.curClass.wrapperLines.push self.fill("	}")
+		end if
+		self.curClass.wrapperLines.push ""
+		// but we still need the storage class, too (with a virtual destructor)
+		self.curClass.storageLines.push self.fill("class ≤name≥Storage : public std::enable_shared_from_this<≤name≥Storage> {")
+		self.curClass.storageLines.push self.fill("	public: virtual ~≤name≥Storage() {}")
+		
+	// class (subclass)
+	else if self.match("≤scope:w≥ class ≤name:w≥ : ≤baseClass≥ {") then
+		self.enterState State.CLASS
+		self.curClass.superclass = self.m.baseClass
+		// subclasses: first a storage class, in the storage lines...
+		self.curClass.storageLines.push self.fill("class ≤name≥Storage : public ≤baseClass≥Storage {")
+		// ...and then a wrapper class too
+		self.curClass.wrapperLines.push self.fill("struct ≤name≥ : public ≤baseClass≥ {")
+		self.curClass.wrapperLines.push self.fill("	public: ≤name≥(std::shared_ptr<≤baseClass≥Storage> stor) : ≤baseClass≥(stor) {}")
+		self.curClass.wrapperLines.push self.fill("	private: ≤name≥Storage* get() { return static_cast<≤name≥Storage*>(storage.get()); }")
+
+	// enum
+	else if self.match("≤scope:w≥ enum ≤name:w≥ : ≤type≥ {") then
+		self.enterState State.CLASS
+		self.curClass.type = ClassType.ENUM
+		self.curClass.declLines.push line.full		
+	else if line.full.startsWith("}") then
+		if not line.comment then line.comment = "// end of namespace " + self.namespace
+		self.endLines.push "} " + line.comment
+		self.enterState State.DONE
+	end if
+end function
+
+Transpiler.updateStateCLASS = function
+	line = self.line
+	comment = self.line.comment
+
+	if line.full.startsWith("}") then
+		if self.curClass.type == ClassType.CLASS then
+			self.curClass.storageLines.push "}; // end of class ≤name≥Storage".fill(self.curClass)
+			self.curClass.wrapperLines.push "}; // end of struct ≤name≥".fill(self.curClass)
+			if self.subclassesOf(self.curClass) then
+				self.curClass.wrapperLines.push ""
+				self.curClass.wrapperLines.push "template<typename WrapperType, typename StorageType> WrapperType As(≤name≥ inst);".fill(self.curClass)
+			end if
+		else
+			self.curClass.declLines.push "}; // end of ≤type≥ ≤name≥".fill(self.curClass)
+		end if
+		self.enterState State.NAMESPACE
 		return
 	end if
-	totalLines = self.hLines.len + self.cppLines.len
-	print "≤fileNameBase≥.cs --> ≤fileNameBase≥.g.h/.cpp (≤totalLines≥ lines)".fill(locals)
+	
+	if line.trimmed.startsWith("[") then
+		// decorator -- most are ignored, but check for inline flag
+		if line.trimmed.contains("(AggressiveInlining)") then
+			self.curClass.nextMethodInline = true
+		end if
+		return
+	end if
+	
+	if self.curClass.type == ClassType.ENUM then
+		// enum value, with/without numeric value and with/without comma
+		if self.match("≤name:w≥ = ≤value:w≥,") or self.match("≤name:w≥,") or
+		   self.match("≤name:w≥ = ≤value:w≥")  or self.match("≤name:w≥") then
+			self.curClass.declLines.push line.full
+		end if
+	else
+		// constant
+		if self.match("≤scope:w≥ const ≤type:w≥ ≤name:w≥ = ≤value≥;") then
+			self.curClass.declLines.push self.fill("	≤scope≥: static const ≤type≥ ≤name≥;")
+			self.curClass.defLines.push self.fill("const ≤type≥ ≤className≥::≤name≥ = ≤value≥;")
 
-	self.hLines.push ""
-	self.hLines.push "#endif // " + guardSymbol
+		// ordinary field
+		else if self.match("≤scope:w≥ ≤type:w≥ ≤name:w≥;") then
+			if self.curClass.type == ClassType.CLASS then
+				self.curClass.storageLines.push self.fill("	≤scope≥: ≤type≥ ≤name≥;")
+				self.curClass.wrapperLines.push self.fill("	≤scope≥: ≤type≥ ≤name≥() { return get()->≤name≥; }")
+				self.curClass.wrapperLines.push self.fill("	≤scope≥: void set_≤name≥(≤type≥ _v) { get()->≤name≥ = _v; }")
+			else
+				self.curClass.declLines.push self.fill("	≤scope≥: ≤type≥ ≤name≥;")
+			end if
+			if self.gatherMode then self.curClass.fields.push VariableInfo.Make(self.m.name, self.m.type, self.m.scope)
 
-	outFolder = "generated/"
-	debugPrint "-----------------------------------"
-	debugPrint "HEADER:"
-	debugPrint self.hLines.join(char(10))
-	file.writeLines outFolder + fileNameBase + ".g.h", self.hLines
-	debugPrint
-	debugPrint "-----------------------------------"
-	debugPrint "CPP:"
-	debugPrint self.cppLines.join(char(10))
-	file.writeLines outFolder + fileNameBase + ".g.cpp", self.cppLines
-	debugPrint
+		// constructor method (no return type)
+		else if self.match("≤scope:w≥ ≤name:w≥(≤params≥) {") then
+			self.enterState State.METHOD
+			self.m.paramNames = parameterNames(self.m.params)
+			if self.curClass.type == ClassType.CLASS then
+				self.curClass.storageLines.push self.fill("	≤scope≥: ≤name≥Storage(≤params≥);")
+				self.m.rootClass = self.curClass.rootClass(self.allClasses).name
+				self.curClass.wrapperLines.push self.fill(
+				  "	≤scope≥: ≤name≥(≤params≥) : ≤rootClass≥(std::make_shared<≤name≥Storage>(≤paramNames≥)) {}")
+				self.curClass.methodLines.push self.fill("≤inline≥≤className≥Storage::≤name≥Storage(≤params≥) {")
+			else
+				self.curClass.declLines.push self.fill("	≤scope≥: ≤name≥(≤params≥);")
+				self.curClass.methodLines.push self.fill("≤inline≥≤className≥::≤name≥(≤params≥) {")
+			end if
+			if self.gatherMode then self.curClass.methods.push MethodInfo.Make(self.m.name)
+
+		// standard method
+		else if self.match("≤scope:w≥ ≤type:w≥ ≤name:w≥(≤params≥) {") then
+			self.enterState State.METHOD
+			if self.curClass.type == ClassType.CLASS then
+				self.curClass.storageLines.push self.fill("	≤scope≥: ≤type≥ ≤name≥(≤params≥);")
+				self.curClass.methodLines.push self.fill("≤inline≥≤type≥ ≤className≥Storage::≤name≥(≤params≥) {")
+			else
+				self.curClass.declLines.push self.fill("	≤scope≥: ≤type≥ ≤name≥(≤params≥);")
+				self.curClass.methodLines.push self.fill("≤inline≥≤type≥ ≤className≥::≤name≥(≤params≥) {")
+			end if
+			if self.gatherMode then self.curClass.methods.push MethodInfo.Make(self.m.name)
+
+		// abstract method: in C++ we actually implement this (inline) on the wrapper
+		// struct, calling through to the storage, where it may be overridden.
+		else if self.match("≤scope:w≥ abstract ≤type:w≥ ≤name:w≥(≤params≥);") then
+			qa.assert self.curClass.type == ClassType.CLASS
+			self.curClass.wrapperLines.push self.fill("	≤scope≥: ≤type≥ ≤name≥(≤params≥);")
+			self.curClass.storageLines.push self.fill("	≤scope≥: virtual ≤type≥ ≤name≥(≤params≥) = 0;")
+			self.m.paramNames = parameterNames(self.m.params)
+			// Also todo: strip defaults but NOT types, for use in implementation;
+			// we'll need that in several places here (anywhere we have a method body).
+			self.curClass.inlineLines.push self.fill(
+			  "inline ≤type≥ ≤className≥::≤name≥(≤params≥) { return storage->≤name≥(≤paramNames≥); }")
+			if self.gatherMode then self.curClass.methods.push MethodInfo.Make(self.m.name)
+
+		// override method
+		else if self.match("≤scope:w≥ override ≤type:w≥ ≤name:w≥(≤params≥) {") then
+			self.enterState State.METHOD
+			if self.curClass.type == ClassType.CLASS then
+				self.curClass.storageLines.push self.fill("	≤scope≥: ≤type≥ ≤name≥(≤params≥);")
+				self.curClass.methodLines.push self.fill("≤inline≥≤type≥ ≤className≥Storage::≤name≥(≤params≥) {")
+			else
+				self.curClass.declLines.push self.fill("	≤scope≥: ≤type≥ ≤name≥(≤params≥);")
+				self.curClass.methodLines.push self.fill("≤inline≥≤type≥ ≤className≥::≤name≥(≤params≥) {")
+			end if
+			if self.gatherMode then self.curClass.methods.push MethodInfo.Make(self.m.name)
+		end if
+	end if
 end function
 
-Converter.findClassNames = function(sourcePath)
-	for line in file.readLines(sourcePath)
-		m = line.match("≤scope≥ class ≤class:w≥ {≤≥")
-		if not m then m = line.match("≤scope≥ enum ≤class:w≥ : ≤type:w≥ {≤≥")
-		if m then
-			print "Found class: " + m.class + " in: " + sourcePath
-			self.classNames.push m.class
-		end if
+Transpiler.updateStateMETHOD = function
+	line = self.line
+	comment = self.line.comment
+
+	// outdent method lines by 1 tab
+	if line.full.startsWith(TAB) then
+		line.full = line.full[1:]
+		line.indentation = line.indentation[1:]
+	end if
+	
+	if line.full.startsWith("}") then
+		self.curClass.methodLines.push line.full
+		self.enterState State.CLASS, false
+		return
+	end if
+	
+	// if in gather mode, just skip the method internals
+	if self.gatherMode then return
+	
+	// check for local variable declarations
+	if self.match("≤type:w≥ ≤name:w≥ = ≤expr≥ as ≤type2:w≥;") then
+		if self.m.type == "var" then self.m.type = self.m.type2
+		self.localVars.push VariableInfo.Make(self.m.name, self.m.type, Scope.LOCAL)
+		print "NOTED LOCAL VAR WITH TYPECAST: " + self.localVars[-1]
+		self.curClass.methodLines.push line.indentation +
+		  self.fill("≤type≥ ≤name≥ = As<≤type2≥, ≤type2≥Storage>(≤expr≥);")
+		return
+	end if
+	if self.match("var ≤name:w≥ = new ≤type:w≥(≤args≥);") then
+		self.localVars.push VariableInfo.Make(self.m.name, self.m.type, Scope.LOCAL)
+		print "NOTED LOCAL VAR WITH VAR: " + self.localVars[-1]
+		self.curClass.methodLines.push line.indentation +
+		  self.fill("≤type≥ ≤name≥ = new ≤type≥(≤args≥);")
+		return
+	end if
+	if (self.match("≤type:w≥ ≤name:w≥;") or
+	   self.match("≤type:w≥ ≤name:w≥ = ≤expr≥;")) and not isKeyword(self.m.type) then
+		self.localVars.push VariableInfo.Make(self.m.name, self.m.type, Scope.LOCAL)
+		print "NOTED LOCAL VAR: " + self.localVars[-1]
+	end if
+	
+	// otherwise, apply standard transformations, then write out
+	cline = line.full
+	cline = fixStringInterpolation(cline)
+	cline = self.transformStatement(cline)
+	self.curClass.methodLines.push cline
+
+end function
+
+Transpiler.generateOutput = function
+	headerLines = []
+	cppLines = []
+	baseName = self.sourceName - ".cs"
+
+	// Generate the header
+	headerLines.push "// AUTO-GENERATED FILE.  DO NOT MODIFY."
+	headerLines.push "// Transpiled from: " + self.sourceName
+	headerLines.push ""
+	headerLines.push "#pragma once"
+	headerLines.push "#include ""core_includes.h"""
+	headerLines += self.headerLines
+
+	headerLines.push ""
+	headerLines.push "// FORWARD DECLARATIONS"
+	headerLines.push ""
+	for class in self.allClasses
+		if class.type != ClassType.CLASS then continue
+		headerLines.push "struct ≤name≥;".fill(class)
+		headerLines.push "class ≤name≥Storage;".fill(class)
+	end for
+
+	headerLines.push ""
+	headerLines.push "// DECLARATIONS"
+	headerLines.push ""
+	for class in self.allClasses
+		headerLines += class.declLines
+		headerLines.push ""
+	end for
+	// The storage/wrapper declarations must be done in a very specific order. 
+	// First, the wrapper for any base class (since subclass storage is likely to need it).
+	done = {}
+	for class in self.allClasses
+		if not class.wrapperLines or not self.subclassesOf(class) then continue
+		headerLines += class.wrapperLines
+		headerLines.push ""
+		done.push class.name
+	end for
+	
+	// Then, all the storage classes.
+	for class in self.allClasses
+		if not class.storageLines then continue
+		headerLines += class.storageLines
+		headerLines.push ""
+	end for
+	// Finally, all the wrapper classes not done above.
+	for class in self.allClasses
+		if not class.wrapperLines or done.hasIndex(class.name) then continue
+		headerLines += class.wrapperLines
+		headerLines.push ""
+	end for
+
+	headerLines.push ""
+	headerLines.push "// INLINE METHODS"
+	headerLines.push ""
+	for class in self.allClasses
+		headerLines += class.inlineLines
+		headerLines.push ""
+	end for
+	headerLines += self.endLines
+	
+	// Generate the cpp file
+	cppLines.push "// AUTO-GENERATED FILE.  DO NOT MODIFY."
+	cppLines.push "// Transpiled from: " + self.sourceName
+	cppLines.push ""
+	cppLines.push "#include """ + baseName + ".g.h"""
+	cppLines += self.cppLines
+	cppLines.push ""
+	cppLines.push "namespace " + self.namespace + " {"
+	cppLines.push ""
+	for class in self.allClasses
+		cppLines += class.defLines
+		cppLines.push ""
+	end for
+	cppLines.push ""
+	cppLines.push "} // end of namespace " + self.namespace
+
+	headerPath = file.child(self.outputFolder, baseName + ".g.h")
+	cppPath = file.child(self.outputFolder, baseName + ".g.cpp")
+	file.writeLines headerPath, headerLines
+	debugPrint "Wrote " + headerLines.len + " lines to " + headerPath
+	file.writeLines cppPath, cppLines
+	debugPrint "Wrote " + cppLines.len + " lines to " + cppPath
+	
+end function
+
+Transpiler.processLine = function(line)
+	self.line = Line.Make(line)
+	
+	state = self.state
+	line = self.line.trimmed
+	comment = self.line.comment
+	debugPrint "[≤state≥] ≤line≥ ≤comment≥".fill(locals)
+	self.updateState	
+end function
+
+Transpiler.process = function(filePath, gatherMode=false)
+	debugPrint "Processing: " + filePath
+	self.sourcePath = filePath
+	self.outputFolder = file.child(file.parent(filePath), "generated")
+	self.gatherMode = gatherMode
+	self.state = ""
+	self.enterState State.START
+	for line in file.readLines(filePath)
+		self.processLine line
+	end for
+	if not gatherMode then self.generateOutput
+	debugPrint "Done processing: " + filePath
+end function
+
+Transpiler.clearOutput = function
+	self.preLines = []
+	self.headerLines = []
+	self.cppLines = []
+	self.endLines = []
+	for cl in self.allClasses
+		cl.clearOutput
 	end for
 end function
+
+
+runUnitTests = function
+	count = 0
+	check = function(actual, expected)
+		outer.count += 1
+		if actual == expected then return
+		print "UNIT TEST FAILED."
+		print "EXPECTED: " + expected
+		print "  ACTUAL: " + actual
+		exit
+	end function
+
+	check "This is ""a quoted"" test".splitQuoted,
+		["This", "is", """a quoted""", "test"]
+
+	check "Double x=42, Widget widget, String foo=""bar, baz""".splitQuoted(","),
+		["Double x=42", " Widget widget", " String foo=""bar, baz"""]
+	
+	check fixStringInterpolation("No interp here"), "No interp here"
+	
+	check fixStringInterpolation(
+	  "x = $""{greeting}, {name}!"";"),
+	  "x = Interp(""{}, {}!"", greeting, name);"
+
+	check roughTokenize("if foo.bar == 40+2 {"),
+	  ["if", " ", "foo", ".", "bar", " == 40+2 {"]
+
+	check roughTokenize("if (x == ""a = (b)"") {"),
+	  ["if", " (", "x", " == ""a = (b)"") {"]
+	
+	check parameterNames("Double x=42, Widget widget, String foo=""bar=baz"""),
+	  "x, widget, foo"
+
+	// To test transformStatement, we need to set up a context with some classes,
+	// methods, and fields.
+	t = Transpiler.Make
+	cls = ClassInfo.Make("Widget")
+	cls.fields.push VariableInfo.Make("size", "int", Scope.PUBLIC)
+	cls.fields.push VariableInfo.Make("secret", "String", Scope.PRIVATE)
+	t.allClasses.push cls
+	cls = ClassInfo.Make("Factory")
+	cls.fields.push VariableInfo.Make("defaultWidget", "Widget", Scope.PUBLIC)
+	cls.fields[-1].static = true
+	cls.methods.push MethodInfo.Make("MakeWidget")
+	cls.methods[-1].type = "Widget"
+	cls.methods[-1].static = true
+	t.allClasses.push cls
+	t.localVars = []
+	t.localVars.push VariableInfo.Make("leftNum", "Widget", Scope.LOCAL)
+	t.localVars.push VariableInfo.Make("rightNum", "Widget", Scope.LOCAL)
+	
+	check t.transformStatement("x = Factory.MakeWidget().size;"),
+			"x = Factory.MakeWidget().size();"
+
+	check t.transformStatement("x = Factory.defaultWidget.size;"),
+			"x = Factory.defaultWidget().size();"
+
+	check t.transformStatement("Factory.MakeWidget().size = 42;"),
+			"Factory.MakeWidget().set_size(42);"
+
+	check t.transformStatement("return new Holder(leftNum.size + rightNum.size);"),
+			"return new Holder(leftNum.size() + rightNum.size());"
+
+	print "All " + count + " unit tests completed successfully."
+end function
+
 
 if locals == globals then
-	cvt = Converter.Make
-
-	for path in shellArgs[1:]
-		cvt.findClassNames path
+	debugMode = true
+	
+	if debugMode then runUnitTests
+	
+	t = Transpiler.Make
+	if version.hostName == "Mini Micro" then
+		dir = "tests/class"
+	else if shellArgs[1][0] == "/" then
+		dir = shellArgs[1]
+	else
+		dir = file.child(env.MS_SCRIPT_DIR, shellArgs[1])
+	end if
+	print "Processing directory: " + dir
+	// First, go through files in "gather" mode to just gather up all the symbol info
+	for filename in file.children(dir)
+		if not filename.endsWith(".cs") or filename == "main.cs" then continue
+		t.process file.child(dir, filename), true
 	end for
-
-	for path in shellArgs[1:]
-		cvt.convertClass path
-		if cvt.failed then exit -1
+	// Then process again, generating output
+	print
+	print 
+	for cl in t.allClasses
+		print "≤name≥ superclass: ≤superclass≥".fill(cl)
+		print cl.name + " subclasses: " + t.subclassesOf(cl)
+	end for
+	print
+	
+	t.clearOutput
+	for filename in file.children(dir)
+		if not filename.endsWith(".cs") or filename == "main.cs" then continue
+		t.process file.child(dir, filename), false
 	end for
 end if
-

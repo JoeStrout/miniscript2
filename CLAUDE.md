@@ -9,23 +9,10 @@ This is **MiniScript 2.0** - a dual-language (C#/C++) VM implementation using a 
 - C/C++ core runtime in `cpp/core/` (memory management, Value types, etc.)
 - Build system orchestrated by `tools/build.sh`
 
-## Current Status: Milestone 3+ Complete
-✅ **Completed Features:**
-- Assembler/Disassembler for .msa (MiniScript Assembly) files
-- Basic VM with arithmetic, comparison, branching, and function call support
-- **Computed-goto dispatch** system with optimization flags
-- **Function calls (CALLF/RETURN)** working correctly with proper context restoration
-- NaN-boxed Value type system with garbage collection
-- Dual memory management (GC for runtime values, MemPool for host app values)
-- **Command-line interface** with `-debug` flag support
-- **Comprehensive benchmark suite** for performance testing
-
-🎯 **Current Milestone:** Extended VM (Milestone 4) - adding complete opcode set, maps, lists, closures
-
 ## Key Technical Implementations
 
 ### 1. Computed-Goto Dispatch System
-**Location:** `cpp/core/dispatch_macros.h`, generated C++ VM code
+**Location:** `cpp/core/dispatch_macros.h`, plus generated C++ VM code
 - Uses X-macro pattern to automatically generate VM_LABEL_LIST from opcode enum
 - Supports both computed-goto (GNU C extension) and switch-based dispatch
 - Build system allows forcing dispatch method: `tools/build.sh cpp {auto|on|off}`
@@ -48,7 +35,7 @@ This is **MiniScript 2.0** - a dual-language (C#/C++) VM implementation using a 
 ## Important Files to Know
 
 ### Core Implementation
-- **`cs/App.cs`** - Main host application (renamed from Program.cs)
+- **`cs/App.cs`** - Main host application
 - **`cs/VM.cs`** - Main VM implementation (C# source)
 - **`generated/VM.g.cpp`** - Transpiled VM (auto-generated from C#)
 - **`cpp/core/dispatch_macros.h`** - Computed-goto macros and opcode definitions
@@ -65,26 +52,6 @@ This is **MiniScript 2.0** - a dual-language (C#/C++) VM implementation using a 
 
 ## Recent Major Fixes & Optimizations
 
-1. **Function Context Restoration (CALLF/RETURN):**
-   - **Problem:** RETURN wasn't switching back to caller's function context
-   - **Solution:** Store function index in CallInfo, restore via `functions[index]` lookup
-   - **Optimization:** Use indices instead of copying FuncDef objects
-
-2. **Computed-Goto Implementation:**
-   - **Problem:** Missing VM_LABEL_LIST generation from opcode enum
-   - **Solution:** X-macro pattern `VM_OPCODES(X)` mirrors C# enum structure
-   - **Build fix:** Changed from `-std=c++11` to `-std=gnu++11` for GNU extensions
-
-3. **Performance Optimization (Critical Fix):**
-   - **Problem:** C++ was slower than C# due to missing optimization flags
-   - **Solution:** Added `-O3 -DNDEBUG` to Makefile, now C++ significantly outperforms C#
-   - **C++ version:** Uses `FuncDef& curFunc` reference instead of copying objects
-   - **Function switching:** Minimal overhead with index-based lookups
-
-4. **Command-Line Interface:**
-   - **`-debug` flag:** Controls verbose output for development vs. clean benchmarking
-   - **App class:** Renamed from Program to avoid naming conflicts with entry point
-   - **Result highlighting:** Bold bright yellow output for benchmark results
 
 ## Common Commands
 
@@ -108,7 +75,7 @@ tools/build.sh cpp off  # Force switch-based
 
 - **Always edit C# files** in `cs/` directory, never generated C++ directly
 - **Transpile after C# changes:** `tools/build.sh transpile`
-- **Memory management:** Use GC_PROTECT for runtime Values, MemPool for host app data
+- **Memory management:** Use GC_PROTECT for runtime Values, shared_ptr for host app data
 - **Coding standards:** See [CS_CODING_STANDARDS.md](notes/CS_CODING_STANDARDS.md)
 
 ## Communication Style

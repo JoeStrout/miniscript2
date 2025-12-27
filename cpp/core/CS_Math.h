@@ -5,8 +5,8 @@
 #include <algorithm>
 #include <cstdint>
 
-// This module is part of Layer 3B (Host C# Compatibility Layer)
-#define CORE_LAYER_3B
+// This module is part of Layer 2B (Host C# Compatibility Layer)
+#define CORE_LAYER_2B
 
 // Static Math class - equivalent to C# Math
 class Math {

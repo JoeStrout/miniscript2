@@ -1,8 +1,8 @@
 // This header defines the String class, which is our equivalent of
 // a C# String, and is used with C++ code transpiled from C#.
-// It uses a MemPool for all its memory allocations.
+// Memory management is done via std::shared_ptr.
 //
-// (Called ms_string.h because String.h conflicts with a standard 
+// (Called ms_string.h because String.h conflicts with a standard
 // C++ library header.)
 
 #pragma once
@@ -16,8 +16,8 @@
 #include <memory>
 #include <vector>
 
-// This module is part of Layer 3B (Host C# Compatibility Layer)
-#define CORE_LAYER_3B
+// This module is part of Layer 2B (Host C# Compatibility Layer)
+#define CORE_LAYER_2B
 
 // Forward declaration to avoid circular dependency
 template<typename T> class List;
@@ -28,19 +28,11 @@ using StringStorageSPtr = std::shared_ptr<StringStorage>;
 StringStorageSPtr ss_createShared(int byteLen);
 StringStorageSPtr ss_createShared(const char *cstr, int byteLen=-1);
 
-// Lightweight String class - thin wrapper around StringPool
+// Lightweight String class - thin wrapper around shared_ptr<StringStorage>
 class String {
 private:
 	StringStorageSPtr ref = nullptr;	// shared pointer to actual data
-	
-    // Helper to create String from StringStorage allocated by malloc; the given
-	// storage is adopted into our MemPool, and should not be freed by the caller.
-//     static String fromMallocStorage(StringStorage* storage, uint8_t pool = 0) {
-//         if (!storage) return String();
-// 		MemRef ref = StringPool::internOrAdoptString(pool, storage); // adopts or frees storage
-//         return String(ref);
-//     }
-    
+
 	// Helper method to either intern (or find already interned) the given string,
 	// or make a fresh new storage for it (depending on its size).
 	static StringStorageSPtr FindOrCreate(const char *cstr, int byteLen=-1);

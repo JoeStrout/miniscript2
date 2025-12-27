@@ -23,8 +23,8 @@ namespace std {
 }
 #endif
 
-// This module is part of Layer 3B (Host C# Compatibility Layer)
-#define CORE_LAYER_3B
+// This module is part of Layer 2B (Host C# Compatibility Layer)
+#define CORE_LAYER_2B
 
 // Data types which, in C#, are all defined in System.
 // C# code should use these instead of the shortcuts (int, byte, long, etc.)

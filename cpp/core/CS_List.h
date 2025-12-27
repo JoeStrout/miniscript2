@@ -7,8 +7,8 @@
 #include <vector>
 #include <initializer_list>
 
-// This module is part of Layer 3B (Host C# Compatibility Layer)
-#define CORE_LAYER_3B
+// This module is part of Layer 2B (Host C# Compatibility Layer)
+#define CORE_LAYER_2B
 
 // Forward declaration
 template<typename T> class List;

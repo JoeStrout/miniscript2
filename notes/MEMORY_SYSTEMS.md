@@ -1,15 +1,14 @@
 # Memory Systems in MS2Proto3
 
-This document describes the multiple memory management systems used in MS2Proto3 and how they interact.
+This document describes the memory management systems used in MS2Proto3 and how they interact.
 
 ## Overview
 
-MS2Proto3 uses **four distinct memory systems** for different purposes:
+MS2Proto3 uses **three distinct memory systems** for different purposes:
 
 1. **GC (Garbage Collector)** - For runtime MiniScript values
 2. **Intern Table** - For frequently-used small runtime strings
-3. **String Pool** - For host/compiler strings (C# `String` class)
-4. **MemPool** - General purpose pooled allocation for host code
+3. **std::shared_ptr** - For host/compiler C++ code (CS_String, CS_List, CS_Dictionary)
 
 ## 1. GC System (Garbage Collector)
 
@@ -39,7 +38,7 @@ MS2Proto3 uses **four distinct memory systems** for different purposes:
 
 **Location:** `cpp/core/value_string.c` (lines 16-193)
 
-**Purpose:** Deduplicate small, frequently-used runtime strings to save memory and reduce use of the GC system.  (Note that *very* small strings are stored directly in the Value, just like numbers, and so don't use heap memory at all.)
+**Purpose:** Deduplicate small, frequently-used runtime strings to save memory and reduce use of the GC system. (Note that *very* small strings are stored directly in the Value, just like numbers, and so don't use heap memory at all.)
 
 **Implementation:**
 - Static hash table: `InternEntry* intern_table[INTERN_TABLE_SIZE]` (1024 buckets)
@@ -54,59 +53,45 @@ MS2Proto3 uses **four distinct memory systems** for different purposes:
 - Automatically used by `make_string()` for small strings
 - Examples: keywords, common identifiers, short literals
 
-**Lifetime:** **Immortal** - never freed during program execution. These persist for the lifetime of the app to avoid the cost of reference counting or managing lifetimes.  (They're not "leaked" because we can always reach them via the hash table.)
+**Lifetime:** **Immortal** - never freed during program execution. These persist for the lifetime of the app to avoid the cost of reference counting or managing lifetimes. (They're not "leaked" because we can always reach them via the hash table.)
 
 **Key characteristics:**
 - NOT managed by GC
 - The `StringStorage` structures themselves ARE still reachable and won't be collected
 - Provides O(1) string deduplication for small strings
 
-## 3. MemPool System
+## 3. Host C++ Memory Management (std::shared_ptr)
 
-**Location:** `cpp/core/MemPool.h`, `cpp/core/MemPool.cpp`
+**Location:** `cpp/core/CS_String.h`, `cpp/core/CS_List.h`, `cpp/core/CS_Dictionary.h`
 
-**Purpose:** Pooled memory allocation for host code data structures.
-
-**Implementation:**
-- 256 independent pools (indexed 0-255)
-- Each pool maintains array of blocks
-- Blocks never freed individually - entire pool cleared at once
-- Reference via `MemRef` (pool number + block index)
-
-**Used for:**
-- StringPool's internal structures (hash entries, StringStorage)
-- Any host code needing pooled allocation
-- Temporary data structures that can be bulk-freed
-
-**Lifetime:** Blocks persist until entire pool is cleared with `MemPoolManager::clearPool(poolNum)`
-
-## 4. String Pool System
-
-**Location:** `cpp/core/StringPool.h`, `cpp/core/StringPool.cpp`
-
-**Purpose:** String interning for **host** code (the assembler, compiler, etc., which make use of the C#-style `String` class).
+**Purpose:** Automatic memory management for host code (transpiled C# code, compiler, assembler, debugger).
 
 **Implementation:**
-- Based on MemPool (above)
-- Each pool has hash table with 256 buckets
-- Entries stored as `MemRef` (pool number + index into MemPool)
-- Uses `MemPool` for underlying allocation
-
-The idea behind the multiple pools is: a particular operation that may need to allocate a bunch of strings can use its own pool for that, and then drain just that pool when it's done, leaving other strings used by other parts of the program untouched.  But care must be taken if a process needs _some_ strings to survive the drain; those strings will need to be allocated in (or copied to) another pool.
+- Uses standard C++ `std::shared_ptr` for reference-counted memory management
+- `CS_String`: Wraps `StringStorage*` in `std::shared_ptr<StringStorage>`
+- `CS_List<T>`: Wraps `std::vector<T>*` in `std::shared_ptr<std::vector<T>>`
+- `CS_Dictionary<K,V>`: Wraps internal storage in `std::shared_ptr`
 
 **Used by:**
 - `String` class (used for C# strings transpiled to C++)
-- Assembler (function names, labels, etc.)
-- Any host code using the `String` class
-- VMVis display strings (uses temporary pool, cleared each frame)
+- `List<T>` class (C# List<T> transpiled to C++)
+- `Dictionary<K,V>` class (C# Dictionary<K,V> transpiled to C++)
+- Assembler, compiler, debugger, and any other host code
 
 **Lifetime:**
-- Strings persist until their pool is explicitly cleared with `StringPool::clearPool(poolNum)`
-- Pool 0 is the default and typically long-lived
-- Temporary pools can be allocated/cleared for transient strings
+- Automatic: Memory freed when last reference goes out of scope
+- No manual memory management needed
+- Thread-safe reference counting
 
-**Separation from runtime:** This system is completely separate from the Value/GC system. Host strings are not MiniScript values.  Conversion to/from MiniScript strings always means copying the data.
+**Key advantages:**
+- Standard C++ idiom - well understood, well tested
+- No manual pool management needed
+- Works with all C++ tooling (debuggers, sanitizers, etc.)
+- Clean separation from GC system
 
+**Separation from runtime:** This system is completely separate from the Value/GC system. Host strings are not MiniScript values. Conversion to/from MiniScript strings always means copying the data.
+
+**BEWARE OF REFERENCE CYCLES:** Unlike the C# code, our shared_ptr implementations can leak objects where reference cycles exist.  CS_String is safe (since it cannot reference any other objects), but CS_List and CS_Dictionary could create such cycles.  So, it is important that the C# code either avoid such cycles, or explicitly break them at clean-up time, so that the transpiled code does not leak.
 
 ## String Types Summary
 
@@ -129,35 +114,25 @@ The idea behind the multiple pools is: a particular operation that may need to a
 - **System:** GC
 
 ### Host Strings (C# `String` class)
-- **Storage:** MemPool allocation, interned in StringPool
+- **Storage:** `malloc()` for StringStorage, managed by `std::shared_ptr`
 - **Examples:** Function names, labels, compiler strings, debug output
-- **Lifetime:** Pool lifetime (until explicitly cleared)
-- **System:** StringPool + MemPool
+- **Lifetime:** Reference-counted (freed when last reference goes away)
+- **System:** std::shared_ptr
 
 ## Memory System Interactions
 
 ### Clear Separation
-- **Runtime (GC + Intern Table)** ↔ **Host (StringPool + MemPool)** systems are independent
-- Converting between them requires explicit string copying
+- **Runtime (GC + Intern Table)** ↔ **Host (std::shared_ptr)** systems are independent
+- Converting between them requires explicit string copying (see `CS_value_util.h`)
 - Host strings are never seen by the GC
-- Runtime Values don't use StringPool
+- Runtime Values don't use shared_ptr
 
-### Temporary Pool Strategy
-Several subsystems use temporary pools to reduce memory pressure:
-
-1. **Assembler**:
-   - Allocates temp pool at start of `Assemble()`
-   - Function names re-interned into pool 0 before clearing
-   - Temp pool cleared after assembly complete
-
-2. **VMVis**:
-   - Allocates temp pool in constructor
-   - Switches to it during `UpdateDisplay()`
-   - Clears after each frame rendered
-
-3. **App Main**:
-   - Uses temp pool for file reading and command-line processing
-   - Switches back to pool 0 before running VM
+### No Pool Management Needed
+Unlike earlier prototypes, host code now uses standard C++ memory management:
+- No need to allocate/manage memory pools
+- No need to carefully track which pool strings belong to
+- No risk of accidentally clearing a pool that's still in use
+- Memory automatically freed when no longer referenced
 
 ## Debugging Memory
 
@@ -173,34 +148,47 @@ Use `dump_intern_table()`:
 - Follow collision chains
 - Shows each interned string value
 
-### For StringPool
-Use `StringPool::dumpAllPoolState()`:
-- Shows all strings in each initialized pool
-- Pool statistics (entries, bins, chain lengths)
-
-### For MemPool
-Use `MemPoolManager` statistics:
-- Per-pool block counts and sizes
-- Total memory allocated
+### For Host Memory
+Use standard C++ tools:
+- Valgrind for leak detection
+- AddressSanitizer for memory errors
+- Debugger watches on shared_ptr reference counts
 
 ## Design Rationale
 
-### Why Multiple Systems?
+### Why Two Systems?
 
 1. **Performance:** Different allocation patterns optimized differently
-   - GC for complex object graphs
-   - Interning for deduplication
-   - Pools for bulk allocation/deallocation
+   - GC for complex object graphs with cycles
+   - Interning for string deduplication
+   - shared_ptr for simple reference counting
 
 2. **Lifetime Management:** Different data has different lifetimes
-   - Runtime values: GC-managed
+   - Runtime values: GC-managed (complex reachability)
    - Small strings: Immortal (intern table)
-   - Compiler data: Scoped (pools)
+   - Compiler data: Reference-counted (std::shared_ptr)
 
 3. **Language Integration:** Clean separation between host and runtime
-   - C#-style String class uses StringPool
+   - C#-style String/List/Dictionary classes use std::shared_ptr
    - MiniScript strings use GC/intern table
    - No mixing or confusion
 
-4. **Coding Convenience:** GC strings require extra boilerplate in every method that touches them, in order to maintain the shadow stack.  See [GC_USAGE.md](GC_USAGE.md) for details.  Such code is fiddly to write and easy to screw up, and is especially impractical for code transpiled from C# -- such as all the compiler and assembler code.  So, those use the String class and its pool system, which requires no extra boilerplate.
+4. **Coding Convenience:** GC strings require extra boilerplate in every method that touches them, in order to maintain the shadow stack. See [GC_USAGE.md](GC_USAGE.md) for details. Such code is fiddly to write and easy to screw up, and is especially impractical for code transpiled from C# -- such as all the compiler and assembler code. So, those use the String class with std::shared_ptr, which requires no extra boilerplate.
 
+### Why std::shared_ptr Instead of Custom Pools?
+
+Earlier prototypes used custom MemPool and StringPool systems, but we switched to std::shared_ptr because:
+
+1. **Simplicity:** Standard C++ patterns everyone understands
+2. **Safety:** Automatic memory management eliminates pool management bugs
+3. **Compatibility:** Works seamlessly with C++ tooling and libraries
+4. **Transpiled Code:** Perfect for C#-to-C++ transpilation (mimics C# reference semantics)
+5. **Less Code:** No need to maintain custom pool allocators
+
+The custom pool systems were designed for bulk allocation/deallocation, but in practice:
+- Pool lifetime management was error-prone
+- Thread safety was complex
+- Debugging was harder than with standard tools
+- The performance benefits didn't outweigh the complexity
+
+For a transpiler targeting C++, using standard C++ memory management is the right choice.

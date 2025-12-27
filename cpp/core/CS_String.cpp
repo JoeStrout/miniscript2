@@ -3,11 +3,11 @@
 #include "CS_String.h"
 
 #include "layer_defs.h"
-#if LAYER_3B_HIGHER
-#error "CS_String.cpp (Layer 3B) cannot depend on higher layers (4)"
+#if LAYER_2B_HIGHER
+#error "CS_String.cpp (Layer 2B) cannot depend on higher layers (3)"
 #endif
-#if LAYER_3B_ASIDE
-#error "CS_String.cpp (Layer 3B - host) cannot depend on A-side layers (2A, 3A)"
+#if LAYER_2B_ASIDE
+#error "CS_String.cpp (Layer 2B - host) cannot depend on A-side layers (2A)"
 #endif
 
 

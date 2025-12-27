@@ -1,11 +1,11 @@
 // CS_value_util.h - Conversion utilities between host (B-side) and runtime (A-side) types
-// This is Layer 4, which can depend on both A-side (runtime/VM) and B-side (host/compiler)
+// This is Layer 3, which can depend on both A-side (runtime/VM) and B-side (host/compiler)
 
 #pragma once
 
-// This module is part of Layer 4 (Host-Value Utilities)
-// Define this BEFORE including other headers so they know we're in Layer 4
-#define CORE_LAYER_4
+// This module is part of Layer 3 (Host-Value Utilities)
+// Define this BEFORE including other headers so they know we're in Layer 3
+#define CORE_LAYER_3
 
 #include "value.h"
 #include "value_string.h"

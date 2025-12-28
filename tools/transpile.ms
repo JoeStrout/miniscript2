@@ -173,7 +173,7 @@ parameterNames = function(s)
 	// Strip types and default values from the given parameter declaration.
 	if not s then return s
 	result = []
-	print s.splitQuoted(",")
+	//print s.splitQuoted(",")
 	for param in s.splitQuoted(",")
 		typeAndRest = param.trim.split(" ", 2)
 		nameEtc = typeAndRest[1].split("=", 2)
@@ -298,11 +298,12 @@ VariableInfo.type = ""
 VariableInfo.scope = ""			// Scope.PUBLIC, etc.
 VariableInfo.static = false
 
-VariableInfo.Make = function(name="", type="", scope="")
+VariableInfo.Make = function(name="", type="", scope="", static=false)
 	noob = new VariableInfo
 	noob.name = name
 	if type then noob.type = type
 	if scope then noob.scope = scope
+	if static then noob.static = static
 	return noob
 end function
 
@@ -315,9 +316,10 @@ MethodInfo.static = false
 MethodInfo.params = null		// list of VariableInfo
 MethodInfo.inline = false
 
-MethodInfo.Make = function(name="")
+MethodInfo.Make = function(name="", static=false)
 	noob = new MethodInfo
 	noob.name = name
+	if static then noob.static = true
 	return noob
 end function
 
@@ -450,11 +452,20 @@ Transpiler.transformStatement = function(trimmedLine)
 	for i in tokens.indexes
 		if not tokens[i] then continue
 		if tokens[i] == "." then   // dot operator: resolve var type and continue
-			if curInfo isa VariableInfo then curInfo = self.lookup(curInfo.type)
+			if curInfo isa VariableInfo then curInfo = self.lookup(curInfo.type) // ToDo: context?
 			if i and tokens[i-1] == "this" then
 				curInfo = self.curClass
 				tokens[i] = "->"
 			end if
+			// look up RHS type and see if it's static; if so, it needs "::" rather than "."
+			rhsStatic = true
+			//print "====> DOT FOUND BETWEEN " + tokens[i-1] + " and " + tokens[i+1] + "; curInfo is " + curInfo
+			if curInfo then
+				rhsType = self.lookup(tokens[i+1], curInfo)
+				//print "====> RHS TYPE IS " + rhsType + " ==== WITH STATIC " + rhsType.static
+				if rhsType then rhsStatic = rhsType.static
+			end if
+			if curInfo == null or rhsStatic then tokens[i] = "::"
 			continue
 		else if tokens[i] == "new" then
 			// when `new` is followed by the name of a C# class (which we convert
@@ -632,7 +643,8 @@ Transpiler.updateStateNAMESPACE = function
 	// static class
 	else if self.match("≤scope:w≥ static class ≤name:w≥ {") then
 		self.enterState State.CLASS
-		self.curClass.declLines.push line.full
+		self.curClass.type = ClassType.STRUCT
+		self.curClass.declLines.push self.fill("class ≤name≥ {")
 	// struct
 	else if self.match("≤scope:w≥ struct ≤name:w≥ {") then
 		self.enterState State.CLASS
@@ -734,6 +746,12 @@ Transpiler.updateStateCLASS = function
 			end if
 			if self.gatherMode then self.curClass.fields.push VariableInfo.Make(self.m.name, self.m.type, self.m.scope)
 
+		// static field with default value
+		else if self.match("≤scope:w≥ static ≤type:w≥ ≤name:w≥ = ≤value≥;") then
+			self.curClass.declLines.push self.fill("	≤scope≥: static ≤type≥ ≤name≥;")
+			self.curClass.defLines.push self.fill("≤type≥ ≤className≥::≤name≥ = ≤value≥;")
+			if self.gatherMode then self.curClass.fields.push VariableInfo.Make(self.m.name, self.m.type, self.m.scope, true)
+
 		// constructor method (no return type)
 		else if self.match("≤scope:w≥ ≤name:w≥(≤params≥) {") then
 			self.enterState State.METHOD
@@ -749,6 +767,19 @@ Transpiler.updateStateCLASS = function
 				self.curClass.methodLines.push self.fill("≤inline≥≤className≥::≤name≥(≤params≥) {")
 			end if
 			if self.gatherMode then self.curClass.methods.push MethodInfo.Make(self.m.name)
+
+		// static method
+		else if self.match("≤scope:w≥ static ≤type:w≥ ≤name:w≥(≤params≥) {") then
+			self.enterState State.METHOD
+			if self.curClass.type == ClassType.CLASS then
+				self.curClass.storageLines.push self.fill("	≤scope≥: static ≤type≥ ≤name≥(≤params≥);")
+				self.curClass.methodLines.push self.fill("≤inline≥≤type≥ ≤className≥Storage::≤name≥(≤params≥) {")
+			else
+				self.curClass.declLines.push self.fill("	≤scope≥: static ≤type≥ ≤name≥(≤params≥);")
+				self.curClass.methodLines.push self.fill("≤inline≥≤type≥ ≤className≥::≤name≥(≤params≥) {")
+			end if
+			if self.gatherMode then self.curClass.methods.push MethodInfo.Make(self.m.name, true)
+
 
 		// standard method
 		else if self.match("≤scope:w≥ ≤type:w≥ ≤name:w≥(≤params≥) {") then
@@ -935,10 +966,17 @@ Transpiler.processLine = function(line)
 	self.updateState	
 end function
 
-Transpiler.process = function(filePath, gatherMode=false)
+Transpiler.setOutputFolder = function(sourceDir, destPathOrNull=null)
+	if destPathOrNull then
+		self.outputFolder = resolvePath(destPathOrNull)
+	else
+		self.outputFolder = file.child(file.parent(sourceDir), "generated")
+	end if
+end function
+
+Transpiler.process = function(filePath, gatherMode=false, outputFolder=null)
 	debugPrint "Processing: " + filePath
 	self.sourcePath = filePath
-	self.outputFolder = file.child(file.parent(filePath), "generated")
 	self.gatherMode = gatherMode
 	self.state = ""
 	self.enterState State.START
@@ -1011,20 +1049,25 @@ runUnitTests = function
 	t.localVars.push VariableInfo.Make("rightNum", "Widget", Scope.LOCAL)
 	
 	check t.transformStatement("x = Factory.MakeWidget().size;"),
-			"x = Factory.MakeWidget().size();"
+			"x = Factory::MakeWidget().size();"
 
 	check t.transformStatement("x = Factory.defaultWidget.size;"),
-			"x = Factory.defaultWidget().size();"
+			"x = Factory::defaultWidget().size();"
 
 	check t.transformStatement("Factory.MakeWidget().size = 42;"),
-			"Factory.MakeWidget().set_size(42);"
+			"Factory::MakeWidget().set_size(42);"
 
 	check t.transformStatement("return new Holder(leftNum.size + rightNum.size);"),
 			"return new Holder(leftNum.size() + rightNum.size());"
 
-	print "All " + count + " unit tests completed successfully."
+	//print "All " + count + " unit tests completed successfully."
 end function
 
+resolvePath = function(path)
+	if path[0] == "/" then return path
+	if version.hostName == "Mini Micro" then return file.child(file.curdir, path)
+	return file.child(file.curdir, path)
+end function
 
 if locals == globals then
 	debugMode = true
@@ -1032,14 +1075,14 @@ if locals == globals then
 	if debugMode then runUnitTests
 	
 	t = Transpiler.Make
-	if version.hostName == "Mini Micro" then
-		dir = "tests/class"
-	else if shellArgs[1][0] == "/" then
-		dir = shellArgs[1]
+	dir = resolvePath(shellArgs[1])
+	if shellArgs.len > 3 and shellArgs[2] == "-o" then
+		t.setOutputFolder dir, shellArgs[3]
 	else
-		dir = file.child(env.MS_SCRIPT_DIR, shellArgs[1])
+		t.setOutputFolder dir
 	end if
-	print "Processing directory: " + dir
+	print "Processing directory: " + dir 
+	print "Output directory:     " + t.outputFolder
 	// First, go through files in "gather" mode to just gather up all the symbol info
 	for filename in file.children(dir)
 		if not filename.endsWith(".cs") or filename == "main.cs" then continue
@@ -1057,6 +1100,10 @@ if locals == globals then
 	t.clearOutput
 	for filename in file.children(dir)
 		if not filename.endsWith(".cs") or filename == "main.cs" then continue
+		print
+		print "PROCESSING: " + filename
+		print
 		t.process file.child(dir, filename), false
+		t.clearOutput
 	end for
 end if

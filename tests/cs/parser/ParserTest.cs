@@ -1,4 +1,5 @@
 // Simple test program for the hand-written lexer and generated parser
+// ToDo: Move this into the tests/transpilable hierarchy as appropriate.
 
 using System;
 using MiniScript;

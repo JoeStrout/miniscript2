@@ -93,15 +93,15 @@ StringStorage** ss_splitStr(const StringStorage* storage, const StringStorage* s
 
 // Hash computation
 uint32_t ss_computeHash(const StringStorage* storage);
+static inline uint32_t ss_hash(StringStorage* storage) {
+	if (!storage) return 0;
+	if (storage->hash == 0) storage->hash = ss_computeHash(storage);
+	return storage->hash;
+}
 inline void ss_ensureHashComputed(StringStorage* storage) {
     if (storage && storage->hash == 0) {
         storage->hash = ss_computeHash(storage);
     }
-}
-inline uint32_t ss_hash(StringStorage* storage) {
-	if (!storage) return 0;
-	if (storage->hash == 0) storage->hash = ss_computeHash(storage);
-	return storage->hash;
 }
 
 

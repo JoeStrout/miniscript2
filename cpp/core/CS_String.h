@@ -596,6 +596,7 @@ inline String ToString(int i) {
 namespace InterpImpl {
 	// Helper to convert any argument to String
 	inline String ArgToString(int val) { return ToString(val); }
+	inline String ArgToString(unsigned int val) { return ToString((int)val); }
 	inline String ArgToString(double val) { return ToString(val); }
 	inline String ArgToString(const char* val) { return String(val ? val : ""); }
 	inline String ArgToString(const String& val) { return val; }

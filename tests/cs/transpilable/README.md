@@ -161,11 +161,47 @@ TestFramework.AllPassed()          // Returns true if no failures
 
 ## Transpilation Workflow
 
-1. **Write tests in C#** - Create test files in appropriate layer
-2. **Test in C#** - Run `make all` to verify tests pass
-3. **Transpile** - Use transpiler to generate C++ versions
-4. **Test in C++** - Run transpiled tests in C++
-5. **Compare results** - Both should produce identical output
+### Running C# Tests
+
+From this directory:
+
+```bash
+# Run all C# tests in dependency order
+make all
+
+# Run specific layer
+make layer0
+```
+
+### Transpiling and Running C++ Tests
+
+After C# tests pass, transpile and run the C++ versions:
+
+```bash
+# Navigate to the C++ transpiled test directory
+cd ../../cpp/transpiled/layer0
+
+# Transpile C# test code to C++
+make transpile
+
+# Build and run C++ tests
+make test
+
+# Or combine build and test (default)
+make all
+```
+
+Repeat for each layer as needed:
+
+```bash
+cd ../layer1
+make transpile && make test
+
+cd ../layer2
+make transpile && make test
+```
+
+The C# and C++ test output should be identical, validating both the transpiler and the C++ runtime.
 
 ## Adding New Tests
 

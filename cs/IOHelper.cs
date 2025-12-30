@@ -9,6 +9,8 @@ using System.Collections.Generic;
 // CPP: #include <string>
 // CPP: #include <algorithm>
 
+namespace MiniScript {
+
 public static class IOHelper {
 
 	public static void Print(String message) {
@@ -65,4 +67,6 @@ public static class IOHelper {
 		return lines;
 	}
 	
+}
+
 }

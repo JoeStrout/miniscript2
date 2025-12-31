@@ -1,5 +1,6 @@
 #include "value_map.h"
 #include "value.h"
+#include "value_string.h"
 #include "gc.h"
 #include "gc_debug_output.h"
 #include "hashing.h"
@@ -20,6 +21,8 @@
 
 // Map creation and management
 Value make_map(int initial_capacity) {
+    GC_PUSH_SCOPE();
+
     if (initial_capacity <= 0) initial_capacity = 8; // Default capacity
 
     // Allocate the ValueMap structure
@@ -28,7 +31,11 @@ Value make_map(int initial_capacity) {
     map->capacity = initial_capacity;
     map->varmap_data = NULL; // Regular map, no VarMap data
 
-    // Allocate the entries array separately
+    // Create and protect the Value immediately so subsequent allocations don't collect it
+    Value map_val = MAP_TAG | ((uintptr_t)map & 0xFFFFFFFFFFFFULL);
+    GC_PROTECT(&map_val);
+
+    // Allocate the entries array separately (may trigger GC)
     map->entries = (MapEntry*)gc_allocate(initial_capacity * sizeof(MapEntry));
 
     // Initialize all entries as unoccupied
@@ -39,7 +46,8 @@ Value make_map(int initial_capacity) {
         map->entries[i].hash = 0;
     }
 
-    return MAP_TAG | ((uintptr_t)map & 0xFFFFFFFFFFFFULL);
+    GC_POP_SCOPE();
+    return map_val;
 }
 
 Value make_empty_map(void) {
@@ -175,14 +183,27 @@ bool map_try_get(Value map_val, Value key, Value* out_value) {
 }
 
 static bool base_map_set(Value map_val, Value key, Value value) {
+    GC_PUSH_SCOPE();
+
     ValueMap* map = as_map(map_val);
-    if (!map) return false;
+    if (!map) {
+        GC_POP_SCOPE();
+        return false;
+    }
+
+    // Protect parameters from GC during potential allocation
+    GC_PROTECT(&map_val);
+    GC_PROTECT(&key);
+    GC_PROTECT(&value);
 
     // Check if we need to expand before adding
     if (map_needs_expansion(map_val)) {
         if (!map_expand_capacity(map_val)) {
+            GC_POP_SCOPE();
             return false; // Expansion failed
         }
+        // Re-get map pointer as it may have been relocated
+        map = as_map(map_val);
     }
 
     uint32_t hash = value_hash(key);
@@ -190,6 +211,7 @@ static bool base_map_set(Value map_val, Value key, Value value) {
 
     if (index < 0) {
         // Table is full - this shouldn't happen if we expand properly
+        GC_POP_SCOPE();
         return false;
     }
 
@@ -205,6 +227,7 @@ static bool base_map_set(Value map_val, Value key, Value value) {
 
     // Set or update value
     entry->value = value;
+    GC_POP_SCOPE();
     return true;
 }
 
@@ -343,8 +366,14 @@ bool map_needs_expansion(Value map_val) {
 
 // Expand map capacity in-place (preserves the Value/MemRef)
 bool map_expand_capacity(Value map_val) {
+    GC_PUSH_SCOPE();
+    GC_PROTECT(&map_val);
+
     ValueMap* map = as_map(map_val);
-    if (!map) return false;
+    if (!map) {
+        GC_POP_SCOPE();
+        return false;
+    }
 
     int old_capacity = map->capacity;
     int new_capacity = old_capacity * 2;
@@ -352,9 +381,12 @@ bool map_expand_capacity(Value map_val) {
     // Save old entries
     MapEntry* old_entries = map->entries;
 
-    // Allocate new entries array
+    // Allocate new entries array (may trigger GC)
     MapEntry* new_entries = (MapEntry*)gc_allocate(new_capacity * sizeof(MapEntry));
-    if (!new_entries) return false;
+    if (!new_entries) {
+        GC_POP_SCOPE();
+        return false;
+    }
 
     // Initialize new entries
     for (int i = 0; i < new_capacity; i++) {
@@ -386,6 +418,7 @@ bool map_expand_capacity(Value map_val) {
     }
 
     // Note: old_entries will be garbage collected since it's no longer referenced
+    GC_POP_SCOPE();
     return true;
 }
 

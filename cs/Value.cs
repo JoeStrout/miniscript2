@@ -29,7 +29,7 @@ namespace MiniScript {
 		// ==== TAGS & MASKS (EDIT TO MATCH YOUR C EXACTLY) =====================
 		// High 16 bits used to tag NaN-ish payloads.
 		private const ulong NANISH_MASK     = 0xFFFF_0000_0000_0000UL;
-		private const ulong val_null      = 0xFFF1_0000_0000_0000UL; // null singleton (our lowest reserved NaN pattern)
+		private const ulong NULL_VALUE      = 0xFFF1_0000_0000_0000UL; // null singleton (our lowest reserved NaN pattern)
 		private const ulong INTEGER_TAG     = 0xFFFA_0000_0000_0000UL; // Int32 tag
 		private const ulong FUNCREF_TAG     = 0xFFFB_0000_0000_0000UL; // function reference tag
 		private const ulong MAP_TAG         = 0xFFFC_0000_0000_0000UL; // map tag
@@ -39,7 +39,7 @@ namespace MiniScript {
 
 		// ==== CONSTRUCTORS ====================================================
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public static Value Null() => new(val_null);
+		public static Value Null() => new(NULL_VALUE);
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static Value FromInt(int i) => new(INTEGER_TAG | (uint)i);
@@ -98,15 +98,15 @@ namespace MiniScript {
 			=> new(tagMask | (uint)handle);
 
 		// ==== TYPE PREDICATES =================================================
-		public bool IsNull   { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => _u == val_null; }
+		public bool IsNull   { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => _u == NULL_VALUE; }
 		public bool IsInt	{ [MethodImpl(MethodImplOptions.AggressiveInlining)] get => (_u & NANISH_MASK) == INTEGER_TAG; }
-		public bool IsTiny   { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => (_u & TINY_STRING_TAG) == TINY_STRING_TAG && (_u & NANISH_MASK) != STRING_TAG && (_u & NANISH_MASK) != LIST_TAG && (_u & NANISH_MASK) != MAP_TAG && (_u & NANISH_MASK) != INTEGER_TAG && (_u & NANISH_MASK) != FUNCREF_TAG && _u != val_null; }
+		public bool IsTiny   { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => (_u & TINY_STRING_TAG) == TINY_STRING_TAG && (_u & NANISH_MASK) != STRING_TAG && (_u & NANISH_MASK) != LIST_TAG && (_u & NANISH_MASK) != MAP_TAG && (_u & NANISH_MASK) != INTEGER_TAG && (_u & NANISH_MASK) != FUNCREF_TAG && _u != NULL_VALUE; }
 		public bool IsHeapString { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => (_u & NANISH_MASK) == STRING_TAG; }
 		public bool IsString { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => (_u & STRING_TAG) == STRING_TAG; }
 		public bool IsFuncRef { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => (_u & NANISH_MASK) == FUNCREF_TAG; }
 		public bool IsList   { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => (_u & NANISH_MASK) == LIST_TAG; }
 		public bool IsMap	{ [MethodImpl(MethodImplOptions.AggressiveInlining)] get => (_u & NANISH_MASK) == MAP_TAG; }
-		public bool IsDouble { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => (_u & NANISH_MASK) < val_null; }
+		public bool IsDouble { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => (_u & NANISH_MASK) < NULL_VALUE; }
 
 		// ==== ACCESSORS =======================================================
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -387,7 +387,7 @@ namespace MiniScript {
 	public static class ValueHelpers {
 
 		// Common constant values (matching value.h)
-		public static Value val_null = val_null;
+		public static Value val_null = Value.Null();
 		public static Value val_zero = Value.FromInt(0);
 		public static Value val_one = Value.FromInt(1);
 		public static Value val_empty_string = Value.FromString("");

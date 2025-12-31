@@ -39,14 +39,52 @@ void gc_unprotect_value(void);
 #define GC_PUSH_SCOPE() gc_push_scope()
 #define GC_POP_SCOPE() gc_pop_scope()
 
-// Protect multiple local variables at once (up to 16)
+// Protect multiple local variables at once (up to 8)
+// These macros both declare and protect the variables
+#define GC_LOCALS_1(v1) \
+    Value v1 = make_null(); gc_protect_value(&v1)
+
+#define GC_LOCALS_2(v1, v2) \
+    Value v1 = make_null(), v2 = make_null(); \
+    gc_protect_value(&v1); gc_protect_value(&v2)
+
+#define GC_LOCALS_3(v1, v2, v3) \
+    Value v1 = make_null(), v2 = make_null(), v3 = make_null(); \
+    gc_protect_value(&v1); gc_protect_value(&v2); gc_protect_value(&v3)
+
+#define GC_LOCALS_4(v1, v2, v3, v4) \
+    Value v1 = make_null(), v2 = make_null(), v3 = make_null(), v4 = make_null(); \
+    gc_protect_value(&v1); gc_protect_value(&v2); gc_protect_value(&v3); gc_protect_value(&v4)
+
+#define GC_LOCALS_5(v1, v2, v3, v4, v5) \
+    Value v1 = make_null(), v2 = make_null(), v3 = make_null(), v4 = make_null(), v5 = make_null(); \
+    gc_protect_value(&v1); gc_protect_value(&v2); gc_protect_value(&v3); gc_protect_value(&v4); \
+    gc_protect_value(&v5)
+
+#define GC_LOCALS_6(v1, v2, v3, v4, v5, v6) \
+    Value v1 = make_null(), v2 = make_null(), v3 = make_null(), v4 = make_null(), v5 = make_null(), \
+    v6 = make_null(); \
+    gc_protect_value(&v1); gc_protect_value(&v2); gc_protect_value(&v3); gc_protect_value(&v4); \
+    gc_protect_value(&v5); gc_protect_value(&v6)
+
+#define GC_LOCALS_7(v1, v2, v3, v4, v5, v6, v7) \
+    Value v1 = make_null(), v2 = make_null(), v3 = make_null(), v4 = make_null(), v5 = make_null(), \
+    v6 = make_null(), v7 = make_null(); \
+    gc_protect_value(&v1); gc_protect_value(&v2); gc_protect_value(&v3); gc_protect_value(&v4); \
+    gc_protect_value(&v5); gc_protect_value(&v6); gc_protect_value(&v7)
+
+#define GC_LOCALS_8(v1, v2, v3, v4, v5, v6, v7, v8) \
+    Value v1 = make_null(), v2 = make_null(), v3 = make_null(), v4 = make_null(), v5 = make_null(), \
+    v6 = make_null(), v7 = make_null(), v8 = make_null(); \
+    gc_protect_value(&v1); gc_protect_value(&v2); gc_protect_value(&v3); gc_protect_value(&v4); \
+    gc_protect_value(&v5); gc_protect_value(&v6); gc_protect_value(&v7); gc_protect_value(&v8)
+
+// Helper macro to count arguments and dispatch to the right GC_LOCALS_N
+#define GC_GET_MACRO(_1,_2,_3,_4,_5,_6,_7,_8,NAME,...) NAME
+
 #define GC_LOCALS(...) \
-    do { \
-        Value* _locals[] = {__VA_ARGS__}; \
-        for (int _i = 0; _i < sizeof(_locals)/sizeof(_locals[0]); _i++) { \
-            gc_protect_value(_locals[_i]); \
-        } \
-    } while(0)
+    GC_GET_MACRO(__VA_ARGS__, GC_LOCALS_8, GC_LOCALS_7, GC_LOCALS_6, GC_LOCALS_5, \
+                 GC_LOCALS_4, GC_LOCALS_3, GC_LOCALS_2, GC_LOCALS_1)(__VA_ARGS__)
 
 // Individual variable protection
 #define GC_PROTECT(var_ptr) gc_protect_value(var_ptr)

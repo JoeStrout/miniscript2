@@ -700,6 +700,11 @@ Transpiler.updateStateCLASS = function
 	line = self.line
 	comment = self.line.comment
 
+	if comment.startsWith("// CPP: ") then
+		self.curClass.defLines.push comment[8:]
+		return
+	end if
+
 	if line.full.startsWith("}") then
 		if self.curClass.type == ClassType.CLASS then
 			self.curClass.storageLines.push "}; // end of class ≤name≥Storage".fill(self.curClass)
@@ -831,6 +836,11 @@ Transpiler.updateStateMETHOD = function
 		line.indentation = line.indentation[1:]
 	end if
 	
+	if comment.startsWith("// CPP: ") then
+		self.curClass.methodLines.push line.indentation + comment[8:]
+		return
+	end if
+
 	if line.full.startsWith("}") then
 		self.curClass.methodLines.push line.full
 		self.enterState State.CLASS, false
@@ -859,6 +869,13 @@ Transpiler.updateStateMETHOD = function
 	if (self.match("≤type:w≥ ≤name:w≥;") or
 	   self.match("≤type:w≥ ≤name:w≥ = ≤expr≥;")) and not isKeyword(self.m.type) then
 		self.localVars.push VariableInfo.Make(self.m.name, self.m.type, Scope.LOCAL)
+		// special case: watch for declarations of type Value, which need GC protection
+		if self.m.type == "Value" then
+			s = self.fill("Value ≤name≥")
+			if self.m.get("expr") then s += " = " + self.m.expr;			
+			self.curClass.methodLines.push line.indentation + s + "; GC_PROTECT(&" + self.m.name + ");";
+			return
+		end if
 		print "NOTED LOCAL VAR: " + self.localVars[-1]
 	end if
 	
@@ -1070,7 +1087,7 @@ resolvePath = function(path)
 end function
 
 if locals == globals then
-	debugMode = true
+	//debugMode = true
 	
 	if debugMode then runUnitTests
 	

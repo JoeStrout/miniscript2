@@ -43,7 +43,7 @@ int main() {
 - **`GC_POP_SCOPE()`**: Call before every return statement in the function
 
 ### 3. Variable Protection
-Use **`GC_LOCALS(var1, var2, ...)`** to declare and automatically protect up to 16 local variables:
+Use **`GC_LOCALS(var1, var2, ...)`** to declare and automatically protect up to 8 local variables:
 ```c
 GC_LOCALS(str, list, result, item);
 str = make_string("test");
@@ -51,7 +51,7 @@ list = make_list(5);
 // Variables are automatically tracked by GC
 ```
 
-For more than 16 variables, you can use GC_LOCALS multiple times.  Or, for individual protection of a single variable at a time, you can use GC_PROTECT:
+For more than 8 variables, you can use GC_LOCALS multiple times.  Or, for individual protection of a single variable at a time, you can use GC_PROTECT:
 ```c
 Value my_var = make_null();
 GC_PROTECT(&my_var);  // Pass pointer to the variable

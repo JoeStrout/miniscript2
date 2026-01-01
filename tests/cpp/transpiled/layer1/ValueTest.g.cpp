@@ -13,6 +13,7 @@
 namespace MiniScript {
 
 
+
 Boolean ValueTest::TestNullValue() {
 	GC_PUSH_SCOPE();
 	Value v = make_null(); GC_PROTECT(&v);

@@ -3,8 +3,8 @@
 
 #pragma once
 #include "core_includes.h"
-// TestRunner.cs - Layer 1
-// Main entry point for running all Layer 1 tests
+// TestRunner.cs - Layer 2
+// Main entry point for running all Layer 2 tests
 
 
 namespace MiniScript {
@@ -16,14 +16,12 @@ namespace MiniScript {
 
 
 
-
 class TestRunner {
 	public: static void Main();
 }; // end of struct TestRunner
 
 
 // INLINE METHODS
-
 
 
 

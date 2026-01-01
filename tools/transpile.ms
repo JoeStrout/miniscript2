@@ -26,6 +26,9 @@ State.NAMESPACE = "NAMESPACE"	// within the namespace, but not in a class/struct
 State.CLASS = "CLASS"			// within a class definition
 State.METHOD = "METHOD"			// within a function/method definition
 State.DONE = "DONE"				// past the end of the namespace (pretty much done)
+State.CPP_ONLY = "CPPONLY"		// writing embedded C++ code to .cpp file only
+State.H_ONLY = "HONLY"			// writing embedded C++ code to .h file only
+State.CS_ONLY = "CSONLY"		// skipping C#-only code
 
 //--------------------------------------------------------------------------------
 // Global data & methods
@@ -285,7 +288,7 @@ end function
 
 ClassInfo.rootClass = function(allClasses)
 	cls = self
-	while cls.superclass
+	while cls and cls.superclass
 		cls = list.find(allClasses, "name", cls.superclass)
 	end while
 	return cls
@@ -340,6 +343,7 @@ Transpiler.localVars = null		// current set of variables for method we're in
 Transpiler.headerLines = null	// extra lines for top of header file
 Transpiler.cppLines = null		// extra lines for top of .cpp file
 Transpiler.endLines = null		// end of namespace, and anything that comes after
+Transpiler.prevStates = []		// stack of previous states (see pushState/popState)
 
 Transpiler.Make = function
 	noob = new Transpiler
@@ -348,6 +352,13 @@ Transpiler.Make = function
 end function
 
 Transpiler.sourceName = function; return file.name(self.sourcePath); end function
+
+Transpiler.assert = function(condition, message)
+	if condition then return
+	print "Assert failed: " + message
+	if self.line != null then print "on line: " + self.line.full
+	exit
+end function
 
 // Transpiler.match: match the given pattern against our current line; if found,
 // copy self.line.m to self.m (for convenience), and also fill in className and
@@ -475,6 +486,11 @@ Transpiler.transformStatement = function(trimmedLine)
 				tokens[i] = ""
 				continue
 			end if
+			if not cl then
+				print "Unknown type " + tokens[i+2] + " found after `new`; assuming class"
+				tokens[i] = ""
+				continue
+			end if
 		else if tokens[i] == "this" and (i+1 >= tokens.len or tokens[i+1] != ".") then
 			tokens[i] = self.curClass.name + "(shared_from_this())";
 			curInfo = self.curClass;
@@ -592,7 +608,19 @@ Transpiler.exitState = function(toNewState)
 	if self.state == State.METHOD then
 		self.localVars = []
 	end if
+end function
 
+Transpiler.pushState = function(newState)
+	debugPrint "Storing " + self.state + " on stack"
+	self.prevStates.push self.state
+	self.state = ""
+	self.enterState newState
+end function
+
+Transpiler.popState = function
+	debugPrint "Popping state " + self.state + ", returning to " + self.prevStates[-1]
+	self.exitState self.prevStates[-1]
+	self.state = self.prevStates.pop
 end function
 
 Transpiler.updateState = function
@@ -607,6 +635,26 @@ Transpiler.updateState = function
 		self.updateStateMETHOD
 	else if self.state == State.DONE then
 		self.endLines.push self.line.full	// ToDo: support H: and CPP: comments here?
+	else if self.state == State.CPP_ONLY then
+		line = self.line.full
+		if line and line[0] == TAB then line = line[1:] // (outdent 1 level)
+		context = self.prevStates[-1]
+		if context == State.METHOD then
+			self.curClass.methodLines.push line
+		else
+			self.curClass.defLines.push line
+		end if
+	else if self.state == State.H_ONLY then
+		context = self.prevStates[-1]
+		if context == State.METHOD then
+			line = self.line.full
+			if line and line[0] == "	" then line = line[1:] // (outdent 1 level)
+			self.curClass.methodLines.push line
+		else if context == State.CLASS then
+			self.curClass.declLines.push self.line.full
+		else
+			self.endLines.push self.line.full
+		end if
 	end if
 	
 end function
@@ -650,6 +698,27 @@ Transpiler.updateStateNAMESPACE = function
 		self.enterState State.CLASS
 		self.curClass.type = ClassType.STRUCT
 		self.curClass.declLines.push line.full
+	// class (simple or base class)
+	else if self.match("≤scope:w≥ class ≤name:w≥ {") then
+		self.enterState State.CLASS
+		self.curClass.wrapperLines.push self.fill("struct ≤name≥ {");
+		self.curClass.wrapperLines.push self.fill("	protected: std::shared_ptr<≤name≥Storage> storage;");
+		self.curClass.wrapperLines.push "  public:"
+		self.curClass.wrapperLines.push self.fill("	≤name≥(std::shared_ptr<≤name≥Storage> stor) : storage(stor) {}")
+		self.curClass.wrapperLines.push self.fill("	≤name≥() : storage(nullptr) {}")
+		self.curClass.wrapperLines.push self.fill("	friend bool IsNull(≤name≥ inst) { return inst.storage == nullptr; }")
+		self.curClass.wrapperLines.push self.fill("	private: ≤name≥Storage* get() { return static_cast<≤name≥Storage*>(storage.get()); }")
+		self.curClass.storageLines.push self.fill("class ≤name≥Storage : public std::enable_shared_from_this<≤name≥Storage> {")
+		if self.subclassesOf(self.curClass) then
+			self.curClass.wrapperLines.push self.fill("	template<typename WrapperType, typename StorageType>")
+			self.curClass.wrapperLines.push self.fill("	friend WrapperType As(ASTNode node) {")
+			self.curClass.wrapperLines.push self.fill("		StorageType* stor = dynamic_cast<StorageType*>(node.storage.get());")
+			self.curClass.wrapperLines.push self.fill("		if (stor == nullptr) return WrapperType(nullptr);")
+			self.curClass.wrapperLines.push self.fill("		return WrapperType(node.storage);")
+			self.curClass.wrapperLines.push self.fill("	}")
+			self.curClass.storageLines.push self.fill("	public: virtual ~≤name≥Storage() {}")
+		end if
+		self.curClass.wrapperLines.push ""
 	// class (abstract)
 	else if self.match("≤scope:w≥ abstract class ≤name:w≥ {") then
 		self.enterState State.CLASS
@@ -660,16 +729,14 @@ Transpiler.updateStateNAMESPACE = function
 		self.curClass.wrapperLines.push self.fill("	≤name≥(std::shared_ptr<≤name≥Storage> stor) : storage(stor) {}")
 		self.curClass.wrapperLines.push self.fill("	≤name≥() : storage(nullptr) {}")
 		self.curClass.wrapperLines.push self.fill("	friend bool IsNull(≤name≥ inst) { return inst.storage == nullptr; }")
-		if self.subclassesOf(self.curClass) then
-			self.curClass.wrapperLines.push self.fill("	template<typename WrapperType, typename StorageType>")
-			self.curClass.wrapperLines.push self.fill("	friend WrapperType As(ASTNode node) {")
-			self.curClass.wrapperLines.push self.fill("		StorageType* stor = dynamic_cast<StorageType*>(node.storage.get());")
-			self.curClass.wrapperLines.push self.fill("		if (stor == nullptr) return WrapperType(nullptr);")
-			self.curClass.wrapperLines.push self.fill("		return WrapperType(node.storage);")
-			self.curClass.wrapperLines.push self.fill("	}")
-		end if
+		// (as this is an abstract class, we assume there must be subclasses!)
+		self.curClass.wrapperLines.push self.fill("	template<typename WrapperType, typename StorageType>")
+		self.curClass.wrapperLines.push self.fill("	friend WrapperType As(ASTNode node) {")
+		self.curClass.wrapperLines.push self.fill("		StorageType* stor = dynamic_cast<StorageType*>(node.storage.get());")
+		self.curClass.wrapperLines.push self.fill("		if (stor == nullptr) return WrapperType(nullptr);")
+		self.curClass.wrapperLines.push self.fill("		return WrapperType(node.storage);")
+		self.curClass.wrapperLines.push self.fill("	}")
 		self.curClass.wrapperLines.push ""
-		// but we still need the storage class, too (with a virtual destructor)
 		self.curClass.storageLines.push self.fill("class ≤name≥Storage : public std::enable_shared_from_this<≤name≥Storage> {")
 		self.curClass.storageLines.push self.fill("	public: virtual ~≤name≥Storage() {}")
 		
@@ -688,7 +755,7 @@ Transpiler.updateStateNAMESPACE = function
 	else if self.match("≤scope:w≥ enum ≤name:w≥ : ≤type≥ {") then
 		self.enterState State.CLASS
 		self.curClass.type = ClassType.ENUM
-		self.curClass.declLines.push line.full		
+		self.curClass.declLines.push self.fill("enum class ≤name≥ : ≤type≥ {")
 	else if line.full.startsWith("}") then
 		if not line.comment then line.comment = "// end of namespace " + self.namespace
 		self.endLines.push "} " + line.comment
@@ -741,13 +808,18 @@ Transpiler.updateStateCLASS = function
 			self.curClass.defLines.push self.fill("const ≤type≥ ≤className≥::≤name≥ = ≤value≥;")
 
 		// ordinary field
-		else if self.match("≤scope:w≥ ≤type:w≥ ≤name:w≥;") then
+		else if self.match("≤scope:w≥ ≤type:w≥ ≤name:w≥;") or
+		        self.match("≤scope:w≥ ≤type:w≥ ≤name:w≥ = ≤expr≥;") then
+		    self.m.dec = "≤scope≥: ≤type≥ ≤name≥".fill(self.m)
+		    if self.m.hasIndex("expr") and self.m.expr != "new ≤type≥()".fill(self.m) then
+		    	self.m.dec += " = " + self.m.expr
+		    end if
 			if self.curClass.type == ClassType.CLASS then
-				self.curClass.storageLines.push self.fill("	≤scope≥: ≤type≥ ≤name≥;")
+				self.curClass.storageLines.push self.fill("	≤dec≥;")
 				self.curClass.wrapperLines.push self.fill("	≤scope≥: ≤type≥ ≤name≥() { return get()->≤name≥; }")
 				self.curClass.wrapperLines.push self.fill("	≤scope≥: void set_≤name≥(≤type≥ _v) { get()->≤name≥ = _v; }")
 			else
-				self.curClass.declLines.push self.fill("	≤scope≥: ≤type≥ ≤name≥;")
+				self.curClass.declLines.push self.fill("	≤dec≥;")
 			end if
 			if self.gatherMode then self.curClass.fields.push VariableInfo.Make(self.m.name, self.m.type, self.m.scope)
 
@@ -763,9 +835,15 @@ Transpiler.updateStateCLASS = function
 			self.m.paramNames = parameterNames(self.m.params)
 			if self.curClass.type == ClassType.CLASS then
 				self.curClass.storageLines.push self.fill("	≤scope≥: ≤name≥Storage(≤params≥);")
-				self.m.rootClass = self.curClass.rootClass(self.allClasses).name
-				self.curClass.wrapperLines.push self.fill(
-				  "	≤scope≥: ≤name≥(≤params≥) : ≤rootClass≥(std::make_shared<≤name≥Storage>(≤paramNames≥)) {}")
+				root = self.curClass.rootClass(self.allClasses)
+				if root then
+					self.m.rootClass = root.name
+					self.curClass.wrapperLines.push self.fill(
+					  "	≤scope≥: ≤name≥(≤params≥) : ≤rootClass≥(std::make_shared<≤name≥Storage>(≤paramNames≥)) {}")
+				else
+					self.curClass.wrapperLines.push self.fill(
+					  "	≤scope≥: ≤name≥(≤params≥) : ?!?!?(std::make_shared<≤name≥Storage>(≤paramNames≥)) {}")
+				end if
 				self.curClass.methodLines.push self.fill("≤inline≥≤className≥Storage::≤name≥Storage(≤params≥) {")
 			else
 				self.curClass.declLines.push self.fill("	≤scope≥: ≤name≥(≤params≥);")
@@ -785,6 +863,18 @@ Transpiler.updateStateCLASS = function
 			end if
 			if self.gatherMode then self.curClass.methods.push MethodInfo.Make(self.m.name, true)
 
+		// expression-bodied static method
+		else if self.match("≤scope:w≥ static ≤type:w≥ ≤name:w≥(≤params≥) => ≤expr≥;") then
+			if self.curClass.type == ClassType.CLASS then
+				// ToDo: check this.  I'm not sure the following is correct.
+				self.curClass.storageLines.push self.fill("	≤scope≥: static ≤type≥ ≤name≥(≤params≥);")
+				self.curClass.methodLines.push self.fill("≤inline≥≤type≥ ≤className≥Storage::≤name≥(≤params≥)" +
+					" { return " + self.m.expr + "; }")
+			else
+				self.curClass.declLines.push self.fill("	≤scope≥: static ≤type≥ ≤name≥(≤params≥)" +
+					" { return " + self.m.expr + "; }")
+			end if
+			if self.gatherMode then self.curClass.methods.push MethodInfo.Make(self.m.name, true)
 
 		// standard method
 		else if self.match("≤scope:w≥ ≤type:w≥ ≤name:w≥(≤params≥) {") then
@@ -822,6 +912,8 @@ Transpiler.updateStateCLASS = function
 				self.curClass.methodLines.push self.fill("≤inline≥≤type≥ ≤className≥::≤name≥(≤params≥) {")
 			end if
 			if self.gatherMode then self.curClass.methods.push MethodInfo.Make(self.m.name)
+		else if self.line.trimmed == "" then
+			self.curClass.declLines.push self.line.full
 		end if
 	end if
 end function
@@ -836,8 +928,8 @@ Transpiler.updateStateMETHOD = function
 		line.indentation = line.indentation[1:]
 	end if
 	
-	if comment.startsWith("// CPP: ") then
-		self.curClass.methodLines.push line.indentation + comment[8:]
+	if comment.startsWith("// CPP:") then
+		if comment.len > 8 then self.curClass.methodLines.push line.indentation + comment[8:]
 		return
 	end if
 
@@ -876,7 +968,6 @@ Transpiler.updateStateMETHOD = function
 			self.curClass.methodLines.push line.indentation + s + "; GC_PROTECT(&" + self.m.name + ");";
 			return
 		end if
-		print "NOTED LOCAL VAR: " + self.localVars[-1]
 	end if
 	
 	// otherwise, apply standard transformations, then write out
@@ -980,7 +1071,28 @@ Transpiler.processLine = function(line)
 	line = self.line.trimmed
 	comment = self.line.comment
 	debugPrint "[≤state≥] ≤line≥ ≤comment≥".fill(locals)
-	self.updateState	
+	
+	// Check for special control comments
+	if comment == "//*** BEGIN CS_ONLY ***" then
+		self.pushState State.CS_ONLY
+	else if comment == "//*** END CS_ONLY ***" then
+		self.assert self.state == State.CS_ONLY, "END CS_ONLY tag encountered when not in CS_ONLY state"
+		self.popState
+	else if line == "/*** BEGIN H_ONLY ***" then
+		self.pushState State.H_ONLY
+	else if line == "*** END H_ONLY ***/" then
+		self.assert self.state == State.H_ONLY, "END H_ONLY tag encountered when not in H_ONLY state"
+		self.popState
+	else if line == "/*** BEGIN CPP_ONLY ***" then
+		self.pushState State.CPP_ONLY
+	else if line == "*** END CPP_ONLY ***/" then
+		self.assert self.state == State.CPP_ONLY, "END CPP_ONLY tag encountered when not in CPP_ONLY state"
+		self.popState
+	else
+		// Otherwise, just update based on this line and our current state
+		self.updateState
+	end if
+	
 end function
 
 Transpiler.setOutputFolder = function(sourceDir, destPathOrNull=null)
@@ -1075,7 +1187,7 @@ runUnitTests = function
 			"Factory::MakeWidget().set_size(42);"
 
 	check t.transformStatement("return new Holder(leftNum.size + rightNum.size);"),
-			"return new Holder(leftNum.size() + rightNum.size());"
+			"return  Holder(leftNum.size() + rightNum.size());"
 
 	//print "All " + count + " unit tests completed successfully."
 end function
@@ -1087,40 +1199,55 @@ resolvePath = function(path)
 end function
 
 if locals == globals then
-	//debugMode = true
+	debugMode = true
 	
 	if debugMode then runUnitTests
+
+	filesToProcess = []
+	outputDir = null
+	i = 1
+	while i < shellArgs.len
+		if shellArgs[i] == "-o" then
+			outputDir = resolvePath(shellArgs[i+1])
+			i += 2
+		else
+			argPath = resolvePath(shellArgs[i])
+			if shellArgs[i].endsWith(".cs") then
+				filesToProcess.push argPath
+			else
+				for filename in file.children(argPath)
+					if filename.endsWith(".cs") then filesToProcess.push file.child(argPath, filename)
+				end for
+				if not outputDir then outputDir = argPath
+			end if
+			i += 1
+		end if
+	end while
+
+	if not filesToProcess then
+		print "No files to process.  Exiting."
+		exit
+	end if
 	
 	t = Transpiler.Make
-	dir = resolvePath(shellArgs[1])
-	if shellArgs.len > 3 and shellArgs[2] == "-o" then
-		t.setOutputFolder dir, shellArgs[3]
-	else
-		t.setOutputFolder dir
-	end if
-	print "Processing directory: " + dir 
-	print "Output directory:     " + t.outputFolder
+	t.setOutputFolder file.parent(filesToProcess[0]), outputDir
+	print "Files to process: " + filesToProcess
+	print "Output directory: " + t.outputFolder
+
 	// First, go through files in "gather" mode to just gather up all the symbol info
-	for filename in file.children(dir)
-		if not filename.endsWith(".cs") or filename == "main.cs" then continue
-		t.process file.child(dir, filename), true
+	for path in filesToProcess
+		t.process path, true
 	end for
 	// Then process again, generating output
 	print
 	print 
-	for cl in t.allClasses
-		print "≤name≥ superclass: ≤superclass≥".fill(cl)
-		print cl.name + " subclasses: " + t.subclassesOf(cl)
-	end for
 	print
 	
-	t.clearOutput
-	for filename in file.children(dir)
-		if not filename.endsWith(".cs") or filename == "main.cs" then continue
+	for path in filesToProcess
 		print
-		print "PROCESSING: " + filename
+		print "PROCESSING: " + path
 		print
-		t.process file.child(dir, filename), false
 		t.clearOutput
+		t.process path, false
 	end for
 end if

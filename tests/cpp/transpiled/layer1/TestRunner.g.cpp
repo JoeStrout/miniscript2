@@ -4,8 +4,10 @@
 #include "TestRunner.g.h"
 #include "IOHelper.g.h"
 #include "ValueTest.g.h"
+#include "StringUtilsTest.g.h"
 
 namespace MiniScript {
+
 
 
 
@@ -18,7 +20,10 @@ void TestRunner::Main() {
 	// Run Value tests FIRST - everything depends on TestRunner(shared_from_this())
 	allPassed = ValueTest::RunAll() && allPassed;
 
-	// TODO: Add StringUtilsTest, MemPoolShimTest, ValueFuncRefTest
+	// Run StringUtils tests
+	allPassed = StringUtilsTest::RunAll() && allPassed;
+
+	// TODO: Add MemPoolShimTest, ValueFuncRefTest
 
 	// Only print failure notice if tests failed
 	if (!allPassed) {

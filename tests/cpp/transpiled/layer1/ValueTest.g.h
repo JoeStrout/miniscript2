@@ -15,6 +15,7 @@ namespace MiniScript {
 // DECLARATIONS
 
 
+
 class ValueTest {
 	public: static Boolean TestNullValue();
 	public: static Boolean TestIntValue();
@@ -37,6 +38,7 @@ class ValueTest {
 
 
 // INLINE METHODS
+
 
 
 

@@ -1,24 +1,23 @@
-# Layer 1 Transpiled Test Makefile
+# Layer 2 Transpiled Test Makefile
 # Builds and runs C++ tests transpiled from C#
 
 # Paths
 CPP_CORE = ../../../../cpp/core
 GENERATED = ../../../../generated
-BUILD_DIR = ../../../../build/tests/cpp/layer1
-CS_SOURCE_DIR = ../../../cs/transpilable/layer1
+BUILD_DIR = ../../../../build/tests/cpp/layer2
+CS_SOURCE_DIR = ../../../cs/transpilable/layer2
 CS_PARENT_DIR = ../../../cs/transpilable
 TRANSPILER = ../../../../tools/transpile.ms
 
 # Transpiled test sources (generated .g.cpp files)
 TRANSPILED_TEST_SOURCES = ../TestFramework.g.cpp \
-                          ValueTest.g.cpp \
-                          StringUtilsTest.g.cpp \
+                          FuncDefTest.g.cpp \
                           TestRunner.g.cpp
 
 # Transpiled production sources (from generated/)
 TRANSPILED_PROD_SOURCES = $(GENERATED)/IOHelper.g.cpp \
                           $(GENERATED)/Bytecode.g.cpp \
-                          $(GENERATED)/StringUtils.g.cpp
+                          $(GENERATED)/FuncDef.g.cpp
 
 # C++ core runtime sources
 CPP_CORE_SOURCES = $(CPP_CORE)/value.c \
@@ -35,7 +34,7 @@ CPP_CORE_SOURCES = $(CPP_CORE)/value.c \
 SOURCES = $(TRANSPILED_TEST_SOURCES) $(TRANSPILED_PROD_SOURCES) $(CPP_CORE_SOURCES)
 
 # Output executable
-OUTPUT = $(BUILD_DIR)/Layer1Tests
+OUTPUT = $(BUILD_DIR)/Layer2Tests
 
 # Compiler settings
 CXX = g++
@@ -47,12 +46,11 @@ LDFLAGS =
 # Object files
 CPP_OBJECTS = $(BUILD_DIR)/main.o \
               $(BUILD_DIR)/TestFramework.o \
-              $(BUILD_DIR)/ValueTest.o \
-              $(BUILD_DIR)/StringUtilsTest.o \
+              $(BUILD_DIR)/FuncDefTest.o \
               $(BUILD_DIR)/TestRunner.o \
               $(BUILD_DIR)/IOHelper.o \
               $(BUILD_DIR)/Bytecode.o \
-              $(BUILD_DIR)/StringUtils.o \
+              $(BUILD_DIR)/FuncDef.o \
               $(BUILD_DIR)/CS_String.o \
               $(BUILD_DIR)/CS_List.o \
               $(BUILD_DIR)/CS_Math.o \
@@ -76,18 +74,18 @@ all: test
 
 # Transpile C# test files to C++
 transpile:
-	@echo "Transpiling layer1 tests..."
+	@echo "Transpiling layer2 tests..."
 	@echo "  Transpiling TestFramework (shared across all layers)..."
 	cd $(CS_PARENT_DIR) && miniscript ../../../tools/transpile.ms . -o ../../cpp/transpiled
-	@echo "  Transpiling layer1 tests..."
-	cd $(CS_PARENT_DIR) && miniscript ../../../tools/transpile.ms layer1 -o ../../cpp/transpiled/layer1
+	@echo "  Transpiling layer2 tests..."
+	cd $(CS_PARENT_DIR) && miniscript ../../../tools/transpile.ms layer2 -o ../../cpp/transpiled/layer2
 
 # Build the C++ executable
 build: $(OUTPUT)
 
 $(OUTPUT): $(ALL_OBJECTS)
 	@mkdir -p $(BUILD_DIR)
-	@echo "Linking Layer 1 C++ tests..."
+	@echo "Linking Layer 2 C++ tests..."
 	$(CXX) -o $(OUTPUT) $(ALL_OBJECTS) $(LDFLAGS)
 
 # Compile C++ files
@@ -99,11 +97,7 @@ $(BUILD_DIR)/TestFramework.o: ../TestFramework.g.cpp
 	@mkdir -p $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
-$(BUILD_DIR)/ValueTest.o: ValueTest.g.cpp
-	@mkdir -p $(BUILD_DIR)
-	$(CXX) $(CXXFLAGS) -c -o $@ $<
-
-$(BUILD_DIR)/StringUtilsTest.o: StringUtilsTest.g.cpp
+$(BUILD_DIR)/FuncDefTest.o: FuncDefTest.g.cpp
 	@mkdir -p $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
@@ -119,7 +113,7 @@ $(BUILD_DIR)/Bytecode.o: $(GENERATED)/Bytecode.g.cpp
 	@mkdir -p $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
-$(BUILD_DIR)/StringUtils.o: $(GENERATED)/StringUtils.g.cpp
+$(BUILD_DIR)/FuncDef.o: $(GENERATED)/FuncDef.g.cpp
 	@mkdir -p $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
@@ -176,11 +170,11 @@ $(BUILD_DIR)/hashing.o: $(CPP_CORE)/hashing.c
 test:
 	@$(MAKE) build
 	@echo ""
-	@echo "Running Layer 1 C++ tests..."
+	@echo "Running Layer 2 C++ tests..."
 	$(OUTPUT)
 
 # Clean build artifacts
 clean:
-	@echo "Cleaning Layer 1 C++ tests..."
+	@echo "Cleaning Layer 2 C++ tests..."
 	rm -rf $(BUILD_DIR)
 	rm -f *.g.cpp *.g.h

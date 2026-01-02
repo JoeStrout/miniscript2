@@ -1,43 +1,61 @@
 // AUTO-GENERATED FILE.  DO NOT MODIFY.
 // Transpiled from: UnitTests.cs
 
-#ifndef __UNITTESTS_H
-#define __UNITTESTS_H
-
+#pragma once
+#include "core_includes.h"
 // This module gathers together all the unit tests for this prototype.
 // Each test returns true on success, false on failure.
 
-#include "core_includes.h"
-#include "IOHelper.g.h"
-#include "StringUtils.g.h"
-#include "Disassembler.g.h"
-#include "Assembler.g.h"  // We really should automate this.
 
 namespace MiniScript {
 
-	class UnitTests {
-	
-		public: static Boolean Assert(Boolean condition, String message);
-		
-		public: static Boolean AssertEqual(String actual, String expected);
-			
-		public: static Boolean AssertEqual(UInt32 actual, UInt32 expected);
-			
-		public: static Boolean AssertEqual(Int32 actual, Int32 expected);
-			
-		public: static Boolean AssertEqual(List<String> actual, List<String> expected);
-			
-		public: static Boolean TestStringUtils();
-		
-		public: static Boolean TestDisassembler();
-		
-		public: static Boolean TestAssembler();
+// FORWARD DECLARATIONS
 
-		public: static Boolean TestValueMap();
+struct CallInfo;
+class CallInfoStorage;
+struct AcceptException;
+class AcceptExceptionStorage;
+struct VMVis;
+class VMVisStorage;
+struct Assembler;
+class AssemblerStorage;
+struct FuncDef;
+class FuncDefStorage;
+struct Lexer;
+class LexerStorage;
 
-		public: static Boolean RunAll();
-	}; // end of class UnitTests
+// DECLARATIONS
 
-}
 
-#endif // __UNITTESTS_H
+
+
+
+
+
+
+class UnitTests {
+	public: static Boolean Assert(Boolean condition, String message);
+}; // end of struct UnitTests
+
+
+
+
+
+
+
+
+// INLINE METHODS
+
+
+
+
+
+
+
+
+
+
+
+
+
+

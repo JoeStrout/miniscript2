@@ -1,48 +1,47 @@
 // AUTO-GENERATED FILE.  DO NOT MODIFY.
 // Transpiled from: VMVis.cs
 
-#ifndef __VMVIS_H
-#define __VMVIS_H
-
+#pragma once
 #include "core_includes.h"
-#include "value.h"
-#include "value_list.h"
-#include "Bytecode.g.h"
-#include "FuncDef.g.h"
-#include "IOHelper.g.h"
-#include "VM.g.h"
-#include "StringUtils.g.h"
-#include "MemPoolShim.g.h"
-#include "CS_Math.h"
 
 
 
 namespace MiniScript {
 
-	class VMVis {
-		private: static const String Esc;
-		private: static const String Clear;
-		private: static const String Reset;
-		private: static const String Bold;
-		private: static const String Dim;
-		private: static const String Underline;
-		private: static const String Inverse;
-		private: static const String Normal;
-		
-		private: static const String CursorHome;
-		private: static const Int32 CodeDisplayColumn;
-		private: static const Int32 RegisterDisplayColumn;
-		private: static const Int32 CallStackDisplayColumn;
+// FORWARD DECLARATIONS
 
-		private: Int32 _screenWidth;
-		private: Int32 _screenHeight;
+struct CallInfo;
+class CallInfoStorage;
+struct AcceptException;
+class AcceptExceptionStorage;
+struct VMVis;
+class VMVisStorage;
+struct Assembler;
+class AssemblerStorage;
+struct FuncDef;
+class FuncDefStorage;
+struct Lexer;
+class LexerStorage;
 
-		// Pool management for temporary display strings
-		private: Byte _displayPool;
-		private: Byte _savedPool;
-		
-		// Be careful to get a *reference* to the VM rather than a deep copy, even
-		// in C++.  ToDo: find a more elegant solution to this recurring issue.
+// DECLARATIONS
+
+
+
+
+
+
+	private: static const String Esc;
+	private: static const String Clear;
+	private: static const String Reset;
+	private: static const String Bold;
+	private: static const String Dim;
+	private: static const String Underline;
+	private: static const String Inverse;
+	private: static const String Normal;
+	private: static const String CursorHome;
+	private: static const Int32 CodeDisplayColumn;
+	private: static const Int32 RegisterDisplayColumn;
+	private: static const Int32 CallStackDisplayColumn;
 		private: VM& _vm;
 		public: inline VMVis(VM& vm) : _vm(vm) {
 			UpdateScreenSize();
@@ -50,34 +49,53 @@ namespace MiniScript {
 			_displayPool = MemPoolShim::GetUnusedPool();
 		}
 
-		public: void UpdateScreenSize();
 
 
-		public: String CursorGoTo(int column, int row);
 
-		private: void Write(String s);
 
-		public: void ClearScreen();
-		
 
-		public: void GoTo(int column, int row);
 
-		private: void DrawCodeDisplay();
 
-		private: String GetValueTypeCode(Value v);
 
-		private: String GetValueDisplayString(Value v);
+class VMVisStorage : public std::enable_shared_from_this<VMVisStorage> {
+	private: Int32 _screenWidth;
+	private: Int32 _screenHeight;
+	private: Byte _displayPool;
+	private: Byte _savedPool;
+	public: void UpdateScreenSize();
+}; // end of class VMVisStorage
 
-		private: String GetVariableNameDisplay(Value nameVal);
+struct VMVis {
+	protected: std::shared_ptr<VMVisStorage> storage;
+  public:
+	VMVis(std::shared_ptr<VMVisStorage> stor) : storage(stor) {}
+	VMVis() : storage(nullptr) {}
+	friend bool IsNull(VMVis inst) { return inst.storage == nullptr; }
+	private: VMVisStorage* get() { return static_cast<VMVisStorage*>(storage.get()); }
 
-		private: void DrawOneRegister(Int32 stackIndex, String label, Int32 displayRow);
+	private: Int32 _screenWidth() { return get()->_screenWidth; }
+	private: void set__screenWidth(Int32 _v) { get()->_screenWidth = _v; }
+	private: Int32 _screenHeight() { return get()->_screenHeight; }
+	private: void set__screenHeight(Int32 _v) { get()->_screenHeight = _v; }
+	private: Byte _displayPool() { return get()->_displayPool; }
+	private: void set__displayPool(Byte _v) { get()->_displayPool = _v; }
+	private: Byte _savedPool() { return get()->_savedPool; }
+	private: void set__savedPool(Byte _v) { get()->_savedPool = _v; }
+}; // end of struct VMVis
 
-		private: void DrawRegisters();
 
-		private: void DrawCallStack();
+// INLINE METHODS
 
-		public: void UpdateDisplay();
-	}; // end of class VMVis
-}
 
-#endif // __VMVIS_H
+
+
+
+
+
+
+
+
+
+
+
+

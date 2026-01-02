@@ -1,28 +1,85 @@
 // AUTO-GENERATED FILE.  DO NOT MODIFY.
 // Transpiled from: App.cs
 
-#ifndef __APP_H
-#define __APP_H
-
+#pragma once
 #include "core_includes.h"
 
-#include "UnitTests.g.h"
-#include "VM.g.h"
-#include "gc.h"
-#include "gc_debug_output.h"
-#include "value_string.h"
-#include "dispatch_macros.h"
-#include "VMVis.g.h"
-#include "StringPool.h"
-#include "MemPoolShim.g.h"
-using namespace MiniScript;
 
-class App {
-	public: static bool debugMode;
-	public: static bool visMode;
 	
-	public: static void Main(String args[], int argCount);
-}; // end of class App
+
+		// Use a temp pool for reading the file, processing command-line arguments, and other setup
+
+		
+		// Parse command-line switches
+				// First non-switch argument is the assembly file
+		
+		
+		
+		// Check for assembly file argument
+			
+			
+			
+			// Assemble the code, with permanent strings stored in pool 0
+			
+			// Check for assembly errors
+			
+			
+			// Disassemble and print program (debug only)
+				
+				// Print all functions found
+				
+			
+			// Release our temp pool, and switch back to pool 0 to run the program.
+
+			// Run the program
+			
+			
+		
 
 
-#endif // __APP_H
+// FORWARD DECLARATIONS
+
+struct CallInfo;
+class CallInfoStorage;
+struct AcceptException;
+class AcceptExceptionStorage;
+struct VMVis;
+class VMVisStorage;
+struct Assembler;
+class AssemblerStorage;
+struct FuncDef;
+class FuncDefStorage;
+struct Lexer;
+class LexerStorage;
+
+// DECLARATIONS
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// INLINE METHODS
+
+
+
+
+
+
+
+
+
+
+
+
+
+

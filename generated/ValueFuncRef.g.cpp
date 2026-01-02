@@ -1,7 +1,7 @@
 // AUTO-GENERATED FILE.  DO NOT MODIFY.
-// Transpiled from: MiniScriptParser.cs
+// Transpiled from: ValueFuncRef.cs
 
-#include "MiniScriptParser.g.h"
+#include "ValueFuncRef.g.h"
 
 namespace MiniScript {
 

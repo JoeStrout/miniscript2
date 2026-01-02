@@ -54,7 +54,7 @@ public static class FuncDefTest {
 		func.ReserveRegister(5);
 
 		Boolean ok = true;
-		ok = TestFramework.Assert(func.RegisterCount >= 6, "reserved at least 6 registers") && ok;
+		ok = TestFramework.Assert(func.MaxRegs >= 6, "reserved at least 6 registers") && ok;
 
 		return ok;
 	}

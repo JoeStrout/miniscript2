@@ -1,34 +1,58 @@
 // AUTO-GENERATED FILE.  DO NOT MODIFY.
 // Transpiled from: Disassembler.cs
 
-#ifndef __DISASSEMBLER_H
-#define __DISASSEMBLER_H
-
+#pragma once
 #include "core_includes.h"
-#include "Bytecode.g.h"
-#include "FuncDef.g.h"
-#include "StringUtils.g.h"
 
 namespace MiniScript {
 
-	class Disassembler {
-	
-		// Return the short pseudo-opcode for the given instruction
-		// (e.g.: LOAD instead of LOAD_rA_iBC, etc.)
-		public: static String AssemOp(Opcode opcode);
-		
-		public: static String ToString(UInt32 instruction);
-	
-		// Disassemble the given function.  If detailed=true, include extra
-		// details for debugging, like line numbers and instruction hex code.
-		public: static void Disassemble(FuncDef funcDef, List<String> output, Boolean detailed=true);
+// FORWARD DECLARATIONS
 
-		// Disassemble the whole program (list of functions).  If detailed=true, include 
-		// extra details for debugging, like line numbers and instruction hex code.
-		public: static List<String> Disassemble(List<FuncDef> functions, Boolean detailed=true);
+struct CallInfo;
+class CallInfoStorage;
+struct AcceptException;
+class AcceptExceptionStorage;
+struct VMVis;
+class VMVisStorage;
+struct Assembler;
+class AssemblerStorage;
+struct FuncDef;
+class FuncDefStorage;
+struct Lexer;
+class LexerStorage;
 
-	}; // end of class Disassembler
+// DECLARATIONS
 
-}
 
-#endif // __DISASSEMBLER_H
+class Disassembler {
+	public: static String AssemOp(Opcode opcode);
+}; // end of struct Disassembler
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// INLINE METHODS
+
+
+
+
+
+
+
+
+
+
+
+
+
+

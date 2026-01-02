@@ -45,7 +45,17 @@ using UInt64  = uint64_t;  // ulong
 using Char    = char;
 using Single  = float;
 using Double  = double;
-using Boolean = bool;
+
+// Boolean wrapper class that prevents implicit pointer-to-bool conversion
+// (In C++, pointers implicitly convert to bool, which causes ambiguity with String)
+struct Boolean {
+	bool value;
+	Boolean() : value(false) {}
+	Boolean(bool b) : value(b) {}
+	operator bool() const { return value; }
+	// Delete pointer conversions to prevent "string literal" -> Boolean
+	template<typename T> Boolean(T*) = delete;
+};
 
 // Min/Max values for these types:
 const Byte ByteMinValue = 0;

@@ -16,6 +16,7 @@ SOURCES = $(TEST_FRAMEWORK) \
           $(CS_DIR)/MemPoolShim.cs \
           $(CS_DIR)/ValueFuncRef.cs \
           ValueTest.cs \
+          StringUtilsTest.cs \
           TestRunner.cs
 
 # Output

@@ -16,7 +16,8 @@ SOURCES = $(TEST_FRAMEWORK) \
           $(CS_DIR)/ValueFuncRef.cs \
           $(CS_DIR)/VarMap.cs \
           $(CS_DIR)/FuncDef.cs \
-          FuncDefTest.cs
+          FuncDefTest.cs \
+          TestRunner.cs
 
 # Output
 OUTPUT = $(BUILD_DIR)/Layer2Tests.exe

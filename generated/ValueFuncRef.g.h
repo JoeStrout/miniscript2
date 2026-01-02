@@ -1,10 +1,8 @@
 // AUTO-GENERATED FILE.  DO NOT MODIFY.
-// Transpiled from: MemPoolShim.cs
+// Transpiled from: ValueFuncRef.cs
 
 #pragma once
 #include "core_includes.h"
-
-namespace MiniScript {
 
 // FORWARD DECLARATIONS
 
@@ -28,13 +26,6 @@ class LexerStorage;
 
 
 
-
-	// Shim class to provide cross-platform pool management.
-	// In C#, these are no-ops since we don't use pools.
-	// In C++, these map to actual MemPoolManager and StringPool calls.
-class MemPoolShim {
-	public: static Byte GetUnusedPool();
-}; // end of struct MemPoolShim
 
 
 

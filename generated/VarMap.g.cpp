@@ -1,7 +1,7 @@
 // AUTO-GENERATED FILE.  DO NOT MODIFY.
-// Transpiled from: MiniScriptParser.cs
+// Transpiled from: VarMap.cs
 
-#include "MiniScriptParser.g.h"
+#include "VarMap.g.h"
 
 namespace MiniScript {
 

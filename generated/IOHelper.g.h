@@ -1,27 +1,64 @@
 // AUTO-GENERATED FILE.  DO NOT MODIFY.
 // Transpiled from: IOHelper.cs
 
-#ifndef __IOHELPER_H
-#define __IOHELPER_H
-
+#pragma once
+#include "core_includes.h"
 // IOHelper
 //	This is a simple wrapper for console output on each platform.
 
-#include "core_includes.h"
-#include <iostream>
-#include <stdio.h>
-#include <fstream>
-#include <string>
-#include <algorithm>
+
+namespace MiniScript {
+
+// FORWARD DECLARATIONS
+
+struct CallInfo;
+class CallInfoStorage;
+struct AcceptException;
+class AcceptExceptionStorage;
+struct VMVis;
+class VMVisStorage;
+struct Assembler;
+class AssemblerStorage;
+struct FuncDef;
+class FuncDefStorage;
+struct Lexer;
+class LexerStorage;
+
+// DECLARATIONS
+
+
+
+
+
+
+
+
+
+
+
 
 class IOHelper {
-
 	public: static void Print(String message);
-	
 	public: static String Input(String prompt);
-	
 	public: static List<String> ReadFile(String filePath);
-	
-}; // end of class IOHelper
+}; // end of struct IOHelper
 
-#endif // __IOHELPER_H
+
+
+
+// INLINE METHODS
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+} // end of namespace MiniScript

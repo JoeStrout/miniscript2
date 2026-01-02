@@ -152,8 +152,17 @@ roughTokenize = function(s)
 	tokStart = 0
 	inIdentifier = false
 	inString = false
+	backslashEscape = false
 	for i in s.indexes
 		c = s[i]
+		if backslashEscape then
+			backslashEscape = false
+			continue
+		end if
+		if c == "\" then
+			backslashEscape = true
+			continue
+		end if
 		if c == """" then inString = not inString
 		if inString then continue
 		if inIdentifier then
@@ -248,6 +257,7 @@ ClassInfo.type = ClassType.CLASS
 ClassInfo.superclass = ""		// name of superclass, if any
 ClassInfo.fields = null			// list of VariableInfo
 ClassInfo.methods = null		// list of MethodInfo
+ClassInfo.elsewhere = false		// if true, this class is not in the current file
 ClassInfo.declLines = null		// class declaration lines (header file)
 ClassInfo.wrapperLines = null	// wrapper class declaration lines (header file)
 ClassInfo.storageLines = null	// storage class declaration lines (header file)
@@ -300,6 +310,7 @@ VariableInfo.name = ""
 VariableInfo.type = ""
 VariableInfo.scope = ""			// Scope.PUBLIC, etc.
 VariableInfo.static = false
+VariableInfo.array = false
 
 VariableInfo.Make = function(name="", type="", scope="", static=false)
 	noob = new VariableInfo
@@ -328,6 +339,28 @@ end function
 
 
 //--------------------------------------------------------------------------------
+// Built-in Classes (ToDo: factor these into another file)
+getStandardClasses = function
+	String = ClassInfo.Make("String")
+	String.fields.push VariableInfo.Make("Length", "UInt32")
+	String.methods.push MethodInfo.Make("Substring")
+	String.methods.push MethodInfo.Make("Join", true)
+	// ToDo: other String fields and methods!
+
+	List = ClassInfo.Make("List")
+	List.fields.push VariableInfo.Make("Count", "UInt32")
+	// ToDo: other List fields and methods!
+
+	
+	classes = [String, List]
+	for cls in classes; cls.elsewhere = true; end for
+	return classes
+end function
+
+//--------------------------------------------------------------------------------
+
+
+//--------------------------------------------------------------------------------
 Transpiler = {}
 Transpiler.state = ""
 Transpiler.gatherMode = false	// if true, just gathering symbols
@@ -336,7 +369,7 @@ Transpiler.outputFolder = ""	// path to folder for output files
 Transpiler.namespace = ""		// namespace we're processing
 Transpiler.preLines = null		// list of lines (usually comments) before method/field
 Transpiler.line = null			// current line we're processing
-Transpiler.allClasses = null	// list of ClassInfo we're processing (in this file)
+Transpiler.allClasses = null	// list of ClassInfo we know about
 Transpiler.curClass = null		// ClassInfo that's currently being processed
 Transpiler.curMethod = null		// MethodInfo that's currently being processed
 Transpiler.localVars = null		// current set of variables for method we're in
@@ -347,7 +380,7 @@ Transpiler.prevStates = []		// stack of previous states (see pushState/popState)
 
 Transpiler.Make = function
 	noob = new Transpiler
-	noob.allClasses = []
+	noob.allClasses = getStandardClasses
 	return noob
 end function
 
@@ -392,6 +425,7 @@ end function
 Transpiler.findClass = function(name)
 	for cl in self.allClasses
 		if cl.name == name then return cl
+		if name.contains("<") and name.split("<")[0] == cl.name then return cl
 	end for
 	return null
 end function
@@ -437,6 +471,8 @@ Transpiler.lookup = function(identifier, context)
 	// 3. class names
 	for cls in self.allClasses
 		if cls.name == identifier then return cls
+		bracketPos = identifier.indexOf("<")
+		if bracketPos != null and identifier[:bracketPos] == cls.name then return cls
 	end for
 	// 4. give up :P
 	return null
@@ -450,11 +486,10 @@ Transpiler.transformStatement = function(trimmedLine)
 	// assignment to class fields to a set_X() call.
 	
 	if not trimmedLine then return trimmedLine
-	
+		
 	// Start with a rough tokenization, separating each identifier and
 	// non-identifier string.
 	tokens = roughTokenize(trimmedLine)
-	//print "TOKENS: " + tokens
 	
 	// Then iterate and analyze each one.  We'll encounter things we don't 
 	// recognize; that's OK.  Just keep track of stuff we do.
@@ -470,10 +505,8 @@ Transpiler.transformStatement = function(trimmedLine)
 			end if
 			// look up RHS type and see if it's static; if so, it needs "::" rather than "."
 			rhsStatic = true
-			//print "====> DOT FOUND BETWEEN " + tokens[i-1] + " and " + tokens[i+1] + "; curInfo is " + curInfo
 			if curInfo then
 				rhsType = self.lookup(tokens[i+1], curInfo)
-				//print "====> RHS TYPE IS " + rhsType + " ==== WITH STATIC " + rhsType.static
 				if rhsType then rhsStatic = rhsType.static
 			end if
 			if curInfo == null or rhsStatic then tokens[i] = "::"
@@ -552,6 +585,35 @@ Transpiler.transformStatement = function(trimmedLine)
 	
 end function
 
+Transpiler.parseParams = function(paramStr)
+	// Parse the given parameter string into a list of VariableInfo.
+	result = []
+	for part in paramStr.split(", ")
+		m = part.match("≤type:w≥ ≤name:w≥ = ≤value≥")
+		if not m then m = part.match("≤type:w≥ ≤name:w≥")
+		if m then
+			result.push VariableInfo.Make(m.name, m.type, Scope.LOCAL)
+		else
+			self.assert false, "Could not parse parameter: " + part
+		end if
+	end for
+	return result
+end function
+
+Transpiler.stripDefaultArgs = function
+	// Strip default arguments from self.m.params (because we're about to use it
+	// to generate a method body, and default arguments must be given only in
+	// the method declaration).
+	paramStr = self.m.params.trim
+	if not paramStr then return
+	params = paramStr.split(",")
+	for i in params.indexes
+		eqPos = params[i].indexOf("=")
+		if eqPos != null then params[i] = params[i][:eqPos]
+	end for
+	self.m.params = params.join(",")
+end function
+
 Transpiler.enterState = function(newState, initAsNew=true)
 	if newState == self.state then return
 	if self.state then self.exitState newState
@@ -585,19 +647,23 @@ Transpiler.enterState = function(newState, initAsNew=true)
 		self.curClass.nextMethodInline = false
 
 	else if newState == State.METHOD then
+		params = []
 		if self.line and self.line.m and self.line.m.hasIndex("name") then
 			name = self.line.m.name
+			if self.line.m.hasIndex("params") then
+				params = self.parseParams(self.line.m.params)
+			end if
 		else
 			name = "?"
 		end if
 		self.curMethod = MethodInfo.Make(name)
+		self.curMethod.params = params
 		if self.curClass.nextMethodInline then
 			self.curClass.methodLines = self.curClass.inlineLines
 		else
 			self.curClass.methodLines = self.curClass.defLines
 		end if
-		self.localVars = []
-
+		self.localVars = params[:]
 	end if
 	
 end function
@@ -844,9 +910,11 @@ Transpiler.updateStateCLASS = function
 					self.curClass.wrapperLines.push self.fill(
 					  "	≤scope≥: ≤name≥(≤params≥) : ?!?!?(std::make_shared<≤name≥Storage>(≤paramNames≥)) {}")
 				end if
+				self.stripDefaultArgs
 				self.curClass.methodLines.push self.fill("≤inline≥≤className≥Storage::≤name≥Storage(≤params≥) {")
 			else
 				self.curClass.declLines.push self.fill("	≤scope≥: ≤name≥(≤params≥);")
+				self.stripDefaultArgs
 				self.curClass.methodLines.push self.fill("≤inline≥≤className≥::≤name≥(≤params≥) {")
 			end if
 			if self.gatherMode then self.curClass.methods.push MethodInfo.Make(self.m.name)
@@ -856,9 +924,11 @@ Transpiler.updateStateCLASS = function
 			self.enterState State.METHOD
 			if self.curClass.type == ClassType.CLASS then
 				self.curClass.storageLines.push self.fill("	≤scope≥: static ≤type≥ ≤name≥(≤params≥);")
+				self.stripDefaultArgs
 				self.curClass.methodLines.push self.fill("≤inline≥≤type≥ ≤className≥Storage::≤name≥(≤params≥) {")
 			else
 				self.curClass.declLines.push self.fill("	≤scope≥: static ≤type≥ ≤name≥(≤params≥);")
+				self.stripDefaultArgs
 				self.curClass.methodLines.push self.fill("≤inline≥≤type≥ ≤className≥::≤name≥(≤params≥) {")
 			end if
 			if self.gatherMode then self.curClass.methods.push MethodInfo.Make(self.m.name, true)
@@ -881,9 +951,11 @@ Transpiler.updateStateCLASS = function
 			self.enterState State.METHOD
 			if self.curClass.type == ClassType.CLASS then
 				self.curClass.storageLines.push self.fill("	≤scope≥: ≤type≥ ≤name≥(≤params≥);")
+				self.stripDefaultArgs
 				self.curClass.methodLines.push self.fill("≤inline≥≤type≥ ≤className≥Storage::≤name≥(≤params≥) {")
 			else
 				self.curClass.declLines.push self.fill("	≤scope≥: ≤type≥ ≤name≥(≤params≥);")
+				self.stripDefaultArgs
 				self.curClass.methodLines.push self.fill("≤inline≥≤type≥ ≤className≥::≤name≥(≤params≥) {")
 			end if
 			if self.gatherMode then self.curClass.methods.push MethodInfo.Make(self.m.name)
@@ -897,6 +969,7 @@ Transpiler.updateStateCLASS = function
 			self.m.paramNames = parameterNames(self.m.params)
 			// Also todo: strip defaults but NOT types, for use in implementation;
 			// we'll need that in several places here (anywhere we have a method body).
+			self.stripDefaultArgs
 			self.curClass.inlineLines.push self.fill(
 			  "inline ≤type≥ ≤className≥::≤name≥(≤params≥) { return storage->≤name≥(≤paramNames≥); }")
 			if self.gatherMode then self.curClass.methods.push MethodInfo.Make(self.m.name)
@@ -906,9 +979,11 @@ Transpiler.updateStateCLASS = function
 			self.enterState State.METHOD
 			if self.curClass.type == ClassType.CLASS then
 				self.curClass.storageLines.push self.fill("	≤scope≥: ≤type≥ ≤name≥(≤params≥);")
+				self.stripDefaultArgs
 				self.curClass.methodLines.push self.fill("≤inline≥≤type≥ ≤className≥Storage::≤name≥(≤params≥) {")
 			else
 				self.curClass.declLines.push self.fill("	≤scope≥: ≤type≥ ≤name≥(≤params≥);")
+				self.stripDefaultArgs
 				self.curClass.methodLines.push self.fill("≤inline≥≤type≥ ≤className≥::≤name≥(≤params≥) {")
 			end if
 			if self.gatherMode then self.curClass.methods.push MethodInfo.Make(self.m.name)
@@ -946,14 +1021,12 @@ Transpiler.updateStateMETHOD = function
 	if self.match("≤type:w≥ ≤name:w≥ = ≤expr≥ as ≤type2:w≥;") then
 		if self.m.type == "var" then self.m.type = self.m.type2
 		self.localVars.push VariableInfo.Make(self.m.name, self.m.type, Scope.LOCAL)
-		print "NOTED LOCAL VAR WITH TYPECAST: " + self.localVars[-1]
 		self.curClass.methodLines.push line.indentation +
 		  self.fill("≤type≥ ≤name≥ = As<≤type2≥, ≤type2≥Storage>(≤expr≥);")
 		return
 	end if
 	if self.match("var ≤name:w≥ = new ≤type:w≥(≤args≥);") then
 		self.localVars.push VariableInfo.Make(self.m.name, self.m.type, Scope.LOCAL)
-		print "NOTED LOCAL VAR WITH VAR: " + self.localVars[-1]
 		self.curClass.methodLines.push line.indentation +
 		  self.fill("≤type≥ ≤name≥ = new ≤type≥(≤args≥);")
 		return
@@ -968,6 +1041,13 @@ Transpiler.updateStateMETHOD = function
 			self.curClass.methodLines.push line.indentation + s + "; GC_PROTECT(&" + self.m.name + ");";
 			return
 		end if
+	end if
+	if self.match("≤type:w≥[] ≤name:w≥ = new ≤type2≥[≤count≥];") then
+		self.localVars.push VariableInfo.Make(self.m.name, self.m.type, Scope.LOCAL)
+		self.localVars[-1].array = true
+		self.curClass.methodLines.push line.indentation +
+		  self.fill("≤type≥ ≤name≥[≤count≥];")
+		return
 	end if
 	
 	// otherwise, apply standard transformations, then write out
@@ -995,7 +1075,7 @@ Transpiler.generateOutput = function
 	headerLines.push "// FORWARD DECLARATIONS"
 	headerLines.push ""
 	for class in self.allClasses
-		if class.type != ClassType.CLASS then continue
+		if class.elsewhere or class.type != ClassType.CLASS then continue
 		headerLines.push "struct ≤name≥;".fill(class)
 		headerLines.push "class ≤name≥Storage;".fill(class)
 	end for
@@ -1004,6 +1084,7 @@ Transpiler.generateOutput = function
 	headerLines.push "// DECLARATIONS"
 	headerLines.push ""
 	for class in self.allClasses
+		if class.elsewhere then continue
 		headerLines += class.declLines
 		headerLines.push ""
 	end for
@@ -1011,7 +1092,7 @@ Transpiler.generateOutput = function
 	// First, the wrapper for any base class (since subclass storage is likely to need it).
 	done = {}
 	for class in self.allClasses
-		if not class.wrapperLines or not self.subclassesOf(class) then continue
+		if class.elsewhere or not class.wrapperLines or not self.subclassesOf(class) then continue
 		headerLines += class.wrapperLines
 		headerLines.push ""
 		done.push class.name
@@ -1034,6 +1115,7 @@ Transpiler.generateOutput = function
 	headerLines.push "// INLINE METHODS"
 	headerLines.push ""
 	for class in self.allClasses
+		if not class.inlineLines then continue
 		headerLines += class.inlineLines
 		headerLines.push ""
 	end for
@@ -1049,6 +1131,7 @@ Transpiler.generateOutput = function
 	cppLines.push "namespace " + self.namespace + " {"
 	cppLines.push ""
 	for class in self.allClasses
+		if not class.defLines then continue
 		cppLines += class.defLines
 		cppLines.push ""
 	end for
@@ -1156,6 +1239,10 @@ runUnitTests = function
 	check roughTokenize("if (x == ""a = (b)"") {"),
 	  ["if", " (", "x", " == ""a = (b)"") {"]
 	
+	check roughTokenize("return new String(""[\"""") + String.Join(""\"", \"""", list) + ""\""]"";"),
+	  ["return", " ", "new", " ", "String", "(""[\"""") + ",
+	   "String", ".", "Join", "(""\"", \"""", ", "list", ") + ""\""]"";"]
+	
 	check parameterNames("Double x=42, Widget widget, String foo=""bar=baz"""),
 	  "x, widget, foo"
 
@@ -1199,17 +1286,17 @@ resolvePath = function(path)
 end function
 
 if locals == globals then
-	debugMode = true
+	debugMode = false
 	
-	if debugMode then runUnitTests
-
 	filesToProcess = []
 	outputDir = null
 	i = 1
 	while i < shellArgs.len
-		if shellArgs[i] == "-o" then
+		if shellArgs[i] == "-d" then
+			debugMode = true
+		else if shellArgs[i] == "-o" then
 			outputDir = resolvePath(shellArgs[i+1])
-			i += 2
+			i += 1
 		else
 			argPath = resolvePath(shellArgs[i])
 			if shellArgs[i].endsWith(".cs") then
@@ -1220,9 +1307,11 @@ if locals == globals then
 				end for
 				if not outputDir then outputDir = argPath
 			end if
-			i += 1
 		end if
+		i += 1
 	end while
+
+	if debugMode then runUnitTests
 
 	if not filesToProcess then
 		print "No files to process.  Exiting."

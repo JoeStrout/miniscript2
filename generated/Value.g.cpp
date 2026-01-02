@@ -1,7 +1,7 @@
 // AUTO-GENERATED FILE.  DO NOT MODIFY.
-// Transpiled from: MiniScriptParser.cs
+// Transpiled from: Value.cs
 
-#include "MiniScriptParser.g.h"
+#include "Value.g.h"
 
 namespace MiniScript {
 

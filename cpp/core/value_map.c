@@ -31,7 +31,8 @@ Value make_map(int initial_capacity) {
     map->capacity = initial_capacity;
     map->varmap_data = NULL; // Regular map, no VarMap data
 
-    // Create and protect the Value immediately so subsequent allocations don't collect it
+    // Allocate the entries array separately
+    // (create and protect the Value immediately so subsequent allocations don't collect it)
     Value map_val = MAP_TAG | ((uintptr_t)map & 0xFFFFFFFFFFFFULL);
     GC_PROTECT(&map_val);
 

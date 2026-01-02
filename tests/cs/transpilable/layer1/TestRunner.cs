@@ -4,6 +4,7 @@
 using System;
 // CPP: #include "IOHelper.g.h"
 // CPP: #include "ValueTest.g.h"
+// CPP: #include "StringUtilsTest.g.h"
 
 namespace MiniScript {
 
@@ -17,7 +18,10 @@ public static class TestRunner {
 		// Run Value tests FIRST - everything depends on this
 		allPassed = ValueTest.RunAll() && allPassed;
 
-		// TODO: Add StringUtilsTest, MemPoolShimTest, ValueFuncRefTest
+		// Run StringUtils tests
+		allPassed = StringUtilsTest.RunAll() && allPassed;
+
+		// TODO: Add MemPoolShimTest, ValueFuncRefTest
 
 		// Only print failure notice if tests failed
 		if (!allPassed) {

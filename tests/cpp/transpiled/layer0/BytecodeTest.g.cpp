@@ -9,8 +9,6 @@
 namespace MiniScript {
 
 
-
-
 Boolean BytecodeTest::TestOpcodeEnumValues() {
 	// Test that opcode enum values are sequential starting at 0
 	Boolean ok = true;

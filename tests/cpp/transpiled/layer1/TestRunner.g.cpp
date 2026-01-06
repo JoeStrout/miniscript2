@@ -9,8 +9,6 @@
 namespace MiniScript {
 
 
-
-
 void TestRunner::Main() {
 	IOHelper::Print("==========================================");
 	IOHelper::Print("  Layer 1 Tests (Basic Infrastructure)");

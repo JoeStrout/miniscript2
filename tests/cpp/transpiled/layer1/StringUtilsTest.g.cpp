@@ -64,6 +64,4 @@ Boolean StringUtilsTest::RunAll() {
 }
 
 
-
-
 } // end of namespace MiniScript

@@ -24,7 +24,4 @@ class TestRunner {
 
 // INLINE METHODS
 
-
-
-
 } // end of namespace MiniScript

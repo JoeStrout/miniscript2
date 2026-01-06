@@ -16,8 +16,12 @@ namespace MiniScript {
 
 
 class IOHelperTest {
+
 	public: static Boolean TestPrint();
+
 	public: static Boolean TestReadFile();
+
+	// Main test runner for this module
 	public: static Boolean RunAll();
 }; // end of struct IOHelperTest
 
@@ -25,8 +29,5 @@ class IOHelperTest {
 
 
 // INLINE METHODS
-
-
-
 
 } // end of namespace MiniScript

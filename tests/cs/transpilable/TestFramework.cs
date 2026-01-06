@@ -75,6 +75,13 @@ public static class TestFramework {
 		return false;
 	}
 
+	/*** BEGIN H_ONLY ***
+	// Assert C string actual vs String expected (C++ only - prevents ambiguity with Boolean overload)
+	public: static Boolean AssertEqual(const char* actual, String expected, String context) {
+		return AssertEqual(String(actual), expected, context);
+	}
+	*** END H_ONLY ***/
+
 	// Print summary of test results (only if there were failures)
 	public static void PrintSummary(String suiteName) {
 		// Silent - failures are already printed

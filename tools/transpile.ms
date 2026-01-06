@@ -1,24 +1,15 @@
+import "importUtil"
 import "stringUtil"
 import "listUtil"
 import "mapUtil"
 import "fancyMatch"
 import "qa"
+import "symbolInfo"
+import "coreClassInfo"
 
 //--------------------------------------------------------------------------------
 // Constants
 TAB = char(9)
-
-Scope = {}						// Used for VariableInfo.scope and MethodInfo.scope
-Scope.PUBLIC = "public"
-Scope.PROTECTED = "protected"
-Scope.PRIVATE = "private"
-Scope.LOCAL = "local"
-
-ClassType = {}					// Used for ClassInfo.type
-ClassType.CLASS = "class"
-ClassType.STRUCT = "struct"
-ClassType.ENUM = "enum"
-ClassType.INTERFACE = "interface"
 
 State = {}						// used for Transpiler.state
 State.START = "START"			// at start of file, before namespace
@@ -250,115 +241,6 @@ Line.Make = function(fullLine)
 	return noob
 end function
 
-//--------------------------------------------------------------------------------
-ClassInfo = {}
-ClassInfo.name = ""
-ClassInfo.type = ClassType.CLASS
-ClassInfo.superclass = ""		// name of superclass, if any
-ClassInfo.fields = null			// list of VariableInfo
-ClassInfo.methods = null		// list of MethodInfo
-ClassInfo.elsewhere = false		// if true, this class is not in the current file
-ClassInfo.declLines = null		// class declaration lines (header file)
-ClassInfo.wrapperLines = null	// wrapper class declaration lines (header file)
-ClassInfo.storageLines = null	// storage class declaration lines (header file)
-ClassInfo.inlineLines = null	// inline definition lines (header file)
-ClassInfo.defLines = null		// out-of-line definition lines (cpp file)
-ClassInfo.methodLines = null	// reference to either .inlineLines or .defLines
-ClassInfo.nextMethodInline = false
-
-ClassInfo.Make = function(name="")
-	noob = new ClassInfo
-	noob.name = name
-	noob.type = ClassType.CLASS
-	noob.fields = []
-	noob.methods = []
-	noob.clearOutput
-	return noob
-end function
-
-ClassInfo.clearOutput = function
-	self.declLines = []
-	self.wrapperLines = []
-	self.storageLines = []
-	self.inlineLines = []
-	self.defLines = []
-end function
-
-ClassInfo.lookup = function(identifier, allClasses)
-	// Look up the given identifier among our symbols, including inherited ones.
-	cls = self
-	while cls
-		result = list.find(cls.fields, "name", identifier)
-		if result == null then result = list.find(cls.methods, "name", identifier)
-		if result then return result
-		if not cls.superclass then return null
-		cls = list.find(allClasses, "name", cls.superclass)
-	end while
-end function
-
-ClassInfo.rootClass = function(allClasses)
-	cls = self
-	while cls and cls.superclass
-		cls = list.find(allClasses, "name", cls.superclass)
-	end while
-	return cls
-end function
-
-//--------------------------------------------------------------------------------
-VariableInfo = {}				// used for fields, parameters, and local vars
-VariableInfo.name = ""
-VariableInfo.type = ""
-VariableInfo.scope = ""			// Scope.PUBLIC, etc.
-VariableInfo.static = false
-VariableInfo.array = false
-
-VariableInfo.Make = function(name="", type="", scope="", static=false)
-	noob = new VariableInfo
-	noob.name = name
-	if type then noob.type = type
-	if scope then noob.scope = scope
-	if static then noob.static = static
-	return noob
-end function
-
-//--------------------------------------------------------------------------------
-MethodInfo = {}
-MethodInfo.name = ""
-MethodInfo.type = "void"		// (return type)
-MethodInfo.scope = ""			// Scope.PUBLIC, etc.
-MethodInfo.static = false
-MethodInfo.params = null		// list of VariableInfo
-MethodInfo.inline = false
-
-MethodInfo.Make = function(name="", static=false)
-	noob = new MethodInfo
-	noob.name = name
-	if static then noob.static = true
-	return noob
-end function
-
-
-//--------------------------------------------------------------------------------
-// Built-in Classes (ToDo: factor these into another file)
-getStandardClasses = function
-	String = ClassInfo.Make("String")
-	String.fields.push VariableInfo.Make("Length", "UInt32")
-	String.methods.push MethodInfo.Make("Substring")
-	String.methods.push MethodInfo.Make("Join", true)
-	// ToDo: other String fields and methods!
-
-	List = ClassInfo.Make("List")
-	List.fields.push VariableInfo.Make("Count", "UInt32")
-	// ToDo: other List fields and methods!
-
-	
-	classes = [String, List]
-	for cls in classes; cls.elsewhere = true; end for
-	return classes
-end function
-
-//--------------------------------------------------------------------------------
-
 
 //--------------------------------------------------------------------------------
 Transpiler = {}
@@ -380,7 +262,7 @@ Transpiler.prevStates = []		// stack of previous states (see pushState/popState)
 
 Transpiler.Make = function
 	noob = new Transpiler
-	noob.allClasses = getStandardClasses
+	noob.allClasses = coreClassInfo.all
 	return noob
 end function
 

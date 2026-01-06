@@ -18,19 +18,24 @@ namespace MiniScript {
 
 
 class BytecodeTest {
+
 	public: static Boolean TestOpcodeEnumValues();
+
 	public: static Boolean TestInstructionEncoding();
+
 	public: static Boolean TestInstructionEncodingAB();
+
 	public: static Boolean TestNegativeImmediate();
+
 	public: static Boolean TestToMnemonic();
+
 	public: static Boolean TestFromMnemonic();
+
+	// Main test runner for this module
 	public: static Boolean RunAll();
 }; // end of struct BytecodeTest
 
 
 // INLINE METHODS
-
-
-
 
 } // end of namespace MiniScript

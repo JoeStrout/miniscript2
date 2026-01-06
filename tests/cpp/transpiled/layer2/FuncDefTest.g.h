@@ -11,22 +11,32 @@ namespace MiniScript {
 
 // FORWARD DECLARATIONS
 
+struct String;
+class StringStorage;
+struct List;
+class ListStorage;
 
 // DECLARATIONS
 
 
+
+
 class FuncDefTest {
+
 	public: static Boolean TestCreation();
+
 	public: static Boolean TestAddCode();
+
 	public: static Boolean TestAddConstants();
+
 	public: static Boolean TestReserveRegister();
+
+	// Main test runner for this module
 	public: static Boolean RunAll();
 }; // end of struct FuncDefTest
 
 
 
 // INLINE METHODS
-
-
 
 } // end of namespace MiniScript

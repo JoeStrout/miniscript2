@@ -46,15 +46,16 @@ using Char    = char;
 using Single  = float;
 using Double  = double;
 
-// Boolean wrapper class that prevents implicit pointer-to-bool conversion
-// (In C++, pointers implicitly convert to bool, which causes ambiguity with String)
+// Boolean wrapper class that adds a user-defined conversion step
+// This makes pointer-to-Boolean conversion (via bool) rank lower than
+// exact matches in overload resolution, preventing ambiguity with String overloads
 struct Boolean {
 	bool value;
 	Boolean() : value(false) {}
 	Boolean(bool b) : value(b) {}
 	operator bool() const { return value; }
-	// Delete pointer conversions to prevent "string literal" -> Boolean
-	template<typename T> Boolean(T*) = delete;
+    // Prevent accidental "string literal" (or other pointer) -> Boolean
+    template<typename T> Boolean(T*) = delete;
 };
 
 // Min/Max values for these types:

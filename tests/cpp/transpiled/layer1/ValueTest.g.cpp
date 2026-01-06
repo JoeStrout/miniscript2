@@ -13,7 +13,6 @@
 namespace MiniScript {
 
 
-
 Boolean ValueTest::TestNullValue() {
 	GC_PUSH_SCOPE();
 	Value v = make_null(); GC_PROTECT(&v);
@@ -284,7 +283,6 @@ Boolean ValueTest::RunAll() {
 	TestFramework::PrintSummary("Value");
 	return TestFramework::AllPassed();
 }
-
 
 
 } // end of namespace MiniScript

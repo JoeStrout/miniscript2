@@ -11,8 +11,14 @@ namespace MiniScript {
 
 // FORWARD DECLARATIONS
 
+struct String;
+class StringStorage;
+struct List;
+class ListStorage;
 
 // DECLARATIONS
+
+
 
 
 
@@ -22,7 +28,5 @@ class TestRunner {
 
 
 // INLINE METHODS
-
-
 
 } // end of namespace MiniScript

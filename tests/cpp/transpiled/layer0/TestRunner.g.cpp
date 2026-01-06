@@ -9,7 +9,6 @@
 namespace MiniScript {
 
 
-
 void TestRunner::Main() {
 	IOHelper::Print("==========================================");
 	IOHelper::Print("  Layer 0 Tests (Foundation)");
@@ -25,7 +24,6 @@ void TestRunner::Main() {
 		IOHelper::Print("  Layer 0: SOME TESTS FAILED");
 	}
 }
-
 
 
 } // end of namespace MiniScript

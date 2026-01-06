@@ -17,29 +17,43 @@ namespace MiniScript {
 
 
 class ValueTest {
+
 	public: static Boolean TestNullValue();
+
 	public: static Boolean TestIntValue();
+
 	public: static Boolean TestNegativeInt();
+
 	public: static Boolean TestDoubleValue();
+
 	public: static Boolean TestStringValue();
+
 	public: static Boolean TestEmptyString();
+
 	public: static Boolean TestIntArithmetic();
+
 	public: static Boolean TestIntComparison();
+
 	public: static Boolean TestStringComparison();
+
 	public: static Boolean TestStringConcatenation();
+
 	public: static Boolean TestTruthiness();
+
 	public: static Boolean TestListCreation();
+
 	public: static Boolean TestListOperations();
+
 	public: static Boolean TestMapCreation();
+
 	public: static Boolean TestMapOperations();
+
+	// Main test runner for this module
 	public: static Boolean RunAll();
 }; // end of struct ValueTest
 
 
 
 // INLINE METHODS
-
-
-
 
 } // end of namespace MiniScript

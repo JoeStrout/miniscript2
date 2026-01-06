@@ -67,3 +67,17 @@ However, the FuncDefTest fails to compile because it depends on StringUtils, and
 I'm still working on getting the new transpiler to do all the things the old one could do.  The rewrite caused quite a lot of regressions, as expected.  But, the new code structure is much cleaner, and is remaining so even as these additional features are added.  So it will all be worth it in the end.
 
 The biggest problem I'm still struggling with is correctly telling when to change "." to "::".  The new transpiler builds a symbol table which is supposed to handle this, but it's not working in all cases.
+
+
+## Jan 06, 2025
+
+The problem with the transpiler was just that it was not tracking local variables properly; method parameters were not included, nor were local array declarations properly handled.  Those issues have been fixed, and the StringUtilsTest (part of our "layer 1" transpilable tests) is now passing all tests in both C# and C++.
+
+Had some adventures with ambiguous overloads, mainly in our test framework where there is an AssertEqual method that takes Booleans.  Pointers -- including C string literals -- implicitly convert to bool in C++, and there's nothing you can do to stop that.  But we now have a Boolean type that is a wrapper for bool (not just an alias), which makes the conversion to Boolean take one more step, and with that we can avoid the ambiguity.  While we're at it, our Boolean wrapper also deletes the implicit conversion from pointer types to Boolean, which will help prevent accidental assignment or passing of a pointer to a Boolean argument.  (When we actually want to test a pointer, we'll need to use `!= nullptr`, similar to how you do it in C#.)
+
+One of the recent changes to transpile.ms is that it needs to have pre-baked code about the core (non-transpiled) classes, so it can properly interpret symbols related to them.  I've put this in coreClassInfo.ms, but the classes defined there (String and List) are very incomplete; I've only coded in as much as I need so far.
+
+That takes care of the C# standard library classes, but now I'm running into a similar issue trying to transpile FuncDefTest (layer2), in that it does not understand the FuncDef class.  And that class *is* transpiled; it's just not part of the context the transpiler has when working on this test.  Hmm.
+
+I need to turn to other tasks for now, but next session, I need to make some way to give the compiler more context.  Perhaps a command-line argument for files to read in the first pass, but not actually transpile in the second... or maybe it *should* transpile them, but send the results to a different folder.  Or maybe transpiling should output symbol info (in JSON or GRFON) that a later transpilation can pick up.
+

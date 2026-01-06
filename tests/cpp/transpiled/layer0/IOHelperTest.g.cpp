@@ -32,6 +32,4 @@ Boolean IOHelperTest::RunAll() {
 }
 
 
-
-
 } // end of namespace MiniScript

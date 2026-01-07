@@ -12,19 +12,18 @@ namespace MiniScript {
 
 struct CallInfo;
 class CallInfoStorage;
-struct AcceptException;
-class AcceptExceptionStorage;
 struct VMVis;
 class VMVisStorage;
 struct Assembler;
 class AssemblerStorage;
 struct FuncDef;
 class FuncDefStorage;
+struct App;
+class AppStorage;
 struct Lexer;
 class LexerStorage;
 
 // DECLARATIONS
-
 
 
 
@@ -38,16 +37,25 @@ class LexerStorage;
 	private: static const String Underline;
 	private: static const String Inverse;
 	private: static const String Normal;
+		
 	private: static const String CursorHome;
 	private: static const Int32 CodeDisplayColumn;
 	private: static const Int32 RegisterDisplayColumn;
 	private: static const Int32 CallStackDisplayColumn;
+
+
+		// Pool management for temporary display strings
+		
+		// Be careful to get a *reference* to the VM rather than a deep copy, even
+		// in C++.  ToDo: find a more elegant solution to this recurring issue.
 		private: VM& _vm;
 		public: inline VMVis(VM& vm) : _vm(vm) {
 			UpdateScreenSize();
 			_savedPool = MemPoolShim::GetDefaultStringPool();
 			_displayPool = MemPoolShim::GetUnusedPool();
 		}
+
+
 
 
 
@@ -85,17 +93,4 @@ struct VMVis {
 
 
 // INLINE METHODS
-
-
-
-
-
-
-
-
-
-
-
-
-
 

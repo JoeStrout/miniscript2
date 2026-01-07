@@ -13,14 +13,14 @@ namespace MiniScript {
 
 struct CallInfo;
 class CallInfoStorage;
-struct AcceptException;
-class AcceptExceptionStorage;
 struct VMVis;
 class VMVisStorage;
 struct Assembler;
 class AssemblerStorage;
 struct FuncDef;
 class FuncDefStorage;
+struct App;
+class AppStorage;
 struct Lexer;
 class LexerStorage;
 
@@ -32,9 +32,10 @@ class LexerStorage;
 
 
 
-
 class UnitTests {
+	
 	public: static Boolean Assert(Boolean condition, String message);
+
 }; // end of struct UnitTests
 
 
@@ -44,18 +45,6 @@ class UnitTests {
 
 
 
+
 // INLINE METHODS
-
-
-
-
-
-
-
-
-
-
-
-
-
 

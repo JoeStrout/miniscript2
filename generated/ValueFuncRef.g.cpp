@@ -6,17 +6,4 @@
 namespace MiniScript {
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 } // end of namespace MiniScript

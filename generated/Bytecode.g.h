@@ -8,8 +8,27 @@ namespace MiniScript {
 
 // FORWARD DECLARATIONS
 
+struct CallInfo;
+class CallInfoStorage;
+struct VMVis;
+class VMVisStorage;
+struct Assembler;
+class AssemblerStorage;
+struct FuncDef;
+class FuncDefStorage;
+struct App;
+class AppStorage;
+struct Lexer;
+class LexerStorage;
 
 // DECLARATIONS
+
+
+
+
+
+
+
 
 
 // Opcodes.  Note that these must have sequential values, starting at 0.
@@ -117,9 +136,11 @@ class BytecodeUtil {
 }; // end of struct BytecodeUtil
 
 
+
+
+
+
 // INLINE METHODS
-
-
 
 } // end of namespace MiniScript
 

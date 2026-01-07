@@ -14,13 +14,6 @@
 namespace MiniScript {
 
 
-
-
-
-
-
-
-
 AssemblerStorage::AssemblerStorage() {
 		Functions =  List<FuncDef>();
 		Current =  FuncDef();
@@ -36,7 +29,7 @@ AssemblerStorage::AssemblerStorage() {
 
 	// Helper to find a function by name (returns -1 if not found)
 	public Int32 FindFunctionIndex(String name) {
-		for (Int32 i = 0; i < Functions::Count; i++) {
+		for (Int32 i = 0; i < Functions.Count(); i++) {
 			if (Functions[i].Name == name) return i;
 		}
 		return -1;
@@ -148,10 +141,10 @@ AssemblerStorage::AssemblerStorage() {
 		List<String> parts = GetTokens(line);
 		
 		// Check if first token is a label and remove it
-		if (parts::Count > 0 && IsLabel(parts[0])) parts::RemoveAt(0);
+		if (parts.Count() > 0 && IsLabel(parts[0])) parts::RemoveAt(0);
 
 		// If there is no instruction on Assembler(shared_from_this()) line, return 0
-		if (parts::Count == 0) return 0;
+		if (parts.Count() == 0) return 0;
 
 		String mnemonic = parts[0];
 		UInt32 instruction = 0;
@@ -160,7 +153,7 @@ AssemblerStorage::AssemblerStorage() {
 		if (mnemonic == ".param") {
 			// .param paramName
 			// .param paramName=defaultValue
-			if (parts::Count < 2) {
+			if (parts.Count() < 2) {
 				Error("Syntax error: .param requires a parameter name");
 				return 0;
 			}
@@ -171,7 +164,7 @@ AssemblerStorage::AssemblerStorage() {
 
 			// Check if there's a default value (e::g., "b=1")
 			Int32 equalsPos = -1;
-			for (Int32 i = 0; i < paramSpec::Length; i++) {
+			for (Int32 i = 0; i < paramSpec.Length(); i++) {
 				if (paramSpec[i] == '=') {
 					equalsPos = i;
 					break;
@@ -180,8 +173,8 @@ AssemblerStorage::AssemblerStorage() {
 
 			if (equalsPos >= 0) {
 				// Has default value
-				paramName = paramSpec::Substring(0, equalsPos);
-				String defaultStr = paramSpec::Substring(equalsPos + 1);
+				paramName = paramSpec.Substring(0, equalsPos);
+				String defaultStr = paramSpec.Substring(equalsPos + 1);
 				defaultValue = ParseAsConstant(defaultStr);
 			} else {
 				// No default value (defaults to null)
@@ -200,7 +193,7 @@ AssemblerStorage::AssemblerStorage() {
 			instruction = BytecodeUtil::INS(Opcode::NOOP);
 			
 		} else if (mnemonic == "LOAD") {
-			if (parts::Count != 3) {
+			if (parts.Count() != 3) {
 				Error("Syntax error: LOAD requires exactly 2 operands");
 				return 0;
 			}
@@ -217,7 +210,7 @@ AssemblerStorage::AssemblerStorage() {
 				instruction = BytecodeUtil::INS_ABC(Opcode::LOAD_rA_rB, dest, srcReg, 0);
 			} else if (source[0] == 'k') {
 				// LOAD r3, k20  -->  LOAD_rA_kBC (explicit constant reference)
-				Int16 constIdx = ParseInt16(source::Substring(1));
+				Int16 constIdx = ParseInt16(source.Substring(1));
 				instruction = BytecodeUtil::INS_AB(Opcode::LOAD_rA_kBC, dest, constIdx);
 			} else if (NeedsConstant(source)) {
 				// String literals, floats, or large integers -> add to constants table
@@ -233,7 +226,7 @@ AssemblerStorage::AssemblerStorage() {
 		} else if (mnemonic == "LOADV") {
 			// LOADV r1, r2, "varname"  -->  LOADV_rA_rB_kC
 			// Load value from r2 into r1, but verify that r2 has name matching varname
-			if (parts::Count != 4) {
+			if (parts.Count() != 4) {
 				Error("Syntax error: LOADV requires exactly 3 operands");
 				return 0;
 			}
@@ -251,7 +244,7 @@ AssemblerStorage::AssemblerStorage() {
 		} else if (mnemonic == "LOADC") {
 			// LOADC r1, r2, "varname"  -->  LOADC_rA_rB_kC
 			// Load value from r2 into r1, but verify name matches varname and call if funcref
-			if (parts::Count != 4) {
+			if (parts.Count() != 4) {
 				Error("Syntax error: LOADC requires exactly 3 operands");
 				return 0;
 			}
@@ -269,7 +262,7 @@ AssemblerStorage::AssemblerStorage() {
 		} else if (mnemonic == "FUNCREF") {
 			// FUNCREF r1, 5  -->  FUNCREF_iA_iBC
 			// Store make_funcref(funcIndex) into register A
-			if (parts::Count != 3) {
+			if (parts.Count() != 3) {
 				Error("Syntax error: FUNCREF requires exactly 2 operands");
 				return 0;
 			}
@@ -281,7 +274,7 @@ AssemblerStorage::AssemblerStorage() {
 		} else if (mnemonic == "ASSIGN") {
 			// ASSIGN r1, r2, k3  -->  ASSIGN_rA_rB_kC
 			// Copy value from r2 to r1, and assign variable name from constants[3]
-			if (parts::Count != 4) {
+			if (parts.Count() != 4) {
 				Error("Syntax error: ASSIGN requires exactly 3 operands");
 				return 0;
 			}
@@ -300,7 +293,7 @@ AssemblerStorage::AssemblerStorage() {
 		} else if (mnemonic == "NAME") {
 			// NAME r1, "varname"  -->  NAME_rA_kBC
 			// Set variable name for r1 without changing its value
-			if (parts::Count != 3) {
+			if (parts.Count() != 3) {
 				Error("Syntax error: NAME requires exactly 2 operands");
 				return 0;
 			}
@@ -316,7 +309,7 @@ AssemblerStorage::AssemblerStorage() {
 			Current.ReserveRegister(dest);
 
 		} else if (mnemonic == "ADD") {
-			if (parts::Count != 4) {
+			if (parts.Count() != 4) {
 				Error("Syntax error: ADD requires exactly 3 operands");
 				return 0;
 			}
@@ -330,7 +323,7 @@ AssemblerStorage::AssemblerStorage() {
 			instruction = BytecodeUtil::INS_ABC(Opcode::ADD_rA_rB_rC, dest, src1, src2);
 			
 		} else if (mnemonic == "SUB") {
-			if (parts::Count != 4) { Error("Syntax error"); return 0; }
+			if (parts.Count() != 4) { Error("Syntax error"); return 0; }
 			Byte dest = ParseRegister(parts[1]);
 			Current.ReserveRegister(dest);
 			Byte src1 = ParseRegister(parts[2]);
@@ -338,7 +331,7 @@ AssemblerStorage::AssemblerStorage() {
 			instruction = BytecodeUtil::INS_ABC(Opcode::SUB_rA_rB_rC, dest, src1, src2);
 			
 		} else if (mnemonic == "MULT") {
-			if (parts::Count != 4) { Error("Syntax error"); return 0; }
+			if (parts.Count() != 4) { Error("Syntax error"); return 0; }
 			Byte dest = ParseRegister(parts[1]);
 			Current.ReserveRegister(dest);
 			Byte src1 = ParseRegister(parts[2]);
@@ -346,7 +339,7 @@ AssemblerStorage::AssemblerStorage() {
 			instruction = BytecodeUtil::INS_ABC(Opcode::MULT_rA_rB_rC, dest, src1, src2);
 		
 		} else if (mnemonic == "DIV") {
-			if (parts::Count != 4) { Error("Syntax error"); return 0; }
+			if (parts.Count() != 4) { Error("Syntax error"); return 0; }
 			Byte dest = ParseRegister(parts[1]);
 			Current.ReserveRegister(dest);
 			Byte src1 = ParseRegister(parts[2]);
@@ -354,7 +347,7 @@ AssemblerStorage::AssemblerStorage() {
 			instruction = BytecodeUtil::INS_ABC(Opcode::DIV_rA_rB_rC, dest, src1, src2);
 
 		} else if (mnemonic == "MOD") {
-			if (parts::Count != 4) { Error("Syntax error"); return 0; }
+			if (parts.Count() != 4) { Error("Syntax error"); return 0; }
 			Byte dest = ParseRegister(parts[1]);
 			Current.ReserveRegister(dest);
 			Byte src1 = ParseRegister(parts[2]);
@@ -362,27 +355,27 @@ AssemblerStorage::AssemblerStorage() {
 			instruction = BytecodeUtil::INS_ABC(Opcode::MOD_rA_rB_rC, dest, src1, src2);
 		
 		} else if (mnemonic == "LIST") {
-			if (parts::Count != 3) { Error("Syntax error"); return 0; }
+			if (parts.Count() != 3) { Error("Syntax error"); return 0; }
 			Byte dest = ParseRegister(parts[1]);
 			Current.ReserveRegister(dest);
 			Int16 capacity = ParseInt16(parts[2]);
 			instruction = BytecodeUtil::INS_AB(Opcode::LIST_rA_iBC, dest, capacity);
 
 		} else if (mnemonic == "MAP") {
-			if (parts::Count != 3) { Error("Syntax error"); return 0; }
+			if (parts.Count() != 3) { Error("Syntax error"); return 0; }
 			Byte dest = ParseRegister(parts[1]);
 			Current.ReserveRegister(dest);
 			Int16 capacity = ParseInt16(parts[2]);
 			instruction = BytecodeUtil::INS_AB(Opcode::MAP_rA_iBC, dest, capacity);
 
 		} else if (mnemonic == "PUSH") {
-			if (parts::Count != 3) { Error("Syntax error"); return 0; }
+			if (parts.Count() != 3) { Error("Syntax error"); return 0; }
 			Byte listReg = ParseRegister(parts[1]);
 			Byte valueReg = ParseRegister(parts[2]);
 			instruction = BytecodeUtil::INS_ABC(Opcode::PUSH_rA_rB, listReg, valueReg, 0);
 		
 		} else if (mnemonic == "INDEX") {
-			if (parts::Count != 4) { Error("Syntax error"); return 0; }
+			if (parts.Count() != 4) { Error("Syntax error"); return 0; }
 			Byte dest = ParseRegister(parts[1]);
 			Current.ReserveRegister(dest);
 			Byte listReg = ParseRegister(parts[2]);
@@ -390,32 +383,32 @@ AssemblerStorage::AssemblerStorage() {
 			instruction = BytecodeUtil::INS_ABC(Opcode::INDEX_rA_rB_rC, dest, listReg, indexReg);
 		
 		} else if (mnemonic == "IDXSET") {
-			if (parts::Count != 4) { Error("Syntax error"); return 0; }
+			if (parts.Count() != 4) { Error("Syntax error"); return 0; }
 			Byte listReg = ParseRegister(parts[1]);
 			Byte indexReg = ParseRegister(parts[2]);
 			Byte valueReg = ParseRegister(parts[3]);
 			instruction = BytecodeUtil::INS_ABC(Opcode::IDXSET_rA_rB_rC, listReg, indexReg, valueReg);
 
 		} else if (mnemonic == "LOCALS") {
-			if (parts::Count != 2) { Error("Syntax error: LOCALS requires exactly 1 operand"); return 0; }
+			if (parts.Count() != 2) { Error("Syntax error: LOCALS requires exactly 1 operand"); return 0; }
 			Byte reg = ParseRegister(parts[1]);
 			Current.ReserveRegister(reg);
 			instruction = BytecodeUtil::INS_A(Opcode::LOCALS_rA, reg);
 
 		} else if (mnemonic == "OUTER") {
-			if (parts::Count != 2) { Error("Syntax error: OUTER requires exactly 1 operand"); return 0; }
+			if (parts.Count() != 2) { Error("Syntax error: OUTER requires exactly 1 operand"); return 0; }
 			Byte reg = ParseRegister(parts[1]);
 			Current.ReserveRegister(reg);
 			instruction = BytecodeUtil::INS_A(Opcode::OUTER_rA, reg);
 
 		} else if (mnemonic == "GLOBALS") {
-			if (parts::Count != 2) { Error("Syntax error: GLOBALS requires exactly 1 operand"); return 0; }
+			if (parts.Count() != 2) { Error("Syntax error: GLOBALS requires exactly 1 operand"); return 0; }
 			Byte reg = ParseRegister(parts[1]);
 			Current.ReserveRegister(reg);
 			instruction = BytecodeUtil::INS_A(Opcode::GLOBALS_rA, reg);
 
 		} else if (mnemonic == "JUMP") {
-			if (parts::Count != 2) { Error("Syntax error"); return 0; }
+			if (parts.Count() != 2) { Error("Syntax error"); return 0; }
 			String target = parts[1];
 			Int32 offset;
 			
@@ -423,7 +416,7 @@ AssemblerStorage::AssemblerStorage() {
 			Int32 labelAddr = FindLabelAddress(target);
 			if (labelAddr >= 0) {
 				// It's a label - calculate relative offset from next instruction
-				offset = labelAddr - (Current.Code()::Count + 1);
+				offset = labelAddr - (Current.Code().Count() + 1);
 			} else {
 				// It's a number (up to 24 bits allowed)
 				offset = ParseInt24(target);
@@ -431,7 +424,7 @@ AssemblerStorage::AssemblerStorage() {
 			instruction = BytecodeUtil::INS(Opcode::JUMP_iABC) | (UInt32)(offset & 0xFFFFFF);
 
 		} else if (mnemonic == "LT") {
-			if (parts::Count != 4) { Error("Syntax error"); return 0; }
+			if (parts.Count() != 4) { Error("Syntax error"); return 0; }
 			
 			if (parts[3][0] == 'r') {
 				if (parts[2][0] == 'r') {
@@ -460,7 +453,7 @@ AssemblerStorage::AssemblerStorage() {
 			}
 
 		} else if (mnemonic == "LE") {
-			if (parts::Count != 4) { Error("Syntax error"); return 0; }
+			if (parts.Count() != 4) { Error("Syntax error"); return 0; }
 			
 			if (parts[3][0] == 'r') {
 				if (parts[2][0] == 'r') {
@@ -489,7 +482,7 @@ AssemblerStorage::AssemblerStorage() {
 			}
 
 		} else if (mnemonic == "EQ") {
-			if (parts::Count != 4) { Error("Syntax error"); return 0; }
+			if (parts.Count() != 4) { Error("Syntax error"); return 0; }
 
 			Byte reg1 = ParseRegister(parts[1]);
 			Current.ReserveRegister(reg1);
@@ -506,7 +499,7 @@ AssemblerStorage::AssemblerStorage() {
 			}
 
 		} else if (mnemonic == "NE") {
-			if (parts::Count != 4) { Error("Syntax error"); return 0; }
+			if (parts.Count() != 4) { Error("Syntax error"); return 0; }
 
 			Byte reg1 = ParseRegister(parts[1]);
 			Current.ReserveRegister(reg1);
@@ -523,7 +516,7 @@ AssemblerStorage::AssemblerStorage() {
 			}
 		
 		} else if (mnemonic == "BRTRUE") {
-			if (parts::Count != 3) { Error("Syntax error"); return 0; }
+			if (parts.Count() != 3) { Error("Syntax error"); return 0; }
 
 			Byte reg1 = ParseRegister(parts[1]);
 			String target = parts[2];
@@ -533,7 +526,7 @@ AssemblerStorage::AssemblerStorage() {
 			Int32 labelAddr = FindLabelAddress(target);
 			if (labelAddr >= 0) {
 				// It's a label - calculate relative offset from next instruction
-				offset = labelAddr - (Current.Code()::Count + 1);
+				offset = labelAddr - (Current.Code().Count() + 1);
 			} else {
 				// It's a number
 				offset = ParseInt32(target);
@@ -549,7 +542,7 @@ AssemblerStorage::AssemblerStorage() {
 			instruction = BytecodeUtil::INS_AB(Opcode::BRTRUE_rA_iBC, reg1, (Int16)offset);
 
 		} else if (mnemonic == "BRFALSE") {
-			if (parts::Count != 3) { Error("Syntax error"); return 0; }
+			if (parts.Count() != 3) { Error("Syntax error"); return 0; }
 
 			Byte reg1 = ParseRegister(parts[1]);
 			String target = parts[2];
@@ -559,7 +552,7 @@ AssemblerStorage::AssemblerStorage() {
 			Int32 labelAddr = FindLabelAddress(target);
 			if (labelAddr >= 0) {
 				// It's a label - calculate relative offset from next instruction
-				offset = labelAddr - (Current.Code()::Count + 1);
+				offset = labelAddr - (Current.Code().Count() + 1);
 			} else {
 				// It's a number
 				offset = ParseInt32(target);
@@ -575,7 +568,7 @@ AssemblerStorage::AssemblerStorage() {
 			instruction = BytecodeUtil::INS_AB(Opcode::BRFALSE_rA_iBC, reg1, (Int16)offset);
 
 		} else if (mnemonic == "BRLT") {
-			if (parts::Count != 4) { Error("Syntax error"); return 0; }
+			if (parts.Count() != 4) { Error("Syntax error"); return 0; }
 
 			String target = parts[3];
 			Int32 offset;
@@ -584,7 +577,7 @@ AssemblerStorage::AssemblerStorage() {
 			Int32 labelAddr = FindLabelAddress(target);
 			if (labelAddr >= 0) {
 				// It's a label - calculate relative offset from next instruction
-				offset = labelAddr - (Current.Code()::Count + 1);
+				offset = labelAddr - (Current.Code().Count() + 1);
 			} else {
 				// It's a number
 				offset = ParseInt32(target);
@@ -616,7 +609,7 @@ AssemblerStorage::AssemblerStorage() {
 				instruction = BytecodeUtil::INS_ABC(Opcode::BRLT_rA_iB_iC, reg1, immediate, (Byte)offset);
 			}
 		} else if (mnemonic == "BRLE") {
-			if (parts::Count != 4) { Error("Syntax error"); return 0; }
+			if (parts.Count() != 4) { Error("Syntax error"); return 0; }
 
 			String target = parts[3];
 			Int32 offset;
@@ -625,7 +618,7 @@ AssemblerStorage::AssemblerStorage() {
 			Int32 labelAddr = FindLabelAddress(target);
 			if (labelAddr >= 0) {
 				// It's a label - calculate relative offset from next instruction
-				offset = labelAddr - (Current.Code()::Count + 1);
+				offset = labelAddr - (Current.Code().Count() + 1);
 			} else {
 				// It's a number
 				offset = ParseInt32(target);
@@ -658,7 +651,7 @@ AssemblerStorage::AssemblerStorage() {
 			}			
 
 		} else if (mnemonic == "BREQ") {
-			if (parts::Count != 4) { Error("Syntax error"); return 0; }
+			if (parts.Count() != 4) { Error("Syntax error"); return 0; }
 
 			String target = parts[3];
 			Int32 offset;
@@ -667,7 +660,7 @@ AssemblerStorage::AssemblerStorage() {
 			Int32 labelAddr = FindLabelAddress(target);
 			if (labelAddr >= 0) {
 				// It's a label - calculate relative offset from next instruction
-				offset = labelAddr - (Current.Code()::Count + 1);
+				offset = labelAddr - (Current.Code().Count() + 1);
 			} else {
 				// It's a number
 				offset = ParseInt32(target);
@@ -692,7 +685,7 @@ AssemblerStorage::AssemblerStorage() {
 			}
 	
 		} else if (mnemonic == "BRNE") {
-			if (parts::Count != 4) { Error("Syntax error"); return 0; }
+			if (parts.Count() != 4) { Error("Syntax error"); return 0; }
 
 			String target = parts[3];
 			Int32 offset;
@@ -701,7 +694,7 @@ AssemblerStorage::AssemblerStorage() {
 			Int32 labelAddr = FindLabelAddress(target);
 			if (labelAddr >= 0) {
 				// It's a label - calculate relative offset from next instruction
-				offset = labelAddr - (Current.Code()::Count + 1);
+				offset = labelAddr - (Current.Code().Count() + 1);
 			} else {
 				// It's a number
 				offset = ParseInt32(target);
@@ -726,7 +719,7 @@ AssemblerStorage::AssemblerStorage() {
 			}
 
 		} else if (mnemonic == "IFLT") {
-			if (parts::Count != 3) { Error("Syntax error"); return 0; }
+			if (parts.Count() != 3) { Error("Syntax error"); return 0; }
 			
 			if (parts[2][0] == 'r') {
 				if (parts[1][0] == 'r') {
@@ -749,7 +742,7 @@ AssemblerStorage::AssemblerStorage() {
 			}
 		
 		} else if (mnemonic == "IFLE") {
-			if (parts::Count != 3) { Error("Syntax error"); return 0; }
+			if (parts.Count() != 3) { Error("Syntax error"); return 0; }
 			
 			if (parts[2][0] == 'r') {
 				if (parts[1][0] == 'r') {
@@ -771,7 +764,7 @@ AssemblerStorage::AssemblerStorage() {
 			}
 
 		} else if (mnemonic == "IFEQ") {
-			if (parts::Count != 3) { Error("Syntax error"); return 0; }
+			if (parts.Count() != 3) { Error("Syntax error"); return 0; }
 
 			Byte reg1 = ParseRegister(parts[1]);
 
@@ -786,7 +779,7 @@ AssemblerStorage::AssemblerStorage() {
 			}
 
 		} else if (mnemonic == "IFNE") {
-			if (parts::Count != 3) { Error("Syntax error"); return 0; }
+			if (parts.Count() != 3) { Error("Syntax error"); return 0; }
 
 			Byte reg1 = ParseRegister(parts[1]);
 
@@ -801,7 +794,7 @@ AssemblerStorage::AssemblerStorage() {
 			}
 
 		} else if (mnemonic == "ARGBLK") {
-			if (parts::Count != 2) { Error("Syntax error: ARGBLK requires exactly 1 operand"); return 0; }
+			if (parts.Count() != 2) { Error("Syntax error: ARGBLK requires exactly 1 operand"); return 0; }
 			Int32 argCount = ParseInt32(parts[1]);
 			if (argCount < 0 || argCount > 0xFFFFFF) {
 				Error("ARGBLK argument count out of range");
@@ -810,7 +803,7 @@ AssemblerStorage::AssemblerStorage() {
 			instruction = BytecodeUtil::INS(Opcode::ARGBLK_iABC) | (UInt32)(argCount & 0xFFFFFF);
 
 		} else if (mnemonic == "ARG") {
-			if (parts::Count != 2) { Error("Syntax error: ARG requires exactly 1 operand"); return 0; }
+			if (parts.Count() != 2) { Error("Syntax error: ARG requires exactly 1 operand"); return 0; }
 			String arg = parts[1];
 
 			if (arg[0] == 'r') {
@@ -828,7 +821,7 @@ AssemblerStorage::AssemblerStorage() {
 			}
 
 		} else if (mnemonic == "CALLF") {
-			if (parts::Count != 3) { Error("Syntax error"); return 0; }
+			if (parts.Count() != 3) { Error("Syntax error"); return 0; }
 			Byte reserveRegs = (Byte)ParseInt16(parts[1]);	// ToDo: check range before typecast
 			Int16 funcIdx = (Int16)FindFunctionIndex(parts[2]);
 			if (funcIdx < 0) {
@@ -838,7 +831,7 @@ AssemblerStorage::AssemblerStorage() {
 			instruction = BytecodeUtil::INS_AB(Opcode::CALLF_iA_iBC, reserveRegs, funcIdx);
 
 		} else if (mnemonic == "CALLFN") {
-			if (parts::Count != 3) { Error("Syntax error"); return 0; }
+			if (parts.Count() != 3) { Error("Syntax error"); return 0; }
 			Byte reserveRegs = (Byte)ParseInt16(parts[1]);	// ToDo: check range before typecast
 			Value constantValue = ParseAsConstant(parts[2]); GC_PROTECT(&constantValue);
 			if (!is_string(constantValue)) {
@@ -849,7 +842,7 @@ AssemblerStorage::AssemblerStorage() {
 			instruction = BytecodeUtil::INS_AB(Opcode::CALLFN_iA_kBC, reserveRegs, (Int16)constIdx);
 
 		} else if (mnemonic == "CALL") {
-			if (parts::Count != 4) { Error("Syntax error: CALL requires exactly 3 operands"); return 0; }
+			if (parts.Count() != 4) { Error("Syntax error: CALL requires exactly 3 operands"); return 0; }
 			Byte destReg = ParseRegister(parts[1]);
 			Current.ReserveRegister(destReg);
 			Byte stackReg = ParseRegister(parts[2]);
@@ -1026,7 +1019,7 @@ AssemblerStorage::AssemblerStorage() {
 
 	// Helper to find the address of a label
 	private Int32 FindLabelAddress(String labelName) {
-		for (Int32 i = 0; i < _labelNames::Count; i++) {
+		for (Int32 i = 0; i < _labelNames.Count(); i++) {
 			if (_labelNames[i] == labelName) return _labelAddresses[i];
 		}
 		return -1; // not found
@@ -1035,13 +1028,13 @@ AssemblerStorage::AssemblerStorage() {
 	// Helper to add a constant to the constants table and return its index
 	private Int32 AddConstant(Value value) {
 		// First look for an existing content that is the same value
-		for (Int32 i = 0; i < Current.Constants()::Count; i++) {
+		for (Int32 i = 0; i < Current.Constants().Count(); i++) {
 			if (value_identical(Current.Constants()[i], value)) return i;
 		}
 		
 		// Failing that, add it to the table
 		Current.Constants()::Add(value);
-		return Current.Constants()::Count - 1;
+		return Current.Constants().Count() - 1;
 	}
 
 	// Helper to check if a token is a string literal (surrounded by quotes)
@@ -1119,10 +1112,10 @@ AssemblerStorage::AssemblerStorage() {
 		
 		// Parse fractional part
 		String fracPart = str::Substring(dotPos + 1);
-		if (fracPart::Length > 0) {
+		if (fracPart.Length() > 0) {
 			Double fracValue = (Double)ParseInt16(fracPart);
 			Double divisor = 1.0;
-			for (Int32 i = 0; i < fracPart::Length; i++) {
+			for (Int32 i = 0; i < fracPart.Length(); i++) {
 				divisor *= 10.0;
 			}
 			result += fracValue / divisor;
@@ -1156,7 +1149,7 @@ AssemblerStorage::AssemblerStorage() {
 		for (lineNum = 0; lineNum < sourceLines::Count; lineNum++) {
 			if (HasError) return; // Bail out if error occurred
 			List<String> tokens = GetTokens(sourceLines[lineNum]);
-			if (tokens::Count < 1 || !IsFunctionLabel(tokens[0])) continue;
+			if (tokens.Count() < 1 || !IsFunctionLabel(tokens[0])) continue;
 			String funcName = ParseLabel(tokens[0]);
 			if (!AddFunction(funcName)) return;
 			if (tokens[0] == "@main:") sawMain = true;
@@ -1167,7 +1160,7 @@ AssemblerStorage::AssemblerStorage() {
 		lineNum = 0;
 		while (lineNum < sourceLines::Count && !HasError) {			
 			List<String> tokens = GetTokens(sourceLines[lineNum]);
-			if (tokens::Count == 0) { // empty line or comment only
+			if (tokens.Count() == 0) { // empty line or comment only
 				lineNum++;
 				continue;
 			}
@@ -1202,7 +1195,7 @@ AssemblerStorage::AssemblerStorage() {
 		// in the pool that was active when we started (i::e. a non-temporary pool)
 		if (tempPool != 0) {
 			MemPoolShim::SetDefaultStringPool(savedPool);
-			for (Int32 i = 0; i < Functions::Count; i++) {
+			for (Int32 i = 0; i < Functions.Count(); i++) {
 				// Re-intern function name in pool 0 (Assembler(shared_from_this()) creates a  String in pool 0)
 				Functions[i].Name = MemPoolShim::InternString(Functions[i].Name);
 			}
@@ -1225,7 +1218,7 @@ AssemblerStorage::AssemblerStorage() {
 		Int32 endLine = sourceLines::Count;
 		for (Int32 i = startLine; i < endLine && !HasError; i++) {
 			List<String> tokens = GetTokens(sourceLines[i]);
-			if (tokens::Count == 0) continue;
+			if (tokens.Count() == 0) continue;
 
 			// Skip initial function label line
 			if (i == startLine && IsFunctionLabel(tokens[0])) {
@@ -1247,7 +1240,7 @@ AssemblerStorage::AssemblerStorage() {
 			}
 
 			// Check if there's an instruction on Assembler(shared_from_this()) line
-			if (!IsLabel(tokens[0]) || tokens[0] == "NOOP" || tokens::Count > 1) {
+			if (!IsLabel(tokens[0]) || tokens[0] == "NOOP" || tokens.Count() > 1) {
 				instructionAddress++;
 			}
 		}
@@ -1265,11 +1258,6 @@ AssemblerStorage::AssemblerStorage() {
 
 
 }
-
-
-
-
-
 
 
 } // end of namespace MiniScript

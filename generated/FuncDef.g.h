@@ -12,14 +12,14 @@ namespace MiniScript {
 
 struct CallInfo;
 class CallInfoStorage;
-struct AcceptException;
-class AcceptExceptionStorage;
 struct VMVis;
 class VMVisStorage;
 struct Assembler;
 class AssemblerStorage;
 struct FuncDef;
 class FuncDefStorage;
+struct App;
+class AppStorage;
 struct Lexer;
 class LexerStorage;
 
@@ -36,9 +36,14 @@ class LexerStorage;
 
 
 
-
 // Function definition: code, constants, and how many registers it needs
+
+
+	// Returns a string like "functionName(a, b=1, c=0)"
+
+	// Conversion to bool: returns true if function has a name
 	public: operator bool() { return Name != ""; }
+
 
 
 class FuncDefStorage : public std::enable_shared_from_this<FuncDefStorage> {
@@ -76,18 +81,5 @@ struct FuncDef {
 
 
 // INLINE METHODS
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 } // end of namespace MiniScript

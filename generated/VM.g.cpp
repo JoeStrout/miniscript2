@@ -15,8 +15,7 @@
 namespace MiniScript {
 
 
-
-CallInfoStorage::CallInfoStorage(Int32 returnPC, Int32 returnBase, Int32 returnFuncIndex, Int32 copyToReg=-1) {
+CallInfoStorage::CallInfoStorage(Int32 returnPC, Int32 returnBase, Int32 returnFuncIndex, Int32 copyToReg) {
 		ReturnPC = returnPC;
 		ReturnBase = returnBase;
 		ReturnFuncIndex = returnFuncIndex;
@@ -48,19 +47,19 @@ CallInfoStorage::CallInfoStorage(Int32 returnPC, Int32 returnBase, Int32 returnF
 	}
 }
 Int32 CallInfoStorage::StackSize() {
-		return stack::Count;
+		return stack.Count();
 	}
 	public Int32 CallStackDepth() {
 		return callStackTop;
 	}
 
 	public Value GetStackValue(Int32 index) {
-		if (index < 0 || index >= stack::Count) return make_null();
+		if (index < 0 || index >= stack.Count()) return make_null();
 		return stack[index];
 	}
 
 	public Value GetStackName(Int32 index) {
-		if (index < 0 || index >= names::Count) return make_null();
+		if (index < 0 || index >= names.Count()) return make_null();
 		return names[index];
 	}
 
@@ -70,7 +69,7 @@ Int32 CallInfoStorage::StackSize() {
 	}
 
 	public String GetFunctionName(Int32 funcIndex) {
-		if (funcIndex < 0 || funcIndex >= functions::Count) return "???";
+		if (funcIndex < 0 || funcIndex >= functions.Count()) return "???";
 		return functions[funcIndex].Name;
 	}
 
@@ -129,7 +128,7 @@ Int32 CallInfoStorage::StackSize() {
 
 		// Find the entry function index
 		_currentFuncIndex = -1;
-		for (Int32 i = 0; i < functions::Count; i++) {
+		for (Int32 i = 0; i < functions.Count(); i++) {
 			if (functions[i].Name == mainFunc::Name) {
 				_currentFuncIndex = i;
 				break;
@@ -147,7 +146,7 @@ Int32 CallInfoStorage::StackSize() {
 		EnsureFrame(BaseIndex, CurrentFunction::MaxRegs);
 
 		if (DebugMode) {
-			IOHelper::Print(StringUtils::Format("VM Reset: Executing {0} out of {1} functions", mainFunc::Name, functions::Count));
+			IOHelper::Print(StringUtils::Format("VM Reset: Executing {0} out of {1} functions", mainFunc::Name, functions.Count()));
 		}
 	}
 
@@ -381,7 +380,7 @@ Int32 CallInfoStorage::StackSize() {
 						// Harder case: value is a funcref, which we must invoke,
 						// and then copy the result into localStack[a] upon return::
 						Int32 funcIndex = funcref_index(val);
-						if (funcIndex < 0 || funcIndex >= functions::Count) {
+						if (funcIndex < 0 || funcIndex >= functions.Count()) {
 							IOHelper::Print("LOADC to invalid func");
 							return make_null();
 						}
@@ -390,7 +389,7 @@ Int32 CallInfoStorage::StackSize() {
 						Value outerVars = funcref_outer_vars(val); GC_PROTECT(&outerVars);
 
 						// Push return info with closure context
-						if (callStackTop >= callStack::Count) {
+						if (callStackTop >= callStack.Count()) {
 							IOHelper::Print("Call stack overflow");
 							return make_null();
 						}
@@ -954,7 +953,7 @@ Int32 CallInfoStorage::StackSize() {
 						}
 
 						Int32 funcIndex = funcref_index(funcRefValue);
-						if (funcIndex < 0 || funcIndex >= functions::Count) {
+						if (funcIndex < 0 || funcIndex >= functions.Count()) {
 							RaiseRuntimeError("ARGBLK/CALL: Invalid function index");
 							return make_null();
 						}
@@ -974,7 +973,7 @@ Int32 CallInfoStorage::StackSize() {
 					SetupCallFrame(argCount, calleeBase, callee);
 
 					// Now execute the CALL (step 6): push CallInfo and switch to callee
-					if (callStackTop >= callStack::Count) {
+					if (callStackTop >= callStack.Count()) {
 						RaiseRuntimeError("Call stack overflow");
 						return make_null();
 					}
@@ -1017,7 +1016,7 @@ Int32 CallInfoStorage::StackSize() {
 					Byte a = BytecodeUtil::Au(instruction);
 					UInt16 funcIndex = BytecodeUtil::BCu(instruction);
 					
-					if (funcIndex >= functions::Count) {
+					if (funcIndex >= functions.Count()) {
 						IOHelper::Print("CALLF to invalid func");
 						return make_null();
 					}
@@ -1025,7 +1024,7 @@ Int32 CallInfoStorage::StackSize() {
 					FuncDef callee = functions[funcIndex];
 
 					// Push return info
-					if (callStackTop >= callStack::Count) {
+					if (callStackTop >= callStack.Count()) {
 						IOHelper::Print("Call stack overflow");
 						return make_null();
 					}
@@ -1076,7 +1075,7 @@ Int32 CallInfoStorage::StackSize() {
 					}
 
 					Int32 funcIndex = funcref_index(funcRefValue);
-					if (funcIndex < 0 || funcIndex >= functions::Count) {
+					if (funcIndex < 0 || funcIndex >= functions.Count()) {
 						IOHelper::Print("CALL: Invalid function index in FuncRef");
 						return make_null();
 					}
@@ -1087,7 +1086,7 @@ Int32 CallInfoStorage::StackSize() {
 					Int32 calleeBase = baseIndex + b;
 					SetupCallFrame(0, calleeBase, callee); // 0 arguments, use all defaults
 
-					if (callStackTop >= callStack::Count) {
+					if (callStackTop >= callStack.Count()) {
 						IOHelper::Print("Call stack overflow");
 						return make_null();
 					}
@@ -1157,7 +1156,7 @@ Int32 CallInfoStorage::StackSize() {
 
 	private void EnsureFrame(Int32 baseIndex, UInt16 neededRegs) {
 		// Simple implementation - just check bounds
-		if (baseIndex + neededRegs > stack::Count) {
+		if (baseIndex + neededRegs > stack.Count()) {
 			// Simple error handling - just print and continue
 			IOHelper::Print("Stack overflow error");
 		}
@@ -1233,17 +1232,6 @@ Int32 CallInfoStorage::StackSize() {
 		}
 	}
 }
-
-
-
-
-
-
-
-
-
-
-
 
 
 } // end of namespace MiniScript

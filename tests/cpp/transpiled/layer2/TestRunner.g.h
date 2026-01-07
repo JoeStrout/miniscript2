@@ -11,12 +11,31 @@ namespace MiniScript {
 
 // FORWARD DECLARATIONS
 
-struct String;
-class StringStorage;
-struct List;
-class ListStorage;
+struct CallInfo;
+class CallInfoStorage;
+struct VMVis;
+class VMVisStorage;
+struct Assembler;
+class AssemblerStorage;
+struct FuncDef;
+class FuncDefStorage;
+struct App;
+class AppStorage;
+struct Lexer;
+class LexerStorage;
 
 // DECLARATIONS
+
+
+
+
+
+
+
+
+
+
+
 
 
 

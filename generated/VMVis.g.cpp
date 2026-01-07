@@ -11,12 +11,15 @@
 #include "StringUtils.g.h"
 #include "MemPoolShim.g.h"
 #include "CS_Math.h"
+#include "StringUtils.g.h"
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <sys/ioctl.h>
+#include <unistd.h>
+#endif
 
 namespace MiniScript {
-
-
-
-
 
 
 const String VMVis::Esc = "\x1b";
@@ -119,10 +122,10 @@ void VMVisStorage::UpdateScreenSize() {
 			return "        "; // 8 spaces for unnamed variables
 		}
 		String name = StringUtils::Format("{0}", nameVal);
-		if (name::Length <= 8) {
+		if (name.Length() <= 8) {
 			return StringUtils::SpacePad(name, 8);
 		} else {
-			return name::Substring(0, 7) + "…"; // 7 chars + ellipsis
+			return name.Substring(0, 7) + "…"; // 7 chars + ellipsis
 		}
 	}
 
@@ -231,14 +234,6 @@ void VMVisStorage::UpdateScreenSize() {
 		}
 	}
 }
-
-
-
-
-
-
-
-
 
 
 } // end of namespace MiniScript

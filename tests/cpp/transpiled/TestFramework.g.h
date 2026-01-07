@@ -12,14 +12,8 @@ namespace MiniScript {
 
 // FORWARD DECLARATIONS
 
-struct String;
-class StringStorage;
-struct List;
-class ListStorage;
 
 // DECLARATIONS
-
-
 
 
 class TestFramework {

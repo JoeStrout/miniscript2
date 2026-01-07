@@ -10,12 +10,6 @@
 namespace MiniScript {
 
 
-
-
-
-
-
-
 Boolean UnitTests::Assert(Boolean condition, String message) {
 		if (condition) return true;
 		IOHelper::Print( String("Unit test failure: ") + message);
@@ -32,7 +26,7 @@ Boolean UnitTests::Assert(Boolean condition, String message) {
 	public static Boolean AssertEqual(UInt32 actual, UInt32 expected) {
 		if (actual == expected) return true;
 		Assert(false,  String("Unit test failure: expected 0x")
-		  + StringUtils::ToHex(expected) + "\" but got 0x" + StringUtils.ToHex(actual));
+		  + StringUtils::ToHex(expected) + "\" but got 0x" + StringUtils::ToHex(actual));
 		return false;
 	}
 		
@@ -137,7 +131,7 @@ Boolean UnitTests::Assert(Boolean condition, String message) {
 		asmOk = asmOk && Assert(mainFunc, "@main function not found");
 		
 		// Verify the assembled instructions
-		asmOk = asmOk && AssertEqual(mainFunc.Code()::Count, 6); // 6 instructions (label doesn't count)
+		asmOk = asmOk && AssertEqual(mainFunc.Code().Count(), 6); // 6 instructions (label doesn't count)
 		
 		// Check that JUMP loop resolves to correct relative offset
 		// loop is at instruction 1, JUMP is at instruction 5, so offset should be 1-5 = -4
@@ -167,7 +161,7 @@ Boolean UnitTests::Assert(Boolean condition, String message) {
 			BytecodeUtil::INS_AB(Opcode::LOAD_rA_kBC, 2, 2)); // Should use constant index 2
 		
 		// Verify we have 3 constants
-		asmOk = asmOk && AssertEqual(constFunc.Constants()::Count, 3);
+		asmOk = asmOk && AssertEqual(constFunc.Constants().Count(), 3);
 		
 		// Test small integer (should use immediate form, not constant)
 		List<String> immediateTest =  List<String> {
@@ -182,7 +176,7 @@ Boolean UnitTests::Assert(Boolean condition, String message) {
 		
 		asmOk = asmOk && AssertEqual(immediateFunc.Code()[0],
 			BytecodeUtil::INS_AB(Opcode::LOAD_rA_iBC, 3, 42)); // Should use immediate
-		asmOk = asmOk && AssertEqual(immediateFunc.Constants()::Count, 0); // No constants added
+		asmOk = asmOk && AssertEqual(immediateFunc.Constants().Count(), 0); // No constants added
 		
 		// Test two-pass assembly with multiple constants and instructions
 		List<String> multiTest =  List<String> {
@@ -199,13 +193,13 @@ Boolean UnitTests::Assert(Boolean condition, String message) {
 		asmOk = asmOk && Assert(multiFunc, "@main function not found in multi test");
 		
 		// Check that we have 2 constants
-		asmOk = asmOk && AssertEqual(multiFunc.Constants()::Count, 2);
+		asmOk = asmOk && AssertEqual(multiFunc.Constants().Count(), 2);
 		
 		// Check that we have 4 instructions
-		asmOk = asmOk && AssertEqual(multiFunc.Code()::Count, 4);
+		asmOk = asmOk && AssertEqual(multiFunc.Code().Count(), 4);
 		
 		// Check specific instructions
-		if (multiFunc.Code()::Count >= 4) {
+		if (multiFunc.Code().Count() >= 4) {
 			// First instruction: LOAD r1, k0 (where k0 = "Hello")
 			asmOk = asmOk && AssertEqual(multiFunc.Code()[0],
 				BytecodeUtil::INS_AB(Opcode::LOAD_rA_kBC, 1, 0));
@@ -307,12 +301,6 @@ Boolean UnitTests::Assert(Boolean condition, String message) {
 			&& TestValueMap();
 	}
 }
-
-
-
-
-
-
 
 
 } // end of namespace MiniScript

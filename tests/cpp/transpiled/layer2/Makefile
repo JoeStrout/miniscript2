@@ -78,7 +78,7 @@ transpile:
 	@echo "  Transpiling TestFramework (shared across all layers)..."
 	cd $(CS_PARENT_DIR) && miniscript ../../../tools/transpile.ms . -o ../../cpp/transpiled
 	@echo "  Transpiling layer2 tests..."
-	cd $(CS_PARENT_DIR) && miniscript ../../../tools/transpile.ms layer2 -o ../../cpp/transpiled/layer2
+	cd $(CS_PARENT_DIR) && miniscript ../../../tools/transpile.ms layer2 -o ../../cpp/transpiled/layer2 -c ../../../cs
 
 # Build the C++ executable
 build: $(OUTPUT)

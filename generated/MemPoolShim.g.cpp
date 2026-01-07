@@ -10,11 +10,6 @@
 namespace MiniScript {
 
 
-
-
-
-
-
 Byte MemPoolShim::GetUnusedPool() {
 		Byte result = MemPoolManager::findUnusedPool();
 		// IOHelper::Print(StringUtils::Format("GetUnusedPool() --> {0}", (Int32)result));
@@ -43,13 +38,6 @@ Byte MemPoolShim::GetUnusedPool() {
 		return String(str.c_str());
 	}
 }
-
-
-
-
-
-
-
 
 
 } // end of namespace MiniScript

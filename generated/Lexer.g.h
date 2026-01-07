@@ -13,18 +13,21 @@ namespace MiniScript {
 
 struct CallInfo;
 class CallInfoStorage;
-struct AcceptException;
-class AcceptExceptionStorage;
 struct VMVis;
 class VMVisStorage;
 struct Assembler;
 class AssemblerStorage;
 struct FuncDef;
 class FuncDefStorage;
+struct App;
+class AppStorage;
 struct Lexer;
 class LexerStorage;
 
 // DECLARATIONS
+
+
+
 
 
 
@@ -60,18 +63,5 @@ struct Lexer : public AbstractScanner<int, LexLocation> {
 
 
 // INLINE METHODS
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 } // end of namespace MiniScript

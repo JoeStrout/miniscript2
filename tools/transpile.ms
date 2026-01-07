@@ -1,3 +1,21 @@
+// C# -> C++ Transpiler for MiniScript 2.0
+//
+// Usage:
+//
+//	miniscript transpile.ms -d -c $CONTEXT_PATH -o $OUTPUT_PATH input1 input2 ...
+//
+// Options:
+//	-c path: path to a "context" directory; we will scan all .cs files in this
+//		directory for context, but not actually transpile them.
+//	-o path: path to output directory, where generated .h/.cpp files should go.
+//	input1 etc.: paths to input directories OR files to transpile; when given
+//		a directory, we transpile all .cs files therein.
+// -d: "debug" mode; run unit tests, and generate verbose debug output.
+//
+// All options are optional.  Default path for -c and -o is the first input 
+// directory (or directory of the first input file).  Debug mode is on by
+// default if given only one input file; otherwise it is off.
+
 import "importUtil"
 import "stringUtil"
 import "listUtil"
@@ -387,7 +405,7 @@ Transpiler.transformStatement = function(trimmedLine)
 			end if
 			// look up RHS type and see if it's static; if so, it needs "::" rather than "."
 			rhsStatic = true
-			if curInfo then
+			if curInfo and i+1 < tokens.len then
 				rhsType = self.lookup(tokens[i+1], curInfo)
 				if rhsType then rhsStatic = rhsType.static
 			end if
@@ -472,11 +490,19 @@ Transpiler.parseParams = function(paramStr)
 	result = []
 	for part in paramStr.split(", ")
 		m = part.match("≤type:w≥ ≤name:w≥ = ≤value≥")
+		if not m then m = part.match("≤type:w≥ ≤name:w≥=≤value≥")
 		if not m then m = part.match("≤type:w≥ ≤name:w≥")
 		if m then
 			result.push VariableInfo.Make(m.name, m.type, Scope.LOCAL)
 		else
-			self.assert false, "Could not parse parameter: " + part
+			m = part.match("≤type:w≥[] ≤name:w≥")
+			if not m then m = part.match("params ≤type:w≥[] ≤name:w≥")
+			if m then
+				result.push VariableInfo.Make(m.name, m.type, Scope.LOCAL)
+				result[-1].array = true
+			else
+				self.assert false, "Could not parse parameter: " + part
+			end if
 		end if
 	end for
 	return result
@@ -589,8 +615,10 @@ Transpiler.updateState = function
 		context = self.prevStates[-1]
 		if context == State.METHOD then
 			self.curClass.methodLines.push line
-		else
+		else if context == State.CLASS then
 			self.curClass.defLines.push line
+		else
+			self.cppLines.push line
 		end if
 	else if self.state == State.H_ONLY then
 		context = self.prevStates[-1]
@@ -621,7 +649,7 @@ Transpiler.updateStateSTART = function
 		self.headerLines.push line.full
 		self.namespace = line.m.name
 		self.enterState State.NAMESPACE
-	else
+	else if not line.trimmed.startsWith("using ") then
 		print "Ignored in state START: " + line.full
 	end if
 end function
@@ -1069,7 +1097,7 @@ Transpiler.setOutputFolder = function(sourceDir, destPathOrNull=null)
 end function
 
 Transpiler.process = function(filePath, gatherMode=false, outputFolder=null)
-	debugPrint "Processing: " + filePath
+	print "Processing: " + filePath + " (for symbol info)" * gatherMode
 	self.sourcePath = filePath
 	self.gatherMode = gatherMode
 	self.state = ""
@@ -1163,8 +1191,8 @@ end function
 
 resolvePath = function(path)
 	if path[0] == "/" then return path
-	if version.hostName == "Mini Micro" then return file.child(file.curdir, path)
-	return file.child(file.curdir, path)
+	p = file.child(file.curdir, path)
+	return file.info(p).path
 end function
 
 if locals == globals then
@@ -1172,12 +1200,16 @@ if locals == globals then
 	
 	filesToProcess = []
 	outputDir = null
+	contextDir = null
 	i = 1
 	while i < shellArgs.len
 		if shellArgs[i] == "-d" then
 			debugMode = true
 		else if shellArgs[i] == "-o" then
 			outputDir = resolvePath(shellArgs[i+1])
+			i += 1
+		else if shellArgs[i] == "-c" then
+			contextDir = resolvePath(shellArgs[i+1])
 			i += 1
 		else
 			argPath = resolvePath(shellArgs[i])
@@ -1202,10 +1234,21 @@ if locals == globals then
 	
 	t = Transpiler.Make
 	t.setOutputFolder file.parent(filesToProcess[0]), outputDir
+	if contextDir then print "Context directory: " + contextDir
 	print "Files to process: " + filesToProcess
 	print "Output directory: " + t.outputFolder
+	if not file.info(t.outputFolder) then
+		print "OUTPUT FOLDER DOES NOT EXIST -- NO OUTPUT WILL BE WRITTEN."
+		if input("Proceed (y/n)? ").upper != "Y" then exit
+	end if
 
 	// First, go through files in "gather" mode to just gather up all the symbol info
+	// (including all .cs files in the context directory).
+	if contextDir then
+		for fname in file.children(contextDir)
+			if fname.endsWith(".cs") then t.process file.child(contextDir, fname), true
+		end for
+	end if
 	for path in filesToProcess
 		t.process path, true
 	end for
@@ -1213,6 +1256,8 @@ if locals == globals then
 	print
 	print 
 	print
+	
+	if filesToProcess.len == 1 then debugMode = true
 	
 	for path in filesToProcess
 		print

@@ -17,8 +17,22 @@ namespace MiniScript {
 
 // FORWARD DECLARATIONS
 
+struct CallInfo;
+class CallInfoStorage;
+struct VMVis;
+class VMVisStorage;
+struct Assembler;
+class AssemblerStorage;
+struct FuncDef;
+class FuncDefStorage;
+struct App;
+class AppStorage;
+struct Lexer;
+class LexerStorage;
 
 // DECLARATIONS
+
+
 
 
 class StringUtils {
@@ -138,6 +152,16 @@ class StringUtils {
 		return StringUtils::FormatList(fmt, vals);
 	}
 }; // end of struct StringUtils
+
+
+
+
+
+
+
+
+
+
 
 
 // INLINE METHODS

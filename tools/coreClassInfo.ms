@@ -17,6 +17,7 @@ List.fields.push VariableInfo.Make("Count", "UInt32")
 // ToDo: other List fields and methods!
 
 all = [String, List]
+for cls in all; cls.elsewhere = true; end for
 
 if locals == globals then
 	for cls in all

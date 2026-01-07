@@ -5,50 +5,20 @@
 #include "core_includes.h"
 
 
-	
-
-		// Use a temp pool for reading the file, processing command-line arguments, and other setup
-
-		
-		// Parse command-line switches
-				// First non-switch argument is the assembly file
-		
-		
-		
-		// Check for assembly file argument
-			
-			
-			
-			// Assemble the code, with permanent strings stored in pool 0
-			
-			// Check for assembly errors
-			
-			
-			// Disassemble and print program (debug only)
-				
-				// Print all functions found
-				
-			
-			// Release our temp pool, and switch back to pool 0 to run the program.
-
-			// Run the program
-			
-			
-		
-
+namespace MiniScriptApp {
 
 // FORWARD DECLARATIONS
 
 struct CallInfo;
 class CallInfoStorage;
-struct AcceptException;
-class AcceptExceptionStorage;
 struct VMVis;
 class VMVisStorage;
 struct Assembler;
 class AssemblerStorage;
 struct FuncDef;
 class FuncDefStorage;
+struct App;
+class AppStorage;
 struct Lexer;
 class LexerStorage;
 
@@ -66,20 +36,26 @@ class LexerStorage;
 
 
 
+	public: static bool debugMode;
+	public: static bool visMode;
+	
+
+
+class AppStorage : public std::enable_shared_from_this<AppStorage> {
+	public: static void Main(string[] args);
+}; // end of class AppStorage
+
+struct App {
+	protected: std::shared_ptr<AppStorage> storage;
+  public:
+	App(std::shared_ptr<AppStorage> stor) : storage(stor) {}
+	App() : storage(nullptr) {}
+	friend bool IsNull(App inst) { return inst.storage == nullptr; }
+	private: AppStorage* get() { return static_cast<AppStorage*>(storage.get()); }
+
+}; // end of struct App
 
 
 // INLINE METHODS
 
-
-
-
-
-
-
-
-
-
-
-
-
-
+} // end of namespace MiniScriptApp

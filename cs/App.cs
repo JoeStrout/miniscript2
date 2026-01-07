@@ -15,6 +15,8 @@ using static MiniScript.ValueHelpers;
 // CPP: #include "MemPoolShim.g.h"
 // CPP: using namespace MiniScript;
 
+namespace MiniScriptApp {
+
 public class App {
 	public static bool debugMode = false;
 	public static bool visMode = false;
@@ -181,3 +183,5 @@ int main(int argc, const char* argv[]) {
 }
 
 *** END CPP_ONLY ***/
+
+}

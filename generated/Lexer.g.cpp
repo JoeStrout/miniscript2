@@ -6,18 +6,6 @@
 namespace MiniScript {
 
 
-
-
-
-
-
-
-
-
-
-
-
-
 LexerStorage::LexerStorage(string source) {
 	input = source;
 	position = 0;

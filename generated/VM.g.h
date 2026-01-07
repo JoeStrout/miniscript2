@@ -11,14 +11,14 @@ namespace MiniScript {
 
 struct CallInfo;
 class CallInfoStorage;
-struct AcceptException;
-class AcceptExceptionStorage;
 struct VMVis;
 class VMVisStorage;
 struct Assembler;
 class AssemblerStorage;
 struct FuncDef;
 class FuncDefStorage;
+struct App;
+class AppStorage;
 struct Lexer;
 class LexerStorage;
 
@@ -28,6 +28,14 @@ class LexerStorage;
 
 	
 	// Call stack frame (return info)
+
+
+	// VM state
+
+
+
+		// Execution state (persistent across RunSteps calls)
+
 
 
 
@@ -97,17 +105,4 @@ struct CallInfo {
 
 
 // INLINE METHODS
-
-
-
-
-
-
-
-
-
-
-
-
-
 

@@ -11,14 +11,14 @@ namespace MiniScript {
 
 struct CallInfo;
 class CallInfoStorage;
-struct AcceptException;
-class AcceptExceptionStorage;
 struct VMVis;
 class VMVisStorage;
 struct Assembler;
 class AssemblerStorage;
 struct FuncDef;
 class FuncDefStorage;
+struct App;
+class AppStorage;
 struct Lexer;
 class LexerStorage;
 
@@ -30,6 +30,11 @@ class LexerStorage;
 
 
 
+
+
+		// Multiple functions support
+		
+		// Error handling state
 
 
 
@@ -67,17 +72,4 @@ struct Assembler {
 
 
 // INLINE METHODS
-
-
-
-
-
-
-
-
-
-
-
-
-
 

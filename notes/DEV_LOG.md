@@ -62,14 +62,14 @@ The transpiler did indeed need a bit of work to get non-abstract base classes wo
 However, the FuncDefTest fails to compile because it depends on StringUtils, and it turns out that StringUtils did not transpile correctly.  That was supposed to be tested in level 1, but was overlooked.  So, it's time to step back to level 1 and add that.
 
 
-## Jan 01, 2025
+## Jan 01, 2026
 
 I'm still working on getting the new transpiler to do all the things the old one could do.  The rewrite caused quite a lot of regressions, as expected.  But, the new code structure is much cleaner, and is remaining so even as these additional features are added.  So it will all be worth it in the end.
 
 The biggest problem I'm still struggling with is correctly telling when to change "." to "::".  The new transpiler builds a symbol table which is supposed to handle this, but it's not working in all cases.
 
 
-## Jan 06, 2025
+## Jan 06, 2026
 
 The problem with the transpiler was just that it was not tracking local variables properly; method parameters were not included, nor were local array declarations properly handled.  Those issues have been fixed, and the StringUtilsTest (part of our "layer 1" transpilable tests) is now passing all tests in both C# and C++.
 
@@ -80,4 +80,15 @@ One of the recent changes to transpile.ms is that it needs to have pre-baked cod
 That takes care of the C# standard library classes, but now I'm running into a similar issue trying to transpile FuncDefTest (layer2), in that it does not understand the FuncDef class.  And that class *is* transpiled; it's just not part of the context the transpiler has when working on this test.  Hmm.
 
 I need to turn to other tasks for now, but next session, I need to make some way to give the compiler more context.  Perhaps a command-line argument for files to read in the first pass, but not actually transpile in the second... or maybe it *should* transpile them, but send the results to a different folder.  Or maybe transpiling should output symbol info (in JSON or GRFON) that a later transpilation can pick up.
+
+
+## Jan 07, 2026
+
+I've decided to add a `-c <context_path>` option to the transpiler; if given, it will scan (but not actually transpile) all the .cs files in that directory for context.
+
+So, that works now and gets us a lot farther.  But we still have some issues with the layer2 FuncDef class:
+
+1. Methods like ReserveRegister are being properly placed on the Storage class, but the call-through method in the wrapper class is missing.
+2. Our type analysis is getting confused by the auto-generated getter methods, like Code() and Constants() on FuncDef, and so we're converting `.` to `::` when we should not.
+3. The header-only `operator bool` code doesn't know where to do in a smart-ptr-wrapper class.  Right now it's just landing out in free space between the two classes.  :|
 

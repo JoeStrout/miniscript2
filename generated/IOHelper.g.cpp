@@ -11,16 +11,6 @@
 namespace MiniScript {
 
 
-
-
-
-
-
-
-
-
-
-
 void IOHelper::Print(String message) {
 	std::cout << message.c_str() << std::endl;
 }
@@ -54,8 +44,6 @@ List<String> IOHelper::ReadFile(String filePath) {
 	file.close();
 	return lines;
 }
-
-
 
 
 } // end of namespace MiniScript

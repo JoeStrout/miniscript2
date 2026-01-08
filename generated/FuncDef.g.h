@@ -39,12 +39,6 @@ class LexerStorage;
 // Function definition: code, constants, and how many registers it needs
 
 
-	// Returns a string like "functionName(a, b=1, c=0)"
-
-	// Conversion to bool: returns true if function has a name
-	public: operator bool() { return Name != ""; }
-
-
 
 class FuncDefStorage : public std::enable_shared_from_this<FuncDefStorage> {
 	public: String Name = "";
@@ -53,8 +47,17 @@ class FuncDefStorage : public std::enable_shared_from_this<FuncDefStorage> {
 	public: UInt16 MaxRegs = 0; // how many registers to reserve for this function
 	public: List<Value> ParamNames; // parameter names (as Value strings)
 	public: List<Value> ParamDefaults; // default values for parameters
+
 	public: void ReserveRegister(Int32 registerNumber);
+
+	// Returns a string like "functionName(a, b=1, c=0)"
 	public: String ToString();
+
+	// Conversion to bool: returns true if function has a name
+	public: operator bool() const;
+	
+	// Here is a comment at the end of the class.
+	// Dunno why, but I guess the author had some things to say.
 }; // end of class FuncDefStorage
 
 struct FuncDef {
@@ -63,7 +66,7 @@ struct FuncDef {
 	FuncDef(std::shared_ptr<FuncDefStorage> stor) : storage(stor) {}
 	FuncDef() : storage(nullptr) {}
 	friend bool IsNull(FuncDef inst) { return inst.storage == nullptr; }
-	private: FuncDefStorage* get() { return static_cast<FuncDefStorage*>(storage.get()); }
+	private: FuncDefStorage* get() const { return static_cast<FuncDefStorage*>(storage.get()); }
 
 	public: String Name() { return get()->Name; }
 	public: void set_Name(String _v) { get()->Name = _v; }
@@ -77,9 +80,21 @@ struct FuncDef {
 	public: void set_ParamNames(List<Value> _v) { get()->ParamNames = _v; } // parameter names (as Value strings)
 	public: List<Value> ParamDefaults() { return get()->ParamDefaults; } // default values for parameters
 	public: void set_ParamDefaults(List<Value> _v) { get()->ParamDefaults = _v; } // default values for parameters
+
+	public: void ReserveRegister(Int32 registerNumber) { return get()->ReserveRegister(registerNumber); }
+
+	// Returns a string like "functionName(a, b=1, c=0)"
+	public: String ToString() { return get()->ToString(); }
+
+	// Conversion to bool: returns true if function has a name
+	public: operator bool() const { return (bool)(*get()); }
 }; // end of struct FuncDef
 
 
 // INLINE METHODS
+
+inline FuncDefStorage::operator bool() const {
+	return Name != "";
+}
 
 } // end of namespace MiniScript

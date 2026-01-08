@@ -8,13 +8,20 @@ ensureImport "symbolInfo"
 
 String = ClassInfo.Make("String")
 String.fields.push VariableInfo.Make("Length", "UInt32")
-String.methods.push MethodInfo.Make("Substring")
-String.methods.push MethodInfo.Make("Join", true)
+String.methods.push MethodInfo.Make("Substring", false, "String")
+String.methods.push MethodInfo.Make("Join", true, "String")
 // ToDo: other String fields and methods!
 
 List = ClassInfo.Make("List")
 List.fields.push VariableInfo.Make("Count", "UInt32")
-// ToDo: other List fields and methods!
+List.methods.push MethodInfo.Make("Add")
+List.methods.push MethodInfo.Make("Clear")
+List.methods.push MethodInfo.Make("IndexOf", false, "UInt32")
+List.methods.push MethodInfo.Make("LastIndexOf", false, "UInt32")
+List.methods.push MethodInfo.Make("Insert")
+List.methods.push MethodInfo.Make("Remove")
+List.methods.push MethodInfo.Make("Reverse")
+List.methods.push MethodInfo.Make("Sort")
 
 all = [String, List]
 for cls in all; cls.elsewhere = true; end for

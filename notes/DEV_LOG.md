@@ -92,3 +92,33 @@ So, that works now and gets us a lot farther.  But we still have some issues wit
 2. Our type analysis is getting confused by the auto-generated getter methods, like Code() and Constants() on FuncDef, and so we're converting `.` to `::` when we should not.
 3. The header-only `operator bool` code doesn't know where to do in a smart-ptr-wrapper class.  Right now it's just landing out in free space between the two classes.  :|
 
+## Jan 08, 2026
+
+OK, I fixed the issues above.  Issue 2 boiled down to simply not having the Add method declared in coreClassInfo.ms -- oops.  I've added all the List methods and properties we are likely to use.  I also cleaned up handling of comments before a method, and fixed inline method handling.  Stuff is looking pretty good as far as FuncDef (my current test case) goes.
+
+But when I try to run the layer2 test it segfaults, and this is because our test tries to allocate a FuncDef in C#, by doing `FuncDef func = new FuncDef();`, which currently transpiles to just `FuncDef func = FuncDef();`.  This never actually allocates FuncDefStorage in C++.  My analysis:
+
+The point of this Storage/wrapper pattern is to make the C++ semantics mirror the C# semantics as closely as possible.  In C#, I _can_ have a null FuncDef, which I would 
+declare as:
+`FuncDef func; // currently null`
+In C++, as currently written, I can also do the same:
+`FuncDef func; // currently a wrapper containing null storage`
+But when C# code does `new FuncDef()`, that actually allocates the FuncDef data 
+structure.  So the C++ code needs to do the same, i.e., call some factory method or a version of the constructor that allocates storage.
+But note that if our data type is a `struct` (and so does _not_ use our wrapper pattern), then `MyStruct foo = MyStruct();` would suffice, doing exactly the same thing in both C# and C++.
+
+Claude remarks: Your understanding is correct.
+
+  For C# classes (reference types) → C++ wrapper pattern:
+  - FuncDef func; in C# (null reference) → FuncDef func; in C++ (wrapper with null storage) ✓
+  - new FuncDef() in C# (heap allocation) → needs FuncDef::Create() or equivalent in C++
+
+  For C# structs (value types) → C++ plain struct, no wrapper:
+  - MyStruct foo = new MyStruct(); in C# → MyStruct foo = MyStruct(); in C++ ✓
+  - Both just initialize the value inline, no heap allocation, no null possible
+
+  So the transpiler needs to know whether a type is a class or struct to decide:
+  - class: new ClassName() → ClassName::Create() (factory that allocates storage)
+  - struct: new StructName() → StructName() (just calls constructor)
+
+The transpiler already keeps track of classes vs. structs, so tomorrow I need to add a `Create` (or maybe I'll call it `New`) static method on every wrapper class, and then use this when transpiling `new Foo`.

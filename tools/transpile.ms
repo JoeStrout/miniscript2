@@ -15,6 +15,9 @@
 // All options are optional.  Default path for -c and -o is the first input 
 // directory (or directory of the first input file).  Debug mode is on by
 // default if given only one input file; otherwise it is off.
+// 
+// Example: from the project root, transpile just FuncDef.cs, with context:
+//	miniscript tools/transpile.ms -c cs -o generated cs/FuncDef.cs 
 
 import "importUtil"
 import "stringUtil"
@@ -277,6 +280,7 @@ Transpiler.headerLines = null	// extra lines for top of header file
 Transpiler.cppLines = null		// extra lines for top of .cpp file
 Transpiler.endLines = null		// end of namespace, and anything that comes after
 Transpiler.prevStates = []		// stack of previous states (see pushState/popState)
+Transpiler.nextMethodInline = false  // if true, next method should be inlined
 
 Transpiler.Make = function
 	noob = new Transpiler
@@ -301,7 +305,7 @@ Transpiler.match = function(pattern)
 		self.m = self.line.m
 		if self.curClass then
 			self.m.className = self.curClass.name
-			if self.curClass.nextMethodInline then
+			if self.nextMethodInline then
 				self.m.inline = "inline "
 			else
 				self.m.inline = ""
@@ -317,6 +321,9 @@ end function
 // Transpiler.fill: fill the given pattern with values from self.m, and 
 // optionally append the comment, if the current line has one.
 Transpiler.fill = function(pattern, addComment=true)
+	if pattern.contains("≤args≥") and not self.m.hasIndex("args") then
+		self.m.args = parameterNames(self.m.params)
+	end if
 	result = pattern.fill(self.m)
 	if addComment and self.line.comment then result += " " + self.line.comment
 	return result
@@ -391,6 +398,13 @@ Transpiler.transformStatement = function(trimmedLine)
 	// non-identifier string.
 	tokens = roughTokenize(trimmedLine)
 	
+	deepDebug = trimmedLine.contains("func.Code.Add")
+	ddprint = function(s); if deepDebug then print "====> " + s; end function
+	summarize = function(obj)
+		if obj == null then return "<null>"
+		return obj.summary
+	end function
+	
 	// Then iterate and analyze each one.  We'll encounter things we don't 
 	// recognize; that's OK.  Just keep track of stuff we do.
 	didAssignment = false
@@ -398,7 +412,9 @@ Transpiler.transformStatement = function(trimmedLine)
 	for i in tokens.indexes
 		if not tokens[i] then continue
 		if tokens[i] == "." then   // dot operator: resolve var type and continue
+			ddprint "Got dot when curInfo=" + summarize(curInfo)
 			if curInfo isa VariableInfo then curInfo = self.lookup(curInfo.type) // ToDo: context?
+			ddprint "After lookup, curInfo=" + summarize(curInfo)
 			if i and tokens[i-1] == "this" then
 				curInfo = self.curClass
 				tokens[i] = "->"
@@ -407,7 +423,12 @@ Transpiler.transformStatement = function(trimmedLine)
 			rhsStatic = true
 			if curInfo and i+1 < tokens.len then
 				rhsType = self.lookup(tokens[i+1], curInfo)
-				if rhsType then rhsStatic = rhsType.static
+				ddprint "rhsType=" + summarize(rhsType)
+				if rhsType then
+					rhsStatic = rhsType.static
+				else
+					ddprint "Couldn't find " + tokens[i+1] + " in " + summarize(curInfo)
+				end if
 			end if
 			if curInfo == null or rhsStatic then tokens[i] = "::"
 			continue
@@ -430,7 +451,7 @@ Transpiler.transformStatement = function(trimmedLine)
 			continue
 		else if tokens[i][0] == "(" and curInfo then  // method call!
 			curInfo = self.lookup(curInfo.type)	// TODO: type stack, store until ')'
-			//print "METHOD CALL returns: " + curInfo
+			ddprint "METHOD CALL returns: " + summarize(curInfo)
 			continue
 		else if tokens[i] == "null" then
 			// How we translate null depends on the context...
@@ -457,17 +478,18 @@ Transpiler.transformStatement = function(trimmedLine)
 			// Found a field lookup!  Or maybe an assignment.  Check the next token
 			// to determine which.
 			if i+1 < tokens.len and tokens[i+1].trimLeft.startsWith("= ") then
-				//print "FIELD ASSIGNMENT (" + curInfo.name + "." + nextInfo.name + ") FOUND!!!"
+				ddprint "FIELD ASSIGNMENT (" + curInfo.name + "." + nextInfo.name + ") FOUND!!!"
 				// Change this to a set_ call.
 				tokens[i] = "set_" + tokens[i] + "("
 				tokens[i+1] = tokens[i+1][2:].trimLeft
 				nextInfo = null
 				didAssignment = true
 			else
-				//print "FIELD LOOKUP (" + curInfo.name + "." + nextInfo.name + ") FOUND!!!"
+				ddprint "FIELD LOOKUP (" + curInfo.name + "." + nextInfo.name + ") FOUND!!!"
 				// Just add () to call the getter.
 				tokens[i] += "()"
 				nextInfo = self.lookup(nextInfo.type)
+				ddprint "Field type (nextInfo): " + summarize(nextInfo)
 			end if
 		end if
 		curInfo = nextInfo
@@ -552,9 +574,16 @@ Transpiler.enterState = function(newState, initAsNew=true)
 			self.preLines = []
 			self.curClass.defLines.push ""
 		end if
-		self.curClass.nextMethodInline = false
+		self.nextMethodInline = false
 
 	else if newState == State.METHOD then
+		if self.curClass.type == ClassType.CLASS then
+			self.curClass.storageLines += self.preLines
+			self.curClass.wrapperLines += self.preLines
+		else
+			self.curClass.declLines += self.preLines
+		end if
+		self.preLines = []
 		params = []
 		if self.line and self.line.m and self.line.m.hasIndex("name") then
 			name = self.line.m.name
@@ -566,7 +595,7 @@ Transpiler.enterState = function(newState, initAsNew=true)
 		end if
 		self.curMethod = MethodInfo.Make(name)
 		self.curMethod.params = params
-		if self.curClass.nextMethodInline then
+		if self.nextMethodInline then
 			self.curClass.methodLines = self.curClass.inlineLines
 		else
 			self.curClass.methodLines = self.curClass.defLines
@@ -683,7 +712,7 @@ Transpiler.updateStateNAMESPACE = function
 		self.curClass.wrapperLines.push self.fill("	≤name≥(std::shared_ptr<≤name≥Storage> stor) : storage(stor) {}")
 		self.curClass.wrapperLines.push self.fill("	≤name≥() : storage(nullptr) {}")
 		self.curClass.wrapperLines.push self.fill("	friend bool IsNull(≤name≥ inst) { return inst.storage == nullptr; }")
-		self.curClass.wrapperLines.push self.fill("	private: ≤name≥Storage* get() { return static_cast<≤name≥Storage*>(storage.get()); }")
+		self.curClass.wrapperLines.push self.fill("	private: ≤name≥Storage* get() const { return static_cast<≤name≥Storage*>(storage.get()); }")
 		self.curClass.storageLines.push self.fill("class ≤name≥Storage : public std::enable_shared_from_this<≤name≥Storage> {")
 		if self.subclassesOf(self.curClass) then
 			self.curClass.wrapperLines.push self.fill("	template<typename WrapperType, typename StorageType>")
@@ -750,6 +779,7 @@ Transpiler.updateStateCLASS = function
 
 	if line.full.startsWith("}") then
 		if self.curClass.type == ClassType.CLASS then
+			if self.preLines then self.curClass.storageLines += self.preLines
 			self.curClass.storageLines.push "}; // end of class ≤name≥Storage".fill(self.curClass)
 			self.curClass.wrapperLines.push "}; // end of struct ≤name≥".fill(self.curClass)
 			if self.subclassesOf(self.curClass) then
@@ -757,16 +787,18 @@ Transpiler.updateStateCLASS = function
 				self.curClass.wrapperLines.push "template<typename WrapperType, typename StorageType> WrapperType As(≤name≥ inst);".fill(self.curClass)
 			end if
 		else
+			if self.preLines then self.curClass.declLines += self.preLines
 			self.curClass.declLines.push "}; // end of ≤type≥ ≤name≥".fill(self.curClass)
 		end if
+		self.preLines = []
 		self.enterState State.NAMESPACE
 		return
 	end if
 	
 	if line.trimmed.startsWith("[") then
 		// decorator -- most are ignored, but check for inline flag
-		if line.trimmed.contains("(AggressiveInlining)") then
-			self.curClass.nextMethodInline = true
+		if line.trimmed.contains("AggressiveInlining") then
+			self.nextMethodInline = true
 		end if
 		return
 	end if
@@ -829,6 +861,21 @@ Transpiler.updateStateCLASS = function
 			end if
 			if self.gatherMode then self.curClass.methods.push MethodInfo.Make(self.m.name)
 
+		// conversion operator -- sadly these have to be static in C# and non-static in C++,
+		// so the code is always going to be quite different.  But usually short, so just
+		// use the "// CPP:" pattern on each line of the body, and it should work.
+		else if self.match("≤scope:w≥ static implicit operator ≤type≥(≤params≥) {") then
+			self.enterState State.METHOD
+			if self.curClass.type == ClassType.CLASS then
+				self.curClass.storageLines.push self.fill("	≤scope≥: operator ≤type≥() const;")
+				self.curClass.wrapperLines.push self.fill(
+				  "	≤scope≥: operator ≤type≥() const { return (≤type≥)(*get()); }")
+				self.curClass.methodLines.push self.fill("≤inline≥≤className≥Storage::operator ≤type≥() const {")
+			else
+				self.curClass.declLines.push self.fill("	≤scope≥: operator ≤type≥() const;")
+				self.curClass.methodLines.push self.fill("≤inline≥≤className≥::operator ≤type≥() const {")
+			end if
+			
 		// static method
 		else if self.match("≤scope:w≥ static ≤type:w≥ ≤name:w≥(≤params≥) {") then
 			self.enterState State.METHOD
@@ -861,6 +908,8 @@ Transpiler.updateStateCLASS = function
 			self.enterState State.METHOD
 			if self.curClass.type == ClassType.CLASS then
 				self.curClass.storageLines.push self.fill("	≤scope≥: ≤type≥ ≤name≥(≤params≥);")
+				self.curClass.wrapperLines.push self.fill(
+				  "	≤scope≥: ≤type≥ ≤name≥(≤params≥) { return get()->≤name≥(≤args≥); }")
 				self.stripDefaultArgs
 				self.curClass.methodLines.push self.fill("≤inline≥≤type≥ ≤className≥Storage::≤name≥(≤params≥) {")
 			else
@@ -889,6 +938,8 @@ Transpiler.updateStateCLASS = function
 			self.enterState State.METHOD
 			if self.curClass.type == ClassType.CLASS then
 				self.curClass.storageLines.push self.fill("	≤scope≥: ≤type≥ ≤name≥(≤params≥);")
+				self.curClass.wrapperLines.push self.fill(
+				  "	≤scope≥: ≤type≥ ≤name≥(≤params≥) { return get()->≤name≥(≤args≥); }")
 				self.stripDefaultArgs
 				self.curClass.methodLines.push self.fill("≤inline≥≤type≥ ≤className≥Storage::≤name≥(≤params≥) {")
 			else
@@ -898,7 +949,7 @@ Transpiler.updateStateCLASS = function
 			end if
 			if self.gatherMode then self.curClass.methods.push MethodInfo.Make(self.m.name)
 		else if self.line.trimmed == "" then
-			self.curClass.declLines.push self.line.full
+			self.preLines.push self.line.full
 		end if
 	end if
 end function

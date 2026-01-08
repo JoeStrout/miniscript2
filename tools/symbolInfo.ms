@@ -29,7 +29,6 @@ ClassInfo.storageLines = null	// storage class declaration lines (header file)
 ClassInfo.inlineLines = null	// inline definition lines (header file)
 ClassInfo.defLines = null		// out-of-line definition lines (cpp file)
 ClassInfo.methodLines = null	// reference to either .inlineLines or .defLines
-ClassInfo.nextMethodInline = false
 
 ClassInfo.Make = function(name="")
 	noob = new ClassInfo
@@ -69,6 +68,10 @@ ClassInfo.rootClass = function(allClasses)
 	return cls
 end function
 
+ClassInfo.summary = function
+	return "Class " + self.name
+end function
+
 //--------------------------------------------------------------------------------
 globals.VariableInfo = {}				// used for fields, parameters, and local vars
 VariableInfo.name = ""
@@ -105,10 +108,11 @@ MethodInfo.static = false
 MethodInfo.params = null		// list of VariableInfo
 MethodInfo.inline = false
 
-MethodInfo.Make = function(name="", static=false)
+MethodInfo.Make = function(name="", static=false, type=null)
 	noob = new MethodInfo
 	noob.name = name
 	if static then noob.static = true
+	if type != null then noob.type = type
 	return noob
 end function
 

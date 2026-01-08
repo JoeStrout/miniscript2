@@ -37,11 +37,11 @@ class TestFramework {
 
 	// Assert two booleans are equal
 	public: static Boolean AssertEqual(Boolean actual, Boolean expected, String context);
-
 	// Assert C string actual vs String expected (C++ only - prevents ambiguity with Boolean overload)
 	public: static Boolean AssertEqual(const char* actual, String expected, String context) {
 		return AssertEqual(String(actual), expected, context);
 	}
+
 
 	// Print summary of test results (only if there were failures)
 	public: static void PrintSummary(String suiteName);

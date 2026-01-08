@@ -22,8 +22,8 @@ Boolean FuncDefTest::TestCreation() {
 }
 Boolean FuncDefTest::TestAddCode() {
 	FuncDef func =  FuncDef();
-	func.Code()::Add(0x12345678);
-	func.Code()::Add(0xABCDEF00);
+	func.Code().Add(0x12345678);
+	func.Code().Add(0xABCDEF00);
 
 	Boolean ok = true;
 	ok = TestFramework::AssertEqual(func.Code().Count(), 2, "code has 2 instructions") && ok;
@@ -34,8 +34,8 @@ Boolean FuncDefTest::TestAddCode() {
 }
 Boolean FuncDefTest::TestAddConstants() {
 	FuncDef func =  FuncDef();
-	func.Constants()::Add(make_int(42));
-	func.Constants()::Add(make_string("hello"));
+	func.Constants().Add(make_int(42));
+	func.Constants().Add(make_string("hello"));
 
 	Boolean ok = true;
 	ok = TestFramework::AssertEqual(func.Constants().Count(), 2, "constants has 2 values") && ok;

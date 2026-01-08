@@ -55,7 +55,6 @@ class FuncDefTest {
 }; // end of struct FuncDefTest
 
 
-
 // INLINE METHODS
 
 } // end of namespace MiniScript

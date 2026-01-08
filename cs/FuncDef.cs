@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using static MiniScript.ValueHelpers;
 // H: #include "value.h"
 // H: #include "StringUtils.g.h"
+// CPP: #include "gc.h"
 
 namespace MiniScript {
 
@@ -37,14 +38,13 @@ public class FuncDef {
 	}
 
 	// Conversion to bool: returns true if function has a name
-	/*** BEGIN H_ONLY ***
-	public: operator bool() { return Name != ""; }
-	*** END H_ONLY ***/
-	//*** BEGIN CS_ONLY ***
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static implicit operator bool(FuncDef funcDef) {
-		return funcDef != null && !String.IsNullOrEmpty(funcDef.Name);
+		return funcDef != null && !String.IsNullOrEmpty(funcDef.Name); // CPP: return Name != "";
 	}
-	//*** END CS_ONLY ***
+	
+	// Here is a comment at the end of the class.
+	// Dunno why, but I guess the author had some things to say.
 }
 
 }

@@ -122,3 +122,8 @@ Claude remarks: Your understanding is correct.
   - struct: new StructName() → StructName() (just calls constructor)
 
 The transpiler already keeps track of classes vs. structs, so tomorrow I need to add a `Create` (or maybe I'll call it `New`) static method on every wrapper class, and then use this when transpiling `new Foo`.
+
+
+## Jan 09, 2026
+
+Wrapper classes now get a static `New()` method, which creates a new storage instance and returns it as a wrapper.  And the transpiler now uses that when it hits a pattern like `new Foo()`, where Foo is such a reference type.  The transpiled layer2 FuncDef test now passes!  🥳

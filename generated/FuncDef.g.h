@@ -65,6 +65,7 @@ struct FuncDef {
   public:
 	FuncDef(std::shared_ptr<FuncDefStorage> stor) : storage(stor) {}
 	FuncDef() : storage(nullptr) {}
+	static FuncDef New() { return FuncDef(std::make_shared<FuncDefStorage>()); }
 	friend bool IsNull(FuncDef inst) { return inst.storage == nullptr; }
 	private: FuncDefStorage* get() const { return static_cast<FuncDefStorage*>(storage.get()); }
 

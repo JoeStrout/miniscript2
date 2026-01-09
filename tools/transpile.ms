@@ -434,13 +434,19 @@ Transpiler.transformStatement = function(trimmedLine)
 			continue
 		else if tokens[i] == "new" then
 			// when `new` is followed by the name of a C# class (which we convert
-			// using our storage-wrapper pattern), just remove `new`.
+			// using our storage-wrapper pattern), call the `New()` static method instead.
 			cl = self.findClass(tokens[i+2])  // (skipping space)
 			if cl and cl.type == ClassType.CLASS then
 				tokens[i] = ""
+				tok = tokens[i+2]  // should be something like `Foo()`
+				parenPos = tok.indexOf("(")
+				if parenPos == null then parenPos = tok.len
+				tokens[i+2] = tok[:parenPos] + "::New" + tok[parenPos:]
 				continue
 			end if
 			if not cl then
+				// if it's an unknown type, then assume it's some other class (i.e.
+				// not one of our storage wrappers), and just remove `new`
 				print "Unknown type " + tokens[i+2] + " found after `new`; assuming class"
 				tokens[i] = ""
 				continue
@@ -711,6 +717,7 @@ Transpiler.updateStateNAMESPACE = function
 		self.curClass.wrapperLines.push "  public:"
 		self.curClass.wrapperLines.push self.fill("	≤name≥(std::shared_ptr<≤name≥Storage> stor) : storage(stor) {}")
 		self.curClass.wrapperLines.push self.fill("	≤name≥() : storage(nullptr) {}")
+		self.curClass.wrapperLines.push self.fill("	static ≤name≥ New() { return ≤name≥(std::make_shared<≤name≥Storage>()); }")
 		self.curClass.wrapperLines.push self.fill("	friend bool IsNull(≤name≥ inst) { return inst.storage == nullptr; }")
 		self.curClass.wrapperLines.push self.fill("	private: ≤name≥Storage* get() const { return static_cast<≤name≥Storage*>(storage.get()); }")
 		self.curClass.storageLines.push self.fill("class ≤name≥Storage : public std::enable_shared_from_this<≤name≥Storage> {")

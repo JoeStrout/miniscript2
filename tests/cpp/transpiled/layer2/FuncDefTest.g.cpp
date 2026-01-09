@@ -10,7 +10,7 @@ namespace MiniScript {
 
 
 Boolean FuncDefTest::TestCreation() {
-	FuncDef func =  FuncDef();
+	FuncDef func =  FuncDef::New();
 	Boolean ok = true;
 
 	ok = TestFramework::Assert(!IsNull(func), "FuncDef created") && ok;
@@ -21,7 +21,7 @@ Boolean FuncDefTest::TestCreation() {
 	return ok;
 }
 Boolean FuncDefTest::TestAddCode() {
-	FuncDef func =  FuncDef();
+	FuncDef func =  FuncDef::New();
 	func.Code().Add(0x12345678);
 	func.Code().Add(0xABCDEF00);
 
@@ -33,7 +33,7 @@ Boolean FuncDefTest::TestAddCode() {
 	return ok;
 }
 Boolean FuncDefTest::TestAddConstants() {
-	FuncDef func =  FuncDef();
+	FuncDef func =  FuncDef::New();
 	func.Constants().Add(make_int(42));
 	func.Constants().Add(make_string("hello"));
 
@@ -45,7 +45,7 @@ Boolean FuncDefTest::TestAddConstants() {
 	return ok;
 }
 Boolean FuncDefTest::TestReserveRegister() {
-	FuncDef func =  FuncDef();
+	FuncDef func =  FuncDef::New();
 	func.ReserveRegister(5);
 
 	Boolean ok = true;

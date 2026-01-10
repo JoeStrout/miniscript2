@@ -37,17 +37,10 @@ class LexerStorage;
 	private: static const String Underline;
 	private: static const String Inverse;
 	private: static const String Normal;
-		
 	private: static const String CursorHome;
 	private: static const Int32 CodeDisplayColumn;
 	private: static const Int32 RegisterDisplayColumn;
 	private: static const Int32 CallStackDisplayColumn;
-
-
-		// Pool management for temporary display strings
-		
-		// Be careful to get a *reference* to the VM rather than a deep copy, even
-		// in C++.  ToDo: find a more elegant solution to this recurring issue.
 		private: VM& _vm;
 		public: inline VMVis(VM& vm) : _vm(vm) {
 			UpdateScreenSize();
@@ -64,12 +57,19 @@ class LexerStorage;
 
 
 
-
 class VMVisStorage : public std::enable_shared_from_this<VMVisStorage> {
 	private: Int32 _screenWidth;
 	private: Int32 _screenHeight;
 	private: Byte _displayPool;
 	private: Byte _savedPool;
+		
+
+
+		// Pool management for temporary display strings
+		
+		// Be careful to get a *reference* to the VM rather than a deep copy, even
+		// in C++.  ToDo: find a more elegant solution to this recurring issue.
+
 	public: void UpdateScreenSize();
 }; // end of class VMVisStorage
 
@@ -78,8 +78,9 @@ struct VMVis {
   public:
 	VMVis(std::shared_ptr<VMVisStorage> stor) : storage(stor) {}
 	VMVis() : storage(nullptr) {}
-	friend bool IsNull(VMVis inst) { return inst.storage == nullptr; }
-	private: VMVisStorage* get() { return static_cast<VMVisStorage*>(storage.get()); }
+	static VMVis New() { return VMVis(std::make_shared<VMVisStorage>()); }
+	friend bool IsNull(const VMVis& inst) { return inst.storage == nullptr; }
+	private: VMVisStorage* get() const { return static_cast<VMVisStorage*>(storage.get()); }
 
 	private: Int32 _screenWidth() { return get()->_screenWidth; }
 	private: void set__screenWidth(Int32 _v) { get()->_screenWidth = _v; }
@@ -89,6 +90,15 @@ struct VMVis {
 	private: void set__displayPool(Byte _v) { get()->_displayPool = _v; }
 	private: Byte _savedPool() { return get()->_savedPool; }
 	private: void set__savedPool(Byte _v) { get()->_savedPool = _v; }
+		
+
+
+		// Pool management for temporary display strings
+		
+		// Be careful to get a *reference* to the VM rather than a deep copy, even
+		// in C++.  ToDo: find a more elegant solution to this recurring issue.
+
+	public: void UpdateScreenSize() { return get()->UpdateScreenSize(); }
 }; // end of struct VMVis
 
 

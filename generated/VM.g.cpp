@@ -64,7 +64,7 @@ Int32 CallInfoStorage::StackSize() {
 	}
 
 	public CallInfo GetCallStackFrame(Int32 index) {
-		if (index < 0 || index >= callStackTop) return  CallInfo(0, 0, -1);
+		if (index < 0 || index >= callStackTop) return  CallInfo::New(0, 0, -1);
 		return callStack[index];
 	}
 
@@ -82,36 +82,36 @@ Int32 CallInfoStorage::StackSize() {
 	}
 
 	private void InitVM(Int32 stackSlots, Int32 callSlots) {
-		stack =  List<Value>();
-		names =  List<Value>();
-		callStack =  List<CallInfo>();
-		functions =  List<FuncDef>();
+		stack =  List<Value>::New();
+		names =  List<Value>::New();
+		callStack =  List<CallInfo>::New();
+		functions =  List<FuncDef>::New();
 		callStackTop = 0;
 		RuntimeError = "";
 
 		// Initialize stack with null values
 		for (Int32 i = 0; i < stackSlots; i++) {
-			stack::Add(make_null());
-			names::Add(make_null());		// No variable name initially
+			stack.Add(make_null());
+			names.Add(make_null());		// No variable name initially
 		}
 		
 		
 		// Pre-allocate call stack capacity
 		for (Int32 i = 0; i < callSlots; i++) {
-			callStack::Add( CallInfo(0, 0, -1)); // -1 = invalid function index
+			callStack.Add( CallInfo::New(0, 0, -1)); // -1 = invalid function index
 		}
 	}
 
 	public void RegisterFunction(FuncDef funcDef) {
-		functions::Add(funcDef);
+		functions.Add(funcDef);
 	}
 
 	public void Reset(List<FuncDef> allFunctions) {
 		// Store all functions for CALLF instructions, and find @main
 		FuncDef mainFunc;
-		functions::Clear();
+		functions.Clear();
 		for (Int32 i = 0; i < allFunctions::Count; i++) {
-			functions::Add(allFunctions[i]);
+			functions.Add(allFunctions[i]);
 			if (functions[i].Name == "@main") mainFunc = functions[i];
 		}
 
@@ -237,8 +237,8 @@ Int32 CallInfoStorage::StackSize() {
 
 	public Value Execute(FuncDef entry, UInt32 maxCycles) {
 		// Legacy method - convert to Reset + Run pattern
-		List<FuncDef> singleFunc =  List<FuncDef>();
-		singleFunc::Add(entry);
+		List<FuncDef> singleFunc =  List<FuncDef>::New();
+		singleFunc.Add(entry);
 		Reset(singleFunc);
 		return Run(maxCycles);
 	}
@@ -393,7 +393,7 @@ Int32 CallInfoStorage::StackSize() {
 							IOHelper::Print("Call stack overflow");
 							return make_null();
 						}
-						callStack[callStackTop] =  CallInfo(pc, baseIndex, currentFuncIndex, a, outerVars);
+						callStack[callStackTop] =  CallInfo::New(pc, baseIndex, currentFuncIndex, a, outerVars);
 						callStackTop++;
 
 						// Switch to callee frame: base slides to argument window
@@ -980,7 +980,7 @@ Int32 CallInfoStorage::StackSize() {
 
 					Int32 funcIndex2 = funcref_index(localStack[BytecodeUtil::Cu(callInstruction)]);
 					Value outerVars = funcref_outer_vars(localStack[BytecodeUtil.Cu(callInstruction)]); GC_PROTECT(&outerVars);
-					callStack[callStackTop] =  CallInfo(nextPC, baseIndex, currentFuncIndex, resultReg, outerVars);
+					callStack[callStackTop] =  CallInfo::New(nextPC, baseIndex, currentFuncIndex, resultReg, outerVars);
 					callStackTop++;
 
 					baseIndex = calleeBase;
@@ -1028,7 +1028,7 @@ Int32 CallInfoStorage::StackSize() {
 						IOHelper::Print("Call stack overflow");
 						return make_null();
 					}
-					callStack[callStackTop] =  CallInfo(pc, baseIndex, currentFuncIndex);
+					callStack[callStackTop] =  CallInfo::New(pc, baseIndex, currentFuncIndex);
 					callStackTop++;
 
 					// Switch to callee frame: base slides to argument window
@@ -1090,7 +1090,7 @@ Int32 CallInfoStorage::StackSize() {
 						IOHelper::Print("Call stack overflow");
 						return make_null();
 					}
-					callStack[callStackTop] =  CallInfo(pc, baseIndex, currentFuncIndex, a, outerVars);
+					callStack[callStackTop] =  CallInfo::New(pc, baseIndex, currentFuncIndex, a, outerVars);
 					callStackTop++;
 
 					// Set up call frame starting at baseIndex + b
@@ -1198,7 +1198,7 @@ Int32 CallInfoStorage::StackSize() {
 			stack[baseReg] = make_null();
 		
 		} else if (value_equal(funcName, FuncNameInput)) {
-			String prompt =  String("");
+			String prompt =  String::New("");
 			if (!is_null(stack[baseReg])) {
 				prompt = StringUtils::Format("{0}", stack[baseReg]);
 			}

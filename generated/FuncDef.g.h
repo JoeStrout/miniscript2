@@ -42,11 +42,11 @@ class LexerStorage;
 
 class FuncDefStorage : public std::enable_shared_from_this<FuncDefStorage> {
 	public: String Name = "";
-	public: List<UInt32> Code;
-	public: List<Value> Constants;
+	public: List<UInt32> Code = List<UInt32>::New();
+	public: List<Value> Constants = List<Value>::New();
 	public: UInt16 MaxRegs = 0; // how many registers to reserve for this function
-	public: List<Value> ParamNames; // parameter names (as Value strings)
-	public: List<Value> ParamDefaults; // default values for parameters
+	public: List<Value> ParamNames = List<Value>::New(); // parameter names (as Value strings)
+	public: List<Value> ParamDefaults = List<Value>::New(); // default values for parameters
 
 	public: void ReserveRegister(Int32 registerNumber);
 
@@ -66,7 +66,7 @@ struct FuncDef {
 	FuncDef(std::shared_ptr<FuncDefStorage> stor) : storage(stor) {}
 	FuncDef() : storage(nullptr) {}
 	static FuncDef New() { return FuncDef(std::make_shared<FuncDefStorage>()); }
-	friend bool IsNull(FuncDef inst) { return inst.storage == nullptr; }
+	friend bool IsNull(const FuncDef& inst) { return inst.storage == nullptr; }
 	private: FuncDefStorage* get() const { return static_cast<FuncDefStorage*>(storage.get()); }
 
 	public: String Name() { return get()->Name; }

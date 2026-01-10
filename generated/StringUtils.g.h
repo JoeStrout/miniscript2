@@ -49,9 +49,6 @@ class StringUtils {
 	public: static String SpacePad(String text, Int32 width);
 
 	public: static String Str(List<String> list);
-
-	// Convert a Value to its representation (quoted string for strings, plain for others)
-	// This is used when displaying values in source code form.
 	//--- The following is all to support a Format function, equivalent to
 	//--- the one in C#.  The C++ one requires templates and helper functions.
 	public: static String FormatList(const String& fmt, const List<String>& values);
@@ -151,6 +148,9 @@ class StringUtils {
 		addValues(vals, std::forward<Args>(args)...);
 		return StringUtils::FormatList(fmt, vals);
 	}
+
+	// Convert a Value to its representation (quoted string for strings, plain for others)
+	// This is used when displaying values in source code form.
 }; // end of struct StringUtils
 
 

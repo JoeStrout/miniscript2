@@ -67,10 +67,15 @@ private:
     String(StringStorageSPtr ssRef) : ref(ssRef) {}
     
 public:
-    
-    // Constructors
+
+    // Default constructor - null (matches C# uninitialized reference)
 	String() {}
-    
+
+    // Check if string is null (unallocated)
+    friend bool IsNull(const String& str) {
+        return str.ref == nullptr;
+    }
+
 	String(const char* cstr) {
 		if (!cstr) return;
 		ref = FindOrCreate(cstr);
@@ -80,6 +85,12 @@ public:
 		char buf[2] = {c, 0};
 		ref = FindOrCreate(buf);
 	}
+
+    // Factory method - allocates empty string (matches C# "new String()")
+    static String New() { return String(""); }
+
+    // Factory method with argument
+    static String New(const char *cstr) { return String(cstr); }
 
     // Copy constructor and assignment (defaulted for trivial copyability)
     String(const String& other) = default;

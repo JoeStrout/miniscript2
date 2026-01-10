@@ -27,8 +27,20 @@ private:
     }
 
 public:
-    // Constructors
-    List() : data(std::make_shared<std::vector<T>>()) {}
+    // Default constructor - null (matches C# uninitialized reference)
+    List() : data(nullptr) {}
+
+    // Factory method - allocates (matches C# "new List<T>()")
+    static List<T> New() {
+        List<T> result;
+        result.data = std::make_shared<std::vector<T>>();
+        return result;
+    }
+
+    // Check if list is null (unallocated)
+    friend bool IsNull(const List<T>& list) {
+        return list.data == nullptr;
+    }
 
     // poolNum parameter for compatibility - ignored
     List(uint8_t /*poolNum*/) : data(std::make_shared<std::vector<T>>()) {}
@@ -51,7 +63,6 @@ public:
     // Initializer list constructor
     List(std::initializer_list<T> items, uint8_t /*poolNum*/ = 0)
         : data(std::make_shared<std::vector<T>>(items)) {}
-
 
     // Properties
     int Count() const {

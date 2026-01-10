@@ -38,10 +38,10 @@ class LexerStorage;
 
 	public: static bool debugMode;
 	public: static bool visMode;
-	
 
 
 class AppStorage : public std::enable_shared_from_this<AppStorage> {
+	
 	public: static void Main(string[] args);
 }; // end of class AppStorage
 
@@ -50,9 +50,11 @@ struct App {
   public:
 	App(std::shared_ptr<AppStorage> stor) : storage(stor) {}
 	App() : storage(nullptr) {}
-	friend bool IsNull(App inst) { return inst.storage == nullptr; }
-	private: AppStorage* get() { return static_cast<AppStorage*>(storage.get()); }
+	static App New() { return App(std::make_shared<AppStorage>()); }
+	friend bool IsNull(const App& inst) { return inst.storage == nullptr; }
+	private: AppStorage* get() const { return static_cast<AppStorage*>(storage.get()); }
 
+	
 }; // end of struct App
 
 

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using static MiniScript.ValueHelpers;
 // H: #include "value.h"
 // H: #include "StringUtils.g.h"

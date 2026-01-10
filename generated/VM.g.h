@@ -30,14 +30,6 @@ class LexerStorage;
 	// Call stack frame (return info)
 
 
-	// VM state
-
-
-
-		// Execution state (persistent across RunSteps calls)
-
-
-
 
 
 
@@ -55,6 +47,7 @@ class CallInfoStorage : public std::enable_shared_from_this<CallInfoStorage> {
 	public: Int32 CopyResultToReg; // register number to copy result to, or -1
 	public: Value LocalVarMap; // VarMap representing locals, if any
 	public: Value OuterVarMap; // VarMap representing outer variables (closure context)
+
 	public: CallInfoStorage(Int32 returnPC, Int32 returnBase, Int32 returnFuncIndex, Int32 copyToReg=-1);
 	public: Boolean DebugMode = false;
 	private: List<Value> stack;
@@ -63,6 +56,13 @@ class CallInfoStorage : public std::enable_shared_from_this<CallInfoStorage> {
 	private: Int32 callStackTop; // Index of next free call stack slot
 	private: List<FuncDef> functions; // functions addressed by CALLF
 	private: Int32 _currentFuncIndex = -1;
+
+	// VM state
+
+
+
+		// Execution state (persistent across RunSteps calls)
+
 	public: Int32 StackSize();
 }; // end of class CallInfoStorage
 
@@ -71,8 +71,9 @@ struct CallInfo {
   public:
 	CallInfo(std::shared_ptr<CallInfoStorage> stor) : storage(stor) {}
 	CallInfo() : storage(nullptr) {}
-	friend bool IsNull(CallInfo inst) { return inst.storage == nullptr; }
-	private: CallInfoStorage* get() { return static_cast<CallInfoStorage*>(storage.get()); }
+	static CallInfo New() { return CallInfo(std::make_shared<CallInfoStorage>()); }
+	friend bool IsNull(const CallInfo& inst) { return inst.storage == nullptr; }
+	private: CallInfoStorage* get() const { return static_cast<CallInfoStorage*>(storage.get()); }
 
 	public: Int32 ReturnPC() { return get()->ReturnPC; } // where to continue in caller (PC index)
 	public: void set_ReturnPC(Int32 _v) { get()->ReturnPC = _v; } // where to continue in caller (PC index)
@@ -86,6 +87,7 @@ struct CallInfo {
 	public: void set_LocalVarMap(Value _v) { get()->LocalVarMap = _v; } // VarMap representing locals, if any
 	public: Value OuterVarMap() { return get()->OuterVarMap; } // VarMap representing outer variables (closure context)
 	public: void set_OuterVarMap(Value _v) { get()->OuterVarMap = _v; } // VarMap representing outer variables (closure context)
+
 	public: CallInfo(Int32 returnPC, Int32 returnBase, Int32 returnFuncIndex, Int32 copyToReg=-1) : CallInfo(std::make_shared<CallInfoStorage>(returnPC, returnBase, returnFuncIndex, copyToReg)) {}
 	public: Boolean DebugMode() { return get()->DebugMode; }
 	public: void set_DebugMode(Boolean _v) { get()->DebugMode = _v; }
@@ -101,6 +103,14 @@ struct CallInfo {
 	private: void set_functions(List<FuncDef> _v) { get()->functions = _v; } // functions addressed by CALLF
 	private: Int32 _currentFuncIndex() { return get()->_currentFuncIndex; }
 	private: void set__currentFuncIndex(Int32 _v) { get()->_currentFuncIndex = _v; }
+
+	// VM state
+
+
+
+		// Execution state (persistent across RunSteps calls)
+
+	public: Int32 StackSize() { return get()->StackSize(); }
 }; // end of struct CallInfo
 
 

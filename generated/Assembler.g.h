@@ -32,11 +32,6 @@ class LexerStorage;
 
 
 
-		// Multiple functions support
-		
-		// Error handling state
-
-
 
 
 
@@ -48,6 +43,11 @@ class AssemblerStorage : public std::enable_shared_from_this<AssemblerStorage> {
 	public: FuncDef Current; // function we are currently building
 	private: List<String> _labelNames; // label names within current function
 	private: List<Int32> _labelAddresses; // corresponding instruction addresses within current function
+
+		// Multiple functions support
+		
+		// Error handling state
+
 	public: AssemblerStorage();
 }; // end of class AssemblerStorage
 
@@ -56,8 +56,9 @@ struct Assembler {
   public:
 	Assembler(std::shared_ptr<AssemblerStorage> stor) : storage(stor) {}
 	Assembler() : storage(nullptr) {}
-	friend bool IsNull(Assembler inst) { return inst.storage == nullptr; }
-	private: AssemblerStorage* get() { return static_cast<AssemblerStorage*>(storage.get()); }
+	static Assembler New() { return Assembler(std::make_shared<AssemblerStorage>()); }
+	friend bool IsNull(const Assembler& inst) { return inst.storage == nullptr; }
+	private: AssemblerStorage* get() const { return static_cast<AssemblerStorage*>(storage.get()); }
 
 	public: List<FuncDef> Functions() { return get()->Functions; } // all functions
 	public: void set_Functions(List<FuncDef> _v) { get()->Functions = _v; } // all functions
@@ -67,6 +68,11 @@ struct Assembler {
 	private: void set__labelNames(List<String> _v) { get()->_labelNames = _v; } // label names within current function
 	private: List<Int32> _labelAddresses() { return get()->_labelAddresses; } // corresponding instruction addresses within current function
 	private: void set__labelAddresses(List<Int32> _v) { get()->_labelAddresses = _v; } // corresponding instruction addresses within current function
+
+		// Multiple functions support
+		
+		// Error handling state
+
 	public: Assembler() : Assembler(std::make_shared<AssemblerStorage>()) {}
 }; // end of struct Assembler
 

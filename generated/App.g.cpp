@@ -76,7 +76,7 @@ void AppStorage::Main(string[] args) {
 		}
 		
 		if (debugMode) IOHelper::Print(StringUtils::Format("Assembling {0} lines...", lines.Count()));
-		Assembler assembler =  Assembler();
+		Assembler assembler =  Assembler::New();
 		
 		// Assemble the code, with permanent strings stored in pool 0
 		MemPoolShim::SetDefaultStringPool(0);
@@ -121,7 +121,7 @@ void AppStorage::Main(string[] args) {
 		Value result = make_null(); GC_PROTECT(&result);
 		
 		if (visMode) {
-			VMVis vis =  VMVis(vm);
+			VMVis vis =  VMVis::New(vm);
 			vis::ClearScreen();
 			while (vm::IsRunning) {
 				vis::UpdateDisplay();

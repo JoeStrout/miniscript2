@@ -13,7 +13,7 @@ String StringUtils::ToHex(UInt32 value) {
 		hexChars[i] = hexDigits[(int)(value & 0xF)];
 		value >>= 4;
 	}
-	return  String(hexChars);
+	return  String::New(hexChars);
 }
 String StringUtils::ToHex(Byte value) {
 	Char hexChars[2];
@@ -21,7 +21,7 @@ String StringUtils::ToHex(Byte value) {
 		hexChars[i] = hexDigits[(int)(value & 0xF)];
 		value >>= 4;
 	}
-	return  String(hexChars);
+	return  String::New(hexChars);
 }
 String StringUtils::ZeroPad(Int32 value, Int32 digits ) {
 	// set width and fill
@@ -48,7 +48,7 @@ String StringUtils::SpacePad(String text, Int32 width) {
 String StringUtils::Str(List<String> list) {
 	// (null not possible)
 	if (list.Count() == 0) return "[]";
-	return  String("[\"") + String::Join("\", \"", list) + "\"]";
+	return  String::New("[\"") + String::Join("\", \"", list) + "\"]";
 }
 String StringUtils::FormatList(const String& fmt, const List<String>& values) {
 	const int n = fmt.Length();

@@ -40,14 +40,14 @@ class LexerStorage;
 
 
 
-
-
-
 class LexerStorage : public AbstractScanner<int, LexLocation>Storage {
 	private: string input;
 	private: int position;
+
 	public: LexerStorage(string source);
+
 	public: int yylex();
+
 	public: void yyerror(string message, params object[] args);
 }; // end of class LexerStorage
 
@@ -58,7 +58,12 @@ struct Lexer : public AbstractScanner<int, LexLocation> {
 	private: void set_input(string _v) { get()->input = _v; }
 	private: int position() { return get()->position; }
 	private: void set_position(int _v) { get()->position = _v; }
+
 	public: Lexer(string source) : ?!?!?(std::make_shared<LexerStorage>(source)) {}
+
+	public: int yylex() { return get()->yylex(); }
+
+	public: void yyerror(string message, params object[] args) { return get()->yyerror(message, object[] args); }
 }; // end of struct Lexer
 
 

@@ -12,20 +12,20 @@ namespace MiniScript {
 
 Boolean UnitTests::Assert(Boolean condition, String message) {
 		if (condition) return true;
-		IOHelper::Print( String("Unit test failure: ") + message);
+		IOHelper::Print( String::New("Unit test failure: ") + message);
 		return false;
 	}
 	
 	public static Boolean AssertEqual(String actual, String expected) {
 		if (actual == expected) return true;
-		Assert(false,  String("Unit test failure: expected \"")
+		Assert(false,  String::New("Unit test failure: expected \"")
 		  + expected + "\" but got \"" + actual + "\"");
 		return false;
 	}
 		
 	public static Boolean AssertEqual(UInt32 actual, UInt32 expected) {
 		if (actual == expected) return true;
-		Assert(false,  String("Unit test failure: expected 0x")
+		Assert(false,  String::New("Unit test failure: expected 0x")
 		  + StringUtils::ToHex(expected) + "\" but got 0x" + StringUtils::ToHex(actual));
 		return false;
 	}
@@ -45,7 +45,7 @@ Boolean UnitTests::Assert(Boolean condition, String message) {
 			if (actual[i] != expected[i]) ok = false;
 		}
 		if (ok) return true;
-		Assert(false,  String("Unit test failure: expected ")
+		Assert(false,  String::New("Unit test failure: expected ")
 		  + StringUtils::Str(expected) + " but got " + StringUtils::Str(actual));
 		return false;
 	}
@@ -53,8 +53,8 @@ Boolean UnitTests::Assert(Boolean condition, String message) {
 	public static Boolean TestStringUtils() {
 		return 
 			AssertEqual(StringUtils::ToHex((UInt32)123456789), "075BCD15")
-		&&  AssertEqual( String("abcdef").Left(3), "abc")
-		&&	AssertEqual( String("abcdef").Right(3), "def");
+		&&  AssertEqual( String::New("abcdef").Left(3), "abc")
+		&&	AssertEqual( String::New("abcdef").Right(3), "def");
 	}
 	
 	public static Boolean TestDisassembler() {
@@ -66,20 +66,20 @@ Boolean UnitTests::Assert(Boolean condition, String message) {
 		// Test tokenization
 		Boolean tokensOk = 
 			AssertEqual(Assembler::GetTokens("   LOAD r5, r6 # comment"),
-			   List<String> { "LOAD", "r5", "r6" })
+			   List<String>::New { "LOAD", "r5", "r6" })
 		&&  AssertEqual(Assembler::GetTokens("  NOOP  "),
-			   List<String> { "NOOP" })
+			   List<String>::New { "NOOP" })
 		&&  AssertEqual(Assembler::GetTokens(" # comment only"),
-			   List<String>())
+			   List<String>::New())
 		&&  AssertEqual(Assembler::GetTokens("LOAD r1, \"Hello world\""),
-			   List<String> { "LOAD", "r1", "\"Hello world\"" })
+			   List<String>::New { "LOAD", "r1", "\"Hello world\"" })
 		&&  AssertEqual(Assembler::GetTokens("LOAD r2, \"test\" # comment after string"),
-			   List<String> { "LOAD", "r2", "\"test\"" });
+			   List<String>::New { "LOAD", "r2", "\"test\"" });
 		
 		if (!tokensOk) return false;
 		
 		// Test instruction assembly
-		Assembler assem =  Assembler();
+		Assembler assem =  Assembler::New();
 		
 		// Test NOOP
 		Boolean asmOk = AssertEqual(assem::AddLine("NOOP"), 
@@ -113,7 +113,7 @@ Boolean UnitTests::Assert(Boolean condition, String message) {
 			BytecodeUtil::INS(Opcode::RETURN));
 		
 		// Test label assembly with two-pass approach
-		List<String> labelTest =  List<String> {
+		List<String> labelTest =  List<String>::New {
 			"NOOP",
 			"loop:",
 			"LOAD r1, 42",
@@ -123,7 +123,7 @@ Boolean UnitTests::Assert(Boolean condition, String message) {
 			"RETURN"
 		};
 		
-		Assembler labelAssem =  Assembler();
+		Assembler labelAssem =  Assembler::New();
 		labelAssem::Assemble(labelTest);
 		
 		// Find the @main function
@@ -140,13 +140,13 @@ Boolean UnitTests::Assert(Boolean condition, String message) {
 		asmOk = asmOk && AssertEqual(jumpInstruction, expectedJump);
 		
 		// Test constant support
-		List<String> constantTest =  List<String> {
+		List<String> constantTest =  List<String>::New {
 			"LOAD r0, \"hello\"",    // Should use constant index 0
 			"LOAD r1, 3.14",        // Should use constant index 1  
 			"LOAD r2, 100000"       // Should use constant index 2
 		};
 		
-		Assembler constAssem =  Assembler();
+		Assembler constAssem =  Assembler::New();
 		constAssem::Assemble(constantTest);
 		
 		FuncDef constFunc = constAssem::FindFunction("@main");
@@ -164,11 +164,11 @@ Boolean UnitTests::Assert(Boolean condition, String message) {
 		asmOk = asmOk && AssertEqual(constFunc.Constants().Count(), 3);
 		
 		// Test small integer (should use immediate form, not constant)
-		List<String> immediateTest =  List<String> {
+		List<String> immediateTest =  List<String>::New {
 			"LOAD r3, 42"  // Should use immediate, not constant
 		};
 		
-		Assembler immediateAssem =  Assembler();
+		Assembler immediateAssem =  Assembler::New();
 		immediateAssem::Assemble(immediateTest);
 		
 		FuncDef immediateFunc = immediateAssem::FindFunction("@main");
@@ -179,14 +179,14 @@ Boolean UnitTests::Assert(Boolean condition, String message) {
 		asmOk = asmOk && AssertEqual(immediateFunc.Constants().Count(), 0); // No constants added
 		
 		// Test two-pass assembly with multiple constants and instructions
-		List<String> multiTest =  List<String> {
+		List<String> multiTest =  List<String>::New {
 			"LOAD r1, \"Hello\"",
 			"LOAD r2, \"World\"", 
 			"ADD r0, r1, r2",
 			"RETURN"
 		};
 		
-		Assembler multiAssem =  Assembler();
+		Assembler multiAssem =  Assembler::New();
 		multiAssem::Assemble(multiTest);
 		
 		FuncDef multiFunc = multiAssem::FindFunction("@main");

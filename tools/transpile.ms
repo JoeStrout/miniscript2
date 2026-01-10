@@ -398,7 +398,7 @@ Transpiler.transformStatement = function(trimmedLine)
 	// non-identifier string.
 	tokens = roughTokenize(trimmedLine)
 	
-	deepDebug = trimmedLine.contains("func.Code.Add")
+	deepDebug = false; // e.g. trimmedLine.contains("func.Code.Add")
 	ddprint = function(s); if deepDebug then print "====> " + s; end function
 	summarize = function(obj)
 		if obj == null then return "<null>"
@@ -409,7 +409,9 @@ Transpiler.transformStatement = function(trimmedLine)
 	// recognize; that's OK.  Just keep track of stuff we do.
 	didAssignment = false
 	curInfo = null
-	for i in tokens.indexes
+	i = -1
+	while i + 1 < tokens.len
+		i += 1
 		if not tokens[i] then continue
 		if tokens[i] == "." then   // dot operator: resolve var type and continue
 			ddprint "Got dot when curInfo=" + summarize(curInfo)
@@ -437,11 +439,18 @@ Transpiler.transformStatement = function(trimmedLine)
 			// using our storage-wrapper pattern), call the `New()` static method instead.
 			cl = self.findClass(tokens[i+2])  // (skipping space)
 			if cl and cl.type == ClassType.CLASS then
-				tokens[i] = ""
-				tok = tokens[i+2]  // should be something like `Foo()`
-				parenPos = tok.indexOf("(")
-				if parenPos == null then parenPos = tok.len
-				tokens[i+2] = tok[:parenPos] + "::New" + tok[parenPos:]
+				tokens.remove i  // remove "new"; i now points to " "
+				tok = tokens[i+1]  // should be something like `Foo`
+				if i+4 < tokens.len and tokens[i+2] == "<" and tokens[i+4].startsWith(">") then
+					// template class
+					templateType = tokens[i+3]
+					tokens[i+1] = tok + "<" + templateType + ">::New"
+					tokens[i+4] = tokens[i+4][1:]
+					tokens.remove i+3
+					tokens.remove i+2
+				else
+					tokens[i+1] = tok + "::New"
+				end if
 				continue
 			end if
 			if not cl then
@@ -499,7 +508,7 @@ Transpiler.transformStatement = function(trimmedLine)
 			end if
 		end if
 		curInfo = nextInfo
-	end for
+	end while
 	
 	result = tokens.join("")
 	if didAssignment then
@@ -718,7 +727,7 @@ Transpiler.updateStateNAMESPACE = function
 		self.curClass.wrapperLines.push self.fill("	≤name≥(std::shared_ptr<≤name≥Storage> stor) : storage(stor) {}")
 		self.curClass.wrapperLines.push self.fill("	≤name≥() : storage(nullptr) {}")
 		self.curClass.wrapperLines.push self.fill("	static ≤name≥ New() { return ≤name≥(std::make_shared<≤name≥Storage>()); }")
-		self.curClass.wrapperLines.push self.fill("	friend bool IsNull(≤name≥ inst) { return inst.storage == nullptr; }")
+		self.curClass.wrapperLines.push self.fill("	friend bool IsNull(const ≤name≥& inst) { return inst.storage == nullptr; }")
 		self.curClass.wrapperLines.push self.fill("	private: ≤name≥Storage* get() const { return static_cast<≤name≥Storage*>(storage.get()); }")
 		self.curClass.storageLines.push self.fill("class ≤name≥Storage : public std::enable_shared_from_this<≤name≥Storage> {")
 		if self.subclassesOf(self.curClass) then
@@ -822,12 +831,17 @@ Transpiler.updateStateCLASS = function
 			self.curClass.declLines.push self.fill("	≤scope≥: static const ≤type≥ ≤name≥;")
 			self.curClass.defLines.push self.fill("const ≤type≥ ≤className≥::≤name≥ = ≤value≥;")
 
-		// ordinary field
+		// ordinary field (with or without initializer)
 		else if self.match("≤scope:w≥ ≤type:w≥ ≤name:w≥;") or
 		        self.match("≤scope:w≥ ≤type:w≥ ≤name:w≥ = ≤expr≥;") then
 		    self.m.dec = "≤scope≥: ≤type≥ ≤name≥".fill(self.m)
-		    if self.m.hasIndex("expr") and self.m.expr != "new ≤type≥()".fill(self.m) then
-		    	self.m.dec += " = " + self.m.expr
+		    if self.m.hasIndex("expr") then
+		    	exprm = self.m.expr.match("new ≤type≥(≤params≥)")
+		    	if exprm then
+		    		self.m.dec += " = ≤type≥::New(≤params≥)".fill(exprm)
+		    	else
+			    	self.m.dec += " = " + self.m.expr
+			    end if
 		    end if
 			if self.curClass.type == ClassType.CLASS then
 				self.curClass.storageLines.push self.fill("	≤dec≥;")
@@ -1318,8 +1332,6 @@ if locals == globals then
 	if filesToProcess.len == 1 then debugMode = true
 	
 	for path in filesToProcess
-		print
-		print "PROCESSING: " + path
 		print
 		t.clearOutput
 		t.process path, false

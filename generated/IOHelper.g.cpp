@@ -29,7 +29,7 @@ String IOHelper::Input(String prompt) {
 	return result;
 }
 List<String> IOHelper::ReadFile(String filePath) {
-	List<String> lines =  List<String>();
+	List<String> lines =  List<String>::New();
 	std::ifstream file(filePath.c_str());
 	if (!file.is_open()) {
 		Print(String("Error: Could not open file ") + filePath);

@@ -15,10 +15,10 @@ namespace MiniScript {
 
 
 AssemblerStorage::AssemblerStorage() {
-		Functions =  List<FuncDef>();
-		Current =  FuncDef();
-		_labelNames =  List<String>();
-		_labelAddresses =  List<Int32>();
+		Functions =  List<FuncDef>::New();
+		Current =  FuncDef::New();
+		_labelNames =  List<String>::New();
+		_labelAddresses =  List<Int32>::New();
 		
 		// Initialize error state
 		HasError = false;
@@ -36,7 +36,7 @@ AssemblerStorage::AssemblerStorage() {
 	}
 
 	// Helper to find a function by name::
-
+	// C#: returns null if not found; C++: returns an empty FuncDef::
 	public FuncDef FindFunction(String name) {
 		Int32 index = FindFunctionIndex(name);
 		if (index >= 0) return Functions[index];			
@@ -55,7 +55,7 @@ AssemblerStorage::AssemblerStorage() {
 		//  "LOAD r1, \"Hello world\""  -->  ["LOAD", "r1", "\"Hello world\""]
 		
 		// Parse line character by character, collecting tokens
-		List<String> tokens =  List<String>();
+		List<String> tokens =  List<String>::New();
 		Int32 tokenStart = -1;
 		Boolean inQuotes = false;
 		
@@ -73,7 +73,7 @@ AssemblerStorage::AssemblerStorage() {
 					inQuotes = true;
 				} else if (inQuotes) {
 					// End of quoted token
-					tokens::Add(line::Substring(tokenStart, i - tokenStart + 1));
+					tokens.Add(line::Substring(tokenStart, i - tokenStart + 1));
 					tokenStart = -1;
 					inQuotes = false;
 				}
@@ -84,7 +84,7 @@ AssemblerStorage::AssemblerStorage() {
 			if ((c == ' ' || c == '\t' || c == ',') && !inQuotes) {
 				// End current token if we have one
 				if (tokenStart >= 0) {
-					tokens::Add(line::Substring(tokenStart, i - tokenStart));
+					tokens.Add(line::Substring(tokenStart, i - tokenStart));
 					tokenStart = -1;
 				}
 			} else {
@@ -99,9 +99,9 @@ AssemblerStorage::AssemblerStorage() {
 		if (tokenStart >= 0) {
 			if (inQuotes) {
 				// Unclosed quote - include the rest of the line
-				tokens::Add(line::Substring(tokenStart, line::Length - tokenStart));
+				tokens.Add(line::Substring(tokenStart, line::Length - tokenStart));
 			} else {
-				tokens::Add(line::Substring(tokenStart, line::Length - tokenStart));
+				tokens.Add(line::Substring(tokenStart, line::Length - tokenStart));
 			}
 		}
 		return tokens;
@@ -183,8 +183,8 @@ AssemblerStorage::AssemblerStorage() {
 
 			// Add parameter to current function (store name as Value string)
 			// ToDo: make simple, consistent conversion functions between String and Value, and use everywhere::
-			Current.ParamNames()::Add(make_string(paramName));
-			Current.ParamDefaults()::Add(defaultValue);
+			Current.ParamNames().Add(make_string(paramName));
+			Current.ParamDefaults().Add(defaultValue);
 
 			return 0; // Directives don't produce instructions
 		}
@@ -858,7 +858,7 @@ AssemblerStorage::AssemblerStorage() {
 		}
 		
 		// Add instruction to current function (only if no error occurred)
-		if (!HasError) Current.Code()::Add(instruction);
+		if (!HasError) Current.Code().Add(instruction);
 		
 		return instruction;
 	}
@@ -1011,9 +1011,9 @@ AssemblerStorage::AssemblerStorage() {
 			return false;
 		}
 		
-		FuncDef newFunc =  FuncDef();
+		FuncDef newFunc =  FuncDef::New();
 		newFunc.set_Name(functionName);
-		Functions::Add(newFunc);
+		Functions.Add(newFunc);
 		return true;
 	}
 
@@ -1033,7 +1033,7 @@ AssemblerStorage::AssemblerStorage() {
 		}
 		
 		// Failing that, add it to the table
-		Current.Constants()::Add(value);
+		Current.Constants().Add(value);
 		return Current.Constants().Count() - 1;
 	}
 
@@ -1132,10 +1132,10 @@ AssemblerStorage::AssemblerStorage() {
 	// Multi-function assembly with support for @function: labels
 	public void Assemble(List<String> sourceLines) {
 		// Clear any previous state
-		Functions::Clear();
-		Current =  FuncDef();
-		_labelNames::Clear();
-		_labelAddresses::Clear();
+		Functions.Clear();
+		Current =  FuncDef::New();
+		_labelNames.Clear();
+		_labelAddresses.Clear();
 
 		// Use a temporary string pool for assembly
 		Byte savedPool = MemPoolShim::GetDefaultStringPool();
@@ -1188,7 +1188,7 @@ AssemblerStorage::AssemblerStorage() {
 			Int32 slot = FindFunctionIndex(Current.Name());
 			Functions[slot] = Current;
 
-			Current =  FuncDef();
+			Current =  FuncDef::New();
 		}
 
 		// Before clearing the temporary pool, ensure all function names are interned 
@@ -1196,7 +1196,7 @@ AssemblerStorage::AssemblerStorage() {
 		if (tempPool != 0) {
 			MemPoolShim::SetDefaultStringPool(savedPool);
 			for (Int32 i = 0; i < Functions.Count(); i++) {
-				// Re-intern function name in pool 0 (Assembler(shared_from_this()) creates a  String in pool 0)
+				// Re-intern function name in pool 0 (Assembler(shared_from_this()) creates a  String::New in pool 0)
 				Functions[i].Name = MemPoolShim::InternString(Functions[i].Name);
 			}
 			MemPoolShim::ClearStringPool(tempPool);  // Now safe to clear temp pool
@@ -1209,8 +1209,8 @@ AssemblerStorage::AssemblerStorage() {
 	private Int32 AssembleFunction(List<String> sourceLines, Int32 startLine) {
 		// Prepare label names/addresses, just for Assembler(shared_from_this()) function::
 		// (So it's OK to reuse the same label in multiple functions!)
-		_labelNames::Clear();
-		_labelAddresses::Clear();
+		_labelNames.Clear();
+		_labelAddresses.Clear();
 
 		// First pass: collect label positions within Assembler(shared_from_this()) function;
 		// and also find the end line for the second pass::
@@ -1235,8 +1235,8 @@ AssemblerStorage::AssemblerStorage() {
 			// Check if first token is a regular label
 			if (IsLabel(tokens[0])) {
 				String labelName = ParseLabel(tokens[0]);
-				_labelNames::Add(labelName);
-				_labelAddresses::Add(instructionAddress);
+				_labelNames.Add(labelName);
+				_labelAddresses.Add(instructionAddress);
 			}
 
 			// Check if there's an instruction on Assembler(shared_from_this()) line
@@ -1246,8 +1246,8 @@ AssemblerStorage::AssemblerStorage() {
 		}
 
 		// Second pass: assemble instructions with label resolution
-		Current.Code()::Clear(); // Clear any previous assembly
-		Current.Constants()::Clear();
+		Current.Code().Clear(); // Clear any previous assembly
+		Current.Constants().Clear();
 		for (Int32 i = startLine; i < endLine && !HasError; i++) {
 			CurrentLineNumber = i + 1; // Set line number for error reporting (1-based)
 			CurrentLine = sourceLines[i]; // Set current line for error reporting

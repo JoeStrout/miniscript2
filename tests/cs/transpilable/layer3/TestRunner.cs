@@ -4,6 +4,7 @@
 using System;
 // CPP: #include "IOHelper.g.h"
 // CPP: #include "DisassemblerTest.g.h"
+// CPP: #include "AssemblerTest.g.h"
 
 namespace MiniScript {
 
@@ -16,6 +17,9 @@ public static class TestRunner {
 
 		// Run Disassembler tests
 		allPassed = DisassemblerTest.RunAll() && allPassed;
+
+		// Run Assembler tests
+		allPassed = AssemblerTest.RunAll() && allPassed;
 
 		// Only print failure notice if tests failed
 		if (!allPassed) {

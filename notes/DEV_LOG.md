@@ -134,3 +134,11 @@ Wrapper classes now get a static `New()` method, which creates a new storage ins
 Starting on layer3 tests, which will include Assembler and Disassembler.
 
 This has exposed that our CS_List, CS_String, and CS_Dictionary classes need to have this same `New` factory method, for the sake of consistency.  
+
+## Jan 12, 2026
+
+Disassembler test is passing; working today on Assembler test.
+
+One issue that may need revisiting: static methods in a reference type (like Assembler.GetTokens) are currently transpiled such that the real implementation is in the storage class, and the wrapper class calls through to that.  This works but seems unnecessary; since it's a static method, and can't reference any of the storage data anyway, we could just implement it in the wrapper class.  Of course the wrapper is thin and it probably compiles down to the same thing in this case, so it's not a high priority.
+
+Meanwhile, Assembler.cs has a few remaining transpiler issues.  It's getting close, though!

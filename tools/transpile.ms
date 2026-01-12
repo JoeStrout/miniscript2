@@ -413,7 +413,19 @@ Transpiler.transformStatement = function(trimmedLine)
 	while i + 1 < tokens.len
 		i += 1
 		if not tokens[i] then continue
-		if tokens[i] == "." then   // dot operator: resolve var type and continue
+		if tokens[i] == "true" then
+			tokens[i] = "Boolean(true)"  // make true/false literals Boolean rather than bool
+		else if tokens[i] == "false" then
+			tokens[i] = "Boolean(false)"
+		else if tokens[i] == "." then   // dot operator: resolve var type and continue
+			if i+1 < tokens.len and (tokens[i+1] == "MaxValue" or tokens[i+1] == "MinValue") then
+				// We have macros like UInt16MaxValue, etc., in core_includes.h, so just:
+				tokens[i-1] += tokens[i+1]
+				tokens.remove i+1
+				tokens.remove i
+				i -= 1
+				continue
+			end if
 			ddprint "Got dot when curInfo=" + summarize(curInfo)
 			if curInfo isa VariableInfo then curInfo = self.lookup(curInfo.type) // ToDo: context?
 			ddprint "After lookup, curInfo=" + summarize(curInfo)
@@ -529,6 +541,7 @@ Transpiler.parseParams = function(paramStr)
 		m = part.match("≤type:w≥ ≤name:w≥ = ≤value≥")
 		if not m then m = part.match("≤type:w≥ ≤name:w≥=≤value≥")
 		if not m then m = part.match("≤type:w≥ ≤name:w≥")
+		if not m then m = part.match("ref ≤type:w≥ ≤name:w≥") // ToDo: not ref in VariableInfo
 		if m then
 			result.push VariableInfo.Make(m.name, m.type, Scope.LOCAL)
 		else
@@ -579,6 +592,7 @@ Transpiler.enterState = function(newState, initAsNew=true)
 		
 	else if newState == State.CLASS then
 		if initAsNew then
+			self.assert not self.line.indentation, "Classes should be flush left, not indented" 
 			if self.line and self.line.m and self.line.m.hasIndex("name") then
 				name = self.line.m.name
 			else
@@ -730,6 +744,7 @@ Transpiler.updateStateNAMESPACE = function
 		self.curClass.wrapperLines.push self.fill("	friend bool IsNull(const ≤name≥& inst) { return inst.storage == nullptr; }")
 		self.curClass.wrapperLines.push self.fill("	private: ≤name≥Storage* get() const { return static_cast<≤name≥Storage*>(storage.get()); }")
 		self.curClass.storageLines.push self.fill("class ≤name≥Storage : public std::enable_shared_from_this<≤name≥Storage> {")
+		self.curClass.storageLines.push self.fill("	friend struct ≤name≥;")
 		if self.subclassesOf(self.curClass) then
 			self.curClass.wrapperLines.push self.fill("	template<typename WrapperType, typename StorageType>")
 			self.curClass.wrapperLines.push self.fill("	friend WrapperType As(ASTNode node) {")
@@ -833,7 +848,8 @@ Transpiler.updateStateCLASS = function
 
 		// ordinary field (with or without initializer)
 		else if self.match("≤scope:w≥ ≤type:w≥ ≤name:w≥;") or
-		        self.match("≤scope:w≥ ≤type:w≥ ≤name:w≥ = ≤expr≥;") then
+		        self.match("≤scope:w≥ ≤type:w≥ ≤name:w≥ = ≤expr≥;") or
+		        self.match("≤scope:w≥ ≤type:w≥ ≤name:w≥ { get; private set; }") then
 		    self.m.dec = "≤scope≥: ≤type≥ ≤name≥".fill(self.m)
 		    if self.m.hasIndex("expr") then
 		    	exprm = self.m.expr.match("new ≤type≥(≤params≥)")
@@ -861,17 +877,16 @@ Transpiler.updateStateCLASS = function
 		// constructor method (no return type)
 		else if self.match("≤scope:w≥ ≤name:w≥(≤params≥) {") then
 			self.enterState State.METHOD
-			self.m.paramNames = parameterNames(self.m.params)
 			if self.curClass.type == ClassType.CLASS then
 				self.curClass.storageLines.push self.fill("	≤scope≥: ≤name≥Storage(≤params≥);")
 				root = self.curClass.rootClass(self.allClasses)
 				if root then
 					self.m.rootClass = root.name
 					self.curClass.wrapperLines.push self.fill(
-					  "	≤scope≥: ≤name≥(≤params≥) : ≤rootClass≥(std::make_shared<≤name≥Storage>(≤paramNames≥)) {}")
+					  "	≤scope≥: ≤name≥(≤params≥) : ≤rootClass≥(std::make_shared<≤name≥Storage>(≤args≥)) {}")
 				else
 					self.curClass.wrapperLines.push self.fill(
-					  "	≤scope≥: ≤name≥(≤params≥) : ?!?!?(std::make_shared<≤name≥Storage>(≤paramNames≥)) {}")
+					  "	≤scope≥: ≤name≥(≤params≥) : ?!?!?(std::make_shared<≤name≥Storage>(≤args≥)) {}")
 				end if
 				self.stripDefaultArgs
 				self.curClass.methodLines.push self.fill("≤inline≥≤className≥Storage::≤name≥Storage(≤params≥) {")
@@ -902,6 +917,8 @@ Transpiler.updateStateCLASS = function
 			self.enterState State.METHOD
 			if self.curClass.type == ClassType.CLASS then
 				self.curClass.storageLines.push self.fill("	≤scope≥: static ≤type≥ ≤name≥(≤params≥);")
+				self.curClass.wrapperLines.push self.fill(
+				  "	≤scope≥: static ≤type≥ ≤name≥(≤params≥) { return ≤className≥Storage::≤name≥(≤args≥); }")
 				self.stripDefaultArgs
 				self.curClass.methodLines.push self.fill("≤inline≥≤type≥ ≤className≥Storage::≤name≥(≤params≥) {")
 			else
@@ -943,15 +960,14 @@ Transpiler.updateStateCLASS = function
 		// abstract method: in C++ we actually implement this (inline) on the wrapper
 		// struct, calling through to the storage, where it may be overridden.
 		else if self.match("≤scope:w≥ abstract ≤type:w≥ ≤name:w≥(≤params≥);") then
-			qa.assert self.curClass.type == ClassType.CLASS
+			self.assert self.curClass.type == ClassType.CLASS
 			self.curClass.wrapperLines.push self.fill("	≤scope≥: ≤type≥ ≤name≥(≤params≥);")
 			self.curClass.storageLines.push self.fill("	≤scope≥: virtual ≤type≥ ≤name≥(≤params≥) = 0;")
-			self.m.paramNames = parameterNames(self.m.params)
 			// Also todo: strip defaults but NOT types, for use in implementation;
 			// we'll need that in several places here (anywhere we have a method body).
 			self.stripDefaultArgs
 			self.curClass.inlineLines.push self.fill(
-			  "inline ≤type≥ ≤className≥::≤name≥(≤params≥) { return storage->≤name≥(≤paramNames≥); }")
+			  "inline ≤type≥ ≤className≥::≤name≥(≤params≥) { return storage->≤name≥(≤args≥); }")
 			if self.gatherMode then self.curClass.methods.push MethodInfo.Make(self.m.name)
 
 		// override method
@@ -1264,7 +1280,9 @@ end function
 resolvePath = function(path)
 	if path[0] == "/" then return path
 	p = file.child(file.curdir, path)
-	return file.info(p).path
+	info = file.info(p)
+	if info == null then return null
+	return info.path
 end function
 
 if locals == globals then

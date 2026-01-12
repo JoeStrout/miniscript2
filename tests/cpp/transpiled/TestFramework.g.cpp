@@ -17,49 +17,49 @@ void TestFramework::Reset() {
 Boolean TestFramework::Assert(Boolean condition, String message) {
 	if (condition) {
 		PassCount++;
-		return true;
+		return Boolean(true);
 	}
 	IOHelper::Print(Interp("FAIL: {}", message));
 	FailCount++;
-	return false;
+	return Boolean(false);
 }
 Boolean TestFramework::AssertEqual(Int32 actual, Int32 expected, String context) {
 	if (actual == expected) {
 		PassCount++;
-		return true;
+		return Boolean(true);
 	}
 	IOHelper::Print(Interp("FAIL: {} - expected {}, got {}", context, expected, actual));
 	FailCount++;
-	return false;
+	return Boolean(false);
 }
 Boolean TestFramework::AssertEqual(UInt32 actual, UInt32 expected, String context) {
 	if (actual == expected) {
 		PassCount++;
-		return true;
+		return Boolean(true);
 	}
 	IOHelper::Print(Interp("FAIL: {} - expected {}, got {}", context, expected, actual));
 	FailCount++;
-	return false;
+	return Boolean(false);
 }
 Boolean TestFramework::AssertEqual(String actual, String expected, String context) {
 	if (actual == expected) {
 		PassCount++;
-		return true;
+		return Boolean(true);
 	}
 	IOHelper::Print(Interp("FAIL: {} - expected \"{}\", got \"{}\"", context, expected, actual));
 	FailCount++;
-	return false;
+	return Boolean(false);
 }
 Boolean TestFramework::AssertEqual(Boolean actual, Boolean expected, String context) {
 	if (actual == expected) {
 		PassCount++;
-		return true;
+		return Boolean(true);
 	}
 	String expStr = expected ? "true" : "false";
 	String actStr = actual ? "true" : "false";
 	IOHelper::Print(Interp("FAIL: {} - expected {}, got {}", context, expStr, actStr));
 	FailCount++;
-	return false;
+	return Boolean(false);
 }
 void TestFramework::PrintSummary(String suiteName) {
 	// Silent - failures are already printed

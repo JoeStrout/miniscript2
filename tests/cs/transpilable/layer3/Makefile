@@ -17,7 +17,9 @@ SOURCES = $(TEST_FRAMEWORK) \
           $(CS_DIR)/VarMap.cs \
           $(CS_DIR)/FuncDef.cs \
           $(CS_DIR)/Disassembler.cs \
+          $(CS_DIR)/Assembler.cs \
           DisassemblerTest.cs \
+          AssemblerTest.cs \
           TestRunner.cs
 
 # Output

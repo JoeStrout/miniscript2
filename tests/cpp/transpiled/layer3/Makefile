@@ -12,6 +12,7 @@ TRANSPILER = ../../../../tools/transpile.ms
 # Transpiled test sources (generated .g.cpp files)
 TRANSPILED_TEST_SOURCES = ../TestFramework.g.cpp \
                           DisassemblerTest.g.cpp \
+                          AssemblerTest.g.cpp \
                           TestRunner.g.cpp
 
 # Transpiled production sources (from generated/)
@@ -19,7 +20,8 @@ TRANSPILED_PROD_SOURCES = $(GENERATED)/IOHelper.g.cpp \
                           $(GENERATED)/Bytecode.g.cpp \
                           $(GENERATED)/FuncDef.g.cpp \
                           $(GENERATED)/StringUtils.g.cpp \
-                          $(GENERATED)/Disassembler.g.cpp
+                          $(GENERATED)/Disassembler.g.cpp \
+                          $(GENERATED)/Assembler.g.cpp
 
 # C++ core runtime sources
 CPP_CORE_SOURCES = $(CPP_CORE)/value.c \
@@ -49,12 +51,14 @@ LDFLAGS =
 CPP_OBJECTS = $(BUILD_DIR)/main.o \
               $(BUILD_DIR)/TestFramework.o \
               $(BUILD_DIR)/DisassemblerTest.o \
+              $(BUILD_DIR)/AssemblerTest.o \
               $(BUILD_DIR)/TestRunner.o \
               $(BUILD_DIR)/IOHelper.o \
               $(BUILD_DIR)/Bytecode.o \
               $(BUILD_DIR)/FuncDef.o \
               $(BUILD_DIR)/StringUtils.o \
               $(BUILD_DIR)/Disassembler.o \
+              $(BUILD_DIR)/Assembler.o \
               $(BUILD_DIR)/CS_String.o \
               $(BUILD_DIR)/CS_List.o \
               $(BUILD_DIR)/CS_Math.o \
@@ -105,6 +109,10 @@ $(BUILD_DIR)/DisassemblerTest.o: DisassemblerTest.g.cpp
 	@mkdir -p $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
+$(BUILD_DIR)/AssemblerTest.o: AssemblerTest.g.cpp
+	@mkdir -p $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
 $(BUILD_DIR)/TestRunner.o: TestRunner.g.cpp
 	@mkdir -p $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
@@ -126,6 +134,10 @@ $(BUILD_DIR)/StringUtils.o: $(GENERATED)/StringUtils.g.cpp
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 $(BUILD_DIR)/Disassembler.o: $(GENERATED)/Disassembler.g.cpp
+	@mkdir -p $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
+$(BUILD_DIR)/Assembler.o: $(GENERATED)/Assembler.g.cpp
 	@mkdir -p $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 

@@ -13,6 +13,8 @@ namespace MiniScript {
 
 struct CallInfo;
 class CallInfoStorage;
+struct VM;
+class VMStorage;
 struct VMVis;
 class VMVisStorage;
 struct Assembler;
@@ -25,6 +27,8 @@ struct Lexer;
 class LexerStorage;
 
 // DECLARATIONS
+
+
 
 
 

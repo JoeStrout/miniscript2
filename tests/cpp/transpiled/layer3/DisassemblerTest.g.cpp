@@ -12,7 +12,7 @@ namespace MiniScript {
 
 
 Boolean DisassemblerTest::TestAssemOp() {
-	Boolean ok = true;
+	Boolean ok = Boolean(true);
 
 	// Test various opcodes map to their short forms
 	ok = TestFramework::AssertEqual(Disassembler::AssemOp(Opcode::NOOP), "NOOP", "NOOP mnemonic") && ok;
@@ -29,7 +29,7 @@ Boolean DisassemblerTest::TestAssemOp() {
 	return ok;
 }
 Boolean DisassemblerTest::TestToString() {
-	Boolean ok = true;
+	Boolean ok = Boolean(true);
 
 	// Test no-operand instructions
 	UInt32 noop = BytecodeUtil::INS(Opcode::NOOP);
@@ -61,7 +61,7 @@ Boolean DisassemblerTest::TestToString() {
 	return ok;
 }
 Boolean DisassemblerTest::TestDisassembleFunction() {
-	Boolean ok = true;
+	Boolean ok = Boolean(true);
 
 	// Create a simple function with a few instructions
 	FuncDef func =  FuncDef::New();
@@ -80,19 +80,19 @@ Boolean DisassemblerTest::TestDisassembleFunction() {
 
 	// Disassemble
 	List<String> output =  List<String>::New();
-	Disassembler::Disassemble(func, output, false);
+	Disassembler::Disassemble(func, output, Boolean(false));
 
 	// Verify output has expected content
 	ok = TestFramework::Assert(output.Count() >= 4, "output has at least 4 lines") && ok;
 
 	// Check that instructions are present (non-detailed mode)
-	Boolean hasLoad = false;
-	Boolean hasAdd = false;
-	Boolean hasReturn = false;
+	Boolean hasLoad = Boolean(false);
+	Boolean hasAdd = Boolean(false);
+	Boolean hasReturn = Boolean(false);
 	for (Int32 i = 0; i < output.Count(); i++) {
-		if (output[i].Contains("LOAD")) hasLoad = true;
-		if (output[i].Contains("ADD")) hasAdd = true;
-		if (output[i].Contains("RETURN")) hasReturn = true;
+		if (output[i].Contains("LOAD")) hasLoad = Boolean(true);
+		if (output[i].Contains("ADD")) hasAdd = Boolean(true);
+		if (output[i].Contains("RETURN")) hasReturn = Boolean(true);
 	}
 	ok = TestFramework::Assert(hasLoad, "output contains LOAD") && ok;
 	ok = TestFramework::Assert(hasAdd, "output contains ADD") && ok;
@@ -105,7 +105,7 @@ Boolean DisassemblerTest::RunAll() {
 	IOHelper::Print("=== Disassembler Tests ===");
 	TestFramework::Reset();
 
-	Boolean allPassed = true;
+	Boolean allPassed = Boolean(true);
 	allPassed = TestAssemOp() && allPassed;
 	allPassed = TestToString() && allPassed;
 	allPassed = TestDisassembleFunction() && allPassed;

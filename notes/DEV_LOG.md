@@ -153,4 +153,11 @@ All layer3 transpilable tests are now passing in both C# and C++.  Note that one
 	tools/build.sh transpile
 	tools/build.sh cpp
 
-...but the C++ code isn't compiling quite yet; we have more work to do in both App and VM.
+...but the C++ code isn't compiling quite yet; we have more work to do in both App and VM.  Probably we should make one more test framework, for the VM.  Making that as layer4.
+
+Transpilation of VM is making progress.  I've made CallInfo a struct (rather than a smartref-managed class); but it seems like the transpiler is failing to recognize that `new CallInfo(args)` in C# should be just `CallInfo(args)` in C++, for structs like CallInfo.
+
+It's also somehow failing to grok what mainFunc is (declared as `FuncDef mainFunc` on lin 88), and so making lots of `::` errors.
+
+
+

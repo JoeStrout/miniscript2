@@ -2,11 +2,13 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-// CPP: #include "value.h"
+// H: #include "value.h"
+// H: #include "FuncDef.g.h"
+// H: #include "value_map.h"
+// CPP: #include "gc.h"
 // CPP: #include "value_list.h"
 // CPP: #include "value_string.h"
 // CPP: #include "Bytecode.g.h"
-// CPP: #include "FuncDef.g.h"
 // CPP: #include "IOHelper.g.h"
 // CPP: #include "Disassembler.g.h"
 // CPP: #include "StringUtils.g.h"
@@ -20,7 +22,7 @@ using CallInfoRef = CallInfo;
 using FuncDefRef = FuncDef;
 
 // Call stack frame (return info)
-public class CallInfo {
+public struct CallInfo {
 	public Int32 ReturnPC;        // where to continue in caller (PC index)
 	public Int32 ReturnBase;      // caller's base pointer (stack index)
 	public Int32 ReturnFuncIndex; // caller's function index in functions list
@@ -214,7 +216,7 @@ public class VM {
 	// Helper for argument processing (FUNCTION_CALLS.md steps 1-3):
 	// Process ARG instructions, validate argument count, and set up parameter registers.
 	// Returns the PC after the CALL instruction, or -1 on error.
-	private Int32 ProcessArguments(Int32 argCount, Int32 startPC, Int32 callerBase, Int32 calleeBase, FuncDef callee, ref List<UInt32> code) {
+	private Int32 ProcessArguments(Int32 argCount, Int32 startPC, Int32 callerBase, Int32 calleeBase, FuncDef callee, List<UInt32> code) {
 		Int32 paramCount = callee.ParamNames.Count;
 
 		// Step 1: Validate argument count
@@ -344,6 +346,8 @@ public class VM {
 			}
 
 			UInt32 instruction = curCode[pc++];
+			// Note: CollectionsMarshal.AsSpan requires .NET 5+; not compatible with Mono.
+			// This gives us direct array access without copying, for performance.
 			Span<Value> localStack = CollectionsMarshal.AsSpan(stack).Slice(baseIndex); // CPP: Value* localStack = stackPtr + baseIndex;
 
 			if (DebugMode) {
@@ -621,7 +625,7 @@ public class VM {
 					// Create VarMap for outer variables and store in R[A]
 					// TODO: Implement outer variable map access
 					Byte a = BytecodeUtil.Au(instruction);
-					CallInfoRef frame = callStack[callStackTop-1];
+					CallInfoRef frame = callStack[callStackTop - 1];
 					localStack[a] = frame.OuterVarMap;
 					names[baseIndex+a] = make_null();
 					break;
@@ -1017,7 +1021,7 @@ public class VM {
 					}
 
 					// Process arguments using helper
-					Int32 nextPC = ProcessArguments(argCount, pc, baseIndex, calleeBase, callee, ref curFunc.Code);
+					Int32 nextPC = ProcessArguments(argCount, pc, baseIndex, calleeBase, callee, curFunc.Code);
 					if (nextPC < 0) return make_null(); // Error already raised
 
 					// Set up call frame using helper
@@ -1228,7 +1232,7 @@ public class VM {
 		// Look up a variable in outer context (and eventually globals)
 		// Returns the value if found, or null if not found
 		if (callStackTop > 0) {
-			CallInfo currentFrame = callStack[callStackTop - 1];  // Current frame, not next frame
+			CallInfoRef currentFrame = callStack[callStackTop - 1];  // Current frame, not next frame
 			if (!is_null(currentFrame.OuterVarMap)) {
 				Value outerValue;
 				if (map_try_get(currentFrame.OuterVarMap, varName, out outerValue)) {

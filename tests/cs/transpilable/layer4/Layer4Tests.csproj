@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net6.0</TargetFramework>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="../TestFramework.cs" Link="TestFramework.cs" />
+    <Compile Include="../../../../cs/IOHelper.cs" Link="IOHelper.cs" />
+    <Compile Include="../../../../cs/Bytecode.cs" Link="Bytecode.cs" />
+    <Compile Include="../../../../cs/Value.cs" Link="Value.cs" />
+    <Compile Include="../../../../cs/StringUtils.cs" Link="StringUtils.cs" />
+    <Compile Include="../../../../cs/MemPoolShim.cs" Link="MemPoolShim.cs" />
+    <Compile Include="../../../../cs/ValueFuncRef.cs" Link="ValueFuncRef.cs" />
+    <Compile Include="../../../../cs/VarMap.cs" Link="VarMap.cs" />
+    <Compile Include="../../../../cs/FuncDef.cs" Link="FuncDef.cs" />
+    <Compile Include="../../../../cs/Disassembler.cs" Link="Disassembler.cs" />
+    <Compile Include="../../../../cs/Assembler.cs" Link="Assembler.cs" />
+    <Compile Include="../../../../cs/VM.cs" Link="VM.cs" />
+    <Compile Include="VMTest.cs" />
+    <Compile Include="TestRunner.cs" />
+  </ItemGroup>
+
+</Project>

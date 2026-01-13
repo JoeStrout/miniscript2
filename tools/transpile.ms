@@ -778,7 +778,7 @@ Transpiler.updateStateNAMESPACE = function
 	else if self.match("≤scope:w≥ struct ≤name:w≥ {") then
 		self.enterState State.CLASS
 		self.curClass.type = ClassType.STRUCT
-		self.curClass.declLines.push line.full
+		self.curClass.declLines.push self.fill("struct ≤name≥ {")
 	// class (simple or base class)
 	else if self.match("≤scope:w≥ class ≤name:w≥ {") then
 		self.enterState State.CLASS
@@ -927,14 +927,7 @@ Transpiler.updateStateCLASS = function
 			if self.curClass.type == ClassType.CLASS then
 				self.curClass.storageLines.push self.fill("	≤scope≥: ≤name≥Storage(≤params≥);")
 				root = self.curClass.rootClass(self.allClasses)
-				if root then
-					self.m.rootClass = root.name
-					self.curClass.wrapperLines.push self.fill(
-					  "	≤scope≥: ≤name≥(≤params≥) : ≤rootClass≥(std::make_shared<≤name≥Storage>(≤args≥)) {}")
-				else
-					self.curClass.wrapperLines.push self.fill(
-					  "	≤scope≥: ≤name≥(≤params≥) : ?!?!?(std::make_shared<≤name≥Storage>(≤args≥)) {}")
-				end if
+				if root then self.m.rootClass = root.name
 				self.stripDefaultArgs
 				self.curClass.methodLines.push self.fill("≤inline≥≤className≥Storage::≤name≥Storage(≤params≥) {")
 			else

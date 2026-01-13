@@ -3,14 +3,15 @@
 
 #pragma once
 #include "core_includes.h"
+#include "value.h"
+#include "FuncDef.g.h"
+#include "value_map.h"
 
 
 namespace MiniScript {
 
 // FORWARD DECLARATIONS
 
-struct CallInfo;
-class CallInfoStorage;
 struct VM;
 class VMStorage;
 struct VMVis;
@@ -28,6 +29,17 @@ class AppStorage;
 
 
 // Call stack frame (return info)
+struct CallInfo {
+	public: Int32 ReturnPC; // where to continue in caller (PC index)
+	public: Int32 ReturnBase; // caller's base pointer (stack index)
+	public: Int32 ReturnFuncIndex; // caller's function index in functions list
+	public: Int32 CopyResultToReg; // register number to copy result to, or -1
+	public: Value LocalVarMap; // VarMap representing locals, if any
+	public: Value OuterVarMap; // VarMap representing outer variables (closure context)
+
+	public: CallInfo(Int32 returnPC, Int32 returnBase, Int32 returnFuncIndex, Int32 copyToReg=-1);
+
+	public: CallInfo(Int32 returnPC, Int32 returnBase, Int32 returnFuncIndex, Int32 copyToReg, Value outerVars);
 	inline Value GetLocalVarMap(List<Value>& registers, List<Value>& names, int baseIdx, int regCount) {
 		if (is_null(LocalVarMap)) {
 			// Create a new VarMap with references to VM's stack and names arrays
@@ -41,6 +53,8 @@ class AppStorage;
 		return LocalVarMap;
 	}
 
+}; // end of struct CallInfo
+
 
 // VM state
 
@@ -53,21 +67,6 @@ class AppStorage;
 
 
 
-
-class CallInfoStorage : public std::enable_shared_from_this<CallInfoStorage> {
-	friend struct CallInfo;
-	public: Int32 ReturnPC; // where to continue in caller (PC index)
-	public: Int32 ReturnBase; // caller's base pointer (stack index)
-	public: Int32 ReturnFuncIndex; // caller's function index in functions list
-	public: Int32 CopyResultToReg; // register number to copy result to, or -1
-	public: Value LocalVarMap; // VarMap representing locals, if any
-	public: Value OuterVarMap; // VarMap representing outer variables (closure context)
-
-	public: CallInfoStorage(Int32 returnPC, Int32 returnBase, Int32 returnFuncIndex, Int32 copyToReg=-1);
-
-	public: CallInfoStorage(Int32 returnPC, Int32 returnBase, Int32 returnFuncIndex, Int32 copyToReg, Value outerVars);
-
-}; // end of class CallInfoStorage
 
 class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	friend struct VM;
@@ -116,7 +115,7 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	// Helper for argument processing (FUNCTION_CALLS.md steps 1-3):
 	// Process ARG instructions, validate argument count, and set up parameter registers.
 	// Returns the PC after the CALL instruction, or -1 on error.
-	private: Int32 ProcessArguments(Int32 argCount, Int32 startPC, Int32 callerBase, Int32 calleeBase, FuncDef callee, ref List<UInt32> code);
+	private: Int32 ProcessArguments(Int32 argCount, Int32 startPC, Int32 callerBase, Int32 calleeBase, FuncDef callee, List<UInt32> code);
 
 	// Helper for call setup (FUNCTION_CALLS.md steps 4-6):
 	// Initialize remaining parameters with defaults and clear callee's registers.
@@ -136,33 +135,6 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	
 	private: void DoIntrinsic(Value funcName, Int32 baseReg);
 }; // end of class VMStorage
-
-struct CallInfo {
-	protected: std::shared_ptr<CallInfoStorage> storage;
-  public:
-	CallInfo(std::shared_ptr<CallInfoStorage> stor) : storage(stor) {}
-	CallInfo() : storage(nullptr) {}
-	static CallInfo New() { return CallInfo(std::make_shared<CallInfoStorage>()); }
-	friend bool IsNull(const CallInfo& inst) { return inst.storage == nullptr; }
-	private: CallInfoStorage* get() const { return static_cast<CallInfoStorage*>(storage.get()); }
-
-	public: Int32 ReturnPC() { return get()->ReturnPC; } // where to continue in caller (PC index)
-	public: void set_ReturnPC(Int32 _v) { get()->ReturnPC = _v; } // where to continue in caller (PC index)
-	public: Int32 ReturnBase() { return get()->ReturnBase; } // caller's base pointer (stack index)
-	public: void set_ReturnBase(Int32 _v) { get()->ReturnBase = _v; } // caller's base pointer (stack index)
-	public: Int32 ReturnFuncIndex() { return get()->ReturnFuncIndex; } // caller's function index in functions list
-	public: void set_ReturnFuncIndex(Int32 _v) { get()->ReturnFuncIndex = _v; } // caller's function index in functions list
-	public: Int32 CopyResultToReg() { return get()->CopyResultToReg; } // register number to copy result to, or -1
-	public: void set_CopyResultToReg(Int32 _v) { get()->CopyResultToReg = _v; } // register number to copy result to, or -1
-	public: Value LocalVarMap() { return get()->LocalVarMap; } // VarMap representing locals, if any
-	public: void set_LocalVarMap(Value _v) { get()->LocalVarMap = _v; } // VarMap representing locals, if any
-	public: Value OuterVarMap() { return get()->OuterVarMap; } // VarMap representing outer variables (closure context)
-	public: void set_OuterVarMap(Value _v) { get()->OuterVarMap = _v; } // VarMap representing outer variables (closure context)
-
-	public: CallInfo(Int32 returnPC, Int32 returnBase, Int32 returnFuncIndex, Int32 copyToReg=-1) : CallInfo(std::make_shared<CallInfoStorage>(returnPC, returnBase, returnFuncIndex, copyToReg)) {}
-
-	public: CallInfo(Int32 returnPC, Int32 returnBase, Int32 returnFuncIndex, Int32 copyToReg, Value outerVars) : CallInfo(std::make_shared<CallInfoStorage>(returnPC, returnBase, returnFuncIndex, copyToReg, outerVars)) {}
-}; // end of struct CallInfo
 
 struct VM {
 	protected: std::shared_ptr<VMStorage> storage;
@@ -213,9 +185,7 @@ struct VM {
 
 	public: String GetFunctionName(Int32 funcIndex) { return get()->GetFunctionName(funcIndex); }
 
-	public: VM() : VM(std::make_shared<VMStorage>()) {}
 	
-	public: VM(Int32 stackSlots, Int32 callSlots) : VM(std::make_shared<VMStorage>(stackSlots, callSlots)) {}
 
 	private: void InitVM(Int32 stackSlots, Int32 callSlots) { return get()->InitVM(stackSlots, callSlots); }
 
@@ -230,7 +200,7 @@ struct VM {
 	// Helper for argument processing (FUNCTION_CALLS.md steps 1-3):
 	// Process ARG instructions, validate argument count, and set up parameter registers.
 	// Returns the PC after the CALL instruction, or -1 on error.
-	private: Int32 ProcessArguments(Int32 argCount, Int32 startPC, Int32 callerBase, Int32 calleeBase, FuncDef callee, ref List<UInt32> code) { return get()->ProcessArguments(argCount, startPC, callerBase, calleeBase, callee, List<UInt32> code); }
+	private: Int32 ProcessArguments(Int32 argCount, Int32 startPC, Int32 callerBase, Int32 calleeBase, FuncDef callee, List<UInt32> code) { return get()->ProcessArguments(argCount, startPC, callerBase, calleeBase, callee, code); }
 
 	// Helper for call setup (FUNCTION_CALLS.md steps 4-6):
 	// Initialize remaining parameters with defaults and clear callee's registers.

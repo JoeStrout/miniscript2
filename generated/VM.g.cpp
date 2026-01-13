@@ -2,11 +2,10 @@
 // Transpiled from: VM.cs
 
 #include "VM.g.h"
-#include "value.h"
+#include "gc.h"
 #include "value_list.h"
 #include "value_string.h"
 #include "Bytecode.g.h"
-#include "FuncDef.g.h"
 #include "IOHelper.g.h"
 #include "Disassembler.g.h"
 #include "StringUtils.g.h"
@@ -15,7 +14,7 @@
 namespace MiniScript {
 
 
-CallInfoStorage::CallInfoStorage(Int32 returnPC, Int32 returnBase, Int32 returnFuncIndex, Int32 copyToReg) {
+CallInfo::CallInfo(Int32 returnPC, Int32 returnBase, Int32 returnFuncIndex, Int32 copyToReg) {
 	ReturnPC = returnPC;
 	ReturnBase = returnBase;
 	ReturnFuncIndex = returnFuncIndex;
@@ -23,7 +22,7 @@ CallInfoStorage::CallInfoStorage(Int32 returnPC, Int32 returnBase, Int32 returnF
 	LocalVarMap = make_null();
 	OuterVarMap = val_null;
 }
-CallInfoStorage::CallInfoStorage(Int32 returnPC, Int32 returnBase, Int32 returnFuncIndex, Int32 copyToReg, Value outerVars) {
+CallInfo::CallInfo(Int32 returnPC, Int32 returnBase, Int32 returnFuncIndex, Int32 copyToReg, Value outerVars) {
 	ReturnPC = returnPC;
 	ReturnBase = returnBase;
 	ReturnFuncIndex = returnFuncIndex;
@@ -48,7 +47,7 @@ Value VMStorage::GetStackName(Int32 index) {
 	return names[index];
 }
 CallInfo VMStorage::GetCallStackFrame(Int32 index) {
-	if (index < 0 || index >= callStackTop) return  CallInfo::New(0, 0, -1);
+	if (index < 0 || index >= callStackTop) return new CallInfo(0, 0, -1);
 	return callStack[index];
 }
 String VMStorage::GetFunctionName(Int32 funcIndex) {
@@ -78,7 +77,7 @@ void VMStorage::InitVM(Int32 stackSlots, Int32 callSlots) {
 	
 	// Pre-allocate call stack capacity
 	for (Int32 i = 0; i < callSlots; i++) {
-		callStack.Add( CallInfo::New(0, 0, -1)); // -1 = invalid function index
+		callStack.Add(new CallInfo(0, 0, -1)); // -1 = invalid function index
 	}
 }
 void VMStorage::RegisterFunction(FuncDef funcDef) {
@@ -137,7 +136,7 @@ bool VMStorage::ReportRuntimeError() {
 	  RuntimeError, CurrentFunction.Name(), PC - 1));
 	return Boolean(true);
 }
-Int32 VMStorage::ProcessArguments(Int32 argCount, Int32 startPC, Int32 callerBase, Int32 calleeBase, FuncDef callee, ref List<UInt32> code) {
+Int32 VMStorage::ProcessArguments(Int32 argCount, Int32 startPC, Int32 callerBase, Int32 calleeBase, FuncDef callee, List<UInt32> code) {
 	Int32 paramCount = callee.ParamNames().Count();
 
 	// Step 1: Validate argument count
@@ -258,6 +257,8 @@ Value VMStorage::Run(UInt32 maxCycles) {
 		}
 
 		UInt32 instruction = curCode[pc++];
+		// Note: CollectionsMarshal::AsSpan requires ::NET 5+; not compatible with Mono::
+		// This gives us direct array access without copying, for performance::
 		Value* localStack = stackPtr + baseIndex;
 
 		if (DebugMode) {
@@ -358,7 +359,7 @@ Value VMStorage::Run(UInt32 maxCycles) {
 						IOHelper::Print("Call stack overflow");
 						return make_null();
 					}
-					callStack[callStackTop] =  CallInfo::New(pc, baseIndex, currentFuncIndex, a, outerVars);
+					callStack[callStackTop] = new CallInfo(pc, baseIndex, currentFuncIndex, a, outerVars);
 					callStackTop++;
 
 					// Switch to callee frame: base slides to argument window
@@ -535,7 +536,7 @@ Value VMStorage::Run(UInt32 maxCycles) {
 				// Create VarMap for outer variables and store in R[A]
 				// TODO: Implement outer variable map access
 				Byte a = BytecodeUtil::Au(instruction);
-				CallInfoRef frame = callStack[callStackTop-1];
+				CallInfoRef frame = callStack[callStackTop - 1];
 				localStack[a] = frame::OuterVarMap;
 				names[baseIndex+a] = make_null();
 				break;
@@ -931,7 +932,7 @@ Value VMStorage::Run(UInt32 maxCycles) {
 				}
 
 				// Process arguments using helper
-				Int32 nextPC = ProcessArguments(argCount, pc, baseIndex, calleeBase, callee, ref curFunc::Code);
+				Int32 nextPC = ProcessArguments(argCount, pc, baseIndex, calleeBase, callee, curFunc::Code);
 				if (nextPC < 0) return make_null(); // Error already raised
 
 				// Set up call frame using helper
@@ -945,7 +946,7 @@ Value VMStorage::Run(UInt32 maxCycles) {
 
 				Int32 funcIndex2 = funcref_index(localStack[BytecodeUtil::Cu(callInstruction)]);
 				Value outerVars = funcref_outer_vars(localStack[BytecodeUtil.Cu(callInstruction)]); GC_PROTECT(&outerVars);
-				callStack[callStackTop] =  CallInfo::New(nextPC, baseIndex, currentFuncIndex, resultReg, outerVars);
+				callStack[callStackTop] = new CallInfo(nextPC, baseIndex, currentFuncIndex, resultReg, outerVars);
 				callStackTop++;
 
 				baseIndex = calleeBase;
@@ -993,7 +994,7 @@ Value VMStorage::Run(UInt32 maxCycles) {
 					IOHelper::Print("Call stack overflow");
 					return make_null();
 				}
-				callStack[callStackTop] =  CallInfo::New(pc, baseIndex, currentFuncIndex);
+				callStack[callStackTop] = new CallInfo(pc, baseIndex, currentFuncIndex);
 				callStackTop++;
 
 				// Switch to callee frame: base slides to argument window
@@ -1055,7 +1056,7 @@ Value VMStorage::Run(UInt32 maxCycles) {
 					IOHelper::Print("Call stack overflow");
 					return make_null();
 				}
-				callStack[callStackTop] =  CallInfo::New(pc, baseIndex, currentFuncIndex, a, outerVars);
+				callStack[callStackTop] = new CallInfo(pc, baseIndex, currentFuncIndex, a, outerVars);
 				callStackTop++;
 
 				// Set up call frame starting at baseIndex + b
@@ -1093,16 +1094,16 @@ Value VMStorage::Run(UInt32 maxCycles) {
 				// Pop call stack
 				callStackTop--;
 				CallInfo callInfo = callStack[callStackTop];
-				pc = callInfo.ReturnPC();
-				baseIndex = callInfo.ReturnBase();
-				currentFuncIndex = callInfo.ReturnFuncIndex(); // Restore the caller's function index
+				pc = callInfo.ReturnPC;
+				baseIndex = callInfo.ReturnBase;
+				currentFuncIndex = callInfo.ReturnFuncIndex; // Restore the caller's function index
 				curFunc = functions[currentFuncIndex]; // Restore the caller's function
 				codeCount = curFunc::Code::Count;
 				curCode = &curFunc.Code[0];
 				curConstants = &curFunc.Constants[0];
 				
-				if (callInfo.CopyResultToReg() >= 0) {
-					stack[baseIndex + callInfo.CopyResultToReg()] = result;
+				if (callInfo.CopyResultToReg >= 0) {
+					stack[baseIndex + callInfo.CopyResultToReg] = result;
 				}
 				break;
 			}
@@ -1129,10 +1130,10 @@ Value VMStorage::LookupVariable(Value varName) {
 	// Look up a variable in outer context (and eventually globals)
 	// Returns the value if found, or null if not found
 	if (callStackTop > 0) {
-		CallInfo currentFrame = callStack[callStackTop - 1];  // Current frame, not next frame
-		if (!is_null(currentFrame.OuterVarMap())) {
+		CallInfoRef currentFrame = callStack[callStackTop - 1];  // Current frame, not next frame
+		if (!is_null(currentFrame::OuterVarMap)) {
 			Value outerValue; GC_PROTECT(&outerValue);
-			if (map_try_get(currentFrame.OuterVarMap(), varName, out outerValue)) {
+			if (map_try_get(currentFrame::OuterVarMap, varName, out outerValue)) {
 				return outerValue;
 			}
 		}

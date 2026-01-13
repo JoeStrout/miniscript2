@@ -79,7 +79,8 @@ String Disassembler::AssemOp(Opcode opcode) {
 String Disassembler::ToString(UInt32 instruction) {
 	Opcode opcode = (Opcode)BytecodeUtil::OP(instruction);
 	String mnemonic = AssemOp(opcode);
-	mnemonic = (mnemonic + "     ").Left(7);
+	mnemonic += "     ";
+	mnemonic = mnemonic.Left(7);
 	
 	// In the following switch, we group opcodes according
 	// to their operand usage::

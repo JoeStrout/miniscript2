@@ -12,7 +12,7 @@ namespace MiniScript {
 
 Int32 AssemblerStorage::FindFunctionIndex(String name) {
 	for (Int32 i = 0; i < Functions.Count(); i++) {
-		if (Functions[i].Name == name) return i;
+		if (Functions[i].Name() == name) return i;
 	}
 	return -1;
 }
@@ -26,7 +26,7 @@ Boolean AssemblerStorage::HasFunction(String name) {
 }
 List<String> AssemblerStorage::GetTokens(String line) {
 	// Clean the string, stripping off comment at '#',
-	// and divide into tokens by whitespace and commas.  Example:
+	// and divide into tokens by whitespace and commas::  Example:
 	//  "   LOAD r5, r6 # comment"  -->  ["LOAD", "r5", "r6"]
 	//  "LOAD r1, \"Hello world\""  -->  ["LOAD", "r1", "\"Hello world\""]
 	
@@ -118,10 +118,10 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 	String mnemonic = parts[0];
 	UInt32 instruction = 0;
 
-	// Handle .param directive (not an instruction, but a function parameter definition)
+	// Handle ::param directive (not an instruction, but a function parameter definition)
 	if (mnemonic == ".param") {
-		// .param paramName
-		// .param paramName=defaultValue
+		// ::param paramName
+		// ::param paramName=defaultValue
 		if (parts.Count() < 2) {
 			Error("Syntax error: .param requires a parameter name");
 			return 0;
@@ -131,7 +131,7 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 		String paramName;
 		Value defaultValue = make_null(); GC_PROTECT(&defaultValue);
 
-		// Check if there's a default value (e::g., "b=1")
+		// Check if there's a default value (e::g::, "b=1")
 		Int32 equalsPos = -1;
 		for (Int32 i = 0; i < paramSpec.Length(); i++) {
 			if (paramSpec[i] == '=') {
@@ -953,7 +953,7 @@ Boolean AssemblerStorage::IsFunctionLabel(String token) {
 	return token.Length() > 2 && token[0] == '@' && token[token.Length() - 1] == ':';
 }
 String AssemblerStorage::ParseLabel(String token) {
-	return token.Substring(0, token::Length-1);
+	return token.Substring(0, token.Length()-1);
 }
 bool AssemblerStorage::AddFunction(String functionName) {
 	if (HasFunction(functionName)) {
@@ -989,7 +989,7 @@ Boolean AssemblerStorage::NeedsConstant(String token) {
 	if (IsStringLiteral(token)) return Boolean(true);
 	
 	// Check if it contains a decimal point (floating point number)
-	if (token::Contains(".")) return Boolean(true);
+	if (token.Contains(".")) return Boolean(true);
 	
 	// Check if it's an integer too large for Int16
 	Int32 value = 0;
@@ -1013,12 +1013,12 @@ Boolean AssemblerStorage::NeedsConstant(String token) {
 Value AssemblerStorage::ParseAsConstant(String token) {
 	if (IsStringLiteral(token)) {
 		// Remove quotes and create string value
-		String content = token.Substring(1, token::Length - 2);
+		String content = token.Substring(1, token.Length() - 2);
 		return make_string(content);
 	}
 	
-	// Check if it contains a decimal point (floating point number).
-	if (token::Contains(".")) {
+	// Check if it contains a decimal point (floating point number)::
+	if (token.Contains(".")) {
 		// Simple double parsing (basic implementation)
 		Double doubleValue = ParseDouble(token);
 		return make_double(doubleValue);
@@ -1072,13 +1072,8 @@ void AssemblerStorage::Assemble(List<String> sourceLines) {
 	_labelNames.Clear();
 	_labelAddresses.Clear();
 
-	// Use a temporary string pool for assembly
-	Byte savedPool = MemPoolShim::GetDefaultStringPool();
-	Byte tempPool = MemPoolShim::GetUnusedPool();
-	if (tempPool != 0) MemPoolShim::SetDefaultStringPool(tempPool);
-	
 	// Skim very quickly through our source lines, collecting
-	// function labels (enabling forward calls).
+	// function labels (enabling forward calls)::
 	bool sawMain = Boolean(false);
 	Int32 lineNum = 0;
 	for (lineNum = 0; lineNum < sourceLines.Count(); lineNum++) {
@@ -1101,7 +1096,7 @@ void AssemblerStorage::Assemble(List<String> sourceLines) {
 		}
 		
 		// Our first non-empty line will either be "@main:" or an instruction
-		// (to go into the implicit @main function).  After that, we will
+		// (to go into the implicit @main function)::  After that, we will
 		// always have a function name (@someFunc) here::
 		if (IsFunctionLabel(tokens[0])) {
 			// Starting a  function::
@@ -1112,8 +1107,8 @@ void AssemblerStorage::Assemble(List<String> sourceLines) {
 		}
 		
 		// Assemble one function, starting at lineNum+1, and proceeding
-		// until the next function or end-of-input.  The result will be
-		// the line number where we should continue with the next function.	
+		// until the next function or end-of-input::  The result will be
+		// the line number where we should continue with the next function::	
 		lineNum = AssembleFunction(sourceLines, lineNum);
 
 		// Bail out if error occurred during function assembly
@@ -1124,17 +1119,6 @@ void AssemblerStorage::Assemble(List<String> sourceLines) {
 		Functions[slot] = Current;
 
 		Current =  FuncDef::New();
-	}
-
-	// Before clearing the temporary pool, ensure all function names are interned 
-	// in the pool that was active when we started (i::e. a non-temporary pool)
-	if (tempPool != 0) {
-		MemPoolShim::SetDefaultStringPool(savedPool);
-		for (Int32 i = 0; i < Functions.Count(); i++) {
-			// Re-intern function name in pool 0 (Assembler(shared_from_this()) creates a  String::New in pool 0)
-			Functions[i].Name = MemPoolShim::InternString(Functions[i].Name);
-		}
-		MemPoolShim::ClearStringPool(tempPool);  // Now safe to clear temp pool
 	}
 }
 Int32 AssemblerStorage::AssembleFunction(List<String> sourceLines, Int32 startLine) {

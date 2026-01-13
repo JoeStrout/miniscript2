@@ -11,6 +11,8 @@ namespace MiniScriptApp {
 
 struct CallInfo;
 class CallInfoStorage;
+struct VM;
+class VMStorage;
 struct VMVis;
 class VMVisStorage;
 struct Assembler;
@@ -19,10 +21,9 @@ struct FuncDef;
 class FuncDefStorage;
 struct App;
 class AppStorage;
-struct Lexer;
-class LexerStorage;
 
 // DECLARATIONS
+
 
 
 
@@ -39,8 +40,8 @@ class LexerStorage;
 	public: static bool debugMode;
 	public: static bool visMode;
 
-
 class AppStorage : public std::enable_shared_from_this<AppStorage> {
+	friend struct App;
 	
 	public: static void Main(string[] args);
 }; // end of class AppStorage
@@ -55,6 +56,7 @@ struct App {
 	private: AppStorage* get() const { return static_cast<AppStorage*>(storage.get()); }
 
 	
+	public: static void Main(string[] args) { return AppStorage::Main(args); }
 }; // end of struct App
 
 

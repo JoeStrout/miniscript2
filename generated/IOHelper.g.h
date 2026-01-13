@@ -13,6 +13,8 @@ namespace MiniScript {
 
 struct CallInfo;
 class CallInfoStorage;
+struct VM;
+class VMStorage;
 struct VMVis;
 class VMVisStorage;
 struct Assembler;
@@ -21,10 +23,9 @@ struct FuncDef;
 class FuncDefStorage;
 struct App;
 class AppStorage;
-struct Lexer;
-class LexerStorage;
 
 // DECLARATIONS
+
 
 
 
@@ -45,7 +46,6 @@ class IOHelper {
 	public: static List<String> ReadFile(String filePath);
 	
 }; // end of struct IOHelper
-
 
 
 

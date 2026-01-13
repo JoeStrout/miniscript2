@@ -142,3 +142,15 @@ Disassembler test is passing; working today on Assembler test.
 One issue that may need revisiting: static methods in a reference type (like Assembler.GetTokens) are currently transpiled such that the real implementation is in the storage class, and the wrapper class calls through to that.  This works but seems unnecessary; since it's a static method, and can't reference any of the storage data anyway, we could just implement it in the wrapper class.  Of course the wrapper is thin and it probably compiles down to the same thing in this case, so it's not a high priority.
 
 Meanwhile, Assembler.cs has a few remaining transpiler issues.  It's getting close, though!
+
+## Jan 13, 2026
+
+All layer3 transpilable tests are now passing in both C# and C++.  Note that one of the Assembler tests checks error handling, which works, but the Assembler itself is printing an error message to the console, which can be confusing when you run the test.  I'll probably revisit that at some point, but it's harmless so I'm going to press on for now.  We're nearly to the point of being able to transpile and run the main program.  Recall that we do this with (from the project root):
+
+	tools/build.sh cs
+	dotnet build/cs/MiniScript2.dll path/to/inputfile
+	
+	tools/build.sh transpile
+	tools/build.sh cpp
+
+...but the C++ code isn't compiling quite yet; we have more work to do in both App and VM.

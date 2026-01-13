@@ -23,11 +23,8 @@ struct FuncDef;
 class FuncDefStorage;
 struct App;
 class AppStorage;
-struct Lexer;
-class LexerStorage;
 
 // DECLARATIONS
-
 
 
 

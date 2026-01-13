@@ -12,7 +12,6 @@ using static MiniScript.ValueHelpers;
 // CPP: #include "dispatch_macros.h"
 // CPP: #include "VMVis.g.h"
 // CPP: #include "StringPool.h"
-// CPP: #include "MemPoolShim.g.h"
 // CPP: using namespace MiniScript;
 
 namespace MiniScriptApp {
@@ -23,10 +22,6 @@ public class App {
 	
 	public static void Main(string[] args) {
 		// CPP: gc_init();
-
-		// Use a temp pool for reading the file, processing command-line arguments, and other setup
-		Byte tempPool = MemPoolShim.GetUnusedPool();
-		MemPoolShim.SetDefaultStringPool(tempPool);
 
 		//*** BEGIN CS_ONLY ***
 		// The args passed to the C# main program do not include the program path.
@@ -48,7 +43,7 @@ public class App {
 			}
 		}
 		
-		IOHelper.Print("MiniScript 2.0 Prototype 3");
+		IOHelper.Print("MiniScript 2.0");
 		/*** BEGIN CPP_ONLY ***
 		#if VM_USE_COMPUTED_GOTO
 		#define VARIANT "(goto)"
@@ -59,8 +54,6 @@ public class App {
 		IOHelper.Print(
 			"Build: C# version" // CPP: "Build: C++ " VARIANT " version"
 		);
-		IOHelper.Print("Milestone 3: complete!");
-		IOHelper.Print("Milestone 4: in progress");
 		
 		if (debugMode) {
 			IOHelper.Print("Running unit tests...");
@@ -83,9 +76,7 @@ public class App {
 			Assembler assembler = new Assembler();
 			
 			// Assemble the code, with permanent strings stored in pool 0
-			MemPoolShim.SetDefaultStringPool(0);
 			assembler.Assemble(lines);
-			MemPoolShim.SetDefaultStringPool(tempPool);
 			
 			// Check for assembly errors
 			if (assembler.HasError) {
@@ -115,10 +106,6 @@ public class App {
 				IOHelper.Print("Executing @main with VM...");
 			}
 			
-			// Release our temp pool, and switch back to pool 0 to run the program.
-			MemPoolShim.ClearStringPool(MemPoolShim.GetDefaultStringPool());
-			MemPoolShim.SetDefaultStringPool(0);
-
 			// Run the program
 			VM vm = new VM();
 			vm.Reset(assembler.Functions);

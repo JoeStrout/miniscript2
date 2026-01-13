@@ -29,6 +29,7 @@ ClassInfo.storageLines = null	// storage class declaration lines (header file)
 ClassInfo.inlineLines = null	// inline definition lines (header file)
 ClassInfo.defLines = null		// out-of-line definition lines (cpp file)
 ClassInfo.methodLines = null	// reference to either .inlineLines or .defLines
+ClassInfo.T = null				// if specialized, this is the template type
 
 ClassInfo.Make = function(name="")
 	noob = new ClassInfo
@@ -37,6 +38,12 @@ ClassInfo.Make = function(name="")
 	noob.fields = []
 	noob.methods = []
 	noob.clearOutput
+	return noob
+end function
+
+ClassInfo.specialize = function(T)
+	noob = new self
+	noob.T = T
 	return noob
 end function
 
@@ -54,6 +61,10 @@ ClassInfo.lookup = function(identifier, allClasses)
 	while cls
 		result = list.find(cls.fields, "name", identifier)
 		if result == null then result = list.find(cls.methods, "name", identifier)
+		if result and result.type == "<T>" then  // special case: resolve the template type
+			result = new result
+			result.type = self.T
+		end if
 		if result then return result
 		if not cls.superclass then return null
 		cls = list.find(allClasses, "name", cls.superclass)
@@ -69,6 +80,7 @@ ClassInfo.rootClass = function(allClasses)
 end function
 
 ClassInfo.summary = function
+	if self.T then return "Class " + self.name + "<" + self.T + ">"
 	return "Class " + self.name
 end function
 
@@ -97,6 +109,12 @@ VariableInfo.summary = function
 	parts.push self.name
 	if self.array then parts[-1] += "[]"
 	return parts.join
+end function
+
+VariableInfo.elementType = function
+	elem = {} + self
+	elem.array = false
+	return elem
 end function
 
 //--------------------------------------------------------------------------------

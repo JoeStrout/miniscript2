@@ -12,6 +12,8 @@ namespace MiniScript {
 
 struct CallInfo;
 class CallInfoStorage;
+struct VM;
+class VMStorage;
 struct VMVis;
 class VMVisStorage;
 struct Assembler;
@@ -20,10 +22,9 @@ struct FuncDef;
 class FuncDefStorage;
 struct App;
 class AppStorage;
-struct Lexer;
-class LexerStorage;
 
 // DECLARATIONS
+
 
 
 
@@ -39,8 +40,8 @@ class LexerStorage;
 // Function definition: code, constants, and how many registers it needs
 
 
-
 class FuncDefStorage : public std::enable_shared_from_this<FuncDefStorage> {
+	friend struct FuncDef;
 	public: String Name = "";
 	public: List<UInt32> Code = List<UInt32>::New();
 	public: List<Value> Constants = List<Value>::New();

@@ -1137,11 +1137,6 @@ public class Assembler {
 		_labelNames.Clear();
 		_labelAddresses.Clear();
 
-		// Use a temporary string pool for assembly
-		Byte savedPool = MemPoolShim.GetDefaultStringPool();
-		Byte tempPool = MemPoolShim.GetUnusedPool();
-		if (tempPool != 0) MemPoolShim.SetDefaultStringPool(tempPool);
-		
 		// Skim very quickly through our source lines, collecting
 		// function labels (enabling forward calls).
 		bool sawMain = false;
@@ -1189,17 +1184,6 @@ public class Assembler {
 			Functions[slot] = Current;
 
 			Current = new FuncDef();
-		}
-
-		// Before clearing the temporary pool, ensure all function names are interned 
-		// in the pool that was active when we started (i.e. a non-temporary pool)
-		if (tempPool != 0) {
-			MemPoolShim.SetDefaultStringPool(savedPool);
-			for (Int32 i = 0; i < Functions.Count; i++) {
-				// Re-intern function name in pool 0 (this creates a new String in pool 0)
-				Functions[i].Name = MemPoolShim.InternString(Functions[i].Name);
-			}
-			MemPoolShim.ClearStringPool(tempPool);  // Now safe to clear temp pool
 		}
 	}
 

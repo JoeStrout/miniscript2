@@ -21,27 +21,6 @@ case "$TARGET" in
         echo "Setup complete."
         ;;
 
-    "parser")
-        echo "Generating parser from grammar..."
-        mkdir -p cs/Parser
-
-        # Generate parser (using hand-written lexer in cs/Lexer.cs)
-        echo "Running GPPG on grammar/miniscript.y..."
-        dotnet tools/gppg/Gppg.dll /out:cs/Parser/MiniScriptParser.cs grammar/miniscript.y
-        if [ $? -ne 0 ]; then
-            echo "Error: Failed to generate parser"
-            exit 1
-        fi
-
-        # Post-process: Replace EOF with END_OF_FILE for consistency with C++
-        echo "Post-processing: Renaming EOF token to END_OF_FILE..."
-        sed -i '' -e 's/,EOF=/,END_OF_FILE=/g' -e 's/\.EOF)/\.END_OF_FILE)/g' cs/Parser/MiniScriptParser.cs
-
-        echo "Parser generation complete."
-        echo "Generated file: cs/Parser/MiniScriptParser.cs"
-        echo "Using hand-written lexer: cs/Lexer.cs"
-        ;;
-
     "cs")
         echo "Building C# version..."
         cd cs
@@ -142,11 +121,6 @@ case "$TARGET" in
         make -C tests cs
         ;;
 
-    "test-parser")
-        echo "Running parser tests..."
-        make -C tests parser
-        ;;
-
     "test-vm")
         echo "Running VM tests..."
         make -C tests vm
@@ -157,7 +131,6 @@ case "$TARGET" in
         echo ""
         echo "Build Commands:"
         echo "  setup       - Set up development environment"
-        echo "  parser      - Generate parser from grammar files"
         echo "  cs          - Build C# version only"
         echo "  transpile   - Transpile C# to C++"
         echo "  cpp         - Build C++ version only"
@@ -169,7 +142,6 @@ case "$TARGET" in
         echo "  test-all    - Run all test suites (C++ and C#)"
         echo "  test-cpp    - Run all C++ test suites"
         echo "  test-cs     - Run all C# test suites"
-        echo "  test-parser - Run parser tests only"
         echo "  test-vm     - Run VM tests only"
         echo ""
         echo "Optional goto_mode for C++ builds:"

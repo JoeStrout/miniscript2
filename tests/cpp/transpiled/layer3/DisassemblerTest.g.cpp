@@ -38,23 +38,23 @@ Boolean DisassemblerTest::TestToString() {
 	UInt32 ret = BytecodeUtil::INS(Opcode::RETURN);
 	ok = TestFramework::AssertEqual(Disassembler::ToString(ret), "RETURN ", "RETURN format") && ok;
 
-	// Test rA, rB format (e::g., LOAD r2, r5)
+	// Test rA, rB format (e::g::, LOAD r2, r5)
 	UInt32 loadReg = BytecodeUtil::INS_ABC(Opcode::LOAD_rA_rB, 2, 5, 0);
 	ok = TestFramework::AssertEqual(Disassembler::ToString(loadReg), "LOAD    r2, r5", "LOAD rA, rB format") && ok;
 
-	// Test rA, iBC format (e::g., LOAD r3, 42)
+	// Test rA, iBC format (e::g::, LOAD r3, 42)
 	UInt32 loadImm = BytecodeUtil::INS_AB(Opcode::LOAD_rA_iBC, 3, 42);
 	ok = TestFramework::AssertEqual(Disassembler::ToString(loadImm), "LOAD    r3, 42", "LOAD rA, iBC format") && ok;
 
-	// Test rA, kBC format (e::g., LOAD r1, k5)
+	// Test rA, kBC format (e::g::, LOAD r1, k5)
 	UInt32 loadConst = BytecodeUtil::INS_AB(Opcode::LOAD_rA_kBC, 1, 5);
 	ok = TestFramework::AssertEqual(Disassembler::ToString(loadConst), "LOAD    r1, k5", "LOAD rA, kBC format") && ok;
 
-	// Test rA, rB, rC format (e::g., ADD r0, r1, r2)
+	// Test rA, rB, rC format (e::g::, ADD r0, r1, r2)
 	UInt32 add = BytecodeUtil::INS_ABC(Opcode::ADD_rA_rB_rC, 0, 1, 2);
 	ok = TestFramework::AssertEqual(Disassembler::ToString(add), "ADD     r0, r1, r2", "ADD rA, rB, rC format") && ok;
 
-	// Test iABC format (e::g., JUMP 100)
+	// Test iABC format (e::g::, JUMP 100)
 	UInt32 jump = BytecodeUtil::INS(Opcode::JUMP_iABC) | 100;
 	ok = TestFramework::AssertEqual(Disassembler::ToString(jump), "JUMP    100", "JUMP iABC format") && ok;
 

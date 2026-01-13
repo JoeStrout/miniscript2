@@ -8,12 +8,17 @@ ensureImport "symbolInfo"
 
 String = ClassInfo.Make("String")
 String.fields.push VariableInfo.Make("Length", "UInt32")
+String.methods.push MethodInfo.Make("[]", false, "char")
 String.methods.push MethodInfo.Make("Substring", false, "String")
+String.methods.push MethodInfo.Make("Left", false, "String")
+String.methods.push MethodInfo.Make("Right", false, "String")
+String.methods.push MethodInfo.Make("Contains", false, "Boolean")
 String.methods.push MethodInfo.Make("Join", true, "String")
 // ToDo: other String fields and methods!
 
 List = ClassInfo.Make("List")
 List.fields.push VariableInfo.Make("Count", "UInt32")
+List.methods.push MethodInfo.Make("[]", false, "<T>")
 List.methods.push MethodInfo.Make("Add")
 List.methods.push MethodInfo.Make("Clear")
 List.methods.push MethodInfo.Make("IndexOf", false, "UInt32")

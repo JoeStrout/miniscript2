@@ -19,6 +19,8 @@ namespace MiniScript {
 
 struct CallInfo;
 class CallInfoStorage;
+struct VM;
+class VMStorage;
 struct VMVis;
 class VMVisStorage;
 struct Assembler;
@@ -27,10 +29,9 @@ struct FuncDef;
 class FuncDefStorage;
 struct App;
 class AppStorage;
-struct Lexer;
-class LexerStorage;
 
 // DECLARATIONS
+
 
 
 
@@ -152,7 +153,6 @@ class StringUtils {
 	// Convert a Value to its representation (quoted string for strings, plain for others)
 	// This is used when displaying values in source code form.
 }; // end of struct StringUtils
-
 
 
 

@@ -11,6 +11,8 @@ namespace MiniScript {
 
 struct CallInfo;
 class CallInfoStorage;
+struct VM;
+class VMStorage;
 struct VMVis;
 class VMVisStorage;
 struct Assembler;
@@ -19,16 +21,28 @@ struct FuncDef;
 class FuncDefStorage;
 struct App;
 class AppStorage;
-struct Lexer;
-class LexerStorage;
 
 // DECLARATIONS
 
 
 
-	
-	// Call stack frame (return info)
 
+// Call stack frame (return info)
+	inline Value GetLocalVarMap(List<Value>& registers, List<Value>& names, int baseIdx, int regCount) {
+		if (is_null(LocalVarMap)) {
+			// Create a new VarMap with references to VM's stack and names arrays
+			if (regCount == 0) {
+				// We have no local vars at all!  Make an ordinary map.
+				LocalVarMap = make_map(4);	// This is safe, right?
+			} else {
+				LocalVarMap = make_varmap(&registers[0], &names[0], baseIdx, regCount);
+			}
+		}
+		return LocalVarMap;
+	}
+
+
+// VM state
 
 
 
@@ -41,6 +55,7 @@ class LexerStorage;
 
 
 class CallInfoStorage : public std::enable_shared_from_this<CallInfoStorage> {
+	friend struct CallInfo;
 	public: Int32 ReturnPC; // where to continue in caller (PC index)
 	public: Int32 ReturnBase; // caller's base pointer (stack index)
 	public: Int32 ReturnFuncIndex; // caller's function index in functions list
@@ -49,22 +64,78 @@ class CallInfoStorage : public std::enable_shared_from_this<CallInfoStorage> {
 	public: Value OuterVarMap; // VarMap representing outer variables (closure context)
 
 	public: CallInfoStorage(Int32 returnPC, Int32 returnBase, Int32 returnFuncIndex, Int32 copyToReg=-1);
+
+	public: CallInfoStorage(Int32 returnPC, Int32 returnBase, Int32 returnFuncIndex, Int32 copyToReg, Value outerVars);
+
+}; // end of class CallInfoStorage
+
+class VMStorage : public std::enable_shared_from_this<VMStorage> {
+	friend struct VM;
 	public: Boolean DebugMode = false;
 	private: List<Value> stack;
 	private: List<Value> names; // Variable names parallel to stack (null if unnamed)
 	private: List<CallInfo> callStack;
 	private: Int32 callStackTop; // Index of next free call stack slot
 	private: List<FuncDef> functions; // functions addressed by CALLF
+	public: Int32 PC;
 	private: Int32 _currentFuncIndex = -1;
+	public: FuncDef CurrentFunction;
+	public: Boolean IsRunning;
+	public: Int32 BaseIndex;
+	public: String RuntimeError;
 
-	// VM state
 
 
-
-		// Execution state (persistent across RunSteps calls)
+	// Execution state (persistent across RunSteps calls)
 
 	public: Int32 StackSize();
-}; // end of class CallInfoStorage
+	public: Int32 CallStackDepth();
+
+	public: Value GetStackValue(Int32 index);
+
+	public: Value GetStackName(Int32 index);
+
+	public: CallInfo GetCallStackFrame(Int32 index);
+
+	public: String GetFunctionName(Int32 funcIndex);
+
+	public: VMStorage();
+	
+	public: VMStorage(Int32 stackSlots, Int32 callSlots);
+
+	private: void InitVM(Int32 stackSlots, Int32 callSlots);
+
+	public: void RegisterFunction(FuncDef funcDef);
+
+	public: void Reset(List<FuncDef> allFunctions);
+
+	public: void RaiseRuntimeError(String message);
+	
+	public: bool ReportRuntimeError();
+
+	// Helper for argument processing (FUNCTION_CALLS.md steps 1-3):
+	// Process ARG instructions, validate argument count, and set up parameter registers.
+	// Returns the PC after the CALL instruction, or -1 on error.
+	private: Int32 ProcessArguments(Int32 argCount, Int32 startPC, Int32 callerBase, Int32 calleeBase, FuncDef callee, ref List<UInt32> code);
+
+	// Helper for call setup (FUNCTION_CALLS.md steps 4-6):
+	// Initialize remaining parameters with defaults and clear callee's registers.
+	// Note: Parameters start at r1 (r0 is reserved for return value)
+	private: void SetupCallFrame(Int32 argCount, Int32 calleeBase, FuncDef callee);
+
+	public: Value Execute(FuncDef entry);
+
+	public: Value Execute(FuncDef entry, UInt32 maxCycles);
+
+	public: Value Run(UInt32 maxCycles=0);
+
+	private: void EnsureFrame(Int32 baseIndex, UInt16 neededRegs);
+
+	private: Value LookupVariable(Value varName);
+	
+	
+	private: void DoIntrinsic(Value funcName, Int32 baseReg);
+}; // end of class VMStorage
 
 struct CallInfo {
 	protected: std::shared_ptr<CallInfoStorage> storage;
@@ -89,6 +160,19 @@ struct CallInfo {
 	public: void set_OuterVarMap(Value _v) { get()->OuterVarMap = _v; } // VarMap representing outer variables (closure context)
 
 	public: CallInfo(Int32 returnPC, Int32 returnBase, Int32 returnFuncIndex, Int32 copyToReg=-1) : CallInfo(std::make_shared<CallInfoStorage>(returnPC, returnBase, returnFuncIndex, copyToReg)) {}
+
+	public: CallInfo(Int32 returnPC, Int32 returnBase, Int32 returnFuncIndex, Int32 copyToReg, Value outerVars) : CallInfo(std::make_shared<CallInfoStorage>(returnPC, returnBase, returnFuncIndex, copyToReg, outerVars)) {}
+}; // end of struct CallInfo
+
+struct VM {
+	protected: std::shared_ptr<VMStorage> storage;
+  public:
+	VM(std::shared_ptr<VMStorage> stor) : storage(stor) {}
+	VM() : storage(nullptr) {}
+	static VM New() { return VM(std::make_shared<VMStorage>()); }
+	friend bool IsNull(const VM& inst) { return inst.storage == nullptr; }
+	private: VMStorage* get() const { return static_cast<VMStorage*>(storage.get()); }
+
 	public: Boolean DebugMode() { return get()->DebugMode; }
 	public: void set_DebugMode(Boolean _v) { get()->DebugMode = _v; }
 	private: List<Value> stack() { return get()->stack; }
@@ -101,18 +185,74 @@ struct CallInfo {
 	private: void set_callStackTop(Int32 _v) { get()->callStackTop = _v; } // Index of next free call stack slot
 	private: List<FuncDef> functions() { return get()->functions; } // functions addressed by CALLF
 	private: void set_functions(List<FuncDef> _v) { get()->functions = _v; } // functions addressed by CALLF
+	public: Int32 PC() { return get()->PC; }
+	public: void set_PC(Int32 _v) { get()->PC = _v; }
 	private: Int32 _currentFuncIndex() { return get()->_currentFuncIndex; }
 	private: void set__currentFuncIndex(Int32 _v) { get()->_currentFuncIndex = _v; }
+	public: FuncDef CurrentFunction() { return get()->CurrentFunction; }
+	public: void set_CurrentFunction(FuncDef _v) { get()->CurrentFunction = _v; }
+	public: Boolean IsRunning() { return get()->IsRunning; }
+	public: void set_IsRunning(Boolean _v) { get()->IsRunning = _v; }
+	public: Int32 BaseIndex() { return get()->BaseIndex; }
+	public: void set_BaseIndex(Int32 _v) { get()->BaseIndex = _v; }
+	public: String RuntimeError() { return get()->RuntimeError; }
+	public: void set_RuntimeError(String _v) { get()->RuntimeError = _v; }
 
-	// VM state
 
 
-
-		// Execution state (persistent across RunSteps calls)
+	// Execution state (persistent across RunSteps calls)
 
 	public: Int32 StackSize() { return get()->StackSize(); }
-}; // end of struct CallInfo
+	public: Int32 CallStackDepth() { return get()->CallStackDepth(); }
+
+	public: Value GetStackValue(Int32 index) { return get()->GetStackValue(index); }
+
+	public: Value GetStackName(Int32 index) { return get()->GetStackName(index); }
+
+	public: CallInfo GetCallStackFrame(Int32 index) { return get()->GetCallStackFrame(index); }
+
+	public: String GetFunctionName(Int32 funcIndex) { return get()->GetFunctionName(funcIndex); }
+
+	public: VM() : VM(std::make_shared<VMStorage>()) {}
+	
+	public: VM(Int32 stackSlots, Int32 callSlots) : VM(std::make_shared<VMStorage>(stackSlots, callSlots)) {}
+
+	private: void InitVM(Int32 stackSlots, Int32 callSlots) { return get()->InitVM(stackSlots, callSlots); }
+
+	public: void RegisterFunction(FuncDef funcDef) { return get()->RegisterFunction(funcDef); }
+
+	public: void Reset(List<FuncDef> allFunctions) { return get()->Reset(allFunctions); }
+
+	public: void RaiseRuntimeError(String message) { return get()->RaiseRuntimeError(message); }
+	
+	public: bool ReportRuntimeError() { return get()->ReportRuntimeError(); }
+
+	// Helper for argument processing (FUNCTION_CALLS.md steps 1-3):
+	// Process ARG instructions, validate argument count, and set up parameter registers.
+	// Returns the PC after the CALL instruction, or -1 on error.
+	private: Int32 ProcessArguments(Int32 argCount, Int32 startPC, Int32 callerBase, Int32 calleeBase, FuncDef callee, ref List<UInt32> code) { return get()->ProcessArguments(argCount, startPC, callerBase, calleeBase, callee, List<UInt32> code); }
+
+	// Helper for call setup (FUNCTION_CALLS.md steps 4-6):
+	// Initialize remaining parameters with defaults and clear callee's registers.
+	// Note: Parameters start at r1 (r0 is reserved for return value)
+	private: void SetupCallFrame(Int32 argCount, Int32 calleeBase, FuncDef callee) { return get()->SetupCallFrame(argCount, calleeBase, callee); }
+
+	public: Value Execute(FuncDef entry) { return get()->Execute(entry); }
+
+	public: Value Execute(FuncDef entry, UInt32 maxCycles) { return get()->Execute(entry, maxCycles); }
+
+	public: Value Run(UInt32 maxCycles=0) { return get()->Run(maxCycles); }
+
+	private: void EnsureFrame(Int32 baseIndex, UInt16 neededRegs) { return get()->EnsureFrame(baseIndex, neededRegs); }
+
+	private: Value LookupVariable(Value varName) { return get()->LookupVariable(varName); }
+	
+	
+	private: void DoIntrinsic(Value funcName, Int32 baseReg) { return get()->DoIntrinsic(funcName, baseReg); }
+}; // end of struct VM
 
 
 // INLINE METHODS
+
+} // end of namespace MiniScript
 

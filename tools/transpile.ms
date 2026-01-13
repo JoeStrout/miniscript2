@@ -177,14 +177,24 @@ roughTokenize = function(s)
 		end if
 		if c == """" then inString = not inString
 		if inString then continue
-		if inIdentifier then
+		if c == "(" or c == ")" then
+			if i > tokStart then result.push s[tokStart:i]
+			result.push c
+			tokStart = i+1
+			inIdentifier = false
+		else if c == "." and i > 0 and "0123456789'".indexOf(s[i-1]) == null then
+			if i > tokStart then result.push s[tokStart:i]
+			result.push c
+			tokStart = i+1
+			inIdentifier = false
+		else if inIdentifier then
 			if isIdentifierChar(c, false) then continue
-			if i then result.push s[tokStart:i]
+			if i > tokStart then result.push s[tokStart:i]
 			tokStart = i
 			inIdentifier = false
 		else
 			if not isIdentifierChar(c, true) then continue
-			if i then result.push s[tokStart:i]
+			if i > tokStart then result.push s[tokStart:i]
 			tokStart = i
 			inIdentifier = true
 		end if
@@ -379,7 +389,10 @@ Transpiler.lookup = function(identifier, context)
 	for cls in self.allClasses
 		if cls.name == identifier then return cls
 		bracketPos = identifier.indexOf("<")
-		if bracketPos != null and identifier[:bracketPos] == cls.name then return cls
+		if bracketPos != null and identifier[:bracketPos] == cls.name then
+			templateType = identifier[bracketPos+1 : identifier.indexOf(">")]
+			return cls.specialize(templateType)
+		end if
 	end for
 	// 4. give up :P
 	return null
@@ -398,17 +411,27 @@ Transpiler.transformStatement = function(trimmedLine)
 	// non-identifier string.
 	tokens = roughTokenize(trimmedLine)
 	
-	deepDebug = false; // e.g. trimmedLine.contains("func.Code.Add")
+	deepDebug = false // e.g. trimmedLine.contains("token.Substring(0")
 	ddprint = function(s); if deepDebug then print "====> " + s; end function
 	summarize = function(obj)
 		if obj == null then return "<null>"
+		if not (obj isa map) or not obj.hasOrInherits("summary") then
+			print "WTF?!?"
+			print obj
+			print stackTrace
+			exit
+		end if
 		return obj.summary
 	end function
+	
+	ddprint tokens
 	
 	// Then iterate and analyze each one.  We'll encounter things we don't 
 	// recognize; that's OK.  Just keep track of stuff we do.
 	didAssignment = false
 	curInfo = null
+	callTypeStack = []
+	arrayType = null
 	i = -1
 	while i + 1 < tokens.len
 		i += 1
@@ -476,9 +499,32 @@ Transpiler.transformStatement = function(trimmedLine)
 			tokens[i] = self.curClass.name + "(shared_from_this())";
 			curInfo = self.curClass;
 			continue
-		else if tokens[i][0] == "(" and curInfo then  // method call!
-			curInfo = self.lookup(curInfo.type)	// TODO: type stack, store until ')'
-			ddprint "METHOD CALL returns: " + summarize(curInfo)
+		else if tokens[i][0] == "(" then  // method call!  or maybe expression...
+			if curInfo then
+				callTypeStack.push self.lookup(curInfo.type)
+				ddprint "METHOD CALL returns: " + summarize(callTypeStack[-1])
+				curInfo = null
+			else
+				callTypeStack.push null
+			end if
+			continue
+		else if tokens[i][0] == ")" and callTypeStack then
+			ddprint "GOT `)` with callTypeStack: " + callTypeStack.applied(@summarize)
+			curInfo = callTypeStack.pop
+			continue
+		else if tokens[i] == "[" and curInfo then   // array/list lookup
+			self.assert not arrayType, "Nested array indexing not yet supported"
+			// Get the type of the current reference
+			arrayType = self.lookup(curInfo.type)
+			continue
+		else if tokens[i].startsWith("]") and arrayType then
+			// Look up the `[]` (indexer) method in our array type
+			self.assert arrayType, "Got [] without clear array type"
+			curInfo = self.lookup("[]", arrayType)
+			// Get the return type of that indexer method
+			if curInfo then curInfo = self.lookup(curInfo.type)
+			ddprint "resolved [] in " + summarize(arrayType) + " to: " + summarize(curInfo)
+			arrayType = null
 			continue
 		else if tokens[i] == "null" then
 			// How we translate null depends on the context...
@@ -500,6 +546,7 @@ Transpiler.transformStatement = function(trimmedLine)
 		end if
 		nextInfo = self.lookup(tokens[i], curInfo)
 		if self.curClass then curClassName = self.curClass.name else curClassName = ""
+		ddprint "lookup of " + tokens[i] + ": " + summarize(nextInfo)
 		if curInfo isa ClassInfo and curInfo.type == ClassType.CLASS and
 		  nextInfo isa VariableInfo and curInfo.name != curClassName then
 			// Found a field lookup!  Or maybe an assignment.  Check the next token
@@ -1235,11 +1282,18 @@ runUnitTests = function
 	  ["if", " ", "foo", ".", "bar", " == 40+2 {"]
 
 	check roughTokenize("if (x == ""a = (b)"") {"),
-	  ["if", " (", "x", " == ""a = (b)"") {"]
+	  ["if", " ", "(", "x", " == ""a = (b)""", ")", " {"]
 	
+	check roughTokenize("if (""1.0"" == 2.0) {"),
+	  ["if", " ", "(", """1.0"" == 2.0", ")", " {"]
+	
+
 	check roughTokenize("return new String(""[\"""") + String.Join(""\"", \"""", list) + ""\""]"";"),
-	  ["return", " ", "new", " ", "String", "(""[\"""") + ",
-	   "String", ".", "Join", "(""\"", \"""", ", "list", ") + ""\""]"";"]
+	  ["return", " ", "new", " ", "String", "(", """[\""""", ")", " + ",
+	   "String", ".", "Join", "(", """\"", \"""", ", "list", ")", " + ""\""]"";"]
+	
+	check roughTokenize("if (Functions[i].Name == name) return i;"),
+	  ["if", " ", "(", "Functions", "[", "i", "]", ".", "Name", " == ", "name", ")", " ", "return", " ", "i", ";"]
 	
 	check parameterNames("Double x=42, Widget widget, String foo=""bar=baz"""),
 	  "x, widget, foo"

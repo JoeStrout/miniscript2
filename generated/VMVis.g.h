@@ -12,6 +12,8 @@ namespace MiniScript {
 
 struct CallInfo;
 class CallInfoStorage;
+struct VM;
+class VMStorage;
 struct VMVis;
 class VMVisStorage;
 struct Assembler;
@@ -20,10 +22,9 @@ struct FuncDef;
 class FuncDefStorage;
 struct App;
 class AppStorage;
-struct Lexer;
-class LexerStorage;
 
 // DECLARATIONS
+
 
 
 
@@ -41,13 +42,12 @@ class LexerStorage;
 	private: static const Int32 CodeDisplayColumn;
 	private: static const Int32 RegisterDisplayColumn;
 	private: static const Int32 CallStackDisplayColumn;
-		private: VM& _vm;
-		public: inline VMVis(VM& vm) : _vm(vm) {
-			UpdateScreenSize();
-			_savedPool = MemPoolShim::GetDefaultStringPool();
-			_displayPool = MemPoolShim::GetUnusedPool();
-		}
-
+	private: VM& _vm;
+	public: inline VMVis(VM& vm) : _vm(vm) {
+		UpdateScreenSize();
+		_savedPool = MemPoolShim::GetDefaultStringPool();
+		_displayPool = MemPoolShim::GetUnusedPool();
+	}
 
 
 
@@ -58,19 +58,46 @@ class LexerStorage;
 
 
 class VMVisStorage : public std::enable_shared_from_this<VMVisStorage> {
+	friend struct VMVis;
 	private: Int32 _screenWidth;
 	private: Int32 _screenHeight;
 	private: Byte _displayPool;
 	private: Byte _savedPool;
-		
+	
 
 
-		// Pool management for temporary display strings
-		
-		// Be careful to get a *reference* to the VM rather than a deep copy, even
-		// in C++.  ToDo: find a more elegant solution to this recurring issue.
+	// Pool management for temporary display strings
+	
+	// Be careful to get a *reference* to the VM rather than a deep copy, even
+	// in C++.  ToDo: find a more elegant solution to this recurring issue.
 
 	public: void UpdateScreenSize();
+
+
+	public: String CursorGoTo(int column, int row);
+
+	private: void Write(String s);
+
+	public: void ClearScreen();
+	
+
+	public: void GoTo(int column, int row);
+
+	private: void DrawCodeDisplay();
+
+	private: String GetValueTypeCode(Value v);
+
+	private: String GetValueDisplayString(Value v);
+
+	private: String GetVariableNameDisplay(Value nameVal);
+
+	private: void DrawOneRegister(Int32 stackIndex, String label, Int32 displayRow);
+
+	private: void DrawRegisters();
+
+	private: void DrawCallStack();
+
+	public: void UpdateDisplay();
 }; // end of class VMVisStorage
 
 struct VMVis {
@@ -90,17 +117,44 @@ struct VMVis {
 	private: void set__displayPool(Byte _v) { get()->_displayPool = _v; }
 	private: Byte _savedPool() { return get()->_savedPool; }
 	private: void set__savedPool(Byte _v) { get()->_savedPool = _v; }
-		
+	
 
 
-		// Pool management for temporary display strings
-		
-		// Be careful to get a *reference* to the VM rather than a deep copy, even
-		// in C++.  ToDo: find a more elegant solution to this recurring issue.
+	// Pool management for temporary display strings
+	
+	// Be careful to get a *reference* to the VM rather than a deep copy, even
+	// in C++.  ToDo: find a more elegant solution to this recurring issue.
 
 	public: void UpdateScreenSize() { return get()->UpdateScreenSize(); }
+
+
+	public: String CursorGoTo(int column, int row) { return get()->CursorGoTo(column, row); }
+
+	private: void Write(String s) { return get()->Write(s); }
+
+	public: void ClearScreen() { return get()->ClearScreen(); }
+	
+
+	public: void GoTo(int column, int row) { return get()->GoTo(column, row); }
+
+	private: void DrawCodeDisplay() { return get()->DrawCodeDisplay(); }
+
+	private: String GetValueTypeCode(Value v) { return get()->GetValueTypeCode(v); }
+
+	private: String GetValueDisplayString(Value v) { return get()->GetValueDisplayString(v); }
+
+	private: String GetVariableNameDisplay(Value nameVal) { return get()->GetVariableNameDisplay(nameVal); }
+
+	private: void DrawOneRegister(Int32 stackIndex, String label, Int32 displayRow) { return get()->DrawOneRegister(stackIndex, label, displayRow); }
+
+	private: void DrawRegisters() { return get()->DrawRegisters(); }
+
+	private: void DrawCallStack() { return get()->DrawCallStack(); }
+
+	public: void UpdateDisplay() { return get()->UpdateDisplay(); }
 }; // end of struct VMVis
 
 
 // INLINE METHODS
 
+} // end of namespace MiniScript

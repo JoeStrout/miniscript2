@@ -30,6 +30,18 @@ CallInfo::CallInfo(Int32 returnPC, Int32 returnBase, Int32 returnFuncIndex, Int3
 	LocalVarMap = make_null();
 	OuterVarMap = outerVars;
 }
+Value CallInfo::GetLocalVarMap(List<Value> registers, List<Value> names, int baseIdx, int regCount) {
+	if (is_null(LocalVarMap)) {
+		// Create a VarMap with references to VM's stack and names arrays
+		if (regCount == 0) {
+			// We have no local vars at all!  Make an ordinary map::
+			LocalVarMap = make_map(4);	// This is safe, right?
+		} else {
+			LocalVarMap = make_varmap(&registers[0], &names[0], baseIdx, regCount);
+		}
+	}
+	return LocalVarMap;
+}
 
 
 Int32 VMStorage::StackSize() {
@@ -47,7 +59,7 @@ Value VMStorage::GetStackName(Int32 index) {
 	return names[index];
 }
 CallInfo VMStorage::GetCallStackFrame(Int32 index) {
-	if (index < 0 || index >= callStackTop) return new CallInfo(0, 0, -1);
+	if (index < 0 || index >= callStackTop) return CallInfo(0, 0, -1);
 	return callStack[index];
 }
 String VMStorage::GetFunctionName(Int32 funcIndex) {
@@ -68,7 +80,7 @@ void VMStorage::InitVM(Int32 stackSlots, Int32 callSlots) {
 	callStackTop = 0;
 	RuntimeError = "";
 
-	// Initialize stack with null values
+	// Initialize stack with nullptr values
 	for (Int32 i = 0; i < stackSlots; i++) {
 		stack.Add(make_null());
 		names.Add(make_null());		// No variable name initially
@@ -77,7 +89,7 @@ void VMStorage::InitVM(Int32 stackSlots, Int32 callSlots) {
 	
 	// Pre-allocate call stack capacity
 	for (Int32 i = 0; i < callSlots; i++) {
-		callStack.Add(new CallInfo(0, 0, -1)); // -1 = invalid function index
+		callStack.Add(CallInfo(0, 0, -1)); // -1 = invalid function index
 	}
 }
 void VMStorage::RegisterFunction(FuncDef funcDef) {
@@ -85,7 +97,7 @@ void VMStorage::RegisterFunction(FuncDef funcDef) {
 }
 void VMStorage::Reset(List<FuncDef> allFunctions) {
 	// Store all functions for CALLF instructions, and find @main
-	FuncDef mainFunc;
+	FuncDef mainFunc = nullptr;
 	functions.Clear();
 	for (Int32 i = 0; i < allFunctions.Count(); i++) {
 		functions.Add(allFunctions[i]);
@@ -98,7 +110,7 @@ void VMStorage::Reset(List<FuncDef> allFunctions) {
 	}
 
 	// Basic validation - simplified for C++ transpilation
-	if (mainFunc::Code::Count == 0) {
+	if (mainFunc.Code().Count() == 0) {
 		IOHelper::Print("Entry function has no code");
 		return;
 	}
@@ -106,7 +118,7 @@ void VMStorage::Reset(List<FuncDef> allFunctions) {
 	// Find the entry function index
 	_currentFuncIndex = -1;
 	for (Int32 i = 0; i < functions.Count(); i++) {
-		if (functions[i].Name() == mainFunc::Name) {
+		if (functions[i].Name() == mainFunc.Name()) {
 			_currentFuncIndex = i;
 			break;
 		}
@@ -123,7 +135,7 @@ void VMStorage::Reset(List<FuncDef> allFunctions) {
 	EnsureFrame(BaseIndex, CurrentFunction.MaxRegs());
 
 	if (DebugMode) {
-		IOHelper::Print(StringUtils::Format("VM Reset: Executing {0} out of {1} functions", mainFunc::Name, functions.Count()));
+		IOHelper::Print(StringUtils::Format("VM Reset: Executing {0} out of {1} functions", mainFunc.Name(), functions.Count()));
 	}
 }
 void VMStorage::RaiseRuntimeError(String message) {
@@ -217,10 +229,10 @@ Value VMStorage::Run(UInt32 maxCycles) {
 	Int32 baseIndex = BaseIndex;
 	Int32 currentFuncIndex = _currentFuncIndex;
 
-	FuncDefRef curFunc = CurrentFunction; // should be: FuncDef& curFunc = CurrentFunction;
-	Int32 codeCount = curFunc::Code::Count;
-	UInt32* curCode = &curFunc.Code[0];
-	Value* curConstants = &curFunc.Constants[0];
+	FuncDef curFunc = CurrentFunction;
+	Int32 codeCount = curFunc.Code().Count();
+	UInt32* curCode = &curFunc.Code()[0];
+	Value* curConstants = &curFunc.Constants()[0];
 
 	UInt32 cyclesLeft = maxCycles;
 	if (maxCycles == 0) cyclesLeft--;  // wraps to MAX_UINT32
@@ -257,14 +269,14 @@ Value VMStorage::Run(UInt32 maxCycles) {
 		}
 
 		UInt32 instruction = curCode[pc++];
-		// Note: CollectionsMarshal::AsSpan requires ::NET 5+; not compatible with Mono::
+		// Note: CollectionsMarshal::AsSpan requires .NET 5+; not compatible with Mono::
 		// This gives us direct array access without copying, for performance::
 		Value* localStack = stackPtr + baseIndex;
 
 		if (DebugMode) {
 			// Debug output disabled for C++ transpilation
 			IOHelper::Print(StringUtils::Format("{0} {1}: {2}     r0:{3}, r1:{4}, r2:{5}",
-				curFunc::Name,
+				curFunc.Name(),
 				StringUtils::ZeroPad(pc-1, 4),
 				Disassembler::ToString(instruction),
 				localStack[0], localStack[1], localStack[2]));
@@ -274,36 +286,36 @@ Value VMStorage::Run(UInt32 maxCycles) {
 		
 		VM_DISPATCH_BEGIN();
 		
-			case Opcode::NOOP: {
+			VM_CASE(NOOP) {
 				// No operation
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::LOAD_rA_rB: {
+			VM_CASE(LOAD_rA_rB) {
 				// R[A] = R[B] (equivalent to MOVE)
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				localStack[a] = localStack[b];
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::LOAD_rA_iBC: {
+			VM_CASE(LOAD_rA_iBC) {
 				// R[A] = BC (signed 16-bit immediate as integer)
 				Byte a = BytecodeUtil::Au(instruction);
 				short bc = BytecodeUtil::BCs(instruction);
 				localStack[a] = make_int(bc);
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::LOAD_rA_kBC: {
+			VM_CASE(LOAD_rA_kBC) {
 				// R[A] = constants[BC]
 				Byte a = BytecodeUtil::Au(instruction);
 				UInt16 constIdx = BytecodeUtil::BCu(instruction);
 				localStack[a] = curConstants[constIdx];
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::LOADV_rA_rB_kC: {
+			VM_CASE(LOADV_rA_rB_kC) {
 				// R[A] = R[B], but verify that register B has name matching constants[C]
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
@@ -318,10 +330,10 @@ Value VMStorage::Run(UInt32 maxCycles) {
 					// Variable not found in current scope, look in outer context
 					localStack[a] = LookupVariable(expectedName);
 				}
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::LOADC_rA_rB_kC: {
+			VM_CASE(LOADC_rA_rB_kC) {
 				// R[A] = R[B], but verify that register B has name matching constants[C]
 				// and call the function if the value is a function reference
 				Byte a = BytecodeUtil::Au(instruction);
@@ -359,127 +371,127 @@ Value VMStorage::Run(UInt32 maxCycles) {
 						IOHelper::Print("Call stack overflow");
 						return make_null();
 					}
-					callStack[callStackTop] = new CallInfo(pc, baseIndex, currentFuncIndex, a, outerVars);
+					callStack[callStackTop] = CallInfo(pc, baseIndex, currentFuncIndex, a, outerVars);
 					callStackTop++;
 
 					// Switch to callee frame: base slides to argument window
-					baseIndex += curFunc::MaxRegs;
+					baseIndex += curFunc.MaxRegs();
 					for (Int32 i = 0; i < callee.MaxRegs(); i++) { // clear registers (ugh)
 						stack[baseIndex + i] = make_null();
 						names[baseIndex + i] = make_null();
 					}
 					pc = 0; // Start at beginning of callee code
 					curFunc = callee; // Switch to callee function
-					codeCount = curFunc::Code::Count;
-					curCode = &curFunc.Code[0];
-					curConstants = &curFunc.Constants[0];
+					codeCount = curFunc.Code().Count();
+					curCode = &curFunc.Code()[0];
+					curConstants = &curFunc.Constants()[0];
 					currentFuncIndex = funcIndex; // Switch to callee function index
 
 					EnsureFrame(baseIndex, callee.MaxRegs());
 				}
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::FUNCREF_iA_iBC: {
+			VM_CASE(FUNCREF_iA_iBC) {
 				// R[A] := make_funcref(BC) with closure context
 				Byte a = BytecodeUtil::Au(instruction);
 				Int16 funcIndex = BytecodeUtil::BCs(instruction);
 
 				// Create function reference with our locals as the closure context
-				CallInfoRef frame = callStack[callStackTop];
+				CallInfo frame = callStack[callStackTop];
 				Value locals = frame.GetLocalVarMap(stack, names, baseIndex, curFunc.MaxRegs); GC_PROTECT(&locals);
 				localStack[a] = make_funcref(funcIndex, locals);
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::ASSIGN_rA_rB_kC: {
+			VM_CASE(ASSIGN_rA_rB_kC) {
 				// R[A] = R[B] and names[baseIndex + A] = constants[C]
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				Byte c = BytecodeUtil::Cu(instruction);
 				localStack[a] = localStack[b];
 				names[baseIndex + a] = curConstants[c];	// OFI: keep localNames?
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::NAME_rA_kBC: {
+			VM_CASE(NAME_rA_kBC) {
 				// names[baseIndex + A] = constants[BC] (without changing R[A])
 				Byte a = BytecodeUtil::Au(instruction);
 				UInt16 constIdx = BytecodeUtil::BCu(instruction);
 				names[baseIndex + a] = curConstants[constIdx];	// OFI: keep localNames?
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::ADD_rA_rB_rC: {
+			VM_CASE(ADD_rA_rB_rC) {
 				// R[A] = R[B] + R[C]
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				Byte c = BytecodeUtil::Cu(instruction);
 				localStack[a] = value_add(localStack[b], localStack[c]);
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::SUB_rA_rB_rC: {
+			VM_CASE(SUB_rA_rB_rC) {
 				// R[A] = R[B] - R[C]
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				Byte c = BytecodeUtil::Cu(instruction);
 				localStack[a] = value_sub(localStack[b], localStack[c]);
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::MULT_rA_rB_rC: {
+			VM_CASE(MULT_rA_rB_rC) {
 				// R[A] = R[B] * R[C]
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				Byte c = BytecodeUtil::Cu(instruction);
 				localStack[a] = value_mult(localStack[b], localStack[c]);
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::DIV_rA_rB_rC: {
+			VM_CASE(DIV_rA_rB_rC) {
 				// R[A] = R[B] * R[C]
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				Byte c = BytecodeUtil::Cu(instruction);
 				localStack[a] = value_div(localStack[b], localStack[c]);
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::MOD_rA_rB_rC: {
+			VM_CASE(MOD_rA_rB_rC) {
 				// R[A] = R[B] % R[C]
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				Byte c = BytecodeUtil::Cu(instruction);
 				localStack[a] = value_mod(localStack[b], localStack[c]);
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::LIST_rA_iBC: {
+			VM_CASE(LIST_rA_iBC) {
 				// R[A] = make_list(BC)
 				Byte a = BytecodeUtil::Au(instruction);
 				Int16 capacity = BytecodeUtil::BCs(instruction);
 				localStack[a] = make_list(capacity);
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::MAP_rA_iBC: {
+			VM_CASE(MAP_rA_iBC) {
 				// R[A] = make_map(BC)
 				Byte a = BytecodeUtil::Au(instruction);
 				Int16 capacity = BytecodeUtil::BCs(instruction);
 				localStack[a] = make_map(capacity);
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::PUSH_rA_rB: {
+			VM_CASE(PUSH_rA_rB) {
 				// list_push(R[A], R[B])
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				list_push(localStack[a], localStack[b]);
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::INDEX_rA_rB_rC: {
+			VM_CASE(INDEX_rA_rB_rC) {
 				// R[A] = R[B][R[C]] (supports both lists and maps)
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
@@ -500,10 +512,10 @@ Value VMStorage::Run(UInt32 maxCycles) {
 					RaiseRuntimeError(StringUtils::Format("Can't index into {0}", container));
 					localStack[a] = make_null();
 				}
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::IDXSET_rA_rB_rC: {
+			VM_CASE(IDXSET_rA_rB_rC) {
 				// R[A][R[B]] = R[C] (supports both lists and maps)
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
@@ -519,165 +531,165 @@ Value VMStorage::Run(UInt32 maxCycles) {
 				} else {
 					RaiseRuntimeError(StringUtils::Format("Can't set indexed value in {0}", container));
 				}
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::LOCALS_rA: {
+			VM_CASE(LOCALS_rA) {
 				// Create VarMap for local variables and store in R[A]
 				Byte a = BytecodeUtil::Au(instruction);
 
-				CallInfoRef frame = callStack[callStackTop];
-				localStack[a] = frame::GetLocalVarMap(stack, names, baseIndex, curFunc::MaxRegs);
+				CallInfo frame = callStack[callStackTop];
+				localStack[a] = frame.GetLocalVarMap(stack, names, baseIndex, curFunc.MaxRegs());
 				names[baseIndex+a] = make_null();
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::OUTER_rA: {
+			VM_CASE(OUTER_rA) {
 				// Create VarMap for outer variables and store in R[A]
 				// TODO: Implement outer variable map access
 				Byte a = BytecodeUtil::Au(instruction);
-				CallInfoRef frame = callStack[callStackTop - 1];
-				localStack[a] = frame::OuterVarMap;
+				CallInfo frame = callStack[callStackTop - 1];
+				localStack[a] = frame.OuterVarMap;
 				names[baseIndex+a] = make_null();
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::GLOBALS_rA: {
+			VM_CASE(GLOBALS_rA) {
 				// Create VarMap for global variables and store in R[A]
 				// TODO: Implement global variable map access
 				Byte a = BytecodeUtil::Au(instruction);
-				Int32 globalRegCount = functions[callStack[0]::ReturnFuncIndex].MaxRegs();
-				localStack[a] = callStack[0]::GetLocalVarMap(stack, names, 0, globalRegCount);
+				Int32 globalRegCount = functions[callStack[0].ReturnFuncIndex].MaxRegs();
+				localStack[a] = callStack[0].GetLocalVarMap(stack, names, 0, globalRegCount);
 				names[baseIndex+a] = make_null();
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::JUMP_iABC: {
+			VM_CASE(JUMP_iABC) {
 				// Jump by signed 24-bit ABC offset from current PC
 				Int32 offset = BytecodeUtil::ABCs(instruction);
 				pc += offset;
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::LT_rA_rB_rC: {
+			VM_CASE(LT_rA_rB_rC) {
 				// if R[A] = R[B] < R[C]
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				Byte c = BytecodeUtil::Cu(instruction);
 
 				localStack[a] = make_int(value_lt(localStack[b], localStack[c]));
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::LT_rA_rB_iC: {
+			VM_CASE(LT_rA_rB_iC) {
 				// if R[A] = R[B] < C (immediate)
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				SByte c = BytecodeUtil::Cs(instruction);
 				
 				localStack[a] = make_int(value_lt(localStack[b], make_int(c)));
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::LT_rA_iB_rC: {
+			VM_CASE(LT_rA_iB_rC) {
 				// if R[A] = B (immediate) < R[C]
 				Byte a = BytecodeUtil::Au(instruction);
 				SByte b = BytecodeUtil::Bs(instruction);
 				Byte c = BytecodeUtil::Cu(instruction);
 				
 				localStack[a] = make_int(value_lt(make_int(b), localStack[c]));
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::LE_rA_rB_rC: {
+			VM_CASE(LE_rA_rB_rC) {
 				// if R[A] = R[B] <= R[C]
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				Byte c = BytecodeUtil::Cu(instruction);
 
 				localStack[a] = make_int(value_le(localStack[b], localStack[c]));
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::LE_rA_rB_iC: {
+			VM_CASE(LE_rA_rB_iC) {
 				// if R[A] = R[B] <= C (immediate)
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				SByte c = BytecodeUtil::Cs(instruction);
 				
 				localStack[a] = make_int(value_le(localStack[b], make_int(c)));
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::LE_rA_iB_rC: {
+			VM_CASE(LE_rA_iB_rC) {
 				// if R[A] = B (immediate) <= R[C]
 				Byte a = BytecodeUtil::Au(instruction);
 				SByte b = BytecodeUtil::Bs(instruction);
 				Byte c = BytecodeUtil::Cu(instruction);
 				
 				localStack[a] = make_int(value_le(make_int(b), localStack[c]));
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::EQ_rA_rB_rC: {
+			VM_CASE(EQ_rA_rB_rC) {
 				// if R[A] = R[B] == R[C]
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				Byte c = BytecodeUtil::Cu(instruction);
 
 				localStack[a] = make_int(value_equal(localStack[b], localStack[c]));
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::EQ_rA_rB_iC: {
+			VM_CASE(EQ_rA_rB_iC) {
 				// if R[A] = R[B] == C (immediate)
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				SByte c = BytecodeUtil::Cs(instruction);
 				
 				localStack[a] = make_int(value_equal(localStack[b], make_int(c)));
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::NE_rA_rB_rC: {
+			VM_CASE(NE_rA_rB_rC) {
 				// if R[A] = R[B] != R[C]
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				Byte c = BytecodeUtil::Cu(instruction);
 
 				localStack[a] = make_int(!value_equal(localStack[b], localStack[c]));
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::NE_rA_rB_iC: {
+			VM_CASE(NE_rA_rB_iC) {
 				// if R[A] = R[B] != C (immediate)
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				SByte c = BytecodeUtil::Cs(instruction);
 				
 				localStack[a] = make_int(!value_equal(localStack[b], make_int(c)));
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::BRTRUE_rA_iBC: {
+			VM_CASE(BRTRUE_rA_iBC) {
 				Byte a = BytecodeUtil::Au(instruction);
 				Int32 offset = BytecodeUtil::BCs(instruction);
 				if (is_truthy(localStack[a])){
 					pc += offset;
 				}
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::BRFALSE_rA_iBC: {
+			VM_CASE(BRFALSE_rA_iBC) {
 				Byte a = BytecodeUtil::Au(instruction);
 				Int32 offset = BytecodeUtil::BCs(instruction);
 				if (!is_truthy(localStack[a])){
 					pc += offset;
 				}
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::BRLT_rA_rB_iC: {
+			VM_CASE(BRLT_rA_rB_iC) {
 				// if R[A] < R[B] then jump offset C::
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
@@ -685,10 +697,10 @@ Value VMStorage::Run(UInt32 maxCycles) {
 				if (value_lt(localStack[a], localStack[b])){
 					pc += offset;
 				}
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::BRLT_rA_iB_iC: {
+			VM_CASE(BRLT_rA_iB_iC) {
 				// if R[A] < B (immediate) then jump offset C::
 				Byte a = BytecodeUtil::Au(instruction);
 				SByte b = BytecodeUtil::Bs(instruction);
@@ -696,10 +708,10 @@ Value VMStorage::Run(UInt32 maxCycles) {
 				if (value_lt(localStack[a], make_int(b))){
 					pc += offset;
 				}
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::BRLT_iA_rB_iC: {
+			VM_CASE(BRLT_iA_rB_iC) {
 				// if A (immediate) < R[B] then jump offset C::
 				SByte a = BytecodeUtil::As(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
@@ -707,10 +719,10 @@ Value VMStorage::Run(UInt32 maxCycles) {
 				if (value_lt(make_int(a), localStack[b])){
 					pc += offset;
 				}
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::BRLE_rA_rB_iC: {
+			VM_CASE(BRLE_rA_rB_iC) {
 				// if R[A] <= R[B] then jump offset C::
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
@@ -718,10 +730,10 @@ Value VMStorage::Run(UInt32 maxCycles) {
 				if (value_le(localStack[a], localStack[b])){
 					pc += offset;
 				}
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::BRLE_rA_iB_iC: {
+			VM_CASE(BRLE_rA_iB_iC) {
 				// if R[A] <= B (immediate) then jump offset C::
 				Byte a = BytecodeUtil::Au(instruction);
 				SByte b = BytecodeUtil::Bs(instruction);
@@ -729,10 +741,10 @@ Value VMStorage::Run(UInt32 maxCycles) {
 				if (value_le(localStack[a], make_int(b))){
 					pc += offset;
 				}
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::BRLE_iA_rB_iC: {
+			VM_CASE(BRLE_iA_rB_iC) {
 				// if A (immediate) <= R[B] then jump offset C::
 				SByte a = BytecodeUtil::As(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
@@ -740,10 +752,10 @@ Value VMStorage::Run(UInt32 maxCycles) {
 				if (value_le(make_int(a), localStack[b])){
 					pc += offset;
 				}
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::BREQ_rA_rB_iC: {
+			VM_CASE(BREQ_rA_rB_iC) {
 				// if R[A] == R[B] then jump offset C::
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
@@ -751,10 +763,10 @@ Value VMStorage::Run(UInt32 maxCycles) {
 				if (value_equal(localStack[a], localStack[b])){
 					pc += offset;
 				}
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::BREQ_rA_iB_iC: {
+			VM_CASE(BREQ_rA_iB_iC) {
 				// if R[A] == B (immediate) then jump offset C::
 				Byte a = BytecodeUtil::Au(instruction);
 				SByte b = BytecodeUtil::Bs(instruction);
@@ -762,10 +774,10 @@ Value VMStorage::Run(UInt32 maxCycles) {
 				if (value_equal(localStack[a], make_int(b))){
 					pc += offset;
 				}
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::BRNE_rA_rB_iC: {
+			VM_CASE(BRNE_rA_rB_iC) {
 				// if R[A] != R[B] then jump offset C::
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
@@ -773,10 +785,10 @@ Value VMStorage::Run(UInt32 maxCycles) {
 				if (!value_equal(localStack[a], localStack[b])){
 					pc += offset;
 				}
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::BRNE_rA_iB_iC: {
+			VM_CASE(BRNE_rA_iB_iC) {
 				// if R[A] != B (immediate) then jump offset C::
 				Byte a = BytecodeUtil::Au(instruction);
 				SByte b = BytecodeUtil::Bs(instruction);
@@ -784,110 +796,110 @@ Value VMStorage::Run(UInt32 maxCycles) {
 				if (!value_equal(localStack[a], make_int(b))){
 					pc += offset;
 				}
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::IFLT_rA_rB: {
+			VM_CASE(IFLT_rA_rB) {
 				// if R[A] < R[B] is Boolean(false), skip next instruction
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				if (!value_lt(localStack[a], localStack[b])) {
 					pc++; // Skip next instruction
 				}
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::IFLT_rA_iBC: {
+			VM_CASE(IFLT_rA_iBC) {
 				// if R[A] < BC (immediate) is Boolean(false), skip next instruction
 				Byte a = BytecodeUtil::Au(instruction);
 				short bc = BytecodeUtil::BCs(instruction);
 				if (!value_lt(localStack[a], make_int(bc))) {
 					pc++; // Skip next instruction
 				}
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::IFLT_iAB_rC: {
+			VM_CASE(IFLT_iAB_rC) {
 				// if AB (immediate) < R[C] is Boolean(false), skip next instruction
 				short ab = BytecodeUtil::ABs(instruction);
 				Byte c = BytecodeUtil::Cu(instruction);
 				if (!value_lt(make_int(ab), localStack[c])) {
 					pc++; // Skip next instruction
 				}
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::IFLE_rA_rB: {
+			VM_CASE(IFLE_rA_rB) {
 				// if R[A] <= R[B] is Boolean(false), skip next instruction
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				if (!value_le(localStack[a], localStack[b])) {
 					pc++; // Skip next instruction
 				}
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::IFLE_rA_iBC: {
+			VM_CASE(IFLE_rA_iBC) {
 				// if R[A] <= BC (immediate) is Boolean(false), skip next instruction
 				Byte a = BytecodeUtil::Au(instruction);
 				short bc = BytecodeUtil::BCs(instruction);
 				if (!value_le(localStack[a], make_int(bc))) {
 					pc++; // Skip next instruction
 				}
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::IFLE_iAB_rC: {
+			VM_CASE(IFLE_iAB_rC) {
 				// if AB (immediate) <= R[C] is Boolean(false), skip next instruction
 				short ab = BytecodeUtil::ABs(instruction);
 				Byte c = BytecodeUtil::Cu(instruction);
 				if (!value_le(make_int(ab), localStack[c])) {
 					pc++; // Skip next instruction
 				}
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::IFEQ_rA_rB: {
+			VM_CASE(IFEQ_rA_rB) {
 				// if R[A] == R[B] is Boolean(false), skip next instruction
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				if (!value_equal(localStack[a], localStack[b])) {
 					pc++; // Skip next instruction
 				}
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::IFEQ_rA_iBC: {
+			VM_CASE(IFEQ_rA_iBC) {
 				// if R[A] == BC (immediate) is Boolean(false), skip next instruction
 				Byte a = BytecodeUtil::Au(instruction);
 				short bc = BytecodeUtil::BCs(instruction);
 				if (!value_equal(localStack[a], make_int(bc))) {
 					pc++; // Skip next instruction
 				}
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::IFNE_rA_rB: {
+			VM_CASE(IFNE_rA_rB) {
 				// if R[A] != R[B] is Boolean(false), skip next instruction
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				if (value_equal(localStack[a], localStack[b])) {
 					pc++; // Skip next instruction
 				}
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::IFNE_rA_iBC: {
+			VM_CASE(IFNE_rA_iBC) {
 				// if R[A] != BC (immediate) is Boolean(false), skip next instruction
 				Byte a = BytecodeUtil::Au(instruction);
 				short bc = BytecodeUtil::BCs(instruction);
 				if (value_equal(localStack[a], make_int(bc))) {
 					pc++; // Skip next instruction
 				}
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::ARGBLK_iABC: {
+			VM_CASE(ARGBLK_iABC) {
 				// Begin argument block with specified count
 				// ABC: number of ARG instructions that follow
 				Int32 argCount = BytecodeUtil::ABCs(instruction);
@@ -932,7 +944,7 @@ Value VMStorage::Run(UInt32 maxCycles) {
 				}
 
 				// Process arguments using helper
-				Int32 nextPC = ProcessArguments(argCount, pc, baseIndex, calleeBase, callee, curFunc::Code);
+				Int32 nextPC = ProcessArguments(argCount, pc, baseIndex, calleeBase, callee, curFunc.Code());
 				if (nextPC < 0) return make_null(); // Error already raised
 
 				// Set up call frame using helper
@@ -946,21 +958,21 @@ Value VMStorage::Run(UInt32 maxCycles) {
 
 				Int32 funcIndex2 = funcref_index(localStack[BytecodeUtil::Cu(callInstruction)]);
 				Value outerVars = funcref_outer_vars(localStack[BytecodeUtil.Cu(callInstruction)]); GC_PROTECT(&outerVars);
-				callStack[callStackTop] = new CallInfo(nextPC, baseIndex, currentFuncIndex, resultReg, outerVars);
+				callStack[callStackTop] = CallInfo(nextPC, baseIndex, currentFuncIndex, resultReg, outerVars);
 				callStackTop++;
 
 				baseIndex = calleeBase;
 				pc = 0; // Start at beginning of callee code
 				curFunc = callee; // Switch to callee function
-				codeCount = curFunc::Code::Count;
-				curCode = &curFunc.Code[0];
-				curConstants = &curFunc.Constants[0];
+				codeCount = curFunc.Code().Count();
+				curCode = &curFunc.Code()[0];
+				curConstants = &curFunc.Constants()[0];
 				currentFuncIndex = funcIndex2;
 				EnsureFrame(baseIndex, callee.MaxRegs());
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::ARG_rA: {
+			VM_CASE(ARG_rA) {
 				// The VM should never encounter VM(shared_from_this()) opcode on its own; it will
 				// be processed as part of the ARGBLK opcode::  So if we get
 				// here, it's an error::
@@ -968,7 +980,7 @@ Value VMStorage::Run(UInt32 maxCycles) {
 				return make_null();
 			}
 
-			case Opcode::ARG_iABC: {
+			VM_CASE(ARG_iABC) {
 				// The VM should never encounter VM(shared_from_this()) opcode on its own; it will
 				// be processed as part of the ARGBLK opcode::  So if we get
 				// here, it's an error::
@@ -976,7 +988,7 @@ Value VMStorage::Run(UInt32 maxCycles) {
 				return make_null();
 			}
 
-			case Opcode::CALLF_iA_iBC: {
+			VM_CASE(CALLF_iA_iBC) {
 				// A: arg window start (callee executes with base = base + A)
 				// BC: function index
 				Byte a = BytecodeUtil::Au(instruction);
@@ -994,23 +1006,23 @@ Value VMStorage::Run(UInt32 maxCycles) {
 					IOHelper::Print("Call stack overflow");
 					return make_null();
 				}
-				callStack[callStackTop] = new CallInfo(pc, baseIndex, currentFuncIndex);
+				callStack[callStackTop] = CallInfo(pc, baseIndex, currentFuncIndex);
 				callStackTop++;
 
 				// Switch to callee frame: base slides to argument window
 				baseIndex += a;
 				pc = 0; // Start at beginning of callee code
 				curFunc = callee; // Switch to callee function
-				codeCount = curFunc::Code::Count;
-				curCode = &curFunc.Code[0];
-				curConstants = &curFunc.Constants[0];
+				codeCount = curFunc.Code().Count();
+				curCode = &curFunc.Code()[0];
+				curConstants = &curFunc.Constants()[0];
 				currentFuncIndex = funcIndex; // Switch to callee function index
 
 				EnsureFrame(baseIndex, callee.MaxRegs());
-				break;
+				VM_NEXT();
 			}
 			
-			case Opcode::CALLFN_iA_kBC: {
+			VM_CASE(CALLFN_iA_kBC) {
 				// Call named (intrinsic?) function kBC,
 				// with parameters/return at register A::
 				Byte a = BytecodeUtil::Au(instruction);
@@ -1019,12 +1031,12 @@ Value VMStorage::Run(UInt32 maxCycles) {
 				// For now, we'll only support intrinsics::
 				// ToDo: change VM(shared_from_this()) once we have variable look-up::
 				DoIntrinsic(funcName, baseIndex + a);
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::CALL_rA_rB_rC: {
+			VM_CASE(CALL_rA_rB_rC) {
 				// Invoke the FuncRef in R[C], with a stack frame starting at our register B,
-				// and upon return, copy the result from r[B] to r[A]::
+				// and upon return, copy the result from r[B] to r[A].
 				//
 				// A: destination register for result
 				// B: stack frame start register for callee
@@ -1037,7 +1049,7 @@ Value VMStorage::Run(UInt32 maxCycles) {
 				if (!is_funcref(funcRefValue)) {
 					IOHelper::Print("CALL: Value in register is not a function reference");
 					localStack[a] = funcRefValue;
-					break;
+					VM_NEXT();
 				}
 
 				Int32 funcIndex = funcref_index(funcRefValue);
@@ -1056,22 +1068,22 @@ Value VMStorage::Run(UInt32 maxCycles) {
 					IOHelper::Print("Call stack overflow");
 					return make_null();
 				}
-				callStack[callStackTop] = new CallInfo(pc, baseIndex, currentFuncIndex, a, outerVars);
+				callStack[callStackTop] = CallInfo(pc, baseIndex, currentFuncIndex, a, outerVars);
 				callStackTop++;
 
 				// Set up call frame starting at baseIndex + b
 				baseIndex = calleeBase;
 				pc = 0; // Start at beginning of callee code
 				curFunc = callee; // Switch to callee function
-				codeCount = curFunc::Code::Count;
-				curCode = &curFunc.Code[0];
-				curConstants = &curFunc.Constants[0];
+				codeCount = curFunc.Code().Count();
+				curCode = &curFunc.Code()[0];
+				curConstants = &curFunc.Constants()[0];
 				currentFuncIndex = funcIndex; // Switch to callee function index
 				EnsureFrame(baseIndex, callee.MaxRegs());
-				break;
+				VM_NEXT();
 			}
 
-			case Opcode::RETURN: {
+			VM_CASE(RETURN) {
 				// Return value convention: value is in base[0]
 				Value result = stack[baseIndex]; GC_PROTECT(&result);
 				if (callStackTop == 0) {
@@ -1085,10 +1097,10 @@ Value VMStorage::Run(UInt32 maxCycles) {
 				}
 				
 				// If current call frame had a locals VarMap, gather it up
-				CallInfoRef frame = callStack[callStackTop];
-				if (!is_null(frame::LocalVarMap)) {
-					varmap_gather(frame::LocalVarMap);
-					frame::LocalVarMap = make_null();  // then clear from call frame
+				CallInfo frame = callStack[callStackTop];
+				if (!is_null(frame.LocalVarMap)) {
+					varmap_gather(frame.LocalVarMap);
+					frame.LocalVarMap = make_null();  // then clear from call frame
 				}
 
 				// Pop call stack
@@ -1098,14 +1110,14 @@ Value VMStorage::Run(UInt32 maxCycles) {
 				baseIndex = callInfo.ReturnBase;
 				currentFuncIndex = callInfo.ReturnFuncIndex; // Restore the caller's function index
 				curFunc = functions[currentFuncIndex]; // Restore the caller's function
-				codeCount = curFunc::Code::Count;
-				curCode = &curFunc.Code[0];
-				curConstants = &curFunc.Constants[0];
+				codeCount = curFunc.Code().Count();
+				curCode = &curFunc.Code()[0];
+				curConstants = &curFunc.Constants()[0];
 				
 				if (callInfo.CopyResultToReg >= 0) {
 					stack[baseIndex + callInfo.CopyResultToReg] = result;
 				}
-				break;
+				VM_NEXT();
 			}
 
 			VM_DISPATCH_END();
@@ -1128,12 +1140,12 @@ void VMStorage::EnsureFrame(Int32 baseIndex, UInt16 neededRegs) {
 }
 Value VMStorage::LookupVariable(Value varName) {
 	// Look up a variable in outer context (and eventually globals)
-	// Returns the value if found, or null if not found
+	// Returns the value if found, or nullptr if not found
 	if (callStackTop > 0) {
-		CallInfoRef currentFrame = callStack[callStackTop - 1];  // Current frame, not next frame
-		if (!is_null(currentFrame::OuterVarMap)) {
+		CallInfo currentFrame = callStack[callStackTop - 1];  // Current frame, not next frame
+		if (!is_null(currentFrame.OuterVarMap)) {
 			Value outerValue; GC_PROTECT(&outerValue);
-			if (map_try_get(currentFrame::OuterVarMap, varName, out outerValue)) {
+			if (map_try_get(currentFrame.OuterVarMap, varName, out outerValue)) {
 				return outerValue;
 			}
 		}

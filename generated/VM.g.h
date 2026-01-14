@@ -27,7 +27,6 @@ class AppStorage;
 
 
 
-
 // Call stack frame (return info)
 struct CallInfo {
 	public: Int32 ReturnPC; // where to continue in caller (PC index)
@@ -40,19 +39,8 @@ struct CallInfo {
 	public: CallInfo(Int32 returnPC, Int32 returnBase, Int32 returnFuncIndex, Int32 copyToReg=-1);
 
 	public: CallInfo(Int32 returnPC, Int32 returnBase, Int32 returnFuncIndex, Int32 copyToReg, Value outerVars);
-	inline Value GetLocalVarMap(List<Value>& registers, List<Value>& names, int baseIdx, int regCount) {
-		if (is_null(LocalVarMap)) {
-			// Create a new VarMap with references to VM's stack and names arrays
-			if (regCount == 0) {
-				// We have no local vars at all!  Make an ordinary map.
-				LocalVarMap = make_map(4);	// This is safe, right?
-			} else {
-				LocalVarMap = make_varmap(&registers[0], &names[0], baseIdx, regCount);
-			}
-		}
-		return LocalVarMap;
-	}
 
+	public: Value GetLocalVarMap(List<Value> registers, List<Value> names, int baseIdx, int regCount);
 }; // end of struct CallInfo
 
 
@@ -141,6 +129,7 @@ struct VM {
   public:
 	VM(std::shared_ptr<VMStorage> stor) : storage(stor) {}
 	VM() : storage(nullptr) {}
+	VM(std::nullptr_t) : storage(nullptr) {}
 	static VM New() { return VM(std::make_shared<VMStorage>()); }
 	friend bool IsNull(const VM& inst) { return inst.storage == nullptr; }
 	private: VMStorage* get() const { return static_cast<VMStorage*>(storage.get()); }

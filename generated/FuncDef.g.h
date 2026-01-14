@@ -10,8 +10,6 @@ namespace MiniScript {
 
 // FORWARD DECLARATIONS
 
-struct CallInfo;
-class CallInfoStorage;
 struct VM;
 class VMStorage;
 struct VMVis;
@@ -66,6 +64,7 @@ struct FuncDef {
   public:
 	FuncDef(std::shared_ptr<FuncDefStorage> stor) : storage(stor) {}
 	FuncDef() : storage(nullptr) {}
+	FuncDef(std::nullptr_t) : storage(nullptr) {}
 	static FuncDef New() { return FuncDef(std::make_shared<FuncDefStorage>()); }
 	friend bool IsNull(const FuncDef& inst) { return inst.storage == nullptr; }
 	private: FuncDefStorage* get() const { return static_cast<FuncDefStorage*>(storage.get()); }

@@ -291,6 +291,7 @@ Transpiler.cppLines = null		// extra lines for top of .cpp file
 Transpiler.endLines = null		// end of namespace, and anything that comes after
 Transpiler.prevStates = []		// stack of previous states (see pushState/popState)
 Transpiler.nextMethodInline = false  // if true, next method should be inlined
+Transpiler.inVmCase = 1			// > 0 when in a VM dispatch case block
 
 Transpiler.Make = function
 	noob = new Transpiler
@@ -406,12 +407,12 @@ Transpiler.transformStatement = function(trimmedLine)
 	// assignment to class fields to a set_X() call.
 	
 	if not trimmedLine then return trimmedLine
-		
+	
 	// Start with a rough tokenization, separating each identifier and
 	// non-identifier string.
 	tokens = roughTokenize(trimmedLine)
 	
-	deepDebug = false // e.g. trimmedLine.contains("token.Substring(0")
+	deepDebug = trimmedLine.contains("frame.GetLocalVarMap")
 	ddprint = function(s); if deepDebug then print "====> " + s; end function
 	summarize = function(obj)
 		if obj == null then return "<null>"
@@ -458,6 +459,11 @@ Transpiler.transformStatement = function(trimmedLine)
 			end if
 			// look up RHS type and see if it's static; if so, it needs "::" rather than "."
 			rhsStatic = true
+			if i-1 >= 0 and not isIdentifierChar(tokens[i-1][-1]) then
+				// ...but if LHS token is not an identifier, then it *can't* be static
+				ddprint "LHS token is " + tokens[i-1] + ", so we CAN'T use :: here"
+				continue
+			end if
 			if curInfo and i+1 < tokens.len then
 				rhsType = self.lookup(tokens[i+1], curInfo)
 				ddprint "rhsType=" + summarize(rhsType)
@@ -487,12 +493,12 @@ Transpiler.transformStatement = function(trimmedLine)
 					tokens[i+1] = tok + "::New"
 				end if
 				continue
-			end if
-			if not cl then
-				// if it's an unknown type, then assume it's some other class (i.e.
-				// not one of our storage wrappers), and just remove `new`
+			else
+				// if it's a struct OR an unknown type (which we assume is some other 
+				// class, not one of our storage wrappers), then just remove `new`
 				print "Unknown type " + tokens[i+2] + " found after `new`; assuming class"
 				tokens[i] = ""
+				tokens[i+1] = ""
 				continue
 			end if
 		else if tokens[i] == "this" and (i+1 >= tokens.len or tokens[i+1] != ".") then
@@ -542,6 +548,9 @@ Transpiler.transformStatement = function(trimmedLine)
 				tokens[i] = ""
 				curInfo = null
 				continue
+			else
+				// Any other use, just change null to nullptr
+				tokens[i] = "nullptr"
 			end if
 		end if
 		nextInfo = self.lookup(tokens[i], curInfo)
@@ -677,6 +686,7 @@ Transpiler.enterState = function(newState, initAsNew=true)
 			self.curClass.methodLines = self.curClass.defLines
 		end if
 		self.localVars = params[:]
+		self.inVmCase = 0
 	end if
 	
 end function
@@ -686,6 +696,7 @@ Transpiler.exitState = function(toNewState)
 
 	if self.state == State.METHOD then
 		self.localVars = []
+		self.inVmCase = 0
 	end if
 end function
 
@@ -787,6 +798,7 @@ Transpiler.updateStateNAMESPACE = function
 		self.curClass.wrapperLines.push "  public:"
 		self.curClass.wrapperLines.push self.fill("	≤name≥(std::shared_ptr<≤name≥Storage> stor) : storage(stor) {}")
 		self.curClass.wrapperLines.push self.fill("	≤name≥() : storage(nullptr) {}")
+		self.curClass.wrapperLines.push self.fill("	≤name≥(std::nullptr_t) : storage(nullptr) {}")
 		self.curClass.wrapperLines.push self.fill("	static ≤name≥ New() { return ≤name≥(std::make_shared<≤name≥Storage>()); }")
 		self.curClass.wrapperLines.push self.fill("	friend bool IsNull(const ≤name≥& inst) { return inst.storage == nullptr; }")
 		self.curClass.wrapperLines.push self.fill("	private: ≤name≥Storage* get() const { return static_cast<≤name≥Storage*>(storage.get()); }")
@@ -1087,6 +1099,31 @@ Transpiler.updateStateMETHOD = function
 		  self.fill("≤type≥ ≤name≥[≤count≥];")
 		return
 	end if
+	
+	// check for other special patterns:
+	// foreach statement
+	if self.match("foreach (≤type:w≥ ≤var:w≥ in ≤seq≥)") then
+		self.cppLines.push self.fill("for (int __≤var≥_idx=0, __≤var≥_qty=≤seq≥.Count(); __≤var≥_idx < __≤var≥_qty; __≤var≥_idx++)")
+		self.cppLines.push self.fill("	≤type≥ ≤var≥ = ≤seq≥[__≤var≥_idx];")
+		return
+	end if
+	
+	if self.curClass.name == "VM" then
+		// Special case: VM dispatch handling
+		if self.match("case Opcode.≤opcode≥: {") then
+			self.curClass.methodLines.push line.indentation + self.fill("VM_CASE(≤opcode≥) {")
+			self.inVmCase = 1
+			return
+		end if
+		if self.inVmCase then
+			self.inVmCase += line.trimmed.endsWith("{") - line.trimmed.startsWith("}")
+		end if
+		if self.line.trimmed == "break;" and self.inVmCase then
+			self.curClass.methodLines.push line.indentation + "VM_NEXT();"
+			return
+		end if
+	end if
+	
 	
 	// otherwise, apply standard transformations, then write out
 	cline = line.full

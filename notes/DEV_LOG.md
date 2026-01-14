@@ -159,5 +159,24 @@ Transpilation of VM is making progress.  I've made CallInfo a struct (rather tha
 
 It's also somehow failing to grok what mainFunc is (declared as `FuncDef mainFunc` on lin 88), and so making lots of `::` errors.
 
+## Jan 14, 2026
+
+Fixed the problem with CallInfo; we weren't handling the case of a known struct, but only known (wrapper) classes and unknown types.  Structs are now handled just like unknown types (remove `new`).
+
+And the problem with `mainFunc` was just that I had a pointless construct:
+	FuncDef mainFunc = null; // CPP: FuncDef mainFunc;
+Oh wait -- that's not pointless; C# requires it be assigned a value before it is used.  Hmm.  But it *should* be pointless.  OK, added a wrapper ctor that takes a nullptr, which enables this sort of assignment (and transpiler now converts `null` to `nullptr` too).
+
+So, making progress.  Still have some issues:
+
+1. Our usual transformations are not applied on a local var declaration line, like
+		Value locals = frame.GetLocalVarMap(stack, names, baseIndex, curFunc.MaxRegs); GC_PROTECT(&locals);
+or
+		Value outerVars = funcref_outer_vars(localStack[BytecodeUtil.Cu(callInstruction)]); GC_PROTECT(&outerVars);
+
+This is causing grief.  We need to do those same transformations, and *also* add the GC_PROTECT call.
+
+2. I need to think more carefully about local Values declared inside code blocks, like Value locals in VM.cs:460.  And in particular, what if it's in a loop?  What's the proper GC pattern in this case?
+
 
 

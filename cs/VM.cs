@@ -18,9 +18,6 @@ using static MiniScript.ValueHelpers;
 
 namespace MiniScript {
 
-using CallInfoRef = CallInfo;
-using FuncDefRef = FuncDef;
-
 // Call stack frame (return info)
 public struct CallInfo {
 	public Int32 ReturnPC;        // where to continue in caller (PC index)
@@ -48,7 +45,6 @@ public struct CallInfo {
 		OuterVarMap = outerVars;
 	}
 
-	//*** BEGIN CS_ONLY ***
 	public Value GetLocalVarMap(List<Value> registers, List<Value> names, int baseIdx, int regCount) {
 		if (is_null(LocalVarMap)) {
 			// Create a new VarMap with references to VM's stack and names arrays
@@ -56,26 +52,11 @@ public struct CallInfo {
 				// We have no local vars at all!  Make an ordinary map.
 				LocalVarMap = make_map(4);	// This is safe, right?
 			} else {
-				LocalVarMap = make_varmap(registers, names, baseIdx, regCount);
+				LocalVarMap = make_varmap(registers, names, baseIdx, regCount); // CPP: LocalVarMap = make_varmap(&registers[0], &names[0], baseIdx, regCount);
 			}
 		}
 		return LocalVarMap;
 	}
-	//*** END CS_ONLY ***
-	/*** BEGIN H_ONLY ***
-	inline Value GetLocalVarMap(List<Value>& registers, List<Value>& names, int baseIdx, int regCount) {
-		if (is_null(LocalVarMap)) {
-			// Create a new VarMap with references to VM's stack and names arrays
-			if (regCount == 0) {
-				// We have no local vars at all!  Make an ordinary map.
-				LocalVarMap = make_map(4);	// This is safe, right?
-			} else {
-				LocalVarMap = make_varmap(&registers[0], &names[0], baseIdx, regCount);
-			}
-		}
-		return LocalVarMap;
-	}
-	*** END H_ONLY ***/
 }
 
 // VM state
@@ -159,7 +140,7 @@ public class VM {
 
 	public void Reset(List<FuncDef> allFunctions) {
 		// Store all functions for CALLF instructions, and find @main
-		FuncDef mainFunc = null; // CPP: FuncDef mainFunc;
+		FuncDef mainFunc = null;
 		functions.Clear();
 		for (Int32 i = 0; i < allFunctions.Count; i++) {
 			functions.Add(allFunctions[i]);
@@ -304,10 +285,10 @@ public class VM {
 		Int32 baseIndex = BaseIndex;
 		Int32 currentFuncIndex = _currentFuncIndex;
 
-		FuncDefRef curFunc = CurrentFunction; // should be: FuncDef& curFunc = CurrentFunction;
+		FuncDef curFunc = CurrentFunction;
 		Int32 codeCount = curFunc.Code.Count;
-		var curCode = curFunc.Code; // CPP: UInt32* curCode = &curFunc.Code[0];
-		var curConstants = curFunc.Constants; // CPP: Value* curConstants = &curFunc.Constants[0];
+		var curCode = curFunc.Code; // CPP: UInt32* curCode = &curFunc.Code()[0];
+		var curConstants = curFunc.Constants; // CPP: Value* curConstants = &curFunc.Constants()[0];
 
 		UInt32 cyclesLeft = maxCycles;
 		if (maxCycles == 0) cyclesLeft--;  // wraps to MAX_UINT32
@@ -460,8 +441,8 @@ public class VM {
 						pc = 0; // Start at beginning of callee code
 						curFunc = callee; // Switch to callee function
 						codeCount = curFunc.Code.Count;
-						curCode = curFunc.Code; // CPP: curCode = &curFunc.Code[0];
-						curConstants = curFunc.Constants; // CPP: curConstants = &curFunc.Constants[0];
+						curCode = curFunc.Code; // CPP: curCode = &curFunc.Code()[0];
+						curConstants = curFunc.Constants; // CPP: curConstants = &curFunc.Constants()[0];
 						currentFuncIndex = funcIndex; // Switch to callee function index
 
 						EnsureFrame(baseIndex, callee.MaxRegs);
@@ -475,7 +456,7 @@ public class VM {
 					Int16 funcIndex = BytecodeUtil.BCs(instruction);
 
 					// Create function reference with our locals as the closure context
-					CallInfoRef frame = callStack[callStackTop];
+					CallInfo frame = callStack[callStackTop];
 					Value locals = frame.GetLocalVarMap(stack, names, baseIndex, curFunc.MaxRegs);
 					localStack[a] = make_funcref(funcIndex, locals);
 					break;
@@ -615,7 +596,7 @@ public class VM {
 					// Create VarMap for local variables and store in R[A]
 					Byte a = BytecodeUtil.Au(instruction);
 
-					CallInfoRef frame = callStack[callStackTop];
+					CallInfo frame = callStack[callStackTop];
 					localStack[a] = frame.GetLocalVarMap(stack, names, baseIndex, curFunc.MaxRegs);
 					names[baseIndex+a] = make_null();
 					break;
@@ -625,7 +606,7 @@ public class VM {
 					// Create VarMap for outer variables and store in R[A]
 					// TODO: Implement outer variable map access
 					Byte a = BytecodeUtil.Au(instruction);
-					CallInfoRef frame = callStack[callStackTop - 1];
+					CallInfo frame = callStack[callStackTop - 1];
 					localStack[a] = frame.OuterVarMap;
 					names[baseIndex+a] = make_null();
 					break;
@@ -1042,8 +1023,8 @@ public class VM {
 					pc = 0; // Start at beginning of callee code
 					curFunc = callee; // Switch to callee function
 					codeCount = curFunc.Code.Count;
-					curCode = curFunc.Code; // CPP: curCode = &curFunc.Code[0];
-					curConstants = curFunc.Constants; // CPP: curConstants = &curFunc.Constants[0];
+					curCode = curFunc.Code; // CPP: curCode = &curFunc.Code()[0];
+					curConstants = curFunc.Constants; // CPP: curConstants = &curFunc.Constants()[0];
 					currentFuncIndex = funcIndex2;
 					EnsureFrame(baseIndex, callee.MaxRegs);
 					break;
@@ -1091,8 +1072,8 @@ public class VM {
 					pc = 0; // Start at beginning of callee code
 					curFunc = callee; // Switch to callee function
 					codeCount = curFunc.Code.Count;
-					curCode = curFunc.Code; // CPP: curCode = &curFunc.Code[0];
-					curConstants = curFunc.Constants; // CPP: curConstants = &curFunc.Constants[0];
+					curCode = curFunc.Code; // CPP: curCode = &curFunc.Code()[0];
+					curConstants = curFunc.Constants; // CPP: curConstants = &curFunc.Constants()[0];
 					currentFuncIndex = funcIndex; // Switch to callee function index
 
 					EnsureFrame(baseIndex, callee.MaxRegs);
@@ -1153,8 +1134,8 @@ public class VM {
 					pc = 0; // Start at beginning of callee code
 					curFunc = callee; // Switch to callee function
 					codeCount = curFunc.Code.Count;
-					curCode = curFunc.Code; // CPP: curCode = &curFunc.Code[0];
-					curConstants = curFunc.Constants; // CPP: curConstants = &curFunc.Constants[0];
+					curCode = curFunc.Code; // CPP: curCode = &curFunc.Code()[0];
+					curConstants = curFunc.Constants; // CPP: curConstants = &curFunc.Constants()[0];
 					currentFuncIndex = funcIndex; // Switch to callee function index
 					EnsureFrame(baseIndex, callee.MaxRegs);
 					break;
@@ -1174,7 +1155,7 @@ public class VM {
 					}
 					
 					// If current call frame had a locals VarMap, gather it up
-					CallInfoRef frame = callStack[callStackTop];
+					CallInfo frame = callStack[callStackTop];
 					if (!is_null(frame.LocalVarMap)) {
 						varmap_gather(frame.LocalVarMap);
 						frame.LocalVarMap = make_null();  // then clear from call frame
@@ -1188,8 +1169,8 @@ public class VM {
 					currentFuncIndex = callInfo.ReturnFuncIndex; // Restore the caller's function index
 					curFunc = functions[currentFuncIndex]; // Restore the caller's function
 					codeCount = curFunc.Code.Count;
-					curCode = curFunc.Code; // CPP: curCode = &curFunc.Code[0];
-					curConstants = curFunc.Constants; // CPP: curConstants = &curFunc.Constants[0];
+					curCode = curFunc.Code; // CPP: curCode = &curFunc.Code()[0];
+					curConstants = curFunc.Constants; // CPP: curConstants = &curFunc.Constants()[0];
 					
 					if (callInfo.CopyResultToReg >= 0) {
 						stack[baseIndex + callInfo.CopyResultToReg] = result;
@@ -1232,7 +1213,7 @@ public class VM {
 		// Look up a variable in outer context (and eventually globals)
 		// Returns the value if found, or null if not found
 		if (callStackTop > 0) {
-			CallInfoRef currentFrame = callStack[callStackTop - 1];  // Current frame, not next frame
+			CallInfo currentFrame = callStack[callStackTop - 1];  // Current frame, not next frame
 			if (!is_null(currentFrame.OuterVarMap)) {
 				Value outerValue;
 				if (map_try_get(currentFrame.OuterVarMap, varName, out outerValue)) {

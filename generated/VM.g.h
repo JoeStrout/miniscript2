@@ -119,6 +119,10 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	private: void EnsureFrame(Int32 baseIndex, UInt16 neededRegs);
 
 	private: Value LookupVariable(Value varName);
+	private: static const Value FuncNamePrint;
+	private: static const Value FuncNameInput;
+	private: static const Value FuncNameVal;
+	private: static const Value FuncNameRemove;
 	
 	
 	private: void DoIntrinsic(Value funcName, Int32 baseReg);
@@ -205,6 +209,10 @@ struct VM {
 	private: void EnsureFrame(Int32 baseIndex, UInt16 neededRegs) { return get()->EnsureFrame(baseIndex, neededRegs); }
 
 	private: Value LookupVariable(Value varName) { return get()->LookupVariable(varName); }
+	private: Value FuncNamePrint() { return get()->FuncNamePrint; }
+	private: Value FuncNameInput() { return get()->FuncNameInput; }
+	private: Value FuncNameVal() { return get()->FuncNameVal; }
+	private: Value FuncNameRemove() { return get()->FuncNameRemove; }
 	
 	
 	private: void DoIntrinsic(Value funcName, Int32 baseReg) { return get()->DoIntrinsic(funcName, baseReg); }

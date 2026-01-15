@@ -158,7 +158,7 @@ roughTokenize = function(s)
 	// Roughly tokenize the given string, which is mostly about separating
 	// out the identifiers.  Anything that's not an identifier can be lumped
 	// together with whitespace and neighboring operators, etc.  Example:
-	//      "if foo.bar == 40+2 {" 
+	//	  "if foo.bar == 40+2 {" 
 	// -->  ["if", " ", "foo", ".", "bar", " == 40+2 {"]
 	result = []
 	tokStart = 0
@@ -441,6 +441,10 @@ Transpiler.transformStatement = function(trimmedLine)
 			tokens[i] = "Boolean(true)"  // make true/false literals Boolean rather than bool
 		else if tokens[i] == "false" then
 			tokens[i] = "Boolean(false)"
+		else if tokens[i] == "out" then
+			// This is used on output arguments; in C++, just take the address.
+			tokens[i] = "&"
+			if i+1 < tokens.len and tokens[i+1] == " " then tokens.remove i+1
 		else if tokens[i] == "." then   // dot operator: resolve var type and continue
 			if i+1 < tokens.len and (tokens[i+1] == "MaxValue" or tokens[i+1] == "MinValue") then
 				// We have macros like UInt16MaxValue, etc., in core_includes.h, so just:
@@ -900,24 +904,32 @@ Transpiler.updateStateCLASS = function
 			self.curClass.declLines.push line.full
 		end if
 	else
-		// constant
-		if self.match("≤scope:w≥ const ≤type:w≥ ≤name:w≥ = ≤value≥;") then
-			self.curClass.declLines.push self.fill("	≤scope≥: static const ≤type≥ ≤name≥;")
-			self.curClass.defLines.push self.fill("const ≤type≥ ≤className≥::≤name≥ = ≤value≥;")
+		// constant (or static readonly field, which in C++ is the same thing)
+		if self.match("≤scope:w≥ const ≤type:w≥ ≤name:w≥ = ≤value≥;") or
+		   self.match("≤scope:w≥ static readonly ≤type:w≥ ≤name:w≥ = ≤value≥;") then
+			if self.curClass.type == ClassType.CLASS then
+				self.curClass.storageLines.push self.fill("	≤scope≥: static const ≤type≥ ≤name≥;")
+				self.curClass.defLines.push self.fill("const ≤type≥ ≤className≥Storage::≤name≥ = ≤value≥;")
+				self.curClass.wrapperLines.push self.fill("	≤scope≥: ≤type≥ ≤name≥() { return get()->≤name≥; }")
+			else
+				self.curClass.declLines.push self.fill("	≤scope≥: static const ≤type≥ ≤name≥;")
+				self.curClass.defLines.push self.fill("const ≤type≥ ≤className≥Storage::≤name≥ = ≤value≥;")
+			end if
+			if self.gatherMode then self.curClass.fields.push VariableInfo.Make(self.m.name, self.m.type, self.m.scope, true)
 
 		// ordinary field (with or without initializer)
 		else if self.match("≤scope:w≥ ≤type:w≥ ≤name:w≥;") or
-		        self.match("≤scope:w≥ ≤type:w≥ ≤name:w≥ = ≤expr≥;") or
-		        self.match("≤scope:w≥ ≤type:w≥ ≤name:w≥ { get; private set; }") then
-		    self.m.dec = "≤scope≥: ≤type≥ ≤name≥".fill(self.m)
-		    if self.m.hasIndex("expr") then
-		    	exprm = self.m.expr.match("new ≤type≥(≤params≥)")
-		    	if exprm then
-		    		self.m.dec += " = ≤type≥::New(≤params≥)".fill(exprm)
-		    	else
-			    	self.m.dec += " = " + self.m.expr
-			    end if
-		    end if
+			  self.match("≤scope:w≥ ≤type:w≥ ≤name:w≥ = ≤expr≥;") or
+			  self.match("≤scope:w≥ ≤type:w≥ ≤name:w≥ { get; private set; }") then
+			self.m.dec = "≤scope≥: ≤type≥ ≤name≥".fill(self.m)
+			if self.m.hasIndex("expr") then
+				exprm = self.m.expr.match("new ≤type≥(≤params≥)")
+				if exprm then
+					self.m.dec += " = ≤type≥::New(≤params≥)".fill(exprm)
+				else
+				   	self.m.dec += " = " + self.m.expr
+				end if
+			end if
 			if self.curClass.type == ClassType.CLASS then
 				self.curClass.storageLines.push self.fill("	≤dec≥;")
 				self.curClass.wrapperLines.push self.fill("	≤scope≥: ≤type≥ ≤name≥() { return get()->≤name≥; }")
@@ -1087,7 +1099,7 @@ Transpiler.updateStateMETHOD = function
 		// special case: watch for declarations of type Value, which need GC protection
 		if self.m.type == "Value" then
 			s = self.fill("Value ≤name≥")
-			if self.m.get("expr") then s += " = " + self.m.expr;			
+			if self.m.get("expr") then s += " = " + self.transformStatement(self.m.expr);
 			self.curClass.methodLines.push line.indentation + s + "; GC_PROTECT(&" + self.m.name + ");";
 			return
 		end if

@@ -399,7 +399,7 @@ Value VMStorage::Run(UInt32 maxCycles) {
 
 				// Create function reference with our locals as the closure context
 				CallInfo frame = callStack[callStackTop];
-				Value locals = frame.GetLocalVarMap(stack, names, baseIndex, curFunc.MaxRegs); GC_PROTECT(&locals);
+				Value locals = frame.GetLocalVarMap(stack, names, baseIndex, curFunc.MaxRegs()); GC_PROTECT(&locals);
 				localStack[a] = make_funcref(funcIndex, locals);
 				VM_NEXT();
 			}
@@ -504,7 +504,7 @@ Value VMStorage::Run(UInt32 maxCycles) {
 					localStack[a] = list_get(container, as_int(index));
 				} else if (is_map(container)) {
 					Value result; GC_PROTECT(&result);
-					if (!map_try_get(container, index, out result)) {
+					if (!map_try_get(container, index, &result)) {
 						RaiseRuntimeError(StringUtils::Format("Key Not Found: '{0}' not found in map", index));
 					}
 					localStack[a] = result;
@@ -957,7 +957,7 @@ Value VMStorage::Run(UInt32 maxCycles) {
 				}
 
 				Int32 funcIndex2 = funcref_index(localStack[BytecodeUtil::Cu(callInstruction)]);
-				Value outerVars = funcref_outer_vars(localStack[BytecodeUtil.Cu(callInstruction)]); GC_PROTECT(&outerVars);
+				Value outerVars = funcref_outer_vars(localStack[BytecodeUtil::Cu(callInstruction)]); GC_PROTECT(&outerVars);
 				callStack[callStackTop] = CallInfo(nextPC, baseIndex, currentFuncIndex, resultReg, outerVars);
 				callStackTop++;
 
@@ -1145,7 +1145,7 @@ Value VMStorage::LookupVariable(Value varName) {
 		CallInfo currentFrame = callStack[callStackTop - 1];  // Current frame, not next frame
 		if (!is_null(currentFrame.OuterVarMap)) {
 			Value outerValue; GC_PROTECT(&outerValue);
-			if (map_try_get(currentFrame.OuterVarMap, varName, out outerValue)) {
+			if (map_try_get(currentFrame.OuterVarMap, varName, &outerValue)) {
 				return outerValue;
 			}
 		}
@@ -1157,6 +1157,10 @@ Value VMStorage::LookupVariable(Value varName) {
 	RaiseRuntimeError(StringUtils::Format("Undefined identifier '{0}'", varName));
 	return make_null();
 }
+const Value VMStorage::FuncNamePrint = make_string("print");
+const Value VMStorage::FuncNameInput = make_string("input");
+const Value VMStorage::FuncNameVal = make_string("val");
+const Value VMStorage::FuncNameRemove = make_string("remove");
 void VMStorage::DoIntrinsic(Value funcName, Int32 baseReg) {
 	// Run the named intrinsic, with its parameters and return value
 	// stored in our stack starting at baseReg::

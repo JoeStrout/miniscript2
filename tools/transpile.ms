@@ -365,6 +365,15 @@ Transpiler.subclassesOf = function(class)
 	return result
 end function
 
+Transpiler.hasValueLocals = function
+	// Return whether any of our local variables are of type Value,
+	// indicating a need to use GC_PUSH_SCOPE and GC_POP_SCOPE.
+	for var in self.localVars
+		if var.type == "Value" then return true
+	end for
+	return false
+end function
+
 Transpiler.lookup = function(identifier, context)
 	// Return info on the given identifier.  If context is given, then look only
 	// at types within that class; otherwise, start with locals and work up to
@@ -691,6 +700,7 @@ Transpiler.enterState = function(newState, initAsNew=true)
 		end if
 		self.localVars = params[:]
 		self.inVmCase = 0
+		self.pushedGCScope = false
 	end if
 	
 end function
@@ -797,8 +807,8 @@ Transpiler.updateStateNAMESPACE = function
 	// class (simple or base class)
 	else if self.match("≤scope:w≥ class ≤name:w≥ {") then
 		self.enterState State.CLASS
-		self.curClass.wrapperLines.push self.fill("struct ≤name≥ {");
-		self.curClass.wrapperLines.push self.fill("	protected: std::shared_ptr<≤name≥Storage> storage;");
+		self.curClass.wrapperLines.push self.fill("struct ≤name≥ {")
+		self.curClass.wrapperLines.push self.fill("	protected: std::shared_ptr<≤name≥Storage> storage;")
 		self.curClass.wrapperLines.push "  public:"
 		self.curClass.wrapperLines.push self.fill("	≤name≥(std::shared_ptr<≤name≥Storage> stor) : storage(stor) {}")
 		self.curClass.wrapperLines.push self.fill("	≤name≥() : storage(nullptr) {}")
@@ -822,8 +832,8 @@ Transpiler.updateStateNAMESPACE = function
 	else if self.match("≤scope:w≥ abstract class ≤name:w≥ {") then
 		self.enterState State.CLASS
 		// wrapper class (we'll take care to write this one out before all storage classes later)
-		self.curClass.wrapperLines.push self.fill("struct ≤name≥ {");
-		self.curClass.wrapperLines.push self.fill("	protected: std::shared_ptr<≤name≥Storage> storage;");
+		self.curClass.wrapperLines.push self.fill("struct ≤name≥ {")
+		self.curClass.wrapperLines.push self.fill("	protected: std::shared_ptr<≤name≥Storage> storage;")
 		self.curClass.wrapperLines.push "  public:"
 		self.curClass.wrapperLines.push self.fill("	≤name≥(std::shared_ptr<≤name≥Storage> stor) : storage(stor) {}")
 		self.curClass.wrapperLines.push self.fill("	≤name≥() : storage(nullptr) {}")
@@ -867,8 +877,18 @@ Transpiler.updateStateCLASS = function
 	comment = self.line.comment
 
 	if comment.startsWith("// CPP: ") then
-		self.curClass.defLines.push comment[8:]
+		self.curClass.defLines.push line.indentation + comment[8:]
 		return
+	end if
+	
+	if comment.startsWith("// H: ") then
+		if self.curClass.type == ClassType.CLASS then
+			// This is a little tricky — which part of the header is this line meant for?
+			// So far we have only needed it in the storage class, so for now we'll assume:
+			self.curClass.storageLines.push line.indentation + comment[6:]
+		else
+			self.declLines.push line.indentation + comment[6:]
+		end if
 	end if
 
 	if line.full.startsWith("}") then
@@ -913,7 +933,7 @@ Transpiler.updateStateCLASS = function
 				self.curClass.wrapperLines.push self.fill("	≤scope≥: ≤type≥ ≤name≥() { return get()->≤name≥; }")
 			else
 				self.curClass.declLines.push self.fill("	≤scope≥: static const ≤type≥ ≤name≥;")
-				self.curClass.defLines.push self.fill("const ≤type≥ ≤className≥Storage::≤name≥ = ≤value≥;")
+				self.curClass.defLines.push self.fill("const ≤type≥ ≤className≥::≤name≥ = ≤value≥;")
 			end if
 			if self.gatherMode then self.curClass.fields.push VariableInfo.Make(self.m.name, self.m.type, self.m.scope, true)
 
@@ -1096,11 +1116,21 @@ Transpiler.updateStateMETHOD = function
 	if (self.match("≤type:w≥ ≤name:w≥;") or
 	   self.match("≤type:w≥ ≤name:w≥ = ≤expr≥;")) and not isKeyword(self.m.type) then
 		self.localVars.push VariableInfo.Make(self.m.name, self.m.type, Scope.LOCAL)
-		// special case: watch for declarations of type Value, which need GC protection
+		// special case: watch for declarations of type Value, which need GC protection.
 		if self.m.type == "Value" then
-			s = self.fill("Value ≤name≥")
+			// Also, make sure these are not too indented; Value declarations should always
+			// be at the root level of a method (especially, never in a loop).
+			self.assert line.indentation.len < 3, "Value declaration must be at method root"
+			// And be sure to call GC_PROTECT before the first such
+			if not self.pushedGCScope then
+				self.curClass.methodLines.push line.indentation + "GC_PUSH_SCOPE();"
+				self.pushedGCScope = true;
+			end if
+			s = "Value " + self.m.name
 			if self.m.get("expr") then s += " = " + self.transformStatement(self.m.expr);
-			self.curClass.methodLines.push line.indentation + s + "; GC_PROTECT(&" + self.m.name + ");";
+			s = line.indentation + s + "; GC_PROTECT(&" + self.m.name + ");"
+			if line.comment then s += " " + line.comment
+			self.curClass.methodLines.push s
 			return
 		end if
 	end if
@@ -1118,6 +1148,10 @@ Transpiler.updateStateMETHOD = function
 		self.cppLines.push self.fill("for (int __≤var≥_idx=0, __≤var≥_qty=≤seq≥.Count(); __≤var≥_idx < __≤var≥_qty; __≤var≥_idx++)")
 		self.cppLines.push self.fill("	≤type≥ ≤var≥ = ≤seq≥[__≤var≥_idx];")
 		return
+	end if
+	// return statement
+	if (self.match("return;") or self.match("return ≤expr≥;")) and self.pushedGCScope then
+		self.curClass.methodLines.push line.indentation + "GC_POP_SCOPE();"
 	end if
 	
 	if self.curClass.name == "VM" then
@@ -1274,7 +1308,8 @@ Transpiler.setOutputFolder = function(sourceDir, destPathOrNull=null)
 end function
 
 Transpiler.process = function(filePath, gatherMode=false, outputFolder=null)
-	print "Processing: " + filePath + " (for symbol info)" * gatherMode
+	if gatherMode then verb = "Scanning" else verb = "Transpiling"
+	print verb + ": " + filePath
 	self.sourcePath = filePath
 	self.gatherMode = gatherMode
 	self.state = ""

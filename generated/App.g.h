@@ -9,8 +9,6 @@ namespace MiniScriptApp {
 
 // FORWARD DECLARATIONS
 
-struct CallInfo;
-class CallInfoStorage;
 struct VM;
 class VMStorage;
 struct VMVis;
@@ -51,6 +49,7 @@ struct App {
   public:
 	App(std::shared_ptr<AppStorage> stor) : storage(stor) {}
 	App() : storage(nullptr) {}
+	App(std::nullptr_t) : storage(nullptr) {}
 	static App New() { return App(std::make_shared<AppStorage>()); }
 	friend bool IsNull(const App& inst) { return inst.storage == nullptr; }
 	private: AppStorage* get() const { return static_cast<AppStorage*>(storage.get()); }

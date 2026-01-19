@@ -22,18 +22,18 @@
 namespace MiniScript {
 
 
-const String VMVis::Esc = "\x1b";
-const String VMVis::Clear = Esc + "]2J";
-const String VMVis::Reset = Esc + "c";
-const String VMVis::Bold = Esc + "[1m";
-const String VMVis::Dim = Esc + "[2m";
-const String VMVis::Underline = Esc + "[4m";
-const String VMVis::Inverse = Esc + "[7m";
-const String VMVis::Normal = Esc + "[m";
-const String VMVis::CursorHome = Esc + "[f";
-const Int32 VMVis::CodeDisplayColumn = 0;
-const Int32 VMVis::RegisterDisplayColumn = 35;
-const Int32 VMVis::CallStackDisplayColumn = 70;
+const String VMVisStorage::Esc = "\x1b";
+const String VMVisStorage::Clear = Esc + "]2J";
+const String VMVisStorage::Reset = Esc + "c";
+const String VMVisStorage::Bold = Esc + "[1m";
+const String VMVisStorage::Dim = Esc + "[2m";
+const String VMVisStorage::Underline = Esc + "[4m";
+const String VMVisStorage::Inverse = Esc + "[7m";
+const String VMVisStorage::Normal = Esc + "[m";
+const String VMVisStorage::CursorHome = Esc + "[f";
+const Int32 VMVisStorage::CodeDisplayColumn = 0;
+const Int32 VMVisStorage::RegisterDisplayColumn = 35;
+const Int32 VMVisStorage::CallStackDisplayColumn = 70;
 void VMVisStorage::UpdateScreenSize() {
 	#ifdef _WIN32
 		_screenWidth = csbi.srWindow.Right - csbi.srWindow.Left + 1;
@@ -117,8 +117,8 @@ String VMVisStorage::GetVariableNameDisplay(Value nameVal) {
 	}
 }
 void VMVisStorage::DrawOneRegister(Int32 stackIndex, String label, Int32 displayRow) {
-	Value val = _vm.GetStackValue(stackIndex); GC_PROTECT(&val);
-	Value nameVal = _vm.GetStackName(stackIndex); GC_PROTECT(&nameVal);
+	Value val = _vm::GetStackValue(stackIndex); GC_PROTECT(&val);
+	Value nameVal = _vm::GetStackName(stackIndex); GC_PROTECT(&nameVal);
 	String varName = GetVariableNameDisplay(nameVal);
 	String typeCode = GetValueTypeCode(val);
 	String valueStr = GetValueDisplayString(val);
@@ -187,9 +187,9 @@ void VMVisStorage::DrawCallStack() {
 	Int32 callDepth = _vm::CallStackDepth();
 	for (Int32 i = callDepth - 1; i >= 0 && displayRow <= maxRows; i--) {
 		CallInfo frame = _vm::GetCallStackFrame(i);
-		String funcName = _vm::GetFunctionName(frame.ReturnFuncIndex());
+		String funcName = _vm::GetFunctionName(frame.ReturnFuncIndex);
 		String prefix = "  "; // indent to show stack depth
-		String line = prefix + funcName + ":" + StringUtils::ZeroPad(frame.ReturnPC(), 3);
+		String line = prefix + funcName + ":" + StringUtils::ZeroPad(frame.ReturnPC, 3);
 
 		GoTo(CallStackDisplayColumn + 1, displayRow);
 		Write(StringUtils::SpacePad(line, 20));

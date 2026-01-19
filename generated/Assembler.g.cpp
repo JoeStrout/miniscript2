@@ -64,7 +64,7 @@ List<String> AssemblerStorage::GetTokens(String line) {
 				tokenStart = -1;
 			}
 		} else {
-			// Start  token if not already started and not already in quotes
+			// Start token if not already started and not already in quotes
 			if (tokenStart < 0 && !inQuotes) {
 				tokenStart = i;
 			}
@@ -118,10 +118,10 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 	String mnemonic = parts[0];
 	UInt32 instruction = 0;
 
-	// Handle ::param directive (not an instruction, but a function parameter definition)
+	// Handle .param directive (not an instruction, but a function parameter definition)
 	if (mnemonic == ".param") {
-		// ::param paramName
-		// ::param paramName=defaultValue
+		// .param paramName
+		// .param paramName=defaultValue
 		if (parts.Count() < 2) {
 			Error("Syntax error: .param requires a parameter name");
 			return 0;
@@ -146,7 +146,7 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 			String defaultStr = paramSpec.Substring(equalsPos + 1);
 			defaultValue = ParseAsConstant(defaultStr);
 		} else {
-			// No default value (defaults to null)
+			// No default value (defaults to nullptr)
 			paramName = paramSpec;
 		}
 
@@ -1017,7 +1017,7 @@ Value AssemblerStorage::ParseAsConstant(String token) {
 		return make_string(content);
 	}
 	
-	// Check if it contains a decimal point (floating point number)::
+	// Check if it contains a decimal point (floating point number).
 	if (token.Contains(".")) {
 		// Simple double parsing (basic implementation)
 		Double doubleValue = ParseDouble(token);
@@ -1073,11 +1073,11 @@ void AssemblerStorage::Assemble(List<String> sourceLines) {
 	_labelAddresses.Clear();
 
 	// Skim very quickly through our source lines, collecting
-	// function labels (enabling forward calls)::
+	// function labels (enabling forward calls).
 	bool sawMain = Boolean(false);
 	Int32 lineNum = 0;
 	for (lineNum = 0; lineNum < sourceLines.Count(); lineNum++) {
-		if (HasError) return; // Bail out if error occurred
+		if (HasError) return; // Bail &if error occurred
 		List<String> tokens = GetTokens(sourceLines[lineNum]);
 		if (tokens.Count() < 1 || !IsFunctionLabel(tokens[0])) continue;
 		String funcName = ParseLabel(tokens[0]);
@@ -1096,10 +1096,10 @@ void AssemblerStorage::Assemble(List<String> sourceLines) {
 		}
 		
 		// Our first non-empty line will either be "@main:" or an instruction
-		// (to go into the implicit @main function)::  After that, we will
+		// (to go into the implicit @main function).  After that, we will
 		// always have a function name (@someFunc) here::
 		if (IsFunctionLabel(tokens[0])) {
-			// Starting a  function::
+			// Starting a function::
 			Current.set_Name(ParseLabel(tokens[0]));
 		} else {
 			// No function name -- implicit @main::
@@ -1111,7 +1111,7 @@ void AssemblerStorage::Assemble(List<String> sourceLines) {
 		// the line number where we should continue with the next function::	
 		lineNum = AssembleFunction(sourceLines, lineNum);
 
-		// Bail out if error occurred during function assembly
+		// Bail &if error occurred during function assembly
 		if (HasError) break;
 
 		// Then, store the just-assembled Current function in our function list::

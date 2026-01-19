@@ -132,7 +132,27 @@ public class VM {
 		for (Int32 i = 0; i < callSlots; i++) {
 			callStack.Add(new CallInfo(0, 0, -1)); // -1 = invalid function index
 		}
+		
+		// CPP: gc_register_mark_callback(VMStorage::MarkRoots, this);
 	}
+	
+	private void CleanupVM() {
+		// CPP: gc_unregister_mark_callback(VMStorage::MarkRoots, this);
+	}
+
+	// H: static void MarkRoots(void* user_data);
+	// H: public: ~VMStorage() { CleanupVM(); }
+	/*** BEGIN CPP_ONLY ***
+	// GC mark callback responsible for protecting our stack and names
+	// from garbage collection
+	void VMStorage::MarkRoots(void* user_data) {
+		VMStorage* vm = static_cast<VMStorage*>(user_data);
+		for (int i = 0; i < vm->stack.Count(); i++) {
+			gc_mark_value(vm->stack[i]);
+			gc_mark_value(vm->names[i]);
+		}
+	}	
+	*** END CPP_ONLY ***/
 
 	public void RegisterFunction(FuncDef funcDef) {
 		functions.Add(funcDef);
@@ -210,11 +230,12 @@ public class VM {
 		// Step 2-3: Process ARG instructions, copying values to parameter registers
 		// Note: Parameters start at r1 (r0 is reserved for return value)
 		Int32 currentPC = startPC;
+		Value argValue = make_null();  // Declared outside loop for GC safety
 		for (Int32 i = 0; i < argCount; i++) {
 			UInt32 argInstruction = code[currentPC];
 			Opcode argOp = (Opcode)BytecodeUtil.OP(argInstruction);
 
-			Value argValue = make_null();
+			argValue = make_null();
 			if (argOp == Opcode.ARG_rA) {
 				// Argument from register
 				Byte srcReg = BytecodeUtil.Au(argInstruction);
@@ -292,6 +313,19 @@ public class VM {
 
 		UInt32 cyclesLeft = maxCycles;
 		if (maxCycles == 0) cyclesLeft--;  // wraps to MAX_UINT32
+
+		// Reusable Value variables (declared outside loop for GC safety in C++)
+		Value val = make_null();
+		Value outerVars = make_null();
+		Value container = make_null();
+		Value indexVal = make_null();
+		Value result = make_null();
+		Value valueArg = make_null();
+		Value funcRefValue = make_null();
+		Value funcName = make_null();
+		Value expectedName = make_null();
+		Value actualName = make_null();
+		Value locals = make_null();
 
 /*** BEGIN CPP_ONLY ***
 		Value* stackPtr = &stack[0];
@@ -380,8 +414,8 @@ public class VM {
 					Byte c = BytecodeUtil.Cu(instruction);
 
 					// Check if the source register has the expected name
-					Value expectedName = curConstants[c];
-					Value actualName = names[baseIndex + b];
+					expectedName = curConstants[c];
+					actualName = names[baseIndex + b];
 					if (value_identical(expectedName, actualName)) {
 						localStack[a] = localStack[b];
 					} else {
@@ -399,9 +433,8 @@ public class VM {
 					Byte c = BytecodeUtil.Cu(instruction);
 
 					// Check if the source register has the expected name
-					Value expectedName = curConstants[c];
-					Value actualName = names[baseIndex + b];
-					Value val;
+					expectedName = curConstants[c];
+					actualName = names[baseIndex + b];
 					if (value_identical(expectedName, actualName)) {
 						val = localStack[b];
 					} else {
@@ -422,7 +455,7 @@ public class VM {
 						}
 
 						FuncDef callee = functions[funcIndex];
-						Value outerVars = funcref_outer_vars(val);
+						outerVars = funcref_outer_vars(val);
 
 						// Push return info with closure context
 						if (callStackTop >= callStack.Count) {
@@ -457,7 +490,7 @@ public class VM {
 
 					// Create function reference with our locals as the closure context
 					CallInfo frame = callStack[callStackTop];
-					Value locals = frame.GetLocalVarMap(stack, names, baseIndex, curFunc.MaxRegs);
+					locals = frame.GetLocalVarMap(stack, names, baseIndex, curFunc.MaxRegs);
 					localStack[a] = make_funcref(funcIndex, locals);
 					break;
 				}
@@ -554,16 +587,15 @@ public class VM {
 					Byte a = BytecodeUtil.Au(instruction);
 					Byte b = BytecodeUtil.Bu(instruction);
 					Byte c = BytecodeUtil.Cu(instruction);
-					Value container = localStack[b];
-					Value index = localStack[c];
+					container = localStack[b];
+					indexVal = localStack[c];
 
 					if (is_list(container)) {
 						// ToDo: add a list_try_get and use it here, like we do with map below
-						localStack[a] = list_get(container, as_int(index));
+						localStack[a] = list_get(container, as_int(indexVal));
 					} else if (is_map(container)) {
-						Value result;
-						if (!map_try_get(container, index, out result)) {
-							RaiseRuntimeError(StringUtils.Format("Key Not Found: '{0}' not found in map", index));
+						if (!map_try_get(container, indexVal, out result)) {
+							RaiseRuntimeError(StringUtils.Format("Key Not Found: '{0}' not found in map", indexVal));
 						}
 						localStack[a] = result;
 					} else {
@@ -578,14 +610,14 @@ public class VM {
 					Byte a = BytecodeUtil.Au(instruction);
 					Byte b = BytecodeUtil.Bu(instruction);
 					Byte c = BytecodeUtil.Cu(instruction);
-					Value container = localStack[a];
-					Value index = localStack[b];
-					Value value = localStack[c];
+					container = localStack[a];
+					indexVal = localStack[b];
+					valueArg = localStack[c];
 
 					if (is_list(container)) {
-						list_set(container, as_int(index), value);
+						list_set(container, as_int(indexVal), valueArg);
 					} else if (is_map(container)) {
-						map_set(container, index, value);
+						map_set(container, indexVal, valueArg);
 					} else {
 						RaiseRuntimeError(StringUtils.Format("Can't set indexed value in {0}", container));
 					}
@@ -982,7 +1014,7 @@ public class VM {
 						Byte b = BytecodeUtil.Bu(callInstruction);
 						Byte c = BytecodeUtil.Cu(callInstruction);
 
-						Value funcRefValue = localStack[c];
+						funcRefValue = localStack[c];
 						if (!is_funcref(funcRefValue)) {
 							RaiseRuntimeError("ARGBLK/CALL: Not a function reference");
 							return make_null();
@@ -1015,7 +1047,7 @@ public class VM {
 					}
 
 					Int32 funcIndex2 = funcref_index(localStack[BytecodeUtil.Cu(callInstruction)]);
-					Value outerVars = funcref_outer_vars(localStack[BytecodeUtil.Cu(callInstruction)]);
+					outerVars = funcref_outer_vars(localStack[BytecodeUtil.Cu(callInstruction)]);
 					callStack[callStackTop] = new CallInfo(nextPC, baseIndex, currentFuncIndex, resultReg, outerVars);
 					callStackTop++;
 
@@ -1085,7 +1117,7 @@ public class VM {
 					// with parameters/return at register A.
 					Byte a = BytecodeUtil.Au(instruction);
 					UInt16 constIdx = BytecodeUtil.BCu(instruction);
-					Value funcName = curConstants[constIdx];
+					funcName = curConstants[constIdx];
 					// For now, we'll only support intrinsics.
 					// ToDo: change this once we have variable look-up.
 					DoIntrinsic(funcName, baseIndex + a);
@@ -1103,7 +1135,7 @@ public class VM {
 					Byte b = BytecodeUtil.Bu(instruction);
 					Byte c = BytecodeUtil.Cu(instruction);
 
-					Value funcRefValue = localStack[c];
+					funcRefValue = localStack[c];
 					if (!is_funcref(funcRefValue)) {
 						IOHelper.Print("CALL: Value in register is not a function reference");
 						localStack[a] = funcRefValue;
@@ -1116,7 +1148,7 @@ public class VM {
 						return make_null();
 					}
 					FuncDef callee = functions[funcIndex];
-					Value outerVars = funcref_outer_vars(funcRefValue);
+					outerVars = funcref_outer_vars(funcRefValue);
 
 					// For naked CALL (without ARGBLK): set up parameters with defaults
 					Int32 calleeBase = baseIndex + b;
@@ -1143,7 +1175,7 @@ public class VM {
 
 				case Opcode.RETURN: {
 					// Return value convention: value is in base[0]
-					Value result = stack[baseIndex];
+					result = stack[baseIndex];
 					if (callStackTop == 0) {
 						// Returning from main function: update instance vars and set IsRunning = false
 						PC = pc;
@@ -1212,10 +1244,10 @@ public class VM {
 	private Value LookupVariable(Value varName) {
 		// Look up a variable in outer context (and eventually globals)
 		// Returns the value if found, or null if not found
+		Value outerValue;
 		if (callStackTop > 0) {
 			CallInfo currentFrame = callStack[callStackTop - 1];  // Current frame, not next frame
 			if (!is_null(currentFrame.OuterVarMap)) {
-				Value outerValue;
 				if (map_try_get(currentFrame.OuterVarMap, varName, out outerValue)) {
 					return outerValue;
 				}
@@ -1240,6 +1272,7 @@ public class VM {
 		
 		// Prototype implementation:
 		
+		Value container;		
 		if (value_equal(funcName, FuncNamePrint)) {
 			IOHelper.Print(StringUtils.Format("{0}", stack[baseReg]));
 			stack[baseReg] = make_null();
@@ -1259,7 +1292,7 @@ public class VM {
 		} else if (value_equal(funcName, FuncNameRemove)) {
 			// Remove index r1 from map r0; return (in r0) 1 if successful,
 			// 0 if index not found.
-			Value container = stack[baseReg];
+			container = stack[baseReg];
 			int result = 0;
 			if (is_list(container)) {
 				result = list_remove(container, as_int(stack[baseReg+1])) ? 1 : 0;

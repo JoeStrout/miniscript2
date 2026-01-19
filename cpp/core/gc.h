@@ -35,6 +35,16 @@ void gc_enable(void);
 void gc_protect_value(Value* val_ptr);
 void gc_unprotect_value(void);
 
+// Mark callback registration - allows subsystems to participate in GC marking
+// Callbacks are invoked during mark phase and should call gc_mark_value() on any
+// Values they are responsible for (e.g., VM stack, global variables, etc.)
+typedef void (*gc_mark_callback_t)(void* user_data);
+void gc_register_mark_callback(gc_mark_callback_t callback, void* user_data);
+void gc_unregister_mark_callback(gc_mark_callback_t callback, void* user_data);
+
+// Mark a single value (for use by mark callbacks)
+void gc_mark_value(Value v);
+
 // Scope management macros for automatic root tracking
 #define GC_PUSH_SCOPE() gc_push_scope()
 #define GC_POP_SCOPE() gc_pop_scope()

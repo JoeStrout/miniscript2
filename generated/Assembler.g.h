@@ -13,8 +13,6 @@ namespace MiniScript {
 
 // FORWARD DECLARATIONS
 
-struct CallInfo;
-class CallInfoStorage;
 struct VM;
 class VMStorage;
 struct VMVis;
@@ -144,6 +142,7 @@ struct Assembler {
   public:
 	Assembler(std::shared_ptr<AssemblerStorage> stor) : storage(stor) {}
 	Assembler() : storage(nullptr) {}
+	Assembler(std::nullptr_t) : storage(nullptr) {}
 	static Assembler New() { return Assembler(std::make_shared<AssemblerStorage>()); }
 	friend bool IsNull(const Assembler& inst) { return inst.storage == nullptr; }
 	private: AssemblerStorage* get() const { return static_cast<AssemblerStorage*>(storage.get()); }

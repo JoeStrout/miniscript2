@@ -10,8 +10,6 @@ namespace MiniScript {
 
 // FORWARD DECLARATIONS
 
-struct CallInfo;
-class CallInfoStorage;
 struct VM;
 class VMStorage;
 struct VMVis;
@@ -30,18 +28,6 @@ class AppStorage;
 
 
 
-	private: static const String Esc;
-	private: static const String Clear;
-	private: static const String Reset;
-	private: static const String Bold;
-	private: static const String Dim;
-	private: static const String Underline;
-	private: static const String Inverse;
-	private: static const String Normal;
-	private: static const String CursorHome;
-	private: static const Int32 CodeDisplayColumn;
-	private: static const Int32 RegisterDisplayColumn;
-	private: static const Int32 CallStackDisplayColumn;
 	private: VM& _vm;
 	public: inline VMVis(VM& vm) : _vm(vm) {
 		UpdateScreenSize();
@@ -59,6 +45,18 @@ class AppStorage;
 
 class VMVisStorage : public std::enable_shared_from_this<VMVisStorage> {
 	friend struct VMVis;
+	private: static const String Esc;
+	private: static const String Clear;
+	private: static const String Reset;
+	private: static const String Bold;
+	private: static const String Dim;
+	private: static const String Underline;
+	private: static const String Inverse;
+	private: static const String Normal;
+	private: static const String CursorHome;
+	private: static const Int32 CodeDisplayColumn;
+	private: static const Int32 RegisterDisplayColumn;
+	private: static const Int32 CallStackDisplayColumn;
 	private: Int32 _screenWidth;
 	private: Int32 _screenHeight;
 	private: Byte _displayPool;
@@ -105,10 +103,23 @@ struct VMVis {
   public:
 	VMVis(std::shared_ptr<VMVisStorage> stor) : storage(stor) {}
 	VMVis() : storage(nullptr) {}
+	VMVis(std::nullptr_t) : storage(nullptr) {}
 	static VMVis New() { return VMVis(std::make_shared<VMVisStorage>()); }
 	friend bool IsNull(const VMVis& inst) { return inst.storage == nullptr; }
 	private: VMVisStorage* get() const { return static_cast<VMVisStorage*>(storage.get()); }
 
+	private: String Esc() { return get()->Esc; }
+	private: String Clear() { return get()->Clear; }
+	private: String Reset() { return get()->Reset; }
+	private: String Bold() { return get()->Bold; }
+	private: String Dim() { return get()->Dim; }
+	private: String Underline() { return get()->Underline; }
+	private: String Inverse() { return get()->Inverse; }
+	private: String Normal() { return get()->Normal; }
+	private: String CursorHome() { return get()->CursorHome; }
+	private: Int32 CodeDisplayColumn() { return get()->CodeDisplayColumn; }
+	private: Int32 RegisterDisplayColumn() { return get()->RegisterDisplayColumn; }
+	private: Int32 CallStackDisplayColumn() { return get()->CallStackDisplayColumn; }
 	private: Int32 _screenWidth() { return get()->_screenWidth; }
 	private: void set__screenWidth(Int32 _v) { get()->_screenWidth = _v; }
 	private: Int32 _screenHeight() { return get()->_screenHeight; }

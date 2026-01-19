@@ -91,7 +91,21 @@ void VMStorage::InitVM(Int32 stackSlots, Int32 callSlots) {
 	for (Int32 i = 0; i < callSlots; i++) {
 		callStack.Add(CallInfo(0, 0, -1)); // -1 = invalid function index
 	}
+	
+	gc_register_mark_callback(VMStorage::MarkRoots, this);
 }
+void VMStorage::CleanupVM() {
+	gc_unregister_mark_callback(VMStorage::MarkRoots, this);
+}
+// GC mark callback responsible for protecting our stack and names
+// from garbage collection
+void VMStorage::MarkRoots(void* user_data) {
+	VMStorage* vm = static_cast<VMStorage*>(user_data);
+	for (int i = 0; i < vm->stack.Count(); i++) {
+		gc_mark_value(vm->stack[i]);
+		gc_mark_value(vm->names[i]);
+	}
+}	
 void VMStorage::RegisterFunction(FuncDef funcDef) {
 	functions.Add(funcDef);
 }
@@ -161,11 +175,13 @@ Int32 VMStorage::ProcessArguments(Int32 argCount, Int32 startPC, Int32 callerBas
 	// Step 2-3: Process ARG instructions, copying values to parameter registers
 	// Note: Parameters start at r1 (r0 is reserved for return value)
 	Int32 currentPC = startPC;
+	GC_PUSH_SCOPE();
+	Value argValue = make_null(); GC_PROTECT(&argValue); // Declared outside loop for GC safety
 	for (Int32 i = 0; i < argCount; i++) {
 		UInt32 argInstruction = code[currentPC];
 		Opcode argOp = (Opcode)BytecodeUtil::OP(argInstruction);
 
-		Value argValue = make_null(); GC_PROTECT(&argValue);
+		argValue = make_null();
 		if (argOp == Opcode::ARG_rA) {
 			// Argument from register
 			Byte srcReg = BytecodeUtil::Au(argInstruction);
@@ -176,6 +192,7 @@ Int32 VMStorage::ProcessArguments(Int32 argCount, Int32 startPC, Int32 callerBas
 			argValue = make_int(immediate);
 		} else {
 			RaiseRuntimeError("Expected ARG opcode in ARGBLK");
+			GC_POP_SCOPE();
 			return -1;
 		}
 
@@ -187,6 +204,7 @@ Int32 VMStorage::ProcessArguments(Int32 argCount, Int32 startPC, Int32 callerBas
 		currentPC++;
 	}
 
+	GC_POP_SCOPE();
 	return currentPC + 1; // Return PC after the CALL instruction
 }
 void VMStorage::SetupCallFrame(Int32 argCount, Int32 calleeBase, FuncDef callee) {
@@ -237,6 +255,20 @@ Value VMStorage::Run(UInt32 maxCycles) {
 	UInt32 cyclesLeft = maxCycles;
 	if (maxCycles == 0) cyclesLeft--;  // wraps to MAX_UINT32
 
+	// Reusable Value variables (declared outside loop for GC safety in C++)
+	GC_PUSH_SCOPE();
+	Value val = make_null(); GC_PROTECT(&val);
+	Value outerVars = make_null(); GC_PROTECT(&outerVars);
+	Value container = make_null(); GC_PROTECT(&container);
+	Value indexVal = make_null(); GC_PROTECT(&indexVal);
+	Value result = make_null(); GC_PROTECT(&result);
+	Value valueArg = make_null(); GC_PROTECT(&valueArg);
+	Value funcRefValue = make_null(); GC_PROTECT(&funcRefValue);
+	Value funcName = make_null(); GC_PROTECT(&funcName);
+	Value expectedName = make_null(); GC_PROTECT(&expectedName);
+	Value actualName = make_null(); GC_PROTECT(&actualName);
+	Value locals = make_null(); GC_PROTECT(&locals);
+
 	Value* stackPtr = &stack[0];
 #if VM_USE_COMPUTED_GOTO
 	static void* const vm_labels[(int)Opcode::OP__COUNT] = { VM_OPCODES(VM_LABEL_LIST) };
@@ -253,6 +285,7 @@ Value VMStorage::Run(UInt32 maxCycles) {
 			BaseIndex = baseIndex;
 			_currentFuncIndex = currentFuncIndex;
 			CurrentFunction = curFunc;
+			GC_POP_SCOPE();
 			return make_null();
 		}
 		cyclesLeft--;
@@ -265,6 +298,7 @@ Value VMStorage::Run(UInt32 maxCycles) {
 			BaseIndex = baseIndex;
 			_currentFuncIndex = currentFuncIndex;
 			CurrentFunction = curFunc;
+			GC_POP_SCOPE();
 			return make_null();
 		}
 
@@ -322,8 +356,8 @@ Value VMStorage::Run(UInt32 maxCycles) {
 				Byte c = BytecodeUtil::Cu(instruction);
 
 				// Check if the source register has the expected name
-				Value expectedName = curConstants[c]; GC_PROTECT(&expectedName);
-				Value actualName = names[baseIndex + b]; GC_PROTECT(&actualName);
+				expectedName = curConstants[c];
+				actualName = names[baseIndex + b];
 				if (value_identical(expectedName, actualName)) {
 					localStack[a] = localStack[b];
 				} else {
@@ -341,9 +375,8 @@ Value VMStorage::Run(UInt32 maxCycles) {
 				Byte c = BytecodeUtil::Cu(instruction);
 
 				// Check if the source register has the expected name
-				Value expectedName = curConstants[c]; GC_PROTECT(&expectedName);
-				Value actualName = names[baseIndex + b]; GC_PROTECT(&actualName);
-				Value val; GC_PROTECT(&val);
+				expectedName = curConstants[c];
+				actualName = names[baseIndex + b];
 				if (value_identical(expectedName, actualName)) {
 					val = localStack[b];
 				} else {
@@ -360,15 +393,17 @@ Value VMStorage::Run(UInt32 maxCycles) {
 					Int32 funcIndex = funcref_index(val);
 					if (funcIndex < 0 || funcIndex >= functions.Count()) {
 						IOHelper::Print("LOADC to invalid func");
+						GC_POP_SCOPE();
 						return make_null();
 					}
 
 					FuncDef callee = functions[funcIndex];
-					Value outerVars = funcref_outer_vars(val); GC_PROTECT(&outerVars);
+					outerVars = funcref_outer_vars(val);
 
 					// Push return info with closure context
 					if (callStackTop >= callStack.Count()) {
 						IOHelper::Print("Call stack overflow");
+						GC_POP_SCOPE();
 						return make_null();
 					}
 					callStack[callStackTop] = CallInfo(pc, baseIndex, currentFuncIndex, a, outerVars);
@@ -399,7 +434,7 @@ Value VMStorage::Run(UInt32 maxCycles) {
 
 				// Create function reference with our locals as the closure context
 				CallInfo frame = callStack[callStackTop];
-				Value locals = frame.GetLocalVarMap(stack, names, baseIndex, curFunc.MaxRegs()); GC_PROTECT(&locals);
+				locals = frame.GetLocalVarMap(stack, names, baseIndex, curFunc.MaxRegs());
 				localStack[a] = make_funcref(funcIndex, locals);
 				VM_NEXT();
 			}
@@ -496,16 +531,15 @@ Value VMStorage::Run(UInt32 maxCycles) {
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				Byte c = BytecodeUtil::Cu(instruction);
-				Value container = localStack[b]; GC_PROTECT(&container);
-				Value index = localStack[c]; GC_PROTECT(&index);
+				container = localStack[b];
+				indexVal = localStack[c];
 
 				if (is_list(container)) {
 					// ToDo: add a list_try_get and use it here, like we do with map below
-					localStack[a] = list_get(container, as_int(index));
+					localStack[a] = list_get(container, as_int(indexVal));
 				} else if (is_map(container)) {
-					Value result; GC_PROTECT(&result);
-					if (!map_try_get(container, index, &result)) {
-						RaiseRuntimeError(StringUtils::Format("Key Not Found: '{0}' not found in map", index));
+					if (!map_try_get(container, indexVal, &result)) {
+						RaiseRuntimeError(StringUtils::Format("Key Not Found: '{0}' not found in map", indexVal));
 					}
 					localStack[a] = result;
 				} else {
@@ -520,14 +554,14 @@ Value VMStorage::Run(UInt32 maxCycles) {
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				Byte c = BytecodeUtil::Cu(instruction);
-				Value container = localStack[a]; GC_PROTECT(&container);
-				Value index = localStack[b]; GC_PROTECT(&index);
-				Value value = localStack[c]; GC_PROTECT(&value);
+				container = localStack[a];
+				indexVal = localStack[b];
+				valueArg = localStack[c];
 
 				if (is_list(container)) {
-					list_set(container, as_int(index), value);
+					list_set(container, as_int(indexVal), valueArg);
 				} else if (is_map(container)) {
-					map_set(container, index, value);
+					map_set(container, indexVal, valueArg);
 				} else {
 					RaiseRuntimeError(StringUtils::Format("Can't set indexed value in {0}", container));
 				}
@@ -908,6 +942,7 @@ Value VMStorage::Run(UInt32 maxCycles) {
 				Int32 callPC = pc + argCount;
 				if (callPC >= codeCount) {
 					RaiseRuntimeError("ARGBLK: CALL instruction out of range");
+					GC_POP_SCOPE();
 					return make_null();
 				}
 				UInt32 callInstruction = curCode[callPC];
@@ -924,15 +959,17 @@ Value VMStorage::Run(UInt32 maxCycles) {
 					Byte b = BytecodeUtil::Bu(callInstruction);
 					Byte c = BytecodeUtil::Cu(callInstruction);
 
-					Value funcRefValue = localStack[c]; GC_PROTECT(&funcRefValue);
+					funcRefValue = localStack[c];
 					if (!is_funcref(funcRefValue)) {
 						RaiseRuntimeError("ARGBLK/CALL: Not a function reference");
+						GC_POP_SCOPE();
 						return make_null();
 					}
 
 					Int32 funcIndex = funcref_index(funcRefValue);
 					if (funcIndex < 0 || funcIndex >= functions.Count()) {
 						RaiseRuntimeError("ARGBLK/CALL: Invalid function index");
+						GC_POP_SCOPE();
 						return make_null();
 					}
 					callee = functions[funcIndex];
@@ -940,11 +977,13 @@ Value VMStorage::Run(UInt32 maxCycles) {
 					resultReg = a;
 				} else {
 					RaiseRuntimeError("ARGBLK must be followed by CALL");
+					GC_POP_SCOPE();
 					return make_null();
 				}
 
 				// Process arguments using helper
 				Int32 nextPC = ProcessArguments(argCount, pc, baseIndex, calleeBase, callee, curFunc.Code());
+				GC_POP_SCOPE();
 				if (nextPC < 0) return make_null(); // Error already raised
 
 				// Set up call frame using helper
@@ -953,11 +992,12 @@ Value VMStorage::Run(UInt32 maxCycles) {
 				// Now execute the CALL (step 6): push CallInfo and switch to callee
 				if (callStackTop >= callStack.Count()) {
 					RaiseRuntimeError("Call stack overflow");
+					GC_POP_SCOPE();
 					return make_null();
 				}
 
 				Int32 funcIndex2 = funcref_index(localStack[BytecodeUtil::Cu(callInstruction)]);
-				Value outerVars = funcref_outer_vars(localStack[BytecodeUtil::Cu(callInstruction)]); GC_PROTECT(&outerVars);
+				outerVars = funcref_outer_vars(localStack[BytecodeUtil::Cu(callInstruction)]);
 				callStack[callStackTop] = CallInfo(nextPC, baseIndex, currentFuncIndex, resultReg, outerVars);
 				callStackTop++;
 
@@ -977,6 +1017,7 @@ Value VMStorage::Run(UInt32 maxCycles) {
 				// be processed as part of the ARGBLK opcode::  So if we get
 				// here, it's an error::
 				RaiseRuntimeError("Internal error: ARG without ARGBLK");
+				GC_POP_SCOPE();
 				return make_null();
 			}
 
@@ -985,6 +1026,7 @@ Value VMStorage::Run(UInt32 maxCycles) {
 				// be processed as part of the ARGBLK opcode::  So if we get
 				// here, it's an error::
 				RaiseRuntimeError("Internal error: ARG without ARGBLK");
+				GC_POP_SCOPE();
 				return make_null();
 			}
 
@@ -996,6 +1038,7 @@ Value VMStorage::Run(UInt32 maxCycles) {
 				
 				if (funcIndex >= functions.Count()) {
 					IOHelper::Print("CALLF to invalid func");
+					GC_POP_SCOPE();
 					return make_null();
 				}
 				
@@ -1004,6 +1047,7 @@ Value VMStorage::Run(UInt32 maxCycles) {
 				// Push return info
 				if (callStackTop >= callStack.Count()) {
 					IOHelper::Print("Call stack overflow");
+					GC_POP_SCOPE();
 					return make_null();
 				}
 				callStack[callStackTop] = CallInfo(pc, baseIndex, currentFuncIndex);
@@ -1027,7 +1071,7 @@ Value VMStorage::Run(UInt32 maxCycles) {
 				// with parameters/return at register A::
 				Byte a = BytecodeUtil::Au(instruction);
 				UInt16 constIdx = BytecodeUtil::BCu(instruction);
-				Value funcName = curConstants[constIdx]; GC_PROTECT(&funcName);
+				funcName = curConstants[constIdx];
 				// For now, we'll only support intrinsics::
 				// ToDo: change VM(shared_from_this()) once we have variable look-up::
 				DoIntrinsic(funcName, baseIndex + a);
@@ -1045,7 +1089,7 @@ Value VMStorage::Run(UInt32 maxCycles) {
 				Byte b = BytecodeUtil::Bu(instruction);
 				Byte c = BytecodeUtil::Cu(instruction);
 
-				Value funcRefValue = localStack[c]; GC_PROTECT(&funcRefValue);
+				funcRefValue = localStack[c];
 				if (!is_funcref(funcRefValue)) {
 					IOHelper::Print("CALL: Value in register is not a function reference");
 					localStack[a] = funcRefValue;
@@ -1055,10 +1099,11 @@ Value VMStorage::Run(UInt32 maxCycles) {
 				Int32 funcIndex = funcref_index(funcRefValue);
 				if (funcIndex < 0 || funcIndex >= functions.Count()) {
 					IOHelper::Print("CALL: Invalid function index in FuncRef");
+					GC_POP_SCOPE();
 					return make_null();
 				}
 				FuncDef callee = functions[funcIndex];
-				Value outerVars = funcref_outer_vars(funcRefValue); GC_PROTECT(&outerVars);
+				outerVars = funcref_outer_vars(funcRefValue);
 
 				// For naked CALL (without ARGBLK): set up parameters with defaults
 				Int32 calleeBase = baseIndex + b;
@@ -1066,6 +1111,7 @@ Value VMStorage::Run(UInt32 maxCycles) {
 
 				if (callStackTop >= callStack.Count()) {
 					IOHelper::Print("Call stack overflow");
+					GC_POP_SCOPE();
 					return make_null();
 				}
 				callStack[callStackTop] = CallInfo(pc, baseIndex, currentFuncIndex, a, outerVars);
@@ -1085,7 +1131,7 @@ Value VMStorage::Run(UInt32 maxCycles) {
 
 			VM_CASE(RETURN) {
 				// Return value convention: value is in base[0]
-				Value result = stack[baseIndex]; GC_PROTECT(&result);
+				result = stack[baseIndex];
 				if (callStackTop == 0) {
 					// Returning from main function: update instance vars and set IsRunning = Boolean(false)
 					PC = pc;
@@ -1093,6 +1139,7 @@ Value VMStorage::Run(UInt32 maxCycles) {
 					_currentFuncIndex = currentFuncIndex;
 					CurrentFunction = curFunc;
 					IsRunning = Boolean(false);
+					GC_POP_SCOPE();
 					return result;
 				}
 				
@@ -1129,6 +1176,7 @@ Value VMStorage::Run(UInt32 maxCycles) {
 	BaseIndex = baseIndex;
 	_currentFuncIndex = currentFuncIndex;
 	CurrentFunction = curFunc;
+	GC_POP_SCOPE();
 	return make_null();
 }
 void VMStorage::EnsureFrame(Int32 baseIndex, UInt16 neededRegs) {
@@ -1141,11 +1189,13 @@ void VMStorage::EnsureFrame(Int32 baseIndex, UInt16 neededRegs) {
 Value VMStorage::LookupVariable(Value varName) {
 	// Look up a variable in outer context (and eventually globals)
 	// Returns the value if found, or nullptr if not found
+	GC_PUSH_SCOPE();
+	Value outerValue; GC_PROTECT(&outerValue);
 	if (callStackTop > 0) {
 		CallInfo currentFrame = callStack[callStackTop - 1];  // Current frame, not next frame
 		if (!is_null(currentFrame.OuterVarMap)) {
-			Value outerValue; GC_PROTECT(&outerValue);
 			if (map_try_get(currentFrame.OuterVarMap, varName, &outerValue)) {
+				GC_POP_SCOPE();
 				return outerValue;
 			}
 		}
@@ -1155,6 +1205,7 @@ Value VMStorage::LookupVariable(Value varName) {
 
 	// Variable not found anywhere
 	RaiseRuntimeError(StringUtils::Format("Undefined identifier '{0}'", varName));
+	GC_POP_SCOPE();
 	return make_null();
 }
 const Value VMStorage::FuncNamePrint = make_string("print");
@@ -1167,6 +1218,8 @@ void VMStorage::DoIntrinsic(Value funcName, Int32 baseReg) {
 	
 	// Prototype implementation:
 	
+	GC_PUSH_SCOPE();
+	Value container; GC_PROTECT(&container);
 	if (value_equal(funcName, FuncNamePrint)) {
 		IOHelper::Print(StringUtils::Format("{0}", stack[baseReg]));
 		stack[baseReg] = make_null();
@@ -1186,7 +1239,7 @@ void VMStorage::DoIntrinsic(Value funcName, Int32 baseReg) {
 	} else if (value_equal(funcName, FuncNameRemove)) {
 		// Remove index r1 from map r0; return (in r0) 1 if successful,
 		// 0 if index not found::
-		Value container = stack[baseReg]; GC_PROTECT(&container);
+		container = stack[baseReg];
 		int result = 0;
 		if (is_list(container)) {
 			result = list_remove(container, as_int(stack[baseReg+1])) ? 1 : 0;

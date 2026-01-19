@@ -106,6 +106,7 @@ int main() {
 - Always call `gc_init()` before using any `Value` objects
 - Use `GC_PUSH_SCOPE()` at the start of every function
 - Protect all local `Value` variables with `GC_LOCALS()` or `GC_PROTECT()`
+- Declare all local `Value` variables near the top of your function
 - Call `GC_POP_SCOPE()` before every return
 - Clean up with `gc_shutdown()` at program end
 
@@ -113,6 +114,7 @@ int main() {
 - Forget to call `gc_init()` (will cause assertion failures)
 - Skip `GC_PUSH_SCOPE()` in functions that use `Value` objects
 - Forget to protect local `Value` variables
+- Declare a `Value` variable inside a loop
 - Skip `GC_POP_SCOPE()` before returning
 - Use `Value` objects after their scope has been popped
 
@@ -146,6 +148,105 @@ gc_enable();
 Force garbage collection explicitly:
 ```c
 gc_collect();  // Only runs if GC is not disabled
+```
+
+### Mark Callbacks for Subsystems
+
+Subsystems that manage their own arrays of `Value` objects (like a VM stack) should register a **mark callback** rather than using `GC_PROTECT` on each element. This is more efficient and avoids shadow stack overflow issues.
+
+```c
+// Callback type
+typedef void (*gc_mark_callback_t)(void* user_data);
+
+// Registration
+void gc_register_mark_callback(gc_mark_callback_t callback, void* user_data);
+void gc_unregister_mark_callback(gc_mark_callback_t callback, void* user_data);
+
+// For use inside callbacks
+void gc_mark_value(Value v);
+```
+
+**Example: VM registering its stack as a GC root**
+
+```cpp
+// In VM initialization
+void VMStorage::InitVM(...) {
+    // ... other init code ...
+    gc_register_mark_callback(VMStorage::MarkRoots, this);
+}
+
+// Static callback invoked during GC mark phase
+void VMStorage::MarkRoots(void* user_data) {
+    VMStorage* vm = static_cast<VMStorage*>(user_data);
+    for (int i = 0; i < vm->stack.Count(); i++) {
+        gc_mark_value(vm->stack[i]);
+        gc_mark_value(vm->names[i]);
+    }
+}
+
+// In VM destructor - always unregister!
+VMStorage::~VMStorage() {
+    gc_unregister_mark_callback(VMStorage::MarkRoots, this);
+}
+```
+
+The GC will invoke all registered callbacks during the mark phase, allowing each subsystem to mark the Values it's responsible for.
+
+## Coding Standards for GC Safety
+
+### Never declare local Values inside loops
+
+Calling `GC_PROTECT` inside a loop causes the shadow stack to grow unboundedly, eventually causing overflow or memory exhaustion.
+
+```c
+// WRONG - shadow stack grows with each iteration
+for (int i = 0; i < 1000; i++) {
+    Value temp = make_string("hello");  // GC_PROTECT called each iteration!
+    GC_PROTECT(&temp);
+    // ...
+}
+
+// CORRECT - declare outside loop, reuse inside
+GC_LOCALS(temp);
+for (int i = 0; i < 1000; i++) {
+    temp = make_string("hello");  // Reuses the same protected slot
+    // ...
+}
+```
+
+### Single return point
+
+To ensure `GC_POP_SCOPE()` is always called, use a single return point at the end of functions:
+
+```c
+// WRONG - early return skips GC_POP_SCOPE
+Value risky_function(int x) {
+    GC_PUSH_SCOPE();
+    GC_LOCALS(result);
+
+    if (x < 0) {
+        return make_null();  // GC_POP_SCOPE not called!
+    }
+
+    result = make_string("ok");
+    GC_POP_SCOPE();
+    return result;
+}
+
+// CORRECT - single return point
+Value safe_function(int x) {
+    GC_PUSH_SCOPE();
+    GC_LOCALS(result);
+
+    if (x < 0) {
+        result = make_null();
+    } else {
+        result = make_string("ok");
+    }
+
+    GC_POP_SCOPE();
+    return result;
+}
 ```
 
 ## Memory Management Details

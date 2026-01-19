@@ -178,5 +178,37 @@ This is causing grief.  We need to do those same transformations, and *also* add
 
 2. I need to think more carefully about local Values declared inside code blocks, like Value locals in VM.cs:460.  And in particular, what if it's in a loop?  What's the proper GC pattern in this case?
 
+## Jan 15, 2026
+
+The local var problem was easily fix, along with a couple other minor features; the VM test now runs and passes the tests.
+
+But it looks like I do indeed have to reconsider how I protect local values in a loop.  GC_PROTECT pushes an entry onto the shadow stack.  If I call that repeatedly, the shadow stack grows more than it should.  Doing this in the main dispatch loop, a MiniScript program could even cause the shadow stack to overflow.
+
+Claude suggests:
+
+  1. For the VM specifically: The VM's stack and names arrays should themselves be GC roots. Values stored there are protected because they're reachable from those roots. Local variables that are just copies from the stack don't need individual protection - they're temporary and no GC should happen while we're mid-opcode.
+  2. For loops in general: Either:
+    - Use GC_PUSH_SCOPE() / GC_POP_SCOPE() around the loop body (expensive but correct)
+    - Or declare protected variables with GC_LOCALS() outside the loop and reuse them
+  3. For the transpiler: It needs to be smarter about when to emit GC_PROTECT. Simply protecting every local Value is both incorrect (in loops) and inefficient.
+
+After reflection, I've decided to tackle it this way:
+
+1. Disallow declaring a local variable inside a loop; they must be declared right in the method body.  I think I can enforce this in transpiler by checking the indentation level (since we already require classes to be flush-left).  I'll update the VM code to follow this pattern, declaring all locals at the top.
+
+2. Give the GC system a "mark callback" list, invoked in gc_mark_phase.  The callback is responsible for marking any Values not otherwise protected from collection.
+
+3. Add code in VMStorage to register such a callback on init, and deregister it upon shutdown.
+
+Items 2 and 3 are done (yet untested), but I still need to do item 1.
+
+## Jan 19, 2026
+
+Implemented item 1 above, i.e., we now check for `Value` declarations indented more than two levels, and updated VM.cs accordingly.  VM now transpiles and passes again.  But it's still not complete, because we're not calling GC_PUSH_SCOPE and GC_POP_SCOPE in the appropriate places.
+
+That's now fixed too; the transpiler keeps automatically emits GC_PUSH_SCOPE before the first local Value, and when it has done so, emits GC_POP_SCOPE before any `return`.  Tests are still passing, and now the GC management looks correct.
+
+So the next step is to turn to the main program (App.cs), get that transpiling, and get the whole program building again.  Then we can finally get back to the compiler portion, which this time will be a hand-written Pratt parser rather than a using a parser generator.
+
 
 

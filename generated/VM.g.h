@@ -91,6 +91,13 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	public: VMStorage(Int32 stackSlots, Int32 callSlots);
 
 	private: void InitVM(Int32 stackSlots, Int32 callSlots);
+	
+	private: void CleanupVM();
+	static void MarkRoots(void* user_data);
+	public: ~VMStorage() { CleanupVM(); }
+
+	// H: static void MarkRoots(void* user_data);
+	// H: public: ~VMStorage() { CleanupVM(); }
 
 	public: void RegisterFunction(FuncDef funcDef);
 
@@ -181,6 +188,11 @@ struct VM {
 	
 
 	private: void InitVM(Int32 stackSlots, Int32 callSlots) { return get()->InitVM(stackSlots, callSlots); }
+	
+	private: void CleanupVM() { return get()->CleanupVM(); }
+
+	// H: static void MarkRoots(void* user_data);
+	// H: public: ~VMStorage() { CleanupVM(); }
 
 	public: void RegisterFunction(FuncDef funcDef) { return get()->RegisterFunction(funcDef); }
 

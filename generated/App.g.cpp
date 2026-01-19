@@ -35,7 +35,7 @@ void AppStorage::Main(string[] args) {
 			debugMode = Boolean(true);
 		} else if (args[i] == "-vis") {
 			visMode = Boolean(true);
-		} else if (!args[i]::StartsWith("-")) {
+		} else if (!args[i].StartsWith("-")) {
 			// First non-switch argument is the assembly file
 			if (fileArgIndex == -1) fileArgIndex = i;
 		}
@@ -77,7 +77,7 @@ void AppStorage::Main(string[] args) {
 		// Check for assembly errors
 		if (assembler.HasError()) {
 			IOHelper::Print("Assembly failed with errors.");
-			return; // Bail out rather than trying to run a half-assembled program
+			return; // Bail &rather than trying to run a half-assembled program
 		}
 		
 		if (debugMode) IOHelper::Print("Assembly complete.");

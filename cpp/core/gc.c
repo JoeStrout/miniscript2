@@ -39,10 +39,24 @@ typedef struct GCRootSet {
     int capacity;
 } GCRootSet;
 
+// Mark callback entry - for subsystems that need to participate in GC marking
+typedef struct GCMarkCallback {
+    gc_mark_callback_t callback;
+    void* user_data;
+} GCMarkCallback;
+
+// Mark callback list
+typedef struct GCMarkCallbackList {
+    GCMarkCallback* callbacks;
+    int count;
+    int capacity;
+} GCMarkCallbackList;
+
 // GC state
 typedef struct GC {
     GCObject* all_objects;    // Linked list of all allocated objects
     GCRootSet root_set;       // Stack of root values
+    GCMarkCallbackList mark_callbacks;  // Registered mark callbacks
     GCScope scope_stack[64];  // Stack of scopes for RAII-style protection
     int scope_count;          // Number of active scopes
     size_t bytes_allocated;   // Total allocated memory
@@ -64,6 +78,9 @@ void gc_init(void) {
     gc.root_set.roots = malloc(sizeof(Value*) * 64);  // Array of Value* (shadow stack)
     gc.root_set.count = 0;
     gc.root_set.capacity = 64;
+    gc.mark_callbacks.callbacks = malloc(sizeof(GCMarkCallback) * 8);
+    gc.mark_callbacks.count = 0;
+    gc.mark_callbacks.capacity = 8;
     gc.scope_count = 0;
     gc.bytes_allocated = 0;
     gc.gc_threshold = 1024 * 1024;  // 1MB initial threshold
@@ -74,7 +91,7 @@ void gc_init(void) {
 void gc_shutdown(void) {
     // Force final collection to clean up everything
     gc_collect();
-    
+
     // Free any remaining objects (shouldn't be any)
     GCObject* obj = gc.all_objects;
     while (obj) {
@@ -82,9 +99,10 @@ void gc_shutdown(void) {
         free(obj);
         obj = next;
     }
-    
-    // Free root set
+
+    // Free root set and callbacks
     free(gc.root_set.roots);
+    free(gc.mark_callbacks.callbacks);
     memset(&gc, 0, sizeof(gc));
 }
 
@@ -126,6 +144,31 @@ void gc_disable(void) {
 void gc_enable(void) {
     assert(gc.disable_count > 0);
     gc.disable_count--;
+}
+
+void gc_register_mark_callback(gc_mark_callback_t callback, void* user_data) {
+    if (gc.mark_callbacks.count >= gc.mark_callbacks.capacity) {
+        gc.mark_callbacks.capacity *= 2;
+        gc.mark_callbacks.callbacks = realloc(gc.mark_callbacks.callbacks,
+                                              sizeof(GCMarkCallback) * gc.mark_callbacks.capacity);
+    }
+    gc.mark_callbacks.callbacks[gc.mark_callbacks.count].callback = callback;
+    gc.mark_callbacks.callbacks[gc.mark_callbacks.count].user_data = user_data;
+    gc.mark_callbacks.count++;
+}
+
+void gc_unregister_mark_callback(gc_mark_callback_t callback, void* user_data) {
+    // Find and remove the callback (swap with last element for O(1) removal)
+    for (int i = 0; i < gc.mark_callbacks.count; i++) {
+        if (gc.mark_callbacks.callbacks[i].callback == callback &&
+            gc.mark_callbacks.callbacks[i].user_data == user_data) {
+            // Swap with last element and decrement count
+            gc.mark_callbacks.callbacks[i] = gc.mark_callbacks.callbacks[gc.mark_callbacks.count - 1];
+            gc.mark_callbacks.count--;
+            return;
+        }
+    }
+    // Callback not found - this is not necessarily an error, could be double-unregister
 }
 
 void* gc_allocate(size_t size) {
@@ -246,7 +289,12 @@ void gc_mark_phase(void) {
             gc_mark_value(root);
         }
     }
-    
+
+    // Invoke registered mark callbacks (e.g., VM stack, global variables)
+    for (int i = 0; i < gc.mark_callbacks.count; i++) {
+        gc.mark_callbacks.callbacks[i].callback(gc.mark_callbacks.callbacks[i].user_data);
+    }
+
     // Note: Interned strings are allocated with malloc() and are immortal,
     // so they don't need to be marked during GC
 }

@@ -6,8 +6,6 @@
 
 // FORWARD DECLARATIONS
 
-struct CallInfo;
-class CallInfoStorage;
 struct VM;
 class VMStorage;
 struct VMVis;

@@ -48,8 +48,8 @@ Boolean UnitTests::AssertEqual(List<String> actual, List<String> expected) {
 Boolean UnitTests::TestStringUtils() {
 	return 
 		AssertEqual(StringUtils::ToHex((UInt32)123456789), "075BCD15")
-	&&  AssertEqual( String::New("abcdef")::Left(3), "abc")
-	&&	AssertEqual( String::New("abcdef")::Right(3), "def");
+	&&  AssertEqual( String::New("abcdef").Left(3), "abc")
+	&&	AssertEqual( String::New("abcdef").Right(3), "def");
 }
 Boolean UnitTests::TestDisassembler() {
 	return

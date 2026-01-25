@@ -183,3 +183,4 @@ template String Interp(const char*, String, double);
 template String Interp(const char*, String, String, String);
 template String Interp(const char*, String, int, int);
 template String Interp(const char*, String, unsigned int, unsigned int);
+template String Interp(const char*, int, int, String);

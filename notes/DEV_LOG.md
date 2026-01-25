@@ -210,5 +210,17 @@ That's now fixed too; the transpiler keeps automatically emits GC_PUSH_SCOPE bef
 
 So the next step is to turn to the main program (App.cs), get that transpiling, and get the whole program building again.  Then we can finally get back to the compiler portion, which this time will be a hand-written Pratt parser rather than a using a parser generator.
 
+## Jan 24, 2026
+
+The transpiler seems to be working pretty well now, though there is one known issue: any C# code inside a CS_ONLY block is skipped entirely, which means that we don't get symbol information for the classes defined separately, like Value, ValueMap, and ValMap.  This doesn't currently seem to be causing any grief, but I expect I'll need to deal with it at some point.
+
+However today, I really want to get the full app compiling again.
+
+Making progress on that.  Lexer.cs was added somewhat recently to support the auto-generated parser.  The latter is out, but I'm keeping the lexer as we're going to need it for our Pratt parser too.  It took a bit of massaging to conform to our CS coding standards, but it's compiling cleanly now.  However, its handling of Unicode is rather crude and probably incomplete, as it's passing characters around as Char (which is the same as `char`), and in C++, that's an 8-bit value.  It doesn't matter in most places, as none of our keywords, operators, or syntax bits are non-ASCII characters.  But we'll need to be careful with identifiers, strings, and maybe even comments.  At the very least, I'll want to come back with a solid test suite for these.
+
+But, again, I'm focused on getting the full app compiled at all this weekend, so the next challenge is the UnitTests module.  This is using syntax which our transpiler does not properly handle:
+		new List<String> { "LOAD", "r5", "r6" }
+This should transpile to
+		List<String>({ "LOAD", "r5", "r6" })
 
 

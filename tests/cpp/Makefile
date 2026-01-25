@@ -1,12 +1,8 @@
 # C++ Tests Master Makefile
 
-.PHONY: all parser vm unit integration clean
+.PHONY: all vm unit integration clean
 
-all: parser vm unit integration
-
-parser:
-	@echo "=== Parser Tests ==="
-	$(MAKE) -C parser test
+all: vm unit integration
 
 vm:
 	@echo "=== VM Tests ==="
@@ -25,7 +21,6 @@ integration:
 
 clean:
 	@echo "Cleaning C++ tests..."
-	$(MAKE) -C parser clean
 	# $(MAKE) -C vm clean
 	# $(MAKE) -C unit clean
 	# $(MAKE) -C integration clean

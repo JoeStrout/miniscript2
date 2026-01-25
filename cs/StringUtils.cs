@@ -2,6 +2,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
+using static System.Runtime.CompilerServices.MethodImplOptions;
 // H: #include "CS_String.h"
 // H: #include "IOHelper.g.h"
 // H: #include "value_string.h"
@@ -32,7 +34,17 @@ public static class StringUtils {
 		}
 		return new String(hexChars);
 	}
-	
+
+	[MethodImpl(AggressiveInlining)]
+	public static Int32 ParseInt32(String str) {
+		return Int32.Parse(str);	// CPP: return std::stoi(str.c_str());
+	}
+
+	[MethodImpl(AggressiveInlining)]
+	public static Double ParseDouble(String str) {
+		return Double.Parse(str);	// CPP: return std::stod(str.c_str());
+	}
+
 	public static String ZeroPad(Int32 value, Int32 digits = 5) {
 		return value.ToString("D" + digits.ToString()); // CPP: // set width and fill
 		/*** BEGIN CPP_ONLY ***
@@ -67,6 +79,11 @@ public static class StringUtils {
 		if (list == null) return "null"; // CPP: // (null not possible)
 		if (list.Count == 0) return "[]";
 		return new String("[\"") + String.Join("\", \"", list) + "\"]";
+	}
+
+	[MethodImpl(AggressiveInlining)]
+	public static String Str(Char c) {
+		return c.ToString();	// CPP: return String(c);
 	}
 
 	// Convert a Value to its representation (quoted string for strings, plain for others)

@@ -148,6 +148,7 @@ public class Assembler {
 
 		String mnemonic = parts[0];
 		UInt32 instruction = 0;
+		Value constantValue;
 
 		// Handle .param directive (not an instruction, but a function parameter definition)
 		if (mnemonic == ".param") {
@@ -214,7 +215,7 @@ public class Assembler {
 				instruction = BytecodeUtil.INS_AB(Opcode.LOAD_rA_kBC, dest, constIdx);
 			} else if (NeedsConstant(source)) {
 				// String literals, floats, or large integers -> add to constants table
-				Value constantValue = ParseAsConstant(source);
+				constantValue = ParseAsConstant(source);
 				Int32 constIdx = AddConstant(constantValue);
 				instruction = BytecodeUtil.INS_AB(Opcode.LOAD_rA_kBC, dest, (Int16)constIdx);
 			} else {
@@ -234,7 +235,7 @@ public class Assembler {
 			Current.ReserveRegister(dest);
 			Byte src = ParseRegister(parts[2]);
 
-			Value constantValue = ParseAsConstant(parts[3]);
+			constantValue = ParseAsConstant(parts[3]);
 			if (!is_string(constantValue)) Error("Variable name must be a string");
 			Int32 constIdx = AddConstant(constantValue);
 			if (constIdx > 255) Error("Constant index out of range for LOADV opcode");
@@ -252,7 +253,7 @@ public class Assembler {
 			Current.ReserveRegister(dest);
 			Byte src = ParseRegister(parts[2]);
 
-			Value constantValue = ParseAsConstant(parts[3]);
+			constantValue = ParseAsConstant(parts[3]);
 			if (!is_string(constantValue)) Error("Variable name must be a string");
 			Int32 constIdx = AddConstant(constantValue);
 			if (constIdx > 255) Error("Constant index out of range for LOADC opcode");
@@ -282,7 +283,7 @@ public class Assembler {
 			Current.ReserveRegister(dest);
 			Byte src = ParseRegister(parts[2]);
 
-			Value constantValue = ParseAsConstant(parts[3]);
+			constantValue = ParseAsConstant(parts[3]);
 			if (!is_string(constantValue)) Error("Variable name must be a string");
 			Int32 constIdx = AddConstant(constantValue);
 			if (constIdx > 255) Error("Constant index out of range for ASSIGN opcode");
@@ -300,7 +301,7 @@ public class Assembler {
 			Byte dest = ParseRegister(parts[1]);
 			if (HasError) return 0;
 
-			Value constantValue = ParseAsConstant(parts[2]);
+			constantValue = ParseAsConstant(parts[2]);
 			if (!is_string(constantValue)) Error("Variable name must be a string");
 			Int32 constIdx = AddConstant(constantValue);
 			if (constIdx > 65535) Error("Constant index out of range for NAME opcode");
@@ -833,7 +834,7 @@ public class Assembler {
 		} else if (mnemonic == "CALLFN") {
 			if (parts.Count != 3) { Error("Syntax error"); return 0; }
 			Byte reserveRegs = (Byte)ParseInt16(parts[1]);	// ToDo: check range before typecast
-			Value constantValue = ParseAsConstant(parts[2]);
+			constantValue = ParseAsConstant(parts[2]);
 			if (!is_string(constantValue)) {
 				Error(StringUtils.Format("Function name must be a string"));
 				return 0;

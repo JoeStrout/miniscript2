@@ -11,28 +11,22 @@ using static MiniScript.ValueHelpers;
 // CPP: #include "value_string.h"
 // CPP: #include "dispatch_macros.h"
 // CPP: #include "VMVis.g.h"
-// CPP: #include "StringPool.h"
+// CPP: #include "Assembler.g.h"
+// CPP: #include "Disassembler.g.h"
 // CPP: using namespace MiniScript;
 
-namespace MiniScriptApp {
+namespace MiniScript {
 
-public class App {
+public struct App {
 	public static bool debugMode = false;
 	public static bool visMode = false;
 	
-	public static void Main(string[] args) {
+	public static void MainProgram(List<String> args) {
 		// CPP: gc_init();
-
-		//*** BEGIN CS_ONLY ***
-		// The args passed to the C# main program do not include the program path.
-		// To get an arg list like what C++ gets, we must do:
-		args = Environment.GetCommandLineArgs();
-		Int32 argCount = args.Length;
-		//*** END CS_ONLY ***
-		
+	
 		// Parse command-line switches
 		Int32 fileArgIndex = -1;
-		for (Int32 i = 1; i < argCount; i++) {
+		for (Int32 i = 1; i < args.Count; i++) {
 			if (args[i] == "-debug") {
 				debugMode = true;
 			} else if (args[i] == "-vis") {
@@ -122,12 +116,6 @@ public class App {
 					if (cmd[0] == 's') {
 						result = vm.Run(1);
 						continue;
-					} else if (cmd == "pooldump") {
-						vis.ClearScreen();
-						IOHelper.Print("String pools only apply to the C++ version.");  // CPP: StringPool::dumpAllPoolState();
-					} else if (cmd == "gcdump") {
-						vis.ClearScreen();
-						IOHelper.Print("GC dump only applies to the C++ version.");  // CPP: gc_dump_objects();
 					} else if (cmd == "gcmark") {
 						vis.ClearScreen();
 						IOHelper.Print("GC mark only applies to the C++ version.");  // CPP: gc_mark_and_report();
@@ -159,14 +147,20 @@ public class App {
 		
 		IOHelper.Print("All done!");
 	}
+	
+	//*** BEGIN CS_ONLY ***
+	public static void Main(String[] args) {
+		MainProgram(new List<String>(args));
+	}
+	//*** END CS_ONLY ***
 }
 
 /*** BEGIN CPP_ONLY ***
 
 int main(int argc, const char* argv[]) {
-	String* args = new String[argc];
-	for (int i=0; i<argc; i++) args[i] = String(argv[i]);
-	App::Main(args, argc);
+	List<String> args;
+	for (int i=0; i<argc; i++) args.Add(String(argv[i]));
+	MiniScript::App::MainProgram(args);
 }
 
 *** END CPP_ONLY ***/

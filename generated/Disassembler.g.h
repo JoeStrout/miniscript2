@@ -9,18 +9,20 @@ namespace MiniScript {
 
 // FORWARD DECLARATIONS
 
+struct Widget;
+class WidgetStorage;
+struct Factory;
+class FactoryStorage;
 struct VM;
 class VMStorage;
-struct VMVis;
-class VMVisStorage;
 struct Assembler;
 class AssemblerStorage;
 struct FuncDef;
 class FuncDefStorage;
-struct App;
-class AppStorage;
 
 // DECLARATIONS
+
+
 
 
 class Disassembler {
@@ -40,6 +42,8 @@ class Disassembler {
 	public: static List<String> Disassemble(List<FuncDef> functions, Boolean detailed=true);
 
 }; // end of struct Disassembler
+
+
 
 
 

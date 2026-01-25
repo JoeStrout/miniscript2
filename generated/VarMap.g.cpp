@@ -3,7 +3,7 @@
 
 #include "VarMap.g.h"
 
-namespace MiniScriptApp {
+namespace MiniScript {
 
 
-} // end of namespace MiniScriptApp
+} // end of namespace MiniScript

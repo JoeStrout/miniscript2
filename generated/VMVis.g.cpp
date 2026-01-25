@@ -7,10 +7,12 @@
 #include "Bytecode.g.h"
 #include "FuncDef.g.h"
 #include "IOHelper.g.h"
-#include "VM.g.h"
 #include "StringUtils.g.h"
-#include "MemPoolShim.g.h"
 #include "CS_Math.h"
+#include "Disassembler.g.h"
+#include "Assembler.g.h"
+#include "gc.h"
+#include <iostream>
 #include "StringUtils.g.h"
 #ifdef _WIN32
 #include <windows.h>
@@ -22,19 +24,23 @@
 namespace MiniScript {
 
 
-const String VMVisStorage::Esc = "\x1b";
-const String VMVisStorage::Clear = Esc + "]2J";
-const String VMVisStorage::Reset = Esc + "c";
-const String VMVisStorage::Bold = Esc + "[1m";
-const String VMVisStorage::Dim = Esc + "[2m";
-const String VMVisStorage::Underline = Esc + "[4m";
-const String VMVisStorage::Inverse = Esc + "[7m";
-const String VMVisStorage::Normal = Esc + "[m";
-const String VMVisStorage::CursorHome = Esc + "[f";
-const Int32 VMVisStorage::CodeDisplayColumn = 0;
-const Int32 VMVisStorage::RegisterDisplayColumn = 35;
-const Int32 VMVisStorage::CallStackDisplayColumn = 70;
-void VMVisStorage::UpdateScreenSize() {
+const String VMVis::Esc = "\x1b";
+const String VMVis::Clear = Esc + "]2J";
+const String VMVis::Reset = Esc + "c";
+const String VMVis::Bold = Esc + "[1m";
+const String VMVis::Dim = Esc + "[2m";
+const String VMVis::Underline = Esc + "[4m";
+const String VMVis::Inverse = Esc + "[7m";
+const String VMVis::Normal = Esc + "[m";
+const String VMVis::CursorHome = Esc + "[f";
+const Int32 VMVis::CodeDisplayColumn = 0;
+const Int32 VMVis::RegisterDisplayColumn = 35;
+const Int32 VMVis::CallStackDisplayColumn = 70;
+VMVis::VMVis(VM vm) {
+	_vm = vm;
+	UpdateScreenSize();
+}
+void VMVis::UpdateScreenSize() {
 	#ifdef _WIN32
 		_screenWidth = csbi.srWindow.Right - csbi.srWindow.Left + 1;
 		_screenHeight = rows = csbi.srWindow.Bottom - csbi.srWindow.Top + 1;	
@@ -45,37 +51,37 @@ void VMVisStorage::UpdateScreenSize() {
 		_screenHeight = w.ws_row;
 	#endif
 }
-String VMVisStorage::CursorGoTo(int column, int row) {
+String VMVis::CursorGoTo(int column, int row) {
 	return StringUtils::Format("\x1b[{0};{1}H", row, column);
 }
-void VMVisStorage::Write(String s) {
+void VMVis::Write(String s) {
 	std::cout << s.c_str();
 }
-void VMVisStorage::ClearScreen() {
+void VMVis::ClearScreen() {
 	UpdateScreenSize();
 	Write(Reset + Clear + CursorHome);
 }
-void VMVisStorage::GoTo(int column, int row) {
+void VMVis::GoTo(int column, int row) {
 	Write(CursorGoTo(column, row));
 }
-void VMVisStorage::DrawCodeDisplay() {
+void VMVis::DrawCodeDisplay() {
 
-	FuncDef& func = _vm.CurrentFunction;
-	Int32 pc = _vm::PC;
+	FuncDef func = _vm.CurrentFunction();
+	Int32 pc = _vm.PC();
 
 	// Draw function name header
 	GoTo(CodeDisplayColumn + 1, 1);
-	String header = Bold + func::Name + Normal;
+	String header = Bold + func.Name() + Normal;
 	Write(StringUtils::SpacePad(header, 32));
 
 	// Draw code, with current line in bold
 	Int32 startLine = Math::Max(0, pc - (_screenHeight - 4) / 2);
-	Int32 endLine = Math::Min(func::Code::Count - 1, startLine + _screenHeight - 4);
+	Int32 endLine = Math::Min(func.Code().Count() - 1, startLine + _screenHeight - 4);
 
 	for (Int32 i = startLine; i <= endLine; i++) {
 		String prefix = (i == pc) ? "PC: " + Bold : "    ";
 		String addr = StringUtils::ZeroPad(i, 4);
-		String instruction = Disassembler::ToString(func::Code[i]);
+		String instruction = Disassembler::ToString(func.Code()[i]);
 		String line = prefix + addr + ": " + instruction;
 		if (i == pc) line += Normal;
 
@@ -91,7 +97,7 @@ void VMVisStorage::DrawCodeDisplay() {
 		Write("                                ");
 	}
 }
-String VMVisStorage::GetValueTypeCode(Value v) {
+String VMVis::GetValueTypeCode(Value v) {
 	if (is_null(v)) return "nul";
 	if (is_int(v)) return "int";
 	if (is_double(v)) return "dbl";
@@ -101,11 +107,11 @@ String VMVisStorage::GetValueTypeCode(Value v) {
 	if (is_funcref(v)) return "fun";
 	return "unk";
 }
-String VMVisStorage::GetValueDisplayString(Value v) {
+String VMVis::GetValueDisplayString(Value v) {
 	if (is_null(v)) return "";
 	return StringUtils::Format("{0}", v);
 }
-String VMVisStorage::GetVariableNameDisplay(Value nameVal) {
+String VMVis::GetVariableNameDisplay(Value nameVal) {
 	if (is_null(nameVal)) {
 		return "        "; // 8 spaces for unnamed variables
 	}
@@ -116,9 +122,10 @@ String VMVisStorage::GetVariableNameDisplay(Value nameVal) {
 		return name.Substring(0, 7) + "…"; // 7 chars + ellipsis
 	}
 }
-void VMVisStorage::DrawOneRegister(Int32 stackIndex, String label, Int32 displayRow) {
-	Value val = _vm::GetStackValue(stackIndex); GC_PROTECT(&val);
-	Value nameVal = _vm::GetStackName(stackIndex); GC_PROTECT(&nameVal);
+void VMVis::DrawOneRegister(Int32 stackIndex, String label, Int32 displayRow) {
+	GC_PUSH_SCOPE();
+	Value val = _vm.GetStackValue(stackIndex); GC_PROTECT(&val);
+	Value nameVal = _vm.GetStackName(stackIndex); GC_PROTECT(&nameVal);
 	String varName = GetVariableNameDisplay(nameVal);
 	String typeCode = GetValueTypeCode(val);
 	String valueStr = GetValueDisplayString(val);
@@ -128,16 +135,16 @@ void VMVisStorage::DrawOneRegister(Int32 stackIndex, String label, Int32 display
 	GoTo(RegisterDisplayColumn + 1, displayRow);
 	Write(StringUtils::SpacePad(line, 44));
 }
-void VMVisStorage::DrawRegisters() {
-	if (!_vm::IsRunning) return;
+void VMVis::DrawRegisters() {
+	if (!_vm.IsRunning()) return;
 
 	// Draw header
 	GoTo(RegisterDisplayColumn + 1, 1);
 	Write(StringUtils::SpacePad(Bold + "Registers" + Normal, 32));
 
 	// Get current base index
-	Int32 baseIndex = _vm::BaseIndex;
-	Int32 stackSize = _vm::StackSize();
+	Int32 baseIndex = _vm.BaseIndex();
+	Int32 stackSize = _vm.StackSize();
 
 	Int32 displayRow = 2;
 	Int32 totalRegLines = _screenHeight - 4;
@@ -165,8 +172,8 @@ void VMVisStorage::DrawRegisters() {
 		Write("                                            ");
 	}
 }
-void VMVisStorage::DrawCallStack() {
-	if (!_vm::IsRunning) return;
+void VMVis::DrawCallStack() {
+	if (!_vm.IsRunning()) return;
 
 	// Draw header
 	GoTo(CallStackDisplayColumn + 1, 1);
@@ -176,18 +183,18 @@ void VMVisStorage::DrawCallStack() {
 	Int32 maxRows = _screenHeight - 3;
 
 	// Show current function at top
-	if (_vm::CurrentFunction) {
-		String currentFunc = "* " + _vm::CurrentFunction::Name;
+	if (_vm.CurrentFunction()) {
+		String currentFunc = "* " + _vm.CurrentFunction().Name();
 		GoTo(CallStackDisplayColumn + 1, displayRow);
 		Write(StringUtils::SpacePad(currentFunc, 20));
 		displayRow++;
 	}
 
 	// Show call stack frames (most recent first)
-	Int32 callDepth = _vm::CallStackDepth();
+	Int32 callDepth = _vm.CallStackDepth();
 	for (Int32 i = callDepth - 1; i >= 0 && displayRow <= maxRows; i--) {
-		CallInfo frame = _vm::GetCallStackFrame(i);
-		String funcName = _vm::GetFunctionName(frame.ReturnFuncIndex);
+		CallInfo frame = _vm.GetCallStackFrame(i);
+		String funcName = _vm.GetFunctionName(frame.ReturnFuncIndex);
 		String prefix = "  "; // indent to show stack depth
 		String line = prefix + funcName + ":" + StringUtils::ZeroPad(frame.ReturnPC, 3);
 
@@ -202,20 +209,11 @@ void VMVisStorage::DrawCallStack() {
 		Write(StringUtils::SpacePad("", 20));
 	}
 }
-void VMVisStorage::UpdateDisplay() {
-	// Switch to temporary display pool for all string operations
-	if (_displayPool != 0) MemPoolShim::SetDefaultStringPool(_displayPool);
-
+void VMVis::UpdateDisplay() {
 	DrawCodeDisplay();
 	DrawRegisters();
 	DrawCallStack();
 	GoTo(1, _screenHeight - 2);
-
-	// Clear the display pool and restore original pool
-	if (_displayPool != 0) {
-		MemPoolShim::ClearStringPool(_displayPool);
-		MemPoolShim::SetDefaultStringPool(_savedPool);
-	}
 }
 
 

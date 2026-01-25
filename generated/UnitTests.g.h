@@ -13,14 +13,10 @@ namespace MiniScript {
 
 struct VM;
 class VMStorage;
-struct VMVis;
-class VMVisStorage;
 struct Assembler;
 class AssemblerStorage;
 struct FuncDef;
 class FuncDefStorage;
-struct App;
-class AppStorage;
 
 // DECLARATIONS
 
@@ -30,10 +26,9 @@ class AppStorage;
 
 
 
-
 class UnitTests {
 
-	public: static Boolean Assert(Boolean condition, String message);
+	public: static Boolean Assert(bool condition, String message);
 	
 	public: static Boolean AssertEqual(String actual, String expected);
 		
@@ -53,6 +48,9 @@ class UnitTests {
 
 	public: static Boolean RunAll();
 }; // end of struct UnitTests
+
+
+
 
 
 

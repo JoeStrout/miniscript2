@@ -1,7 +1,7 @@
 # Master Test Makefile
 # Run all tests for the MiniScript 2.0 project
 
-.PHONY: all cpp cs parser vm unit integration clean help
+.PHONY: all cpp cs vm unit integration clean help
 
 # Default: run all tests
 all: cpp cs
@@ -21,14 +21,6 @@ cs:
 	$(MAKE) -C cs
 
 # Run specific test categories
-parser:
-	@echo "=== Parser Tests Only ==="
-	@echo "--- C++ Parser Tests ---"
-	$(MAKE) -C cpp/parser test
-	@echo ""
-	@echo "--- C# Parser Tests ---"
-	$(MAKE) -C cs/parser test
-
 vm:
 	@echo "=== VM Tests Only ==="
 	$(MAKE) -C cpp vm
@@ -58,7 +50,6 @@ help:
 	@echo "  all         - Run all tests (C++ and C#)"
 	@echo "  cpp         - Run all C++ tests"
 	@echo "  cs          - Run all C# tests"
-	@echo "  parser      - Run parser tests only"
 	@echo "  vm          - Run VM tests only"
 	@echo "  unit        - Run unit tests only"
 	@echo "  integration - Run integration tests only"

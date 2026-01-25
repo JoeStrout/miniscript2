@@ -421,7 +421,7 @@ Transpiler.transformStatement = function(trimmedLine)
 	// non-identifier string.
 	tokens = roughTokenize(trimmedLine)
 	
-	deepDebug = trimmedLine.contains("frame.GetLocalVarMap")
+	deepDebug = trimmedLine.contains("func.Code")
 	ddprint = function(s); if deepDebug then print "====> " + s; end function
 	summarize = function(obj)
 		if obj == null then return "<null>"
@@ -505,15 +505,31 @@ Transpiler.transformStatement = function(trimmedLine)
 				else
 					tokens[i+1] = tok + "::New"
 				end if
-				continue
 			else
 				// if it's a struct OR an unknown type (which we assume is some other 
 				// class, not one of our storage wrappers), then just remove `new`
-				print "Unknown type " + tokens[i+2] + " found after `new`; assuming class"
+				if cl == null then
+					print "Unknown type " + tokens[i+2] + " found after `new`; assuming class/struct"
+				end if
 				tokens[i] = ""
 				tokens[i+1] = ""
 				continue
 			end if
+			// and, check for the initializer-list syntax, used with List for example:
+			// new List<String> { "foo", "bar" } --> List<String>({ "foo", "bar" })
+			if i+2 < tokens.len and tokens[i+2].startsWith(" {") then
+				tokens[i+2] = "({" + tokens[i+2][2:]
+				for j in range(i+2, tokens.len-1, 1)
+					if tokens[j].endsWith("}") then
+						tokens[j] = tokens[j][:-1] + "})"
+						break
+					else if tokens[j].endsWith("};") then
+						tokens[j] = tokens[j][:-2] + "});"
+						break
+					end if
+				end for
+			end if
+			continue
 		else if tokens[i] == "this" and (i+1 >= tokens.len or tokens[i+1] != ".") then
 			tokens[i] = self.curClass.name + "(shared_from_this())";
 			curInfo = self.curClass;
@@ -757,7 +773,13 @@ Transpiler.updateState = function
 			if line and line[0] == "	" then line = line[1:] // (outdent 1 level)
 			self.curClass.methodLines.push line
 		else if context == State.CLASS then
-			self.curClass.declLines.push self.line.full
+			if self.curClass.type == ClassType.CLASS then
+				// This is a little tricky — which part of the header is this line meant for?
+				// So far we have only needed it in the storage class, so for now we'll assume:
+				self.curClass.storageLines.push self.line.full
+			else
+				self.curClass.declLines.push self.line.full
+			end if
 		else
 			self.endLines.push self.line.full
 		end if
@@ -887,7 +909,7 @@ Transpiler.updateStateCLASS = function
 			// So far we have only needed it in the storage class, so for now we'll assume:
 			self.curClass.storageLines.push line.indentation + comment[6:]
 		else
-			self.declLines.push line.indentation + comment[6:]
+			self.curClass.declLines.push line.indentation + comment[6:]
 		end if
 	end if
 
@@ -934,6 +956,13 @@ Transpiler.updateStateCLASS = function
 			else
 				self.curClass.declLines.push self.fill("	≤scope≥: static const ≤type≥ ≤name≥;")
 				self.curClass.defLines.push self.fill("const ≤type≥ ≤className≥::≤name≥ = ≤value≥;")
+			end if
+			if not self.m.hasIndex("name") then
+				// WTF?!?
+				print "line: " + self.line.trimmed
+				print "name not found in: " + self.m
+				print stackTrace.join(char(10))
+				exit
 			end if
 			if self.gatherMode then self.curClass.fields.push VariableInfo.Make(self.m.name, self.m.type, self.m.scope, true)
 
@@ -1149,9 +1178,27 @@ Transpiler.updateStateMETHOD = function
 		self.cppLines.push self.fill("	≤type≥ ≤var≥ = ≤seq≥[__≤var≥_idx];")
 		return
 	end if
-	// return statement
-	if (self.match("return;") or self.match("return ≤expr≥;")) and self.pushedGCScope then
-		self.curClass.methodLines.push line.indentation + "GC_POP_SCOPE();"
+	// return statements, when we've pushed a GC scope
+	if self.pushedGCScope then
+		toks = roughTokenize(line.trimmed)
+		idx = toks.indexOf("return")
+		if idx != null then
+			if idx > 0 then
+				// harder case, a conditional like `if (foo) return expr;`
+				cline = toks[:idx].join("")
+				cline = self.transformStatement(fixStringInterpolation(cline))
+				self.curClass.methodLines.push line.indentation + cline + " {" + line.comment;
+				self.curClass.methodLines.push line.indentation + "	GC_POP_SCOPE();"
+				cline = toks[idx:].join("")
+				cline = self.transformStatement(fixStringInterpolation(cline))
+				self.curClass.methodLines.push line.indentation + TAB + cline;
+				self.curClass.methodLines.push line.indentation + "}"
+				return
+			else
+				// simple case, a return statement on its own line
+				self.curClass.methodLines.push line.indentation + "GC_POP_SCOPE();"
+			end if
+		end if
 	end if
 	
 	if self.curClass.name == "VM" then
@@ -1403,7 +1450,7 @@ runUnitTests = function
 			"Factory::MakeWidget().set_size(42);"
 
 	check t.transformStatement("return new Holder(leftNum.size + rightNum.size);"),
-			"return  Holder(leftNum.size() + rightNum.size());"
+			"return Holder(leftNum.size() + rightNum.size());"
 
 	//print "All " + count + " unit tests completed successfully."
 end function
@@ -1465,13 +1512,27 @@ if locals == globals then
 
 	// First, go through files in "gather" mode to just gather up all the symbol info
 	// (including all .cs files in the context directory).
+	alreadyPrinted = {}
+	printOnce = function(s)
+		if alreadyPrinted.hasIndex(s) then return
+		print s
+		alreadyPrinted.push(s)
+	end function
 	if contextDir then
 		for fname in file.children(contextDir)
-			if fname.endsWith(".cs") then t.process file.child(contextDir, fname), true
+			if fname.endsWith(".cs") then
+				t.process file.child(contextDir, fname), true
+				for cls in t.allClasses
+					printOnce "- " + cls.summary
+				end for
+			end if
 		end for
 	end if
 	for path in filesToProcess
 		t.process path, true
+		for cls in t.allClasses
+			printOnce "- " + cls.summary
+		end for
 	end for
 	// Then process again, generating output
 	print

@@ -13,10 +13,9 @@ else
     GOTO_FLAG = 
 endif
 
-CXXFLAGS = -std=gnu++11 -Wall -Wextra -O3 -DNDEBUG -Icore -Icompiler -I$(GENDIR) $(GOTO_FLAG)
+CXXFLAGS = -std=gnu++11 -Wall -Wextra -O3 -DNDEBUG -Icore -I$(GENDIR) $(GOTO_FLAG)
 CFLAGS = -std=c99 -Wall -Wextra -O3 -DNDEBUG -Icore $(GOTO_FLAG)
 COREDIR = core
-COMPILERDIR = compiler
 GENDIR = ../generated
 BUILDDIR = ../build/cpp
 OBJDIR = $(BUILDDIR)/obj
@@ -28,16 +27,12 @@ CORE_CPP_OBJECTS = $(CORE_CPP_SOURCES:$(COREDIR)/%.cpp=$(OBJDIR)/core_%.o)
 CORE_C_OBJECTS = $(CORE_C_SOURCES:$(COREDIR)/%.c=$(OBJDIR)/core_%.o)
 CORE_OBJECTS = $(CORE_CPP_OBJECTS) $(CORE_C_OBJECTS)
 
-# Compiler library files
-COMPILER_CPP_SOURCES = $(wildcard $(COMPILERDIR)/*.cpp)
-COMPILER_OBJECTS = $(COMPILER_CPP_SOURCES:$(COMPILERDIR)/%.cpp=$(OBJDIR)/compiler_%.o)
-
-# Generated C++ files (includes transpiled code and generated parser)
+# Generated C++ files (transpiled code)
 GEN_SOURCES = $(wildcard $(GENDIR)/*.g.cpp)
 GEN_OBJECTS = $(GEN_SOURCES:$(GENDIR)/%.g.cpp=$(OBJDIR)/gen_%.o)
 
 # All objects
-OBJECTS = $(CORE_OBJECTS) $(COMPILER_OBJECTS) $(GEN_OBJECTS)
+OBJECTS = $(CORE_OBJECTS) $(GEN_OBJECTS)
 
 # Target executable
 TARGET = $(BUILDDIR)/MS2Proto3
@@ -89,10 +84,6 @@ $(OBJDIR)/core_%.o: $(COREDIR)/%.cpp | $(OBJDIR)
 # Core C object files
 $(OBJDIR)/core_%.o: $(COREDIR)/%.c | $(OBJDIR)
 	$(CC) $(CFLAGS) -c $< -o $@
-
-# Compiler library C++ object files
-$(OBJDIR)/compiler_%.o: $(COMPILERDIR)/%.cpp | $(OBJDIR)
-	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 # Generated C++ object files
 $(OBJDIR)/gen_%.o: $(GENDIR)/%.g.cpp | $(OBJDIR)

@@ -31,26 +31,38 @@ case "$TARGET" in
     "transpile")
         echo "Transpiling C# to C++..."
         mkdir -p generated
-        
-        # Find all .cs files in the cs directory, excluding build artifacts
-        cs_files=$(find cs -name "*.cs" -type f -not -path "*/obj/*" -not -path "*/bin/*")
-        
-        if [ -z "$cs_files" ]; then
-            echo "No .cs files found in cs/ directory."
-            exit 1
+
+        # Check if a specific file was provided
+        if [ -n "$2" ]; then
+            # Single file transpile
+            SINGLE_FILE="$2"
+            echo "Transpiling single file: cs/$SINGLE_FILE"
+            miniscript tools/transpile.ms -c cs -o generated "cs/$SINGLE_FILE"
+            if [ $? -ne 0 ]; then
+                echo "Error: Failed to transpile cs/$SINGLE_FILE"
+                exit 1
+            fi
+        else
+            # Find all .cs files in the cs directory, excluding build artifacts
+            cs_files=$(find cs -name "*.cs" -type f -not -path "*/obj/*" -not -path "*/bin/*")
+
+            if [ -z "$cs_files" ]; then
+                echo "No .cs files found in cs/ directory."
+                exit 1
+            fi
+
+            echo "Found C# files:"
+            echo "$cs_files"
+
+            # Transpile all .cs files in a single call
+            echo "Transpiling all files..."
+            miniscript tools/transpile.ms $cs_files
+            if [ $? -ne 0 ]; then
+                echo "Error: Failed to transpile C# files"
+                exit 1
+            fi
         fi
-        
-        echo "Found C# files:"
-        echo "$cs_files"
-        
-        # Transpile all .cs files in a single call
-        echo "Transpiling all files..."
-        miniscript tools/transpile.ms $cs_files
-        if [ $? -ne 0 ]; then
-            echo "Error: Failed to transpile C# files"
-            exit 1
-        fi
-        
+
         echo "Transpilation complete."
         ;;
     
@@ -127,12 +139,12 @@ case "$TARGET" in
         ;;
 
     *)
-        echo "Usage: $0 {setup|parser|cs|transpile|cpp|all|clean|test|test-*} [goto_mode]"
+        echo "Usage: $0 {setup|cs|transpile|cpp|all|clean|test|test-*} [goto_mode]"
         echo ""
         echo "Build Commands:"
         echo "  setup       - Set up development environment"
         echo "  cs          - Build C# version only"
-        echo "  transpile   - Transpile C# to C++"
+        echo "  transpile [file.cs] - Transpile C# to C++ (all files, or single file)"
         echo "  cpp         - Build C++ version only"
         echo "  all         - Build everything"
         echo "  clean       - Clean build artifacts"

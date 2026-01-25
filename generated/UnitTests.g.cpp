@@ -5,12 +5,13 @@
 #include "IOHelper.g.h"
 #include "StringUtils.g.h"
 #include "Disassembler.g.h"
+#include "gc.h"
 #include "Assembler.g.h"  // We really should automate this.
 
 namespace MiniScript {
 
 
-Boolean UnitTests::Assert(Boolean condition, String message) {
+Boolean UnitTests::Assert(bool condition, String message) {
 	if (condition) return Boolean(true);
 	IOHelper::Print( String::New("Unit test failure: ") + message);
 	return Boolean(false);
@@ -59,15 +60,15 @@ Boolean UnitTests::TestAssembler() {
 	// Test tokenization
 	Boolean tokensOk = 
 		AssertEqual(Assembler::GetTokens("   LOAD r5, r6 # comment"),
-		   List<String>::New { "LOAD", "r5", "r6" })
+		   List<String>::New({ "LOAD", "r5", "r6" }))
 	&&  AssertEqual(Assembler::GetTokens("  NOOP  "),
-		   List<String>::New { "NOOP" })
+		   List<String>::New({ "NOOP" }))
 	&&  AssertEqual(Assembler::GetTokens(" # comment only"),
 		   List<String>::New())
 	&&  AssertEqual(Assembler::GetTokens("LOAD r1, \"Hello world\""),
-		   List<String>::New { "LOAD", "r1", "\"Hello world\"" })
+		   List<String>::New({ "LOAD", "r1", "\"Hello world\"" }))
 	&&  AssertEqual(Assembler::GetTokens("LOAD r2, \"test\" # comment after string"),
-		   List<String>::New { "LOAD", "r2", "\"test\"" });
+		   List<String>::New({ "LOAD", "r2", "\"test\"" }));
 	
 	if (!tokensOk) return Boolean(false);
 	
@@ -106,7 +107,7 @@ Boolean UnitTests::TestAssembler() {
 		BytecodeUtil::INS(Opcode::RETURN));
 	
 	// Test label assembly with two-pass approach
-	List<String> labelTest =  List<String>::New {
+	List<String> labelTest =  List<String>::New({
 		"NOOP",
 		"loop:",
 		"LOAD r1, 42",
@@ -114,7 +115,7 @@ Boolean UnitTests::TestAssembler() {
 		"IFLT r1, r0",
 		"JUMP loop",
 		"RETURN"
-	};
+	});
 	
 	Assembler labelAssem =  Assembler::New();
 	labelAssem.Assemble(labelTest);
@@ -133,11 +134,11 @@ Boolean UnitTests::TestAssembler() {
 	asmOk = asmOk && AssertEqual(jumpInstruction, expectedJump);
 	
 	// Test constant support
-	List<String> constantTest =  List<String>::New {
+	List<String> constantTest =  List<String>::New({
 		"LOAD r0, \"hello\"",    // Should use constant index 0
 		"LOAD r1, 3.14",        // Should use constant index 1  
 		"LOAD r2, 100000"       // Should use constant index 2
-	};
+	});
 	
 	Assembler constAssem =  Assembler::New();
 	constAssem.Assemble(constantTest);
@@ -157,9 +158,7 @@ Boolean UnitTests::TestAssembler() {
 	asmOk = asmOk && AssertEqual(constFunc.Constants().Count(), 3);
 	
 	// Test small integer (should use immediate form, not constant)
-	List<String> immediateTest =  List<String>::New {
-		"LOAD r3, 42"  // Should use immediate, not constant
-	};
+	List<String> immediateTest =  List<String>::New({ "LOAD r3, 42" });
 	
 	Assembler immediateAssem =  Assembler::New();
 	immediateAssem.Assemble(immediateTest);
@@ -172,12 +171,12 @@ Boolean UnitTests::TestAssembler() {
 	asmOk = asmOk && AssertEqual(immediateFunc.Constants().Count(), 0); // No constants added
 	
 	// Test two-pass assembly with multiple constants and instructions
-	List<String> multiTest =  List<String>::New {
+	List<String> multiTest =  List<String>::New({
 		"LOAD r1, \"Hello\"",
 		"LOAD r2, \"World\"", 
 		"ADD r0, r1, r2",
 		"RETURN"
-	};
+	});
 	
 	Assembler multiAssem =  Assembler::New();
 	multiAssem.Assemble(multiTest);
@@ -214,11 +213,15 @@ Boolean UnitTests::TestAssembler() {
 }
 Boolean UnitTests::TestValueMap() {
 	// Test map creation
+	GC_PUSH_SCOPE();
 	Value map = make_empty_map(); GC_PROTECT(&map);
 	Boolean basicOk = Assert(is_map(map), "Map should be identified as map")
 		&& AssertEqual(map_count(map), 0);
 
-	if (!basicOk) return Boolean(false);
+	if (!basicOk)  {
+		GC_POP_SCOPE();
+		return Boolean(false);
+	}
 
 	// Test insertion and lookup
 	Value key1 = make_string("name"); GC_PROTECT(&key1);
@@ -230,7 +233,10 @@ Boolean UnitTests::TestValueMap() {
 		&& map_set(map, key2, value2)
 		&& AssertEqual(map_count(map), 2);
 
-	if (!insertOk) return Boolean(false);
+	if (!insertOk)  {
+		GC_POP_SCOPE();
+		return Boolean(false);
+	}
 
 	// Test lookup
 	Value retrieved1 = map_get(map, key1); GC_PROTECT(&retrieved1);
@@ -239,21 +245,30 @@ Boolean UnitTests::TestValueMap() {
 		&& Assert(is_int(retrieved2), "Retrieved value should be int")
 		&& AssertEqual(as_int(retrieved2), 30);
 
-	if (!lookupOk) return Boolean(false);
+	if (!lookupOk)  {
+		GC_POP_SCOPE();
+		return Boolean(false);
+	}
 
 	// Test key existence
 	Boolean hasKeyOk = Assert(map_has_key(map, key1), "Should have key1")
 		&& Assert(map_has_key(map, key2), "Should have key2")
 		&& Assert(!map_has_key(map, make_string("nonexistent")), "Should not have nonexistent key");
 
-	if (!hasKeyOk) return Boolean(false);
+	if (!hasKeyOk)  {
+		GC_POP_SCOPE();
+		return Boolean(false);
+	}
 
 	// Test lookup of nonexistent key
 	// (For now; later: UnitTests(shared_from_this()) should invoke error-handling pipeline)
 	Value nonexistent = map_get(map, make_string("missing")); GC_PROTECT(&nonexistent);
 	Boolean nonexistentOk = Assert(is_null(nonexistent), "Nonexistent key should return null");
 
-	if (!nonexistentOk) return Boolean(false);
+	if (!nonexistentOk)  {
+		GC_POP_SCOPE();
+		return Boolean(false);
+	}
 
 	// Test removal
 	Boolean removeOk = Assert(map_remove(map, key1), "Should successfully remove existing key")
@@ -262,7 +277,10 @@ Boolean UnitTests::TestValueMap() {
 		&& Assert(map_has_key(map, key2), "Should still have other key")
 		&& Assert(!map_remove(map, key1), "Should return false when removing nonexistent key");
 
-	if (!removeOk) return Boolean(false);
+	if (!removeOk)  {
+		GC_POP_SCOPE();
+		return Boolean(false);
+	}
 
 	// Test string conversion (runtime C functions)
 	Value singleMap = make_empty_map(); GC_PROTECT(&singleMap);
@@ -270,9 +288,15 @@ Boolean UnitTests::TestValueMap() {
 	Value singleStr = to_string(singleMap); GC_PROTECT(&singleStr);
 	Boolean singleStrOk = Assert(is_string(singleStr), "Map toString should return string")
 		&& AssertEqual(as_cstring(singleStr), "{\"test\": 42}");
-	if (!singleStrOk) return Boolean(false);
+	if (!singleStrOk)  {
+		GC_POP_SCOPE();
+		return Boolean(false);
+	}
 	String result = StringUtils::Format("{0}", singleMap);
-	if (!AssertEqual(result, "{\"test\": 42}")) return Boolean(false);
+	if (!AssertEqual(result, "{\"test\": 42}"))  {
+		GC_POP_SCOPE();
+		return Boolean(false);
+	}
 
 	// Note: We have successfully implemented and tested both conversion approaches:
 	// 1. Runtime C functions (list_to_string, map_to_string) → GC Value strings
@@ -283,6 +307,7 @@ Boolean UnitTests::TestValueMap() {
 	map_clear(map);
 	Boolean clearOk = AssertEqual(map_count(map), 0);
 
+	GC_POP_SCOPE();
 	return clearOk;
 }
 Boolean UnitTests::RunAll() {

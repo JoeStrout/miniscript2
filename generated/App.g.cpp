@@ -9,28 +9,28 @@
 #include "value_string.h"
 #include "dispatch_macros.h"
 #include "VMVis.g.h"
-#include "StringPool.h"
+#include "Assembler.g.h"
+#include "Disassembler.g.h"
 using namespace MiniScript;
 
 int main(int argc, const char* argv[]) {
-String* args = new String[argc];
-for (int i=0; i<argc; i++) args[i] = String(argv[i]);
-App::Main(args, argc);
+List<String> args;
+for (int i=0; i<argc; i++) args.Add(String(argv[i]));
+MiniScript::App::MainProgram(args);
 }
 
 
-namespace MiniScriptApp {
+namespace MiniScript {
 
 
 bool App::debugMode = false;
 bool App::visMode = false;
-void AppStorage::Main(string[] args) {
+void App::MainProgram(List<String> args) {
 	gc_init();
 
-	
 	// Parse command-line switches
 	Int32 fileArgIndex = -1;
-	for (Int32 i = 1; i < argCount; i++) {
+	for (Int32 i = 1; i < args.Count(); i++) {
 		if (args[i] == "-debug") {
 			debugMode = Boolean(true);
 		} else if (args[i] == "-vis") {
@@ -105,25 +105,21 @@ void AppStorage::Main(string[] args) {
 		// Run the program
 		VM vm =  VM::New();
 		vm.Reset(assembler.Functions());
+		GC_PUSH_SCOPE();
 		Value result = make_null(); GC_PROTECT(&result);
 		
 		if (visMode) {
-			VMVis vis =  VMVis::New(vm);
+			VMVis vis = VMVis(vm);
 			vis.ClearScreen();
 			while (vm.IsRunning()) {
 				vis.UpdateDisplay();
 				String cmd = IOHelper::Input("Command: ");
 				if (String::IsNullOrEmpty(cmd)) cmd = "step";
+				GC_POP_SCOPE();
 				if (cmd[0] == 'q') return;
 				if (cmd[0] == 's') {
 					result = vm.Run(1);
 					continue;
-				} else if (cmd == "pooldump") {
-					vis.ClearScreen();
-					StringPool::dumpAllPoolState();
-				} else if (cmd == "gcdump") {
-					vis.ClearScreen();
-					gc_dump_objects();
 				} else if (cmd == "gcmark") {
 					vis.ClearScreen();
 					gc_mark_and_report();
@@ -157,4 +153,4 @@ void AppStorage::Main(string[] args) {
 }
 
 
-} // end of namespace MiniScriptApp
+} // end of namespace MiniScript

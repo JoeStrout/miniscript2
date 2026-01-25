@@ -16,6 +16,7 @@ String FuncDefStorage::ToString() {
 	for (Int32 i = 0; i < ParamNames.Count(); i++) {
 		if (i > 0) result += ", ";
 		result += as_cstring(ParamNames[i]);
+		GC_PUSH_SCOPE();
 		Value defaultVal = ParamDefaults[i]; GC_PROTECT(&defaultVal);
 		if (!is_null(defaultVal)) {
 			result += "=";
@@ -23,6 +24,7 @@ String FuncDefStorage::ToString() {
 		}
 	}
 	result += ")";
+	GC_POP_SCOPE();
 	return result;
 }
 

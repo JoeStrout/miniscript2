@@ -80,8 +80,8 @@ ClassInfo.rootClass = function(allClasses)
 end function
 
 ClassInfo.summary = function
-	if self.T then return "Class " + self.name + "<" + self.T + ">"
-	return "Class " + self.name
+	if self.T then return self.type + " " + self.name + "<" + self.T + ">"
+	return self.type + " " + self.name
 end function
 
 //--------------------------------------------------------------------------------

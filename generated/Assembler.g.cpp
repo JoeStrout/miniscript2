@@ -117,6 +117,8 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 
 	String mnemonic = parts[0];
 	UInt32 instruction = 0;
+	GC_PUSH_SCOPE();
+	Value constantValue; GC_PROTECT(&constantValue);
 
 	// Handle .param directive (not an instruction, but a function parameter definition)
 	if (mnemonic == ".param") {
@@ -124,6 +126,7 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 		// .param paramName=defaultValue
 		if (parts.Count() < 2) {
 			Error("Syntax error: .param requires a parameter name");
+			GC_POP_SCOPE();
 			return 0;
 		}
 
@@ -155,6 +158,7 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 		Current.ParamNames().Add(make_string(paramName));
 		Current.ParamDefaults().Add(defaultValue);
 
+		GC_POP_SCOPE();
 		return 0; // Directives don't produce instructions
 	}
 
@@ -164,6 +168,7 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 	} else if (mnemonic == "LOAD") {
 		if (parts.Count() != 3) {
 			Error("Syntax error: LOAD requires exactly 2 operands");
+			GC_POP_SCOPE();
 			return 0;
 		}
 		
@@ -183,7 +188,7 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 			instruction = BytecodeUtil::INS_AB(Opcode::LOAD_rA_kBC, dest, constIdx);
 		} else if (NeedsConstant(source)) {
 			// String literals, floats, or large integers -> add to constants table
-			Value constantValue = ParseAsConstant(source); GC_PROTECT(&constantValue);
+			constantValue = ParseAsConstant(source);
 			Int32 constIdx = AddConstant(constantValue);
 			instruction = BytecodeUtil::INS_AB(Opcode::LOAD_rA_kBC, dest, (Int16)constIdx);
 		} else {
@@ -197,16 +202,18 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 		// Load value from r2 into r1, but verify that r2 has name matching varname
 		if (parts.Count() != 4) {
 			Error("Syntax error: LOADV requires exactly 3 operands");
+			GC_POP_SCOPE();
 			return 0;
 		}
 		Byte dest = ParseRegister(parts[1]);
 		Current.ReserveRegister(dest);
 		Byte src = ParseRegister(parts[2]);
 
-		Value constantValue = ParseAsConstant(parts[3]); GC_PROTECT(&constantValue);
+		constantValue = ParseAsConstant(parts[3]);
 		if (!is_string(constantValue)) Error("Variable name must be a string");
 		Int32 constIdx = AddConstant(constantValue);
 		if (constIdx > 255) Error("Constant index out of range for LOADV opcode");
+		GC_POP_SCOPE();
 		if (HasError) return 0;
 		instruction = BytecodeUtil::INS_ABC(Opcode::LOADV_rA_rB_kC, dest, src, (Byte)constIdx);
 
@@ -215,16 +222,18 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 		// Load value from r2 into r1, but verify name matches varname and call if funcref
 		if (parts.Count() != 4) {
 			Error("Syntax error: LOADC requires exactly 3 operands");
+			GC_POP_SCOPE();
 			return 0;
 		}
 		Byte dest = ParseRegister(parts[1]);
 		Current.ReserveRegister(dest);
 		Byte src = ParseRegister(parts[2]);
 
-		Value constantValue = ParseAsConstant(parts[3]); GC_PROTECT(&constantValue);
+		constantValue = ParseAsConstant(parts[3]);
 		if (!is_string(constantValue)) Error("Variable name must be a string");
 		Int32 constIdx = AddConstant(constantValue);
 		if (constIdx > 255) Error("Constant index out of range for LOADC opcode");
+		GC_POP_SCOPE();
 		if (HasError) return 0;
 		instruction = BytecodeUtil::INS_ABC(Opcode::LOADC_rA_rB_kC, dest, src, (Byte)constIdx);
 
@@ -233,6 +242,7 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 		// Store make_funcref(funcIndex) into register A
 		if (parts.Count() != 3) {
 			Error("Syntax error: FUNCREF requires exactly 2 operands");
+			GC_POP_SCOPE();
 			return 0;
 		}
 		Byte dest = ParseRegister(parts[1]);
@@ -245,16 +255,18 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 		// Copy value from r2 to r1, and assign variable name from constants[3]
 		if (parts.Count() != 4) {
 			Error("Syntax error: ASSIGN requires exactly 3 operands");
+			GC_POP_SCOPE();
 			return 0;
 		}
 		Byte dest = ParseRegister(parts[1]);
 		Current.ReserveRegister(dest);
 		Byte src = ParseRegister(parts[2]);
 
-		Value constantValue = ParseAsConstant(parts[3]); GC_PROTECT(&constantValue);
+		constantValue = ParseAsConstant(parts[3]);
 		if (!is_string(constantValue)) Error("Variable name must be a string");
 		Int32 constIdx = AddConstant(constantValue);
 		if (constIdx > 255) Error("Constant index out of range for ASSIGN opcode");
+		GC_POP_SCOPE();
 		if (HasError) return 0;
 		instruction = BytecodeUtil::INS_ABC(Opcode::ASSIGN_rA_rB_kC, dest, src, (Byte)constIdx);
 		Current.ReserveRegister(dest);
@@ -264,15 +276,18 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 		// Set variable name for r1 without changing its value
 		if (parts.Count() != 3) {
 			Error("Syntax error: NAME requires exactly 2 operands");
+			GC_POP_SCOPE();
 			return 0;
 		}
 		Byte dest = ParseRegister(parts[1]);
+		GC_POP_SCOPE();
 		if (HasError) return 0;
 
-		Value constantValue = ParseAsConstant(parts[2]); GC_PROTECT(&constantValue);
+		constantValue = ParseAsConstant(parts[2]);
 		if (!is_string(constantValue)) Error("Variable name must be a string");
 		Int32 constIdx = AddConstant(constantValue);
 		if (constIdx > 65535) Error("Constant index out of range for NAME opcode");
+		GC_POP_SCOPE();
 		if (HasError) return 0;
 		instruction = BytecodeUtil::INS_AB(Opcode::NAME_rA_kBC, dest, (Int16)constIdx);
 		Current.ReserveRegister(dest);
@@ -280,18 +295,23 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 	} else if (mnemonic == "ADD") {
 		if (parts.Count() != 4) {
 			Error("Syntax error: ADD requires exactly 3 operands");
+			GC_POP_SCOPE();
 			return 0;
 		}
 		Byte dest = ParseRegister(parts[1]);
 		Current.ReserveRegister(dest);
+		GC_POP_SCOPE();
 		if (HasError) return 0;
 		Byte src1 = ParseRegister(parts[2]);
+		GC_POP_SCOPE();
 		if (HasError) return 0;
 		Byte src2 = ParseRegister(parts[3]);
+		GC_POP_SCOPE();
 		if (HasError) return 0;
 		instruction = BytecodeUtil::INS_ABC(Opcode::ADD_rA_rB_rC, dest, src1, src2);
 		
 	} else if (mnemonic == "SUB") {
+		GC_POP_SCOPE();
 		if (parts.Count() != 4) { Error("Syntax error"); return 0; }
 		Byte dest = ParseRegister(parts[1]);
 		Current.ReserveRegister(dest);
@@ -300,6 +320,7 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 		instruction = BytecodeUtil::INS_ABC(Opcode::SUB_rA_rB_rC, dest, src1, src2);
 		
 	} else if (mnemonic == "MULT") {
+		GC_POP_SCOPE();
 		if (parts.Count() != 4) { Error("Syntax error"); return 0; }
 		Byte dest = ParseRegister(parts[1]);
 		Current.ReserveRegister(dest);
@@ -308,6 +329,7 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 		instruction = BytecodeUtil::INS_ABC(Opcode::MULT_rA_rB_rC, dest, src1, src2);
 	
 	} else if (mnemonic == "DIV") {
+		GC_POP_SCOPE();
 		if (parts.Count() != 4) { Error("Syntax error"); return 0; }
 		Byte dest = ParseRegister(parts[1]);
 		Current.ReserveRegister(dest);
@@ -316,6 +338,7 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 		instruction = BytecodeUtil::INS_ABC(Opcode::DIV_rA_rB_rC, dest, src1, src2);
 
 	} else if (mnemonic == "MOD") {
+		GC_POP_SCOPE();
 		if (parts.Count() != 4) { Error("Syntax error"); return 0; }
 		Byte dest = ParseRegister(parts[1]);
 		Current.ReserveRegister(dest);
@@ -324,6 +347,7 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 		instruction = BytecodeUtil::INS_ABC(Opcode::MOD_rA_rB_rC, dest, src1, src2);
 	
 	} else if (mnemonic == "LIST") {
+		GC_POP_SCOPE();
 		if (parts.Count() != 3) { Error("Syntax error"); return 0; }
 		Byte dest = ParseRegister(parts[1]);
 		Current.ReserveRegister(dest);
@@ -331,6 +355,7 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 		instruction = BytecodeUtil::INS_AB(Opcode::LIST_rA_iBC, dest, capacity);
 
 	} else if (mnemonic == "MAP") {
+		GC_POP_SCOPE();
 		if (parts.Count() != 3) { Error("Syntax error"); return 0; }
 		Byte dest = ParseRegister(parts[1]);
 		Current.ReserveRegister(dest);
@@ -338,12 +363,14 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 		instruction = BytecodeUtil::INS_AB(Opcode::MAP_rA_iBC, dest, capacity);
 
 	} else if (mnemonic == "PUSH") {
+		GC_POP_SCOPE();
 		if (parts.Count() != 3) { Error("Syntax error"); return 0; }
 		Byte listReg = ParseRegister(parts[1]);
 		Byte valueReg = ParseRegister(parts[2]);
 		instruction = BytecodeUtil::INS_ABC(Opcode::PUSH_rA_rB, listReg, valueReg, 0);
 	
 	} else if (mnemonic == "INDEX") {
+		GC_POP_SCOPE();
 		if (parts.Count() != 4) { Error("Syntax error"); return 0; }
 		Byte dest = ParseRegister(parts[1]);
 		Current.ReserveRegister(dest);
@@ -352,6 +379,7 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 		instruction = BytecodeUtil::INS_ABC(Opcode::INDEX_rA_rB_rC, dest, listReg, indexReg);
 	
 	} else if (mnemonic == "IDXSET") {
+		GC_POP_SCOPE();
 		if (parts.Count() != 4) { Error("Syntax error"); return 0; }
 		Byte listReg = ParseRegister(parts[1]);
 		Byte indexReg = ParseRegister(parts[2]);
@@ -359,24 +387,28 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 		instruction = BytecodeUtil::INS_ABC(Opcode::IDXSET_rA_rB_rC, listReg, indexReg, valueReg);
 
 	} else if (mnemonic == "LOCALS") {
+		GC_POP_SCOPE();
 		if (parts.Count() != 2) { Error("Syntax error: LOCALS requires exactly 1 operand"); return 0; }
 		Byte reg = ParseRegister(parts[1]);
 		Current.ReserveRegister(reg);
 		instruction = BytecodeUtil::INS_A(Opcode::LOCALS_rA, reg);
 
 	} else if (mnemonic == "OUTER") {
+		GC_POP_SCOPE();
 		if (parts.Count() != 2) { Error("Syntax error: OUTER requires exactly 1 operand"); return 0; }
 		Byte reg = ParseRegister(parts[1]);
 		Current.ReserveRegister(reg);
 		instruction = BytecodeUtil::INS_A(Opcode::OUTER_rA, reg);
 
 	} else if (mnemonic == "GLOBALS") {
+		GC_POP_SCOPE();
 		if (parts.Count() != 2) { Error("Syntax error: GLOBALS requires exactly 1 operand"); return 0; }
 		Byte reg = ParseRegister(parts[1]);
 		Current.ReserveRegister(reg);
 		instruction = BytecodeUtil::INS_A(Opcode::GLOBALS_rA, reg);
 
 	} else if (mnemonic == "JUMP") {
+		GC_POP_SCOPE();
 		if (parts.Count() != 2) { Error("Syntax error"); return 0; }
 		String target = parts[1];
 		Int32 offset;
@@ -393,6 +425,7 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 		instruction = BytecodeUtil::INS(Opcode::JUMP_iABC) | (UInt32)(offset & 0xFFFFFF);
 
 	} else if (mnemonic == "LT") {
+		GC_POP_SCOPE();
 		if (parts.Count() != 4) { Error("Syntax error"); return 0; }
 		
 		if (parts[3][0] == 'r') {
@@ -422,6 +455,7 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 		}
 
 	} else if (mnemonic == "LE") {
+		GC_POP_SCOPE();
 		if (parts.Count() != 4) { Error("Syntax error"); return 0; }
 		
 		if (parts[3][0] == 'r') {
@@ -451,6 +485,7 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 		}
 
 	} else if (mnemonic == "EQ") {
+		GC_POP_SCOPE();
 		if (parts.Count() != 4) { Error("Syntax error"); return 0; }
 
 		Byte reg1 = ParseRegister(parts[1]);
@@ -468,6 +503,7 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 		}
 
 	} else if (mnemonic == "NE") {
+		GC_POP_SCOPE();
 		if (parts.Count() != 4) { Error("Syntax error"); return 0; }
 
 		Byte reg1 = ParseRegister(parts[1]);
@@ -485,6 +521,7 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 		}
 	
 	} else if (mnemonic == "BRTRUE") {
+		GC_POP_SCOPE();
 		if (parts.Count() != 3) { Error("Syntax error"); return 0; }
 
 		Byte reg1 = ParseRegister(parts[1]);
@@ -505,12 +542,14 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 		// as a bigger Int32 but then check the range, so that we can display
 		// a better error message::
 		if (offset < Int16MinValue || offset > Int16MaxValue) {
+			GC_POP_SCOPE();
 			Error("Range error (Cannot fit branch offset into Int16)"); return 0;
 		}
 
 		instruction = BytecodeUtil::INS_AB(Opcode::BRTRUE_rA_iBC, reg1, (Int16)offset);
 
 	} else if (mnemonic == "BRFALSE") {
+		GC_POP_SCOPE();
 		if (parts.Count() != 3) { Error("Syntax error"); return 0; }
 
 		Byte reg1 = ParseRegister(parts[1]);
@@ -531,12 +570,14 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 		// as a bigger Int32 but then check the range, so that we can display
 		// a better error message::
 		if (offset < Int16MinValue || offset > Int16MaxValue) {
+			GC_POP_SCOPE();
 			Error("Range error (Cannot fit branch offset into Int16)"); return 0;
 		}
 
 		instruction = BytecodeUtil::INS_AB(Opcode::BRFALSE_rA_iBC, reg1, (Int16)offset);
 
 	} else if (mnemonic == "BRLT") {
+		GC_POP_SCOPE();
 		if (parts.Count() != 4) { Error("Syntax error"); return 0; }
 
 		String target = parts[3];
@@ -556,6 +597,7 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 		// as a bigger Int32 but then check the range, so that we can display
 		// a better error message::
 		if (offset < SByteMinValue || offset > SByteMaxValue) {
+			GC_POP_SCOPE();
 			Error("Range error (Cannot fit branch offset into SByte)"); return 0;
 		}
 
@@ -578,6 +620,7 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 			instruction = BytecodeUtil::INS_ABC(Opcode::BRLT_rA_iB_iC, reg1, immediate, (Byte)offset);
 		}
 	} else if (mnemonic == "BRLE") {
+		GC_POP_SCOPE();
 		if (parts.Count() != 4) { Error("Syntax error"); return 0; }
 
 		String target = parts[3];
@@ -597,6 +640,7 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 		// as a bigger Int32 but then check the range, so that we can display
 		// a better error message::
 		if (offset < SByteMinValue || offset > SByteMaxValue) {
+			GC_POP_SCOPE();
 			Error("Range error (Cannot fit branch offset into SByte)"); return 0;
 		}
 
@@ -620,6 +664,7 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 		}			
 
 	} else if (mnemonic == "BREQ") {
+		GC_POP_SCOPE();
 		if (parts.Count() != 4) { Error("Syntax error"); return 0; }
 
 		String target = parts[3];
@@ -639,6 +684,7 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 		// as a bigger Int32 but then check the range, so that we can display
 		// a better error message::
 		if (offset < SByteMinValue || offset > SByteMaxValue) {
+			GC_POP_SCOPE();
 			Error("Range error (Cannot fit branch offset into SByte)"); return 0;
 		}
 
@@ -654,6 +700,7 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 		}
 
 	} else if (mnemonic == "BRNE") {
+		GC_POP_SCOPE();
 		if (parts.Count() != 4) { Error("Syntax error"); return 0; }
 
 		String target = parts[3];
@@ -673,6 +720,7 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 		// as a bigger Int32 but then check the range, so that we can display
 		// a better error message::
 		if (offset < SByteMinValue || offset > SByteMaxValue) {
+			GC_POP_SCOPE();
 			Error("Range error (Cannot fit branch offset into SByte)"); return 0;
 		}
 
@@ -688,6 +736,7 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 		}
 
 	} else if (mnemonic == "IFLT") {
+		GC_POP_SCOPE();
 		if (parts.Count() != 3) { Error("Syntax error"); return 0; }
 		
 		if (parts[2][0] == 'r') {
@@ -711,6 +760,7 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 		}
 	
 	} else if (mnemonic == "IFLE") {
+		GC_POP_SCOPE();
 		if (parts.Count() != 3) { Error("Syntax error"); return 0; }
 		
 		if (parts[2][0] == 'r') {
@@ -733,6 +783,7 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 		}
 
 	} else if (mnemonic == "IFEQ") {
+		GC_POP_SCOPE();
 		if (parts.Count() != 3) { Error("Syntax error"); return 0; }
 
 		Byte reg1 = ParseRegister(parts[1]);
@@ -748,6 +799,7 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 		}
 
 	} else if (mnemonic == "IFNE") {
+		GC_POP_SCOPE();
 		if (parts.Count() != 3) { Error("Syntax error"); return 0; }
 
 		Byte reg1 = ParseRegister(parts[1]);
@@ -763,15 +815,18 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 		}
 
 	} else if (mnemonic == "ARGBLK") {
+		GC_POP_SCOPE();
 		if (parts.Count() != 2) { Error("Syntax error: ARGBLK requires exactly 1 operand"); return 0; }
 		Int32 argCount = ParseInt32(parts[1]);
 		if (argCount < 0 || argCount > 0xFFFFFF) {
 			Error("ARGBLK argument count out of range");
+			GC_POP_SCOPE();
 			return 0;
 		}
 		instruction = BytecodeUtil::INS(Opcode::ARGBLK_iABC) | (UInt32)(argCount & 0xFFFFFF);
 
 	} else if (mnemonic == "ARG") {
+		GC_POP_SCOPE();
 		if (parts.Count() != 2) { Error("Syntax error: ARG requires exactly 1 operand"); return 0; }
 		String arg = parts[1];
 
@@ -784,33 +839,39 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 			Int32 immediate = ParseInt32(arg);
 			if (immediate < -16777215 || immediate > 16777215) {
 				Error("ARG immediate value out of range for 24-bit signed integer");
+				GC_POP_SCOPE();
 				return 0;
 			}
 			instruction = BytecodeUtil::INS(Opcode::ARG_iABC) | (UInt32)(immediate & 0xFFFFFF);
 		}
 
 	} else if (mnemonic == "CALLF") {
+		GC_POP_SCOPE();
 		if (parts.Count() != 3) { Error("Syntax error"); return 0; }
 		Byte reserveRegs = (Byte)ParseInt16(parts[1]);	// ToDo: check range before typecast
 		Int16 funcIdx = (Int16)FindFunctionIndex(parts[2]);
 		if (funcIdx < 0) {
 			Error(StringUtils::Format("Unknown function: '{0}'", parts[2]));
+			GC_POP_SCOPE();
 			return 0;
 		}
 		instruction = BytecodeUtil::INS_AB(Opcode::CALLF_iA_iBC, reserveRegs, funcIdx);
 
 	} else if (mnemonic == "CALLFN") {
+		GC_POP_SCOPE();
 		if (parts.Count() != 3) { Error("Syntax error"); return 0; }
 		Byte reserveRegs = (Byte)ParseInt16(parts[1]);	// ToDo: check range before typecast
-		Value constantValue = ParseAsConstant(parts[2]); GC_PROTECT(&constantValue);
+		constantValue = ParseAsConstant(parts[2]);
 		if (!is_string(constantValue)) {
 			Error(StringUtils::Format("Function name must be a string"));
+			GC_POP_SCOPE();
 			return 0;
 		}
 		Int32 constIdx = AddConstant(constantValue);
 		instruction = BytecodeUtil::INS_AB(Opcode::CALLFN_iA_kBC, reserveRegs, (Int16)constIdx);
 
 	} else if (mnemonic == "CALL") {
+		GC_POP_SCOPE();
 		if (parts.Count() != 4) { Error("Syntax error: CALL requires exactly 3 operands"); return 0; }
 		Byte destReg = ParseRegister(parts[1]);
 		Current.ReserveRegister(destReg);
@@ -823,12 +884,14 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 	
 	} else {
 		Error(StringUtils::Format("Unknown opcode: '{0}'", mnemonic));
+		GC_POP_SCOPE();
 		return 0;
 	}
 	
 	// Add instruction to current function (only if no error occurred)
 	if (!HasError) Current.Code().Add(instruction);
 	
+	GC_POP_SCOPE();
 	return instruction;
 }
 Byte AssemblerStorage::ParseRegister(String reg) {

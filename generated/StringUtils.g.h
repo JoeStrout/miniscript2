@@ -19,14 +19,10 @@ namespace MiniScript {
 
 struct VM;
 class VMStorage;
-struct VMVis;
-class VMVisStorage;
 struct Assembler;
 class AssemblerStorage;
 struct FuncDef;
 class FuncDefStorage;
-struct App;
-class AppStorage;
 
 // DECLARATIONS
 
@@ -40,7 +36,11 @@ class StringUtils {
 	public: static String ToHex(UInt32 value);
 	
 	public: static String ToHex(Byte value);
-	
+
+	public: static Int32 ParseInt32(String str);
+
+	public: static Double ParseDouble(String str);
+
 	public: static String ZeroPad(Int32 value, Int32 digits = 5);
 	
 	public: static String Spaces(Int32 count);
@@ -48,6 +48,8 @@ class StringUtils {
 	public: static String SpacePad(String text, Int32 width);
 
 	public: static String Str(List<String> list);
+
+	public: static String Str(Char c);
 	//--- The following is all to support a Format function, equivalent to
 	//--- the one in C#.  The C++ one requires templates and helper functions.
 	public: static String FormatList(const String& fmt, const List<String>& values);
@@ -162,6 +164,19 @@ class StringUtils {
 
 
 
+
+
+
 // INLINE METHODS
+
+inline Int32 StringUtils::ParseInt32(String str) {
+	return std::stoi(str.c_str());
+}
+inline Double StringUtils::ParseDouble(String str) {
+	return std::stod(str.c_str());
+}
+inline String StringUtils::Str(Char c) {
+	return String(c);
+}
 
 } // end of namespace MiniScript

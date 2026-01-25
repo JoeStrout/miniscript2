@@ -37,6 +37,13 @@ public:
         return result;
     }
 
+    // Factory method with initializer list (matches C# "new List<T> { items... }")
+    static List<T> New(std::initializer_list<T> items) {
+        List<T> result;
+        result.data = std::make_shared<std::vector<T>>(items);
+        return result;
+    }
+
     // Check if list is null (unallocated)
     friend bool IsNull(const List<T>& list) {
         return list.data == nullptr;

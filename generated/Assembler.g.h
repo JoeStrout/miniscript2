@@ -15,14 +15,10 @@ namespace MiniScript {
 
 struct VM;
 class VMStorage;
-struct VMVis;
-class VMVisStorage;
 struct Assembler;
 class AssemblerStorage;
 struct FuncDef;
 class FuncDefStorage;
-struct App;
-class AppStorage;
 
 // DECLARATIONS
 

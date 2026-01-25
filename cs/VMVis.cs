@@ -1,14 +1,17 @@
 using System;
 using static MiniScript.ValueHelpers;
+// H: #include "VM.g.h"
 // CPP: #include "value.h"
 // CPP: #include "value_list.h"
 // CPP: #include "Bytecode.g.h"
 // CPP: #include "FuncDef.g.h"
 // CPP: #include "IOHelper.g.h"
-// CPP: #include "VM.g.h"
 // CPP: #include "StringUtils.g.h"
-// CPP: #include "MemPoolShim.g.h"
 // CPP: #include "CS_Math.h"
+// CPP: #include "Disassembler.g.h"
+// CPP: #include "Assembler.g.h"
+// CPP: #include "gc.h"
+// CPP: #include <iostream>
 
 /*** BEGIN CPP_ONLY ***
 #include "StringUtils.g.h"
@@ -23,7 +26,7 @@ using static MiniScript.ValueHelpers;
 
 namespace MiniScript {
 
-public class VMVis {
+public struct VMVis {
 	private const String Esc = "\x1b";
 	private const String Clear = Esc + "]2J";
 	private const String Reset = Esc + "c";
@@ -38,32 +41,14 @@ public class VMVis {
 	private const Int32 RegisterDisplayColumn = 35;
 	private const Int32 CallStackDisplayColumn = 70;
 
-	private Int32 _screenWidth;
-	private Int32 _screenHeight;
-
-	// Pool management for temporary display strings
-	private Byte _displayPool;
-	private Byte _savedPool;
-	
-	// Be careful to get a *reference* to the VM rather than a deep copy, even
-	// in C++.  ToDo: find a more elegant solution to this recurring issue.
-	//*** BEGIN CS_ONLY ***
+	private Int32 _screenWidth = 0;
+	private Int32 _screenHeight = 0;
 	private VM _vm;
+	
 	public VMVis(VM vm) {
 		_vm = vm;
 		UpdateScreenSize();
-		_savedPool = MemPoolShim.GetDefaultStringPool();
-		_displayPool = MemPoolShim.GetUnusedPool();
 	}
-	//*** END CS_ONLY ***
-	/*** BEGIN H_ONLY ***
-	private: VM& _vm;
-	public: inline VMVis(VM& vm) : _vm(vm) {
-		UpdateScreenSize();
-		_savedPool = MemPoolShim::GetDefaultStringPool();
-		_displayPool = MemPoolShim::GetUnusedPool();
-	}
-	*** END H_ONLY ***/
 
 	public void UpdateScreenSize() {
 		//*** BEGIN CS_ONLY ***
@@ -112,7 +97,7 @@ public class VMVis {
 	private void DrawCodeDisplay() {
 		if (_vm.CurrentFunction == null) return;  // CPP:
 
-		FuncDef func = _vm.CurrentFunction; // CPP: FuncDef& func = _vm.CurrentFunction;
+		FuncDef func = _vm.CurrentFunction;
 		Int32 pc = _vm.PC;
 
 		// Draw function name header
@@ -262,19 +247,10 @@ public class VMVis {
 	}
 
 	public void UpdateDisplay() {
-		// Switch to temporary display pool for all string operations
-		if (_displayPool != 0) MemPoolShim.SetDefaultStringPool(_displayPool);
-
 		DrawCodeDisplay();
 		DrawRegisters();
 		DrawCallStack();
 		GoTo(1, _screenHeight - 2);
-
-		// Clear the display pool and restore original pool
-		if (_displayPool != 0) {
-			MemPoolShim.ClearStringPool(_displayPool);
-			MemPoolShim.SetDefaultStringPool(_savedPool);
-		}
 	}
 }
 

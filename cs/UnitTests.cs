@@ -7,13 +7,14 @@ using static MiniScript.ValueHelpers;
 // CPP: #include "IOHelper.g.h"
 // CPP: #include "StringUtils.g.h"
 // CPP: #include "Disassembler.g.h"
+// CPP: #include "gc.h"
 // CPP: #include "Assembler.g.h"  // We really should automate this.
 
 namespace MiniScript {
 
 public static class UnitTests {
 
-	public static Boolean Assert(Boolean condition, String message) {
+	public static Boolean Assert(bool condition, String message) {
 		if (condition) return true;
 		IOHelper.Print(new String("Unit test failure: ") + message);
 		return false;
@@ -124,7 +125,7 @@ public static class UnitTests {
 			"IFLT r1, r0",
 			"JUMP loop",
 			"RETURN"
-		};
+		}; // CPP: });
 		
 		Assembler labelAssem = new Assembler();
 		labelAssem.Assemble(labelTest);
@@ -147,7 +148,7 @@ public static class UnitTests {
 			"LOAD r0, \"hello\"",    // Should use constant index 0
 			"LOAD r1, 3.14",        // Should use constant index 1  
 			"LOAD r2, 100000"       // Should use constant index 2
-		};
+		}; // CPP: });
 		
 		Assembler constAssem = new Assembler();
 		constAssem.Assemble(constantTest);
@@ -167,9 +168,7 @@ public static class UnitTests {
 		asmOk = asmOk && AssertEqual(constFunc.Constants.Count, 3);
 		
 		// Test small integer (should use immediate form, not constant)
-		List<String> immediateTest = new List<String> {
-			"LOAD r3, 42"  // Should use immediate, not constant
-		};
+		List<String> immediateTest = new List<String> { "LOAD r3, 42" };
 		
 		Assembler immediateAssem = new Assembler();
 		immediateAssem.Assemble(immediateTest);
@@ -187,7 +186,7 @@ public static class UnitTests {
 			"LOAD r2, \"World\"", 
 			"ADD r0, r1, r2",
 			"RETURN"
-		};
+		}; // CPP: });
 		
 		Assembler multiAssem = new Assembler();
 		multiAssem.Assemble(multiTest);

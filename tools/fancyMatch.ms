@@ -89,6 +89,7 @@ string.match = function(pattern)
 		end if
 		p = self.indexOf(part, p-1)
 		if p == null then return null  // literal part not found
+		if i == 0 and p > 0 then return null
 		if i > 0 then
 			fieldContent = parts[i-1][1:-1]
 			fieldValue = self[lastStartPos:p]
@@ -148,6 +149,9 @@ if locals == globals then
 	
 	assertMatch "ADD = 3,", "≤name:w≥ = ≤value:w≥,",
 	   { "name":"ADD", "value":"3" }
+	
+	assertMatch "foo bar baz", "bar baz", null
+	assertMatch "foo bar baz", "bar ≤anything≥", null
 	
 	print "All tests complete."
 end if

@@ -150,7 +150,11 @@ public struct App {
 	
 	//*** BEGIN CS_ONLY ***
 	public static void Main(String[] args) {
-		MainProgram(new List<String>(args));
+		// Note: C# args does not include the program name (unlike C++ argv),
+		// so we prepend a placeholder to match C++ behavior.
+		List<String> argList = new List<String> { "miniscript2" };
+		argList.AddRange(args);
+		MainProgram(argList);
 	}
 	//*** END CS_ONLY ***
 }

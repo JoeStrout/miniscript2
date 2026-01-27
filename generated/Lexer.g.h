@@ -33,7 +33,6 @@ class FuncDefStorage;
 
 
 
-
 // Token types returned by the lexer
 enum class TokenType : Byte {
 	END_OF_INPUT,

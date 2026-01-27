@@ -30,7 +30,6 @@ class FuncDefStorage;
 
 
 
-
 struct App {
 	public: static bool debugMode;
 	public: static bool visMode;
@@ -38,6 +37,9 @@ struct App {
 	public: static void MainProgram(List<String> args);
 	
 }; // end of struct App
+
+
+
 
 
 // INLINE METHODS

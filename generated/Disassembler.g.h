@@ -9,10 +9,6 @@ namespace MiniScript {
 
 // FORWARD DECLARATIONS
 
-struct Widget;
-class WidgetStorage;
-struct Factory;
-class FactoryStorage;
 struct VM;
 class VMStorage;
 struct Assembler;
@@ -21,8 +17,6 @@ struct FuncDef;
 class FuncDefStorage;
 
 // DECLARATIONS
-
-
 
 
 class Disassembler {

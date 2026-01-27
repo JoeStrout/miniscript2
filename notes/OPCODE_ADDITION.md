@@ -1,6 +1,6 @@
 ## Overview
 
-For MS2Proto3, opcodes must be added very specifically so that all operations work correctly from assembly to execution.
+For MiniScript2, opcodes must be added very specifically so that all operations work correctly from assembly to execution.
 
 ## Procedure
 

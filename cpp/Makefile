@@ -1,4 +1,4 @@
-# MS2Proto3 C++ Makefile
+# MiniScript2 C++ Makefile
 # Builds the transpiled C++ version
 
 CXX = g++
@@ -35,7 +35,7 @@ GEN_OBJECTS = $(GEN_SOURCES:$(GENDIR)/%.g.cpp=$(OBJDIR)/gen_%.o)
 OBJECTS = $(CORE_OBJECTS) $(GEN_OBJECTS)
 
 # Target executable
-TARGET = $(BUILDDIR)/MS2Proto3
+TARGET = $(BUILDDIR)/miniscript2
 
 # Test programs
 TEST_STRING_POOL = $(BUILDDIR)/test_string_pool_debug

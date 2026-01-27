@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# MS2Proto3 Benchmarking Script
+# MiniScript2 Benchmarking Script
 # Runs performance benchmarks on both C# and C++ builds
 # Verifies correctness of results
 
@@ -55,7 +55,7 @@ BLUE='\033[0;34m'
 BOLD='\033[1m'
 NC='\033[0m' # No Color
 
-echo -e "${BOLD}=== MS2Proto3 Benchmark Suite ===${NC}"
+echo -e "${BOLD}=== MiniScript2 Benchmark Suite ===${NC}"
 echo "Project root: $PROJECT_ROOT"
 echo ""
 
@@ -165,7 +165,7 @@ if should_run_language "cs"; then
         IFS=':' read -r file name expected <<< "$benchmark_def"
 
         echo -e "${BLUE}  $name...${NC}"
-        cs_time=$(run_benchmark "$file" "$name" "$expected" "C#" "build/cs/MS2Proto3.dll")
+        cs_time=$(run_benchmark "$file" "$name" "$expected" "C#" "build/cs/miniscript2.dll")
         CS_TIMES+=("$cs_time")
     done
     echo ""
@@ -174,7 +174,7 @@ fi
 # Build and run all C++ (switch-based) benchmarks
 if should_run_language "cpp-switch"; then
     echo -e "${BOLD}Building C++ version (switch-based)...${NC}"
-    rm -f build/cpp/obj/* build/cpp/MS2Proto3 2>/dev/null
+    rm -f build/cpp/obj/* build/cpp/miniscript2 2>/dev/null
     if ! tools/build.sh cpp off; then
         echo -e "${RED}C++ (switch-based) build failed!${NC}"
         exit 1
@@ -185,7 +185,7 @@ if should_run_language "cpp-switch"; then
         IFS=':' read -r file name expected <<< "$benchmark_def"
 
         echo -e "${BLUE}  $name...${NC}"
-        cpp_switch_time=$(run_benchmark "$file" "$name" "$expected" "C++ (switch-based)" "build/cpp/MS2Proto3")
+        cpp_switch_time=$(run_benchmark "$file" "$name" "$expected" "C++ (switch-based)" "build/cpp/miniscript2")
         CPP_SWITCH_TIMES+=("$cpp_switch_time")
     done
     echo ""
@@ -194,7 +194,7 @@ fi
 # Build and run all C++ (computed-goto) benchmarks
 if should_run_language "cpp-goto" || should_run_language "msa"; then
     echo -e "${BOLD}Building C++ version (computed-goto)...${NC}"
-    rm -f build/cpp/obj/* build/cpp/MS2Proto3 2>/dev/null
+    rm -f build/cpp/obj/* build/cpp/miniscript2 2>/dev/null
     if ! tools/build.sh cpp on; then
         echo -e "${RED}C++ (computed-goto) build failed!${NC}"
         exit 1
@@ -205,7 +205,7 @@ if should_run_language "cpp-goto" || should_run_language "msa"; then
         IFS=':' read -r file name expected <<< "$benchmark_def"
 
         echo -e "${BLUE}  $name...${NC}"
-        cpp_goto_time=$(run_benchmark "$file" "$name" "$expected" "C++ (computed-goto)" "build/cpp/MS2Proto3")
+        cpp_goto_time=$(run_benchmark "$file" "$name" "$expected" "C++ (computed-goto)" "build/cpp/miniscript2")
         CPP_GOTO_TIMES+=("$cpp_goto_time")
     done
     echo ""

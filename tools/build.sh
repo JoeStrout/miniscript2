@@ -1,12 +1,12 @@
 #!/bin/bash
-# MS2Proto3 build orchestration script
+# MiniScript2 build orchestration script
 
 set -e  # Exit on any error
 
 PROJECT_ROOT="$(dirname "$0")/.."
 cd "$PROJECT_ROOT"
 
-echo "=== MS2Proto3 Build Script ==="
+echo "=== MiniScript2 Build Script ==="
 echo "Project root: $(pwd)"
 
 # Parse command line arguments
@@ -111,10 +111,10 @@ case "$TARGET" in
     "test")
         echo "Running quick smoke tests..."
         echo "Testing C# version:"
-        cd build/cs && echo "These are some words for testing" | ./MS2Proto3
+        cd build/cs && echo "These are some words for testing" | ./miniscript2
         cd ../..
         echo "Testing C++ version:"
-        cd build/cpp && echo "These are some words for testing" | ./MS2Proto3
+        cd build/cpp && echo "These are some words for testing" | ./miniscript2
         cd ../..
         ;;
 

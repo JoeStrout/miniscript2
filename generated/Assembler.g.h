@@ -36,6 +36,8 @@ class FuncDefStorage;
 
 
 
+
+
 class AssemblerStorage : public std::enable_shared_from_this<AssemblerStorage> {
 	friend struct Assembler;
 	public: List<FuncDef> Functions = List<FuncDef>::New(); // all functions

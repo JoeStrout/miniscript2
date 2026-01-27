@@ -983,8 +983,10 @@ Value VMStorage::Run(UInt32 maxCycles) {
 
 				// Process arguments using helper
 				Int32 nextPC = ProcessArguments(argCount, pc, baseIndex, calleeBase, callee, curFunc.Code());
-				GC_POP_SCOPE();
-				if (nextPC < 0) return make_null(); // Error already raised
+				if (nextPC < 0)  {// Error already raised
+					GC_POP_SCOPE();
+					return make_null();
+				}
 
 				// Set up call frame using helper
 				SetupCallFrame(argCount, calleeBase, callee);

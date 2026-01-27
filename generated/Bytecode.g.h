@@ -25,7 +25,6 @@ class FuncDefStorage;
 
 
 
-
 // Opcodes.  Note that these must have sequential values, starting at 0.
 enum class Opcode : Byte {
 	NOOP = 0,
@@ -129,6 +128,9 @@ class BytecodeUtil {
 	
 	public: static Opcode FromMnemonic(String s);
 }; // end of struct BytecodeUtil
+
+
+
 
 
 

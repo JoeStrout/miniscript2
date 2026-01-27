@@ -1,10 +1,10 @@
-# Memory Systems in MS2Proto3
+# Memory Systems in MiniScript2
 
-This document describes the memory management systems used in MS2Proto3 and how they interact.
+This document describes the memory management systems used in MiniScript2 and how they interact.
 
 ## Overview
 
-MS2Proto3 uses **three distinct memory systems** for different purposes:
+MiniScript2 uses **three distinct memory systems** for different purposes:
 
 1. **GC (Garbage Collector)** - For runtime MiniScript values
 2. **Intern Table** - For frequently-used small runtime strings

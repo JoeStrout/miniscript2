@@ -115,8 +115,10 @@ void App::MainProgram(List<String> args) {
 				vis.UpdateDisplay();
 				String cmd = IOHelper::Input("Command: ");
 				if (String::IsNullOrEmpty(cmd)) cmd = "step";
-				GC_POP_SCOPE();
-				if (cmd[0] == 'q') return;
+				if (cmd[0] == 'q')  {
+					GC_POP_SCOPE();
+					return;
+				}
 				if (cmd[0] == 's') {
 					result = vm.Run(1);
 					continue;

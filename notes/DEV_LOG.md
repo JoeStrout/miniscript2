@@ -223,4 +223,10 @@ But, again, I'm focused on getting the full app compiled at all this weekend, so
 This should transpile to
 		List<String>({ "LOAD", "r5", "r6" })
 
+## Jan 27, 2026
+
+The above feature (list initializers) is now handled.  I think our second-generation transpiler now does everything the first one did, and more; I'm able to transpile the complete current MiniScript 2 prototype, and the C++ version builds and tests clean.  (I haven't tried *very hard* to find GC bugs yet, but at least the basics are there.)
+
+I've also updated the build scripts so that the output (executable) is called `miniscript2`.  Obviously this is only during development; once we get close to a release, we'll name it miniscript, just like version 1.
+
 

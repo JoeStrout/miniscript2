@@ -30,7 +30,6 @@ class FuncDefStorage;
 
 
 
-
 class IOHelper {
 
 	public: static void Print(String message);
@@ -40,6 +39,9 @@ class IOHelper {
 	public: static List<String> ReadFile(String filePath);
 	
 }; // end of struct IOHelper
+
+
+
 
 
 

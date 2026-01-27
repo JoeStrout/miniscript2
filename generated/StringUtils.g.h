@@ -166,7 +166,6 @@ class StringUtils {
 
 
 
-
 // INLINE METHODS
 
 inline Int32 StringUtils::ParseInt32(String str) {

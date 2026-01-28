@@ -19,8 +19,29 @@ public enum TokenType : Byte {
 	MINUS,
 	TIMES,
 	DIVIDE,
+	MOD,
+	CARET,
 	LPAREN,
 	RPAREN,
+	LBRACKET,
+	RBRACKET,
+	LBRACE,
+	RBRACE,
+	ASSIGN,
+	EQUALS,
+	NOT_EQUAL,
+	LESS_THAN,
+	GREATER_THAN,
+	LESS_EQUAL,
+	GREATER_EQUAL,
+	COMMA,
+	COLON,
+	SEMICOLON,
+	DOT,
+	NOT,
+	AND,
+	OR,
+	EOL,
 	ERROR
 }
 
@@ -100,7 +121,10 @@ public struct Lexer {
 	// Skip whitespace (but not newlines, which may be significant)
 	[MethodImpl(AggressiveInlining)]
 	private void SkipWhitespace() {
-		while (_position < _input.Length && IsWhiteSpace(_input[_position])) {
+		while (_position < _input.Length) {
+			Char ch = _input[_position];
+			if (ch == '\n') break;  // newlines are significant
+			if (!IsWhiteSpace(ch)) break;
 			Advance();
 		}
 	}
@@ -150,6 +174,10 @@ public struct Lexer {
 				Advance();
 			}
 			String text = _input.Substring(start, _position - start);
+			// Check for keywords
+			if (text == "and") return new Token(TokenType.AND, text, startLine, startColumn);
+			if (text == "or") return new Token(TokenType.OR, text, startLine, startColumn);
+			if (text == "not") return new Token(TokenType.NOT, text, startLine, startColumn);
 			return new Token(TokenType.IDENTIFIER, text, startLine, startColumn);
 		}
 
@@ -168,15 +196,47 @@ public struct Lexer {
 			return new Token(TokenType.STRING, text, startLine, startColumn);
 		}
 
-		// Single-character operators and parentheses
+		// Multi-character operators (check before consuming)
+		if (c == '=' && _position + 1 < _input.Length && _input[_position + 1] == '=') {
+			Advance(); Advance();
+			return new Token(TokenType.EQUALS, "==", startLine, startColumn);
+		}
+		if (c == '!' && _position + 1 < _input.Length && _input[_position + 1] == '=') {
+			Advance(); Advance();
+			return new Token(TokenType.NOT_EQUAL, "!=", startLine, startColumn);
+		}
+		if (c == '<' && _position + 1 < _input.Length && _input[_position + 1] == '=') {
+			Advance(); Advance();
+			return new Token(TokenType.LESS_EQUAL, "<=", startLine, startColumn);
+		}
+		if (c == '>' && _position + 1 < _input.Length && _input[_position + 1] == '=') {
+			Advance(); Advance();
+			return new Token(TokenType.GREATER_EQUAL, ">=", startLine, startColumn);
+		}
+
+		// Single-character operators and punctuation
 		Advance();
 		switch (c) {
 			case '+': return new Token(TokenType.PLUS, "+", startLine, startColumn);
 			case '-': return new Token(TokenType.MINUS, "-", startLine, startColumn);
 			case '*': return new Token(TokenType.TIMES, "*", startLine, startColumn);
 			case '/': return new Token(TokenType.DIVIDE, "/", startLine, startColumn);
+			case '%': return new Token(TokenType.MOD, "%", startLine, startColumn);
+			case '^': return new Token(TokenType.CARET, "^", startLine, startColumn);
 			case '(': return new Token(TokenType.LPAREN, "(", startLine, startColumn);
 			case ')': return new Token(TokenType.RPAREN, ")", startLine, startColumn);
+			case '[': return new Token(TokenType.LBRACKET, "[", startLine, startColumn);
+			case ']': return new Token(TokenType.RBRACKET, "]", startLine, startColumn);
+			case '{': return new Token(TokenType.LBRACE, "{", startLine, startColumn);
+			case '}': return new Token(TokenType.RBRACE, "}", startLine, startColumn);
+			case '=': return new Token(TokenType.ASSIGN, "=", startLine, startColumn);
+			case '<': return new Token(TokenType.LESS_THAN, "<", startLine, startColumn);
+			case '>': return new Token(TokenType.GREATER_THAN, ">", startLine, startColumn);
+			case ',': return new Token(TokenType.COMMA, ",", startLine, startColumn);
+			case ':': return new Token(TokenType.COLON, ":", startLine, startColumn);
+			case ';': return new Token(TokenType.SEMICOLON, ";", startLine, startColumn);
+			case '.': return new Token(TokenType.DOT, ".", startLine, startColumn);
+			case '\n': return new Token(TokenType.EOL, "\n", startLine, startColumn);
 			default:
 				return new Token(TokenType.ERROR, StringUtils.Str(c), startLine, startColumn);
 		}

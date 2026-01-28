@@ -1,0 +1,158 @@
+// AUTO-GENERATED FILE.  DO NOT MODIFY.
+// Transpiled from: Parser.cs
+
+#include "Parser.g.h"
+#include "AST.g.h"
+#include "Parselet.g.h"
+#include "Lexer.g.h"
+#include "IOHelper.g.h"
+
+namespace MiniScript {
+
+
+ParserStorage::ParserStorage() {
+	_errors =  List<String>::New();
+	_prefixParselets = Dictionary<TokenType, PrefixParselet>();
+	_infixParselets = Dictionary<TokenType, InfixParselet>();
+
+	RegisterParselets();
+}
+void ParserStorage::RegisterParselets() {
+	// Prefix parselets (tokens that can start an expression)
+	RegisterPrefix(TokenType::NUMBER, NumberParselet());
+	RegisterPrefix(TokenType::STRING, StringParselet());
+	RegisterPrefix(TokenType::IDENTIFIER, IdentifierParselet());
+	RegisterPrefix(TokenType::LPAREN, GroupParselet());
+	RegisterPrefix(TokenType::LBRACKET, ListParselet());
+	RegisterPrefix(TokenType::LBRACE, MapParselet());
+
+	// Unary operators
+	RegisterPrefix(TokenType::MINUS, UnaryOpParselet(Op::MINUS, Precedence::UNARY));
+	RegisterPrefix(TokenType::NOT, UnaryOpParselet(Op::NOT, Precedence::UNARY));
+
+	// Binary operators
+	RegisterInfix(TokenType::PLUS, BinaryOpParselet(Op::PLUS, Precedence::SUM));
+	RegisterInfix(TokenType::MINUS, BinaryOpParselet(Op::MINUS, Precedence::SUM));
+	RegisterInfix(TokenType::TIMES, BinaryOpParselet(Op::TIMES, Precedence::PRODUCT));
+	RegisterInfix(TokenType::DIVIDE, BinaryOpParselet(Op::DIVIDE, Precedence::PRODUCT));
+	RegisterInfix(TokenType::MOD, BinaryOpParselet(Op::MOD, Precedence::PRODUCT));
+	RegisterInfix(TokenType::CARET, BinaryOpParselet(Op::POWER, Precedence::POWER, Boolean(true))); // right-assoc
+
+	// Comparison operators
+	RegisterInfix(TokenType::EQUALS, BinaryOpParselet(Op::EQUALS, Precedence::EQUALITY));
+	RegisterInfix(TokenType::NOT_EQUAL, BinaryOpParselet(Op::NOT_EQUAL, Precedence::EQUALITY));
+	RegisterInfix(TokenType::LESS_THAN, BinaryOpParselet(Op::LESS_THAN, Precedence::COMPARISON));
+	RegisterInfix(TokenType::GREATER_THAN, BinaryOpParselet(Op::GREATER_THAN, Precedence::COMPARISON));
+	RegisterInfix(TokenType::LESS_EQUAL, BinaryOpParselet(Op::LESS_EQUAL, Precedence::COMPARISON));
+	RegisterInfix(TokenType::GREATER_EQUAL, BinaryOpParselet(Op::GREATER_EQUAL, Precedence::COMPARISON));
+
+	// Logical operators
+	RegisterInfix(TokenType::AND, BinaryOpParselet(Op::AND, Precedence::AND));
+	RegisterInfix(TokenType::OR, BinaryOpParselet(Op::OR, Precedence::OR));
+
+	// Call and index operators
+	RegisterInfix(TokenType::LPAREN, CallParselet());
+	RegisterInfix(TokenType::LBRACKET, IndexParselet());
+	RegisterInfix(TokenType::DOT, MemberParselet());
+}
+void ParserStorage::RegisterPrefix(TokenType type, PrefixParselet parselet) {
+	_prefixParselets[type] = parselet;
+}
+void ParserStorage::RegisterInfix(TokenType type, InfixParselet parselet) {
+	_infixParselets[type] = parselet;
+}
+void ParserStorage::Init(String source) {
+	_lexer = Lexer(source);
+	_hadError = Boolean(false);
+	_errors.Clear();
+	Advance();  // Prime the pump with the first token
+}
+void ParserStorage::Advance() {
+	_current = _lexer.NextToken();
+}
+Boolean ParserStorage::Check(TokenType type) {
+	return _current.Type == type;
+}
+Boolean ParserStorage::Match(TokenType type) {
+	if (_current.Type == type) {
+		Advance();
+		return Boolean(true);
+	}
+	return Boolean(false);
+}
+Token ParserStorage::Consume() {
+	Token tok = _current;
+	Advance();
+	return tok;
+}
+Token ParserStorage::Expect(TokenType type, String errorMessage) {
+	if (_current.Type == type) {
+		Token tok = _current;
+		Advance();
+		return tok;
+	}
+	ReportError(errorMessage);
+	return Token(TokenType::ERROR, "", _current.Line, _current.Column);
+}
+Precedence ParserStorage::GetPrecedence() {
+	InfixParselet parselet = nullptr;
+	if (_infixParselets::TryGetValue(_current.Type, &parselet)) {
+		return parselet::Prec;
+	}
+	return Precedence::NONE;
+}
+ASTNode ParserStorage::ParseExpression(Precedence minPrecedence) {
+	Token token = _current;
+	Advance();
+
+	// Look up the prefix parselet for Parser(shared_from_this()) token
+	PrefixParselet prefix = nullptr;
+	if (!_prefixParselets::TryGetValue(token.Type, &prefix)) {
+		ReportError(Interp("Unexpected token: {}", token.Text));
+		return  NumberNode::New(0);
+	}
+
+	ASTNode left = prefix::Parse(Parser(shared_from_this()), token);
+
+	// Continue parsing infix expressions while precedence allows
+	while ((Int32)minPrecedence < (Int32)GetPrecedence()) {
+		token = _current;
+		Advance();
+
+		InfixParselet infix = nullptr;
+		if (_infixParselets::TryGetValue(token.Type, &infix)) {
+			left = infix::Parse(Parser(shared_from_this()), left, token);
+		}
+	}
+
+	return left;
+}
+ASTNode ParserStorage::ParseExpression() {
+	return ParseExpression(Precedence::NONE);
+}
+ASTNode ParserStorage::Parse(String source) {
+	Init(source);
+	ASTNode result = ParseExpression();
+
+	// Check for trailing tokens (except END_OF_INPUT)
+	if (_current.Type != TokenType::END_OF_INPUT && _current.Type != TokenType::EOL) {
+		ReportError(Interp("Unexpected token after expression: {}", _current.Text));
+	}
+
+	return result;
+}
+void ParserStorage::ReportError(String message) {
+	_hadError = Boolean(true);
+	String error = Interp("Parse error at line {}, column {}: {}", _current.Line, _current.Column, message);
+	_errors.Add(error);
+	IOHelper::Print(error);
+}
+Boolean ParserStorage::HadError() {
+	return _hadError;
+}
+List<String> ParserStorage::GetErrors() {
+	return _errors;
+}
+
+
+} // end of namespace MiniScript

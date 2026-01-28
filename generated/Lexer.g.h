@@ -15,10 +15,60 @@ struct VM;
 class VMStorage;
 struct Assembler;
 class AssemblerStorage;
+struct Parselet;
+class ParseletStorage;
+struct Parser;
+class ParserStorage;
 struct FuncDef;
 class FuncDefStorage;
+struct ASTNode;
+class ASTNodeStorage;
+struct NumberNode;
+class NumberNodeStorage;
+struct StringNode;
+class StringNodeStorage;
+struct IdentifierNode;
+class IdentifierNodeStorage;
+struct AssignmentNode;
+class AssignmentNodeStorage;
+struct UnaryOpNode;
+class UnaryOpNodeStorage;
+struct BinaryOpNode;
+class BinaryOpNodeStorage;
+struct CallNode;
+class CallNodeStorage;
+struct GroupNode;
+class GroupNodeStorage;
+struct ListNode;
+class ListNodeStorage;
+struct MapNode;
+class MapNodeStorage;
+struct IndexNode;
+class IndexNodeStorage;
+struct MemberNode;
+class MemberNodeStorage;
+struct MethodCallNode;
+class MethodCallNodeStorage;
 
 // DECLARATIONS
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -43,8 +93,29 @@ enum class TokenType : Byte {
 	MINUS,
 	TIMES,
 	DIVIDE,
+	MOD,
+	CARET,
 	LPAREN,
 	RPAREN,
+	LBRACKET,
+	RBRACKET,
+	LBRACE,
+	RBRACE,
+	ASSIGN,
+	EQUALS,
+	NOT_EQUAL,
+	LESS_THAN,
+	GREATER_THAN,
+	LESS_EQUAL,
+	GREATER_EQUAL,
+	COMMA,
+	COLON,
+	SEMICOLON,
+	DOT,
+	NOT,
+	AND,
+	OR,
+	EOL,
 	ERROR
 }; // end of enum TokenType
 
@@ -112,7 +183,10 @@ inline Boolean Lexer::IsIdentifierChar(Char c) {
 	return IsIdentifierStartChar(c) || IsDigit(c);
 }
 inline void Lexer::SkipWhitespace() {
-	while (_position < _input.Length() && IsWhiteSpace(_input[_position])) {
+	while (_position < _input.Length()) {
+		Char ch = _input[_position];
+		if (ch == '\n') break;  // newlines are significant
+		if (!IsWhiteSpace(ch)) break;
 		Advance();
 	}
 }

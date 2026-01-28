@@ -9,6 +9,8 @@ using static MiniScript.ValueHelpers;
 // CPP: #include "Disassembler.g.h"
 // CPP: #include "gc.h"
 // CPP: #include "Assembler.g.h"  // We really should automate this.
+// CPP: #include "Parser.g.h"
+// CPP: #include "AST.g.h"
 
 namespace MiniScript {
 
@@ -296,11 +298,132 @@ public static class UnitTests {
 		return clearOk;
 	}
 
+	// Helper for parser tests: parse, simplify, and check result
+	private static Boolean CheckParse(Parser parser, String input, String expected) {
+		ASTNode ast = parser.Parse(input);
+		if (parser.HadError()) {
+			IOHelper.Print($"Parse error for input: {input}");
+			return false;
+		}
+		ASTNode simplified = ast.Simplify();
+		String result = simplified.ToStr();
+		if (result != expected) {
+			IOHelper.Print($"Parser test failed for: {input}");
+			IOHelper.Print($"  Expected: {expected}");
+			IOHelper.Print($"  Got:      {result}");
+			return false;
+		}
+		return true;
+	}
+
+	public static Boolean TestParser() {
+		IOHelper.Print("  Testing parser...");
+		Parser parser = new Parser();
+		Boolean ok = true;
+
+		// Test simple numbers
+		ok = ok && CheckParse(parser, "42", "42");
+		ok = ok && CheckParse(parser, "3.14", "3.14");
+
+		// Test simple arithmetic with constant folding
+		ok = ok && CheckParse(parser, "2 + 3", "5");
+		ok = ok && CheckParse(parser, "10 - 4", "6");
+		ok = ok && CheckParse(parser, "6 * 7", "42");
+		ok = ok && CheckParse(parser, "20 / 4", "5");
+		ok = ok && CheckParse(parser, "17 % 5", "2");
+
+		// Test precedence (multiplication before addition)
+		ok = ok && CheckParse(parser, "2 + 3 * 4", "14");
+		ok = ok && CheckParse(parser, "2 * 3 + 4", "10");
+
+		// Test parentheses override precedence
+		ok = ok && CheckParse(parser, "(2 + 3) * 4", "20");
+
+		// Test unary minus
+		ok = ok && CheckParse(parser, "-5", "-5");
+		ok = ok && CheckParse(parser, "10 + -3", "7");
+
+		// Test power operator (right associative)
+		ok = ok && CheckParse(parser, "2 ^ 3", "8");
+		ok = ok && CheckParse(parser, "2 ^ 3 ^ 2", "512");  // 2^(3^2) = 2^9 = 512
+
+		// Test comparison operators (result is 1 for true, 0 for false)
+		ok = ok && CheckParse(parser, "5 == 5", "1");
+		ok = ok && CheckParse(parser, "5 == 6", "0");
+		ok = ok && CheckParse(parser, "5 != 6", "1");
+		ok = ok && CheckParse(parser, "3 < 5", "1");
+		ok = ok && CheckParse(parser, "5 < 3", "0");
+		ok = ok && CheckParse(parser, "5 <= 5", "1");
+		ok = ok && CheckParse(parser, "5 > 3", "1");
+		ok = ok && CheckParse(parser, "5 >= 5", "1");
+
+		// Test logical operators
+		ok = ok && CheckParse(parser, "1 and 1", "1");
+		ok = ok && CheckParse(parser, "1 and 0", "0");
+		ok = ok && CheckParse(parser, "0 or 1", "1");
+		ok = ok && CheckParse(parser, "0 or 0", "0");
+		ok = ok && CheckParse(parser, "not 0", "1");
+		ok = ok && CheckParse(parser, "not 1", "0");
+
+		// Test identifiers (these don't simplify, just return as-is)
+		ok = ok && CheckParse(parser, "x", "x");
+		ok = ok && CheckParse(parser, "foo", "foo");
+
+		// Test expressions with identifiers (partial simplification)
+		ok = ok && CheckParse(parser, "x + 0", "PLUS(x, 0)");
+		ok = ok && CheckParse(parser, "2 + x", "PLUS(2, x)");
+
+		// Test string literals
+		ok = ok && CheckParse(parser, "\"hello\"", "\"hello\"");
+
+		// Test list literals
+		ok = ok && CheckParse(parser, "[]", "[]");
+		ok = ok && CheckParse(parser, "[1, 2, 3]", "[1, 2, 3]");
+
+		// Test map literals
+		ok = ok && CheckParse(parser, "{}", "{}");
+
+		// Test function calls (don't simplify)
+		ok = ok && CheckParse(parser, "sqrt(4)", "sqrt(4)");
+		ok = ok && CheckParse(parser, "max(1, 2)", "max(1, 2)");
+
+		// Test index access
+		ok = ok && CheckParse(parser, "list[0]", "list[0]");
+		ok = ok && CheckParse(parser, "map[\"key\"]", "map[\"key\"]");
+
+		// Test member access
+		ok = ok && CheckParse(parser, "obj.field", "obj.field");
+
+		// Test chained operations
+		ok = ok && CheckParse(parser, "a.b.c", "a.b.c");
+		ok = ok && CheckParse(parser, "list[0][1]", "list[0][1]");
+		ok = ok && CheckParse(parser, "obj.method(x)", "obj.method(x)");
+
+		// Test complex expressions with mixed operators
+		ok = ok && CheckParse(parser, "1 + 2 * 3 - 4", "3");  // 1 + 6 - 4 = 3
+		ok = ok && CheckParse(parser, "10 / 2 + 3 * 4", "17");  // 5 + 12 = 17
+
+		// Test nested parentheses
+		ok = ok && CheckParse(parser, "((1 + 2))", "3");
+		ok = ok && CheckParse(parser, "((2 + 3) * (4 + 5))", "45");
+
+		// Test assignment (returns assignment node, doesn't simplify)
+		ok = ok && CheckParse(parser, "x = 5", "x = 5");
+		ok = ok && CheckParse(parser, "y = 2 + 3", "y = 5");
+
+		if (ok) {
+			IOHelper.Print("  All parser tests passed.");
+		}
+
+		return ok;
+	}
+
 	public static Boolean RunAll() {
 		return TestStringUtils()
 			&& TestDisassembler()
 			&& TestAssembler()
-			&& TestValueMap();
+			&& TestValueMap()
+			&& TestParser();
 	}
 }
 

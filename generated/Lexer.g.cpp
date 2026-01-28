@@ -85,6 +85,10 @@ Token Lexer::NextToken() {
 			Advance();
 		}
 		String text = _input.Substring(start, _position - start);
+		// Check for keywords
+		if (text == "and") return Token(TokenType::AND, text, startLine, startColumn);
+		if (text == "or") return Token(TokenType::OR, text, startLine, startColumn);
+		if (text == "not") return Token(TokenType::NOT, text, startLine, startColumn);
 		return Token(TokenType::IDENTIFIER, text, startLine, startColumn);
 	}
 
@@ -103,15 +107,47 @@ Token Lexer::NextToken() {
 		return Token(TokenType::STRING, text, startLine, startColumn);
 	}
 
-	// Single-character operators and parentheses
+	// Multi-character operators (check before consuming)
+	if (c == '=' && _position + 1 < _input.Length() && _input[_position + 1] == '=') {
+		Advance(); Advance();
+		return Token(TokenType::EQUALS, "==", startLine, startColumn);
+	}
+	if (c == '!' && _position + 1 < _input.Length() && _input[_position + 1] == '=') {
+		Advance(); Advance();
+		return Token(TokenType::NOT_EQUAL, "!=", startLine, startColumn);
+	}
+	if (c == '<' && _position + 1 < _input.Length() && _input[_position + 1] == '=') {
+		Advance(); Advance();
+		return Token(TokenType::LESS_EQUAL, "<=", startLine, startColumn);
+	}
+	if (c == '>' && _position + 1 < _input.Length() && _input[_position + 1] == '=') {
+		Advance(); Advance();
+		return Token(TokenType::GREATER_EQUAL, ">=", startLine, startColumn);
+	}
+
+	// Single-character operators and punctuation
 	Advance();
 	switch (c) {
 		case '+': return Token(TokenType::PLUS, "+", startLine, startColumn);
 		case '-': return Token(TokenType::MINUS, "-", startLine, startColumn);
 		case '*': return Token(TokenType::TIMES, "*", startLine, startColumn);
 		case '/': return Token(TokenType::DIVIDE, "/", startLine, startColumn);
+		case '%': return Token(TokenType::MOD, "%", startLine, startColumn);
+		case '^': return Token(TokenType::CARET, "^", startLine, startColumn);
 		case '(': return Token(TokenType::LPAREN, "(", startLine, startColumn);
 		case ')': return Token(TokenType::RPAREN, ")", startLine, startColumn);
+		case '[': return Token(TokenType::LBRACKET, "[", startLine, startColumn);
+		case ']': return Token(TokenType::RBRACKET, "]", startLine, startColumn);
+		case '{': return Token(TokenType::LBRACE, "{", startLine, startColumn);
+		case '}': return Token(TokenType::RBRACE, "}", startLine, startColumn);
+		case '=': return Token(TokenType::ASSIGN, "=", startLine, startColumn);
+		case '<': return Token(TokenType::LESS_THAN, "<", startLine, startColumn);
+		case '>': return Token(TokenType::GREATER_THAN, ">", startLine, startColumn);
+		case ',': return Token(TokenType::COMMA, ",", startLine, startColumn);
+		case ':': return Token(TokenType::COLON, ":", startLine, startColumn);
+		case ';': return Token(TokenType::SEMICOLON, ";", startLine, startColumn);
+		case '.': return Token(TokenType::DOT, ".", startLine, startColumn);
+		case '\n': return Token(TokenType::EOL, "\n", startLine, startColumn);
 		default:
 			return Token(TokenType::ERROR, StringUtils::Str(c), startLine, startColumn);
 	}

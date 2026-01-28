@@ -3,16 +3,18 @@
 
 using System;
 using System.Collections.Generic;
+// H: #include "LangConstants.g.h"
+// H: #include "Lexer.g.h"
+// H: #include "Parselet.g.h"
 // CPP: #include "AST.g.h"
-// CPP: #include "Parselet.g.h"
-// CPP: #include "Lexer.g.h"
 // CPP: #include "IOHelper.g.h"
+
 
 namespace MiniScript {
 
 // Parser: the main parsing engine.
 // Uses a Pratt parser algorithm with parselets to handle operator precedence.
-public class Parser {
+public class Parser : IParser {
 	private Lexer _lexer;
 	private Token _current;
 	private Boolean _hadError;

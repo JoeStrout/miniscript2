@@ -12,8 +12,6 @@ struct VM;
 class VMStorage;
 struct Assembler;
 class AssemblerStorage;
-struct Parselet;
-class ParseletStorage;
 struct Parser;
 class ParserStorage;
 struct FuncDef;
@@ -162,7 +160,6 @@ class BytecodeUtil {
 	
 	public: static Opcode FromMnemonic(String s);
 }; // end of struct BytecodeUtil
-
 
 
 

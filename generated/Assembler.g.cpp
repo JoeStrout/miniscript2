@@ -10,6 +10,8 @@
 namespace MiniScript {
 
 
+AssemblerStorage::AssemblerStorage() {
+}
 Int32 AssemblerStorage::FindFunctionIndex(String name) {
 	for (Int32 i = 0; i < Functions.Count(); i++) {
 		if (Functions[i].Name() == name) return i;

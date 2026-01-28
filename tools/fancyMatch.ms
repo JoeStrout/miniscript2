@@ -1,10 +1,11 @@
 TAB = char(9)
+	NBSP = char(160)
 
 // Helper function to check if a character is a word character
 globals.isWordChar = function(c)
 	if c == null then return false
 	return (c >= "a" and c <= "z") or (c >= "A" and c <= "Z") or 
-	       (c >= "0" and c <= "9") or c == "_"
+	       (c >= "0" and c <= "9") or c == "_" or c == NBSP
 end function
 
 // Helper function to check if a substring is a single word.  Note 
@@ -19,18 +20,19 @@ isWholeWord = function(str, startPos, endPos)
 	if endPos < str.len and isWordChar(str[endPos]) then return false
 	// Check that the content itself contains only word characters,
 	// possibly including a parameterized type.
-	gotLT = false
-	gotGT = false
+	inAngleBrackets = false
 	if str.len > 1 and str[-1] == "&" then endPos -= 1
 	for c in str[startPos:endPos]
-		if c == "<" and not gotLT then
-			gotLT = true
+		if c == "<" then
+			inAngleBrackets += 1
 			continue
-		else if c == ">" and gotLT and not gotGT then
-			gotGT = true
+		else if c == ">" then
+			inAngleBrackets -= 1
 			continue
 		end if
-		if not isWordChar(c) then return false
+		if isWordChar(c) then continue
+		if inAngleBrackets and (c == "," or c == " ") then continue
+		return false
 	end for
 	return true
 end function
@@ -65,6 +67,24 @@ string.match = function(pattern)
 		parts.push pattern[p:nextp+1]
 		p = nextp + 1
 	end while
+	
+	// If we seem to parameterized types in the string, replace any
+	// space therein with char(160) (non-breaking space).
+	anyNBSP = false
+	s = self
+	gtPos = -1
+	while true
+		ltPos = s.indexOf("<", gtPos)
+		if ltPos == null then break
+		gtPos = s.indexOf(">", ltPos)
+		if gtPos == null then break
+		spacePos = s.indexOf(" ", ltPos)
+		if spacePos != null and spacePos < gtPos then
+			s = s[:spacePos] + NBSP + s[spacePos+1:]
+			anyNBSP = true
+		end if
+	end while
+	
 	// Now, find each literal parts in this string,
 	// and fill in the variable parts (fields) in between.
 	result = {}
@@ -76,10 +96,10 @@ string.match = function(pattern)
 			lastStartPos = p
 			if i == parts.len-1 then
 				fieldContent = part[1:-1]
-				fieldValue = self[p:]
+				fieldValue = s[p:]
 				// Check for :w qualifier
 				if fieldContent.indexOf(":w") != null then
-					if not isWholeWord(self, p, self.len) then return null
+					if not isWholeWord(s, p, s.len) then return null
 					// Remove the :w qualifier from the field name
 					fieldContent = fieldContent.replace(":w", "")
 				end if
@@ -87,15 +107,15 @@ string.match = function(pattern)
 			end if
 			continue
 		end if
-		p = self.indexOf(part, p-1)
+		p = s.indexOf(part, p-1)
 		if p == null then return null  // literal part not found
 		if i == 0 and p > 0 then return null
 		if i > 0 then
 			fieldContent = parts[i-1][1:-1]
-			fieldValue = self[lastStartPos:p]
+			fieldValue = s[lastStartPos:p]
 			// Check for :w (whole word) qualifier
 			if fieldContent.indexOf(":w") != null then
-				if not isWholeWord(self, lastStartPos, p) then return null
+				if not isWholeWord(s, lastStartPos, p) then return null
 				// Remove the :w qualifier from the field name
 				fieldContent = fieldContent.replace(":w", "")
 			end if
@@ -104,6 +124,9 @@ string.match = function(pattern)
 		lastStartPos = p
 		p = p + part.len
 	end for
+	if anyNBSP then
+		for i in result.indexes; result[i] = result[i].replace(NBSP, " "); end for
+	end if
 	return result
 end function
 
@@ -126,7 +149,7 @@ if locals == globals then
 		if m == expected then return
 		print "TEST FAILURE ON: " + s + " WITH PATTERN: " + pattern
 		print "Expected: " + str(expected)
-		print "Actual: " + str(m)
+		print "Actual:   " + str(m)
 		exit
 	end function
 	
@@ -141,6 +164,9 @@ if locals == globals then
 
 	assertMatch "List<UInt32> ints = new List<UInt32>()", "≤type:w≥ ≤name:w≥ = ≤expr≥",
 	  { "type": "List<UInt32>", "name":"ints", "expr":"new List<UInt32>()" }
+
+	assertMatch "Dict<Int32, String> map = new Dict<Int32, String>()", "≤type:w≥ ≤name:w≥ = ≤expr≥",
+	  { "type": "Dict<Int32, String>", "name":"map", "expr":"new Dict<Int32, String>()" }
 
 	assertMatch "public static byte OP(uint instruction) => (byte)((instruction >> 24) & 0xFF);",
 	  "≤scope:w≥ static ≤rtype:w≥ ≤name:w≥(≤params≥) => ≤expr≥;",

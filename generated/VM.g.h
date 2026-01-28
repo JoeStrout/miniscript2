@@ -16,8 +16,6 @@ struct VM;
 class VMStorage;
 struct Assembler;
 class AssemblerStorage;
-struct Parselet;
-class ParseletStorage;
 struct Parser;
 class ParserStorage;
 struct FuncDef;
@@ -70,9 +68,6 @@ struct CallInfo {
 
 	public: Value GetLocalVarMap(List<Value> registers, List<Value> names, int baseIdx, int regCount);
 }; // end of struct CallInfo
-
-
-// VM state
 
 
 
@@ -134,9 +129,7 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 
 	public: String GetFunctionName(Int32 funcIndex);
 
-	public: VMStorage();
-	
-	public: VMStorage(Int32 stackSlots, Int32 callSlots);
+	public: VMStorage(Int32 stackSlots=1024, Int32 callSlots=256);
 
 	private: void InitVM(Int32 stackSlots, Int32 callSlots);
 	
@@ -183,13 +176,14 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	private: void DoIntrinsic(Value funcName, Int32 baseReg);
 }; // end of class VMStorage
 
+
+// VM state
 struct VM {
 	protected: std::shared_ptr<VMStorage> storage;
   public:
 	VM(std::shared_ptr<VMStorage> stor) : storage(stor) {}
 	VM() : storage(nullptr) {}
 	VM(std::nullptr_t) : storage(nullptr) {}
-	static VM New() { return VM(std::make_shared<VMStorage>()); }
 	friend bool IsNull(const VM& inst) { return inst.storage == nullptr; }
 	private: VMStorage* get() const { return static_cast<VMStorage*>(storage.get()); }
 
@@ -233,7 +227,9 @@ struct VM {
 
 	public: String GetFunctionName(Int32 funcIndex) { return get()->GetFunctionName(funcIndex); }
 
-	
+	public: static VM New(Int32 stackSlots=1024, Int32 callSlots=256) {
+		return VM(std::make_shared<VMStorage>(stackSlots, callSlots));
+	}
 
 	private: void InitVM(Int32 stackSlots, Int32 callSlots) { return get()->InitVM(stackSlots, callSlots); }
 	

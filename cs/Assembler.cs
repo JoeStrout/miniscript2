@@ -15,6 +15,9 @@ namespace MiniScript {
 
 public class Assembler {
 
+	public Assembler() {
+	}
+
 	// Multiple functions support
 	public List<FuncDef> Functions = new List<FuncDef>(); // all functions
 	public FuncDef Current = new FuncDef(); // function we are currently building

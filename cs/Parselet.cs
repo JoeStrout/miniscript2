@@ -5,52 +5,47 @@ using System;
 using System.Collections.Generic;
 // H: #include "AST.g.h"
 // H: #include "Lexer.g.h"
-// H: #include "Parser.g.h"
+// H: #include "LangConstants.g.h"
 
 namespace MiniScript {
 
-// Precedence levels (higher precedence binds more strongly)
-public enum Precedence : Int32 {
-	NONE = 0,
-	ASSIGNMENT = 1,
-	OR = 2,
-	AND = 3,
-	EQUALITY = 4,        // == !=
-	COMPARISON = 5,      // < > <= >=
-	SUM = 6,             // + -
-	PRODUCT = 7,         // * / %
-	POWER = 8,           // ^
-	UNARY = 9,           // - not
-	CALL = 10,           // () []
-	PRIMARY = 11
+// IParser interface: defines the methods that parselets need from the parser.
+// This breaks the circular dependency between Parser and Parselet.
+public interface IParser {
+	Boolean Check(TokenType type);
+	Boolean Match(TokenType type);
+	Token Consume();
+	Token Expect(TokenType type, String errorMessage);
+	ASTNode ParseExpression(Precedence minPrecedence);
+	void ReportError(String message);
 }
 
 // Base class for all parselets
-public abstract class Parselet {
+public class Parselet {
 	public Precedence Prec;
 }
 
 // PrefixParselet: abstract base for parselets that handle tokens
 // starting an expression (numbers, identifiers, unary operators).
-public abstract class PrefixParselet : Parselet {
-	public abstract ASTNode Parse(Parser parser, Token token);
+public class PrefixParselet : Parselet {
+	public abstract ASTNode Parse(IParser parser, Token token);
 }
 
 // InfixParselet: abstract base for parselets that handle infix operators.
-public abstract class InfixParselet : Parselet {
-	public abstract ASTNode Parse(Parser parser, ASTNode left, Token token);
+public class InfixParselet : Parselet {
+	public abstract ASTNode Parse(IParser parser, ASTNode left, Token token);
 }
 
 // NumberParselet: handles number literals.
 public class NumberParselet : PrefixParselet {
-	public override ASTNode Parse(Parser parser, Token token) {
+	public override ASTNode Parse(IParser parser, Token token) {
 		return new NumberNode(token.DoubleValue);
 	}
 }
 
 // StringParselet: handles string literals.
 public class StringParselet : PrefixParselet {
-	public override ASTNode Parse(Parser parser, Token token) {
+	public override ASTNode Parse(IParser parser, Token token) {
 		return new StringNode(token.Text);
 	}
 }
@@ -60,7 +55,7 @@ public class StringParselet : PrefixParselet {
 // - Variable assignments (when followed by '=')
 // - Function calls (when followed by '(')
 public class IdentifierParselet : PrefixParselet {
-	public override ASTNode Parse(Parser parser, Token token) {
+	public override ASTNode Parse(IParser parser, Token token) {
 		String name = token.Text;
 
 		// Check what comes next
@@ -84,7 +79,7 @@ public class UnaryOpParselet : PrefixParselet {
 		Prec = prec;
 	}
 
-	public override ASTNode Parse(Parser parser, Token token) {
+	public override ASTNode Parse(IParser parser, Token token) {
 		ASTNode operand = parser.ParseExpression(Prec);
 		return new UnaryOpNode(_op, operand);
 	}
@@ -92,7 +87,7 @@ public class UnaryOpParselet : PrefixParselet {
 
 // GroupParselet: handles parenthesized expressions like '(2 + 3)'.
 public class GroupParselet : PrefixParselet {
-	public override ASTNode Parse(Parser parser, Token token) {
+	public override ASTNode Parse(IParser parser, Token token) {
 		ASTNode expr = parser.ParseExpression(Precedence.NONE);
 		parser.Expect(TokenType.RPAREN, "Expected ')' after expression");
 		return new GroupNode(expr);
@@ -101,7 +96,7 @@ public class GroupParselet : PrefixParselet {
 
 // ListParselet: handles list literals like '[1, 2, 3]'.
 public class ListParselet : PrefixParselet {
-	public override ASTNode Parse(Parser parser, Token token) {
+	public override ASTNode Parse(IParser parser, Token token) {
 		List<ASTNode> elements = new List<ASTNode>();
 
 		if (!parser.Check(TokenType.RBRACKET)) {
@@ -117,7 +112,7 @@ public class ListParselet : PrefixParselet {
 
 // MapParselet: handles map literals like '{"a": 1}'.
 public class MapParselet : PrefixParselet {
-	public override ASTNode Parse(Parser parser, Token token) {
+	public override ASTNode Parse(IParser parser, Token token) {
 		List<ASTNode> keys = new List<ASTNode>();
 		List<ASTNode> values = new List<ASTNode>();
 
@@ -153,7 +148,7 @@ public class BinaryOpParselet : InfixParselet {
 		_rightAssoc = false;
 	}
 
-	public override ASTNode Parse(Parser parser, ASTNode left, Token token) {
+	public override ASTNode Parse(IParser parser, ASTNode left, Token token) {
 		// For right-associative operators, use lower precedence for RHS
 		Precedence rhsPrec = _rightAssoc ? (Precedence)((Int32)Prec - 1) : Prec;
 		ASTNode right = parser.ParseExpression(rhsPrec);
@@ -167,7 +162,7 @@ public class CallParselet : InfixParselet {
 		Prec = Precedence.CALL;
 	}
 
-	public override ASTNode Parse(Parser parser, ASTNode left, Token token) {
+	public override ASTNode Parse(IParser parser, ASTNode left, Token token) {
 		List<ASTNode> args = new List<ASTNode>();
 
 		if (!parser.Check(TokenType.RPAREN)) {
@@ -203,7 +198,7 @@ public class IndexParselet : InfixParselet {
 		Prec = Precedence.CALL;
 	}
 
-	public override ASTNode Parse(Parser parser, ASTNode left, Token token) {
+	public override ASTNode Parse(IParser parser, ASTNode left, Token token) {
 		ASTNode index = parser.ParseExpression(Precedence.NONE);
 		parser.Expect(TokenType.RBRACKET, "Expected ']' after index");
 		return new IndexNode(left, index);
@@ -216,7 +211,7 @@ public class MemberParselet : InfixParselet {
 		Prec = Precedence.CALL;
 	}
 
-	public override ASTNode Parse(Parser parser, ASTNode left, Token token) {
+	public override ASTNode Parse(IParser parser, ASTNode left, Token token) {
 		Token memberToken = parser.Expect(TokenType.IDENTIFIER, "Expected member name after '.'");
 		return new MemberNode(left, memberToken.Text);
 	}

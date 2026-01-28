@@ -7,6 +7,8 @@
 namespace MiniScript {
 
 
+FuncDefStorage::FuncDefStorage() {
+}
 void FuncDefStorage::ReserveRegister(Int32 registerNumber) {
 	UInt16 impliedCount = (UInt16)(registerNumber + 1);
 	if (MaxRegs < impliedCount) MaxRegs = impliedCount;

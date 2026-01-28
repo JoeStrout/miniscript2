@@ -15,8 +15,6 @@ struct VM;
 class VMStorage;
 struct Assembler;
 class AssemblerStorage;
-struct Parselet;
-class ParseletStorage;
 struct Parser;
 class ParserStorage;
 struct FuncDef;
@@ -106,7 +104,6 @@ struct VMVis {
 
 	public: void UpdateDisplay();
 }; // end of struct VMVis
-
 
 
 

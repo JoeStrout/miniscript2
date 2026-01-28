@@ -17,8 +17,6 @@ struct VM;
 class VMStorage;
 struct Assembler;
 class AssemblerStorage;
-struct Parselet;
-class ParseletStorage;
 struct Parser;
 class ParserStorage;
 struct FuncDef;
@@ -86,10 +84,10 @@ class MethodCallNodeStorage;
 
 
 
-
-
 class AssemblerStorage : public std::enable_shared_from_this<AssemblerStorage> {
 	friend struct Assembler;
+
+	public: AssemblerStorage();
 	public: List<FuncDef> Functions = List<FuncDef>::New(); // all functions
 	public: FuncDef Current = FuncDef::New(); // function we are currently building
 	private: List<String> _labelNames = List<String>::New(); // label names within current function
@@ -185,16 +183,20 @@ class AssemblerStorage : public std::enable_shared_from_this<AssemblerStorage> {
 
 }; // end of class AssemblerStorage
 
+
 struct Assembler {
 	protected: std::shared_ptr<AssemblerStorage> storage;
   public:
 	Assembler(std::shared_ptr<AssemblerStorage> stor) : storage(stor) {}
 	Assembler() : storage(nullptr) {}
 	Assembler(std::nullptr_t) : storage(nullptr) {}
-	static Assembler New() { return Assembler(std::make_shared<AssemblerStorage>()); }
 	friend bool IsNull(const Assembler& inst) { return inst.storage == nullptr; }
 	private: AssemblerStorage* get() const { return static_cast<AssemblerStorage*>(storage.get()); }
 
+
+	public: static Assembler New() {
+		return Assembler(std::make_shared<AssemblerStorage>());
+	}
 	public: List<FuncDef> Functions() { return get()->Functions; } // all functions
 	public: void set_Functions(List<FuncDef> _v) { get()->Functions = _v; } // all functions
 	public: FuncDef Current() { return get()->Current; } // function we are currently building

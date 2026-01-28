@@ -15,34 +15,6 @@ struct VM;
 class VMStorage;
 struct Assembler;
 class AssemblerStorage;
-struct Parselet;
-class ParseletStorage;
-struct PrefixParselet;
-class PrefixParseletStorage;
-struct InfixParselet;
-class InfixParseletStorage;
-struct NumberParselet;
-class NumberParseletStorage;
-struct StringParselet;
-class StringParseletStorage;
-struct IdentifierParselet;
-class IdentifierParseletStorage;
-struct UnaryOpParselet;
-class UnaryOpParseletStorage;
-struct GroupParselet;
-class GroupParseletStorage;
-struct ListParselet;
-class ListParseletStorage;
-struct MapParselet;
-class MapParseletStorage;
-struct BinaryOpParselet;
-class BinaryOpParseletStorage;
-struct CallParselet;
-class CallParseletStorage;
-struct IndexParselet;
-class IndexParseletStorage;
-struct MemberParselet;
-class MemberParseletStorage;
 struct Parser;
 class ParserStorage;
 struct FuncDef;
@@ -77,19 +49,6 @@ struct MethodCallNode;
 class MethodCallNodeStorage;
 
 // DECLARATIONS
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -143,7 +102,6 @@ class Op {
 
 
 
-
 // Base class for all AST nodes.
 // When transpiled to C++, these become shared_ptr-wrapped classes.
 struct ASTNode {
@@ -153,10 +111,10 @@ struct ASTNode {
 	ASTNode() : storage(nullptr) {}
 	friend bool IsNull(ASTNode inst) { return inst.storage == nullptr; }
 	template<typename WrapperType, typename StorageType>
-	friend WrapperType As(ASTNode node) {
-		StorageType* stor = dynamic_cast<StorageType*>(node.storage.get());
+	friend WrapperType As(ASTNode inst) {
+		StorageType* stor = dynamic_cast<StorageType*>(inst.storage.get());
 		if (stor == nullptr) return WrapperType(nullptr);
-		return WrapperType(node.storage);
+		return WrapperType(inst.storage);
 	}
 
 	public: String ToStr();

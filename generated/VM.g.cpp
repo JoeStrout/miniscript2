@@ -66,9 +66,6 @@ String VMStorage::GetFunctionName(Int32 funcIndex) {
 	if (funcIndex < 0 || funcIndex >= functions.Count()) return "???";
 	return functions[funcIndex].Name();
 }
-VMStorage::VMStorage() {
-	InitVM(1024, 256);
-}
 VMStorage::VMStorage(Int32 stackSlots, Int32 callSlots) {
 	InitVM(stackSlots, callSlots);
 }

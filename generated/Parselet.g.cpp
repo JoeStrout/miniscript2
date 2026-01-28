@@ -14,17 +14,17 @@ namespace MiniScript {
 
 
 
-ASTNode NumberParseletStorage::Parse(Parser parser, Token token) {
+ASTNode NumberParseletStorage::Parse(IParser& parser, Token token) {
 	return  NumberNode::New(token.DoubleValue);
 }
 
 
-ASTNode StringParseletStorage::Parse(Parser parser, Token token) {
+ASTNode StringParseletStorage::Parse(IParser& parser, Token token) {
 	return  StringNode::New(token.Text);
 }
 
 
-ASTNode IdentifierParseletStorage::Parse(Parser parser, Token token) {
+ASTNode IdentifierParseletStorage::Parse(IParser& parser, Token token) {
 	String name = token.Text;
 
 	// Check what comes next
@@ -43,20 +43,20 @@ UnaryOpParseletStorage::UnaryOpParseletStorage(String op, Precedence prec) {
 	_op = op;
 	Prec = prec;
 }
-ASTNode UnaryOpParseletStorage::Parse(Parser parser, Token token) {
+ASTNode UnaryOpParseletStorage::Parse(IParser& parser, Token token) {
 	ASTNode operand = parser.ParseExpression(Prec);
 	return  UnaryOpNode::New(_op, operand);
 }
 
 
-ASTNode GroupParseletStorage::Parse(Parser parser, Token token) {
+ASTNode GroupParseletStorage::Parse(IParser& parser, Token token) {
 	ASTNode expr = parser.ParseExpression(Precedence::NONE);
 	parser.Expect(TokenType::RPAREN, "Expected ')' after expression");
 	return  GroupNode::New(expr);
 }
 
 
-ASTNode ListParseletStorage::Parse(Parser parser, Token token) {
+ASTNode ListParseletStorage::Parse(IParser& parser, Token token) {
 	List<ASTNode> elements =  List<ASTNode>::New();
 
 	if (!parser.Check(TokenType::RBRACKET)) {
@@ -70,7 +70,7 @@ ASTNode ListParseletStorage::Parse(Parser parser, Token token) {
 }
 
 
-ASTNode MapParseletStorage::Parse(Parser parser, Token token) {
+ASTNode MapParseletStorage::Parse(IParser& parser, Token token) {
 	List<ASTNode> keys =  List<ASTNode>::New();
 	List<ASTNode> values =  List<ASTNode>::New();
 
@@ -99,7 +99,7 @@ BinaryOpParseletStorage::BinaryOpParseletStorage(String op, Precedence prec) {
 	Prec = prec;
 	_rightAssoc = Boolean(false);
 }
-ASTNode BinaryOpParseletStorage::Parse(Parser parser, ASTNode left, Token token) {
+ASTNode BinaryOpParseletStorage::Parse(IParser& parser, ASTNode left, Token token) {
 	// For right-associative operators, use lower precedence for RHS
 	Precedence rhsPrec = _rightAssoc ? (Precedence)((Int32)Prec - 1) : Prec;
 	ASTNode right = parser.ParseExpression(rhsPrec);
@@ -110,7 +110,7 @@ ASTNode BinaryOpParseletStorage::Parse(Parser parser, ASTNode left, Token token)
 CallParseletStorage::CallParseletStorage() {
 	Prec = Precedence::CALL;
 }
-ASTNode CallParseletStorage::Parse(Parser parser, ASTNode left, Token token) {
+ASTNode CallParseletStorage::Parse(IParser& parser, ASTNode left, Token token) {
 	List<ASTNode> args =  List<ASTNode>::New();
 
 	if (!parser.Check(TokenType::RPAREN)) {
@@ -143,7 +143,7 @@ ASTNode CallParseletStorage::Parse(Parser parser, ASTNode left, Token token) {
 IndexParseletStorage::IndexParseletStorage() {
 	Prec = Precedence::CALL;
 }
-ASTNode IndexParseletStorage::Parse(Parser parser, ASTNode left, Token token) {
+ASTNode IndexParseletStorage::Parse(IParser& parser, ASTNode left, Token token) {
 	ASTNode index = parser.ParseExpression(Precedence::NONE);
 	parser.Expect(TokenType::RBRACKET, "Expected ']' after index");
 	return  IndexNode::New(left, index);
@@ -153,7 +153,7 @@ ASTNode IndexParseletStorage::Parse(Parser parser, ASTNode left, Token token) {
 MemberParseletStorage::MemberParseletStorage() {
 	Prec = Precedence::CALL;
 }
-ASTNode MemberParseletStorage::Parse(Parser parser, ASTNode left, Token token) {
+ASTNode MemberParseletStorage::Parse(IParser& parser, ASTNode left, Token token) {
 	Token memberToken = parser.Expect(TokenType::IDENTIFIER, "Expected member name after '.'");
 	return  MemberNode::New(left, memberToken.Text);
 }

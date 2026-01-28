@@ -6,6 +6,7 @@
 // Hand-written lexer for MiniScript
 // Simple expression tokenizer (to be expanded for full MiniScript grammar)
 
+#include "LangConstants.g.h"
 
 namespace MiniScript {
 
@@ -15,34 +16,6 @@ struct VM;
 class VMStorage;
 struct Assembler;
 class AssemblerStorage;
-struct Parselet;
-class ParseletStorage;
-struct PrefixParselet;
-class PrefixParseletStorage;
-struct InfixParselet;
-class InfixParseletStorage;
-struct NumberParselet;
-class NumberParseletStorage;
-struct StringParselet;
-class StringParseletStorage;
-struct IdentifierParselet;
-class IdentifierParseletStorage;
-struct UnaryOpParselet;
-class UnaryOpParseletStorage;
-struct GroupParselet;
-class GroupParseletStorage;
-struct ListParselet;
-class ListParseletStorage;
-struct MapParselet;
-class MapParseletStorage;
-struct BinaryOpParselet;
-class BinaryOpParseletStorage;
-struct CallParselet;
-class CallParseletStorage;
-struct IndexParselet;
-class IndexParseletStorage;
-struct MemberParselet;
-class MemberParseletStorage;
 struct Parser;
 class ParserStorage;
 struct FuncDef;
@@ -109,56 +82,6 @@ class MethodCallNodeStorage;
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-// Token types returned by the lexer
-enum class TokenType : Byte {
-	END_OF_INPUT,
-	NUMBER,
-	STRING,
-	IDENTIFIER,
-	PLUS,
-	MINUS,
-	TIMES,
-	DIVIDE,
-	MOD,
-	CARET,
-	LPAREN,
-	RPAREN,
-	LBRACKET,
-	RBRACKET,
-	LBRACE,
-	RBRACE,
-	ASSIGN,
-	EQUALS,
-	NOT_EQUAL,
-	LESS_THAN,
-	GREATER_THAN,
-	LESS_EQUAL,
-	GREATER_EQUAL,
-	COMMA,
-	COLON,
-	SEMICOLON,
-	DOT,
-	NOT,
-	AND,
-	OR,
-	EOL,
-	ERROR
-}; // end of enum TokenType
-
-
 // Represents a single token from the lexer
 struct Token {
 	public: TokenType Type;
@@ -169,6 +92,7 @@ struct Token {
 	public: Int32 Column;
 
 	public: Token(TokenType type, String text, Int32 line, Int32 column);
+	public: Token() = default;
 }; // end of struct Token
 
 
@@ -178,6 +102,7 @@ struct Lexer {
 	private: Int32 _line;
 	private: Int32 _column;
 
+	public: Lexer() = default;
 	public: Lexer(String source);
 
 	// Peek at current character without advancing

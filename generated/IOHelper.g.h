@@ -15,8 +15,6 @@ struct VM;
 class VMStorage;
 struct Assembler;
 class AssemblerStorage;
-struct Parselet;
-class ParseletStorage;
 struct Parser;
 class ParserStorage;
 struct FuncDef;
@@ -73,7 +71,6 @@ class IOHelper {
 	public: static List<String> ReadFile(String filePath);
 	
 }; // end of struct IOHelper
-
 
 
 

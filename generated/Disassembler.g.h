@@ -13,8 +13,6 @@ struct VM;
 class VMStorage;
 struct Assembler;
 class AssemblerStorage;
-struct Parselet;
-class ParseletStorage;
 struct Parser;
 class ParserStorage;
 struct FuncDef;
@@ -68,7 +66,6 @@ class Disassembler {
 	public: static List<String> Disassemble(List<FuncDef> functions, Boolean detailed=true);
 
 }; // end of struct Disassembler
-
 
 
 

@@ -3,8 +3,6 @@
 
 #include "Parser.g.h"
 #include "AST.g.h"
-#include "Parselet.g.h"
-#include "Lexer.g.h"
 #include "IOHelper.g.h"
 
 namespace MiniScript {

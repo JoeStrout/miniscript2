@@ -8,8 +8,6 @@
 namespace MiniScript {
 
 
-
-
 Token::Token(TokenType type, String text, Int32 line, Int32 column) {
 	Type = type;
 	Text = text;

@@ -335,6 +335,15 @@ Transpiler.fill = function(pattern, addComment=true)
 	if pattern.contains("≤args≥") and not self.m.hasIndex("args") then
 		self.m.args = parameterNames(self.m.params)
 	end if
+	if pattern.contains("≤params≥") and not self.m.hasIndex("fixedRefs") then
+		// Add & to any interface types, e.g. IParser --> IParser&
+		s = self.m.params
+		for cls in self.allClasses
+			if cls.type == ClassType.INTERFACE then s = s.replace(cls.name, cls.name + "&")
+		end for
+		self.m.params = s
+		self.m.fixedRefs = true
+	end if
 	result = pattern.fill(self.m)
 	if addComment and self.line.comment then result += " " + self.line.comment
 	return result
@@ -687,6 +696,7 @@ Transpiler.enterState = function(newState, initAsNew=true)
 			self.curClass.defLines.push ""
 		end if
 		self.nextMethodInline = false
+		if self.m.hasIndex("name") then self.m.className = self.m.name
 
 	else if newState == State.METHOD then
 		if self.curClass.type == ClassType.CLASS then
@@ -836,9 +846,12 @@ Transpiler.updateStateNAMESPACE = function
 		self.curClass.wrapperLines.push self.fill("	≤name≥(std::shared_ptr<≤name≥Storage> stor) : storage(stor) {}")
 		self.curClass.wrapperLines.push self.fill("	≤name≥() : storage(nullptr) {}")
 		self.curClass.wrapperLines.push self.fill("	≤name≥(std::nullptr_t) : storage(nullptr) {}")
-		self.curClass.wrapperLines.push self.fill("	static ≤name≥ New() { return ≤name≥(std::make_shared<≤name≥Storage>()); }")
+		// Note: we no longer implicitly make a New() method (serving as implicit constructor);
+		// every class you might instantiate directly needs an explicit constructor.
+		//self.curClass.wrapperLines.push self.fill("	static ≤name≥ New() { return ≤name≥(std::make_shared<≤name≥Storage>()); }")
 		self.curClass.wrapperLines.push self.fill("	friend bool IsNull(const ≤name≥& inst) { return inst.storage == nullptr; }")
-		self.curClass.wrapperLines.push self.fill("	private: ≤name≥Storage* get() const { return static_cast<≤name≥Storage*>(storage.get()); }")
+		self.curClass.wrapperLines.push self.fill("	private: ≤name≥Storage* get() const;")
+		self.curClass.inlineLines.push  self.fill("	≤name≥Storage* ≤className≥::get() const { return static_cast<≤name≥Storage*>(storage.get()); }")
 		self.curClass.storageLines.push self.fill("class ≤name≥Storage : public std::enable_shared_from_this<≤name≥Storage> {")
 		self.curClass.storageLines.push self.fill("	friend struct ≤name≥;")
 		if self.subclassesOf(self.curClass) then
@@ -879,17 +892,40 @@ Transpiler.updateStateNAMESPACE = function
 	else if self.match("≤scope:w≥ class ≤name:w≥ : ≤baseClass≥ {") then
 		self.enterState State.CLASS
 		self.curClass.superclass = self.m.baseClass
+		baseClass = self.findClass(self.m.baseClass)
+		baseIsInterface = baseClass.type == ClassType.INTERFACE
 		// subclasses: first a storage class, in the storage lines...
 		self.curClass.storageLines += self.preLines
-		self.curClass.storageLines.push self.fill("class ≤name≥Storage : public ≤baseClass≥Storage {")
+		if baseIsInterface then
+			self.curClass.storageLines.push self.fill("class ≤name≥Storage {")
+		else
+			self.curClass.storageLines.push self.fill("class ≤name≥Storage : public ≤baseClass≥Storage {")
+		end if
+		self.curClass.storageLines.push self.fill("	friend struct ≤name≥;")
 		// ...and then a wrapper class too
 		self.curClass.wrapperLines += self.preLines; self.preLines = []
 		self.curClass.wrapperLines.push self.fill("struct ≤name≥ : public ≤baseClass≥ {")
-		self.curClass.wrapperLines.push self.fill("	public: ≤name≥(std::shared_ptr<≤baseClass≥Storage> stor) : ≤baseClass≥(stor) {}")
-		// Hmm, whether to automatically make a New() method really depends on whether the C# code
-		// already declares one.  We're currently a bit inconsistent about this.
+		if baseIsInterface then
+			self.curClass.wrapperLines.push self.fill("	protected: std::shared_ptr<≤name≥Storage> storage;")
+			self.curClass.wrapperLines.push self.fill("	public: ≤name≥(std::shared_ptr<≤name≥Storage> stor) : storage(stor) {}")
+		else
+			self.curClass.wrapperLines.push self.fill("	public: ≤name≥(std::shared_ptr<≤baseClass≥Storage> stor) : ≤baseClass≥(stor) {}")
+		end if
+		// Note: we no longer implicitly make a New() method (serving as implicit constructor);
+		// every class you might instantiate directly needs an explicit constructor.
 		//self.curClass.wrapperLines.push self.fill("	static ≤name≥ New() { return ≤name≥(std::make_shared<≤name≥Storage>()); }")
-		self.curClass.wrapperLines.push self.fill("	private: ≤name≥Storage* get() { return static_cast<≤name≥Storage*>(storage.get()); }")
+		self.curClass.wrapperLines.push self.fill("	private: ≤name≥Storage* get();")
+		self.curClass.inlineLines.push  self.fill("	≤name≥Storage* ≤className≥::get() { return static_cast<≤name≥Storage*>(storage.get()); }")
+
+	// class interface
+	else if self.match("≤scope:w≥ interface ≤name:w≥ {") then
+		self.enterState State.CLASS
+		self.curClass.type = ClassType.INTERFACE
+		// wrapper class (we'll take care to write this one out before all storage classes later)
+		self.curClass.declLines += self.preLines; self.preLines = []
+		self.curClass.declLines.push self.fill("class ≤name≥ {")
+		self.curClass.declLines.push "  public:"
+		self.curClass.declLines.push self.fill("	virtual ~≤name≥() = default;")
 
 	// enum
 	else if self.match("≤scope:w≥ enum ≤name:w≥ : ≤type≥ {") then
@@ -963,7 +999,8 @@ Transpiler.updateStateCLASS = function
 			if self.curClass.type == ClassType.CLASS then
 				self.curClass.storageLines.push self.fill("	≤scope≥: static const ≤type≥ ≤name≥;")
 				self.curClass.defLines.push self.fill("const ≤type≥ ≤className≥Storage::≤name≥ = ≤value≥;")
-				self.curClass.wrapperLines.push self.fill("	≤scope≥: ≤type≥ ≤name≥() { return get()->≤name≥; }")
+				self.curClass.wrapperLines.push self.fill("	≤scope≥: ≤type≥ ≤name≥();")
+				self.curClass.inlineLines.push  self.fill("	≤type≥ ≤className≥::≤name≥() { return get()->≤name≥; }")
 			else
 				self.curClass.declLines.push self.fill("	≤scope≥: static const ≤type≥ ≤name≥;")
 				self.curClass.defLines.push self.fill("const ≤type≥ ≤className≥::≤name≥ = ≤value≥;")
@@ -992,8 +1029,10 @@ Transpiler.updateStateCLASS = function
 			end if
 			if self.curClass.type == ClassType.CLASS then
 				self.curClass.storageLines.push self.fill("	≤dec≥;")
-				self.curClass.wrapperLines.push self.fill("	≤scope≥: ≤type≥ ≤name≥() { return get()->≤name≥; }")
-				self.curClass.wrapperLines.push self.fill("	≤scope≥: void set_≤name≥(≤type≥ _v) { get()->≤name≥ = _v; }")
+				self.curClass.wrapperLines.push self.fill("	≤scope≥: ≤type≥ ≤name≥();")
+				self.curClass.inlineLines.push  self.fill("	≤type≥ ≤className≥::≤name≥() { return get()->≤name≥; }")
+				self.curClass.wrapperLines.push self.fill("	≤scope≥: void set_≤name≥(≤type≥ _v);")
+				self.curClass.inlineLines.push  self.fill("	void ≤className≥::set_≤name≥(≤type≥ _v) { get()->≤name≥ = _v; }")
 			else
 				self.curClass.declLines.push self.fill("	≤dec≥;")
 			end if
@@ -1084,6 +1123,12 @@ Transpiler.updateStateCLASS = function
 			end if
 			if self.gatherMode then self.curClass.methods.push MethodInfo.Make(self.m.name)
 
+		// interface method
+		else if self.match("≤type:w≥ ≤name:w≥(≤params≥);") then
+			self.assert self.curClass.type == ClassType.INTERFACE
+			self.curClass.declLines.push self.fill("	virtual ≤type≥ ≤name≥(≤params≥) = 0;")
+			if self.gatherMode then self.curClass.methods.push MethodInfo.Make(self.m.name)
+		
 		// abstract method: in C++ we actually implement this (inline) on the wrapper
 		// struct, calling through to the storage, where it may be overridden.
 		else if self.match("≤scope:w≥ abstract ≤type:w≥ ≤name:w≥(≤params≥);") then
@@ -1094,7 +1139,7 @@ Transpiler.updateStateCLASS = function
 			// we'll need that in several places here (anywhere we have a method body).
 			self.stripDefaultArgs
 			self.curClass.inlineLines.push self.fill(
-			  "inline ≤type≥ ≤className≥::≤name≥(≤params≥) { return storage->≤name≥(≤args≥); }")
+			  "inline ≤type≥ ≤className≥::≤name≥(≤params≥) { return get()->≤name≥(≤args≥); }")
 			if self.gatherMode then self.curClass.methods.push MethodInfo.Make(self.m.name)
 
 		// override method

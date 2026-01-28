@@ -6,6 +6,10 @@
 // Parser.cs - Pratt parser for MiniScript expressions
 // Uses parselets to handle operator precedence and associativity.
 
+#include "LangConstants.g.h"
+#include "Lexer.g.h"
+#include "Parselet.g.h"
+
 
 namespace MiniScript {
 
@@ -124,12 +128,18 @@ class MethodCallNodeStorage;
 
 
 
-class ParserStorage : public std::enable_shared_from_this<ParserStorage> {
+
+
+// Parser: the main parsing engine.
+// Uses a Pratt parser algorithm with parselets to handle operator precedence.
+class ParserStorage {
 	friend struct Parser;
 	private: Lexer _lexer;
 	private: Token _current;
 	private: Boolean _hadError;
 	private: List<String> _errors;
+	private: Dictionary<TokenType, PrefixParselet> _prefixParselets;
+	private: Dictionary<TokenType, InfixParselet> _infixParselets;
 
 	// Parselet tables - indexed by TokenType
 
@@ -185,27 +195,28 @@ class ParserStorage : public std::enable_shared_from_this<ParserStorage> {
 
 // Parser: the main parsing engine.
 // Uses a Pratt parser algorithm with parselets to handle operator precedence.
-struct Parser {
+struct Parser : public IParser {
 	protected: std::shared_ptr<ParserStorage> storage;
-  public:
-	Parser(std::shared_ptr<ParserStorage> stor) : storage(stor) {}
-	Parser() : storage(nullptr) {}
-	Parser(std::nullptr_t) : storage(nullptr) {}
-	static Parser New() { return Parser(std::make_shared<ParserStorage>()); }
-	friend bool IsNull(const Parser& inst) { return inst.storage == nullptr; }
-	private: ParserStorage* get() const { return static_cast<ParserStorage*>(storage.get()); }
-
-	private: Lexer _lexer() { return get()->_lexer; }
-	private: void set__lexer(Lexer _v) { get()->_lexer = _v; }
-	private: Token _current() { return get()->_current; }
-	private: void set__current(Token _v) { get()->_current = _v; }
-	private: Boolean _hadError() { return get()->_hadError; }
-	private: void set__hadError(Boolean _v) { get()->_hadError = _v; }
-	private: List<String> _errors() { return get()->_errors; }
-	private: void set__errors(List<String> _v) { get()->_errors = _v; }
+	public: Parser(std::shared_ptr<ParserStorage> stor) : storage(stor) {}
+	private: ParserStorage* get();
+	private: Lexer _lexer();
+	private: void set__lexer(Lexer _v);
+	private: Token _current();
+	private: void set__current(Token _v);
+	private: Boolean _hadError();
+	private: void set__hadError(Boolean _v);
+	private: List<String> _errors();
+	private: void set__errors(List<String> _v);
+	private: Dictionary<TokenType, PrefixParselet> _prefixParselets();
+	private: void set__prefixParselets(Dictionary<TokenType, PrefixParselet> _v);
+	private: Dictionary<TokenType, InfixParselet> _infixParselets();
+	private: void set__infixParselets(Dictionary<TokenType, InfixParselet> _v);
 
 	// Parselet tables - indexed by TokenType
 
+	public: static Parser New() {
+		return Parser(std::make_shared<ParserStorage>());
+	}
 
 	// Register all parselets
 	private: void RegisterParselets() { return get()->RegisterParselets(); }
@@ -256,5 +267,19 @@ struct Parser {
 
 
 // INLINE METHODS
+
+	ParserStorage* Parser::get() { return static_cast<ParserStorage*>(storage.get()); }
+	Lexer Parser::_lexer() { return get()->_lexer; }
+	void Parser::set__lexer(Lexer _v) { get()->_lexer = _v; }
+	Token Parser::_current() { return get()->_current; }
+	void Parser::set__current(Token _v) { get()->_current = _v; }
+	Boolean Parser::_hadError() { return get()->_hadError; }
+	void Parser::set__hadError(Boolean _v) { get()->_hadError = _v; }
+	List<String> Parser::_errors() { return get()->_errors; }
+	void Parser::set__errors(List<String> _v) { get()->_errors = _v; }
+	Dictionary<TokenType, PrefixParselet> Parser::_prefixParselets() { return get()->_prefixParselets; }
+	void Parser::set__prefixParselets(Dictionary<TokenType, PrefixParselet> _v) { get()->_prefixParselets = _v; }
+	Dictionary<TokenType, InfixParselet> Parser::_infixParselets() { return get()->_infixParselets; }
+	void Parser::set__infixParselets(Dictionary<TokenType, InfixParselet> _v) { get()->_infixParselets = _v; }
 
 } // end of namespace MiniScript

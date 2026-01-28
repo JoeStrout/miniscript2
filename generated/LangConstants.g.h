@@ -1,10 +1,10 @@
 // AUTO-GENERATED FILE.  DO NOT MODIFY.
-// Transpiled from: UnitTests.cs
+// Transpiled from: LangConstants.cs
 
 #pragma once
 #include "core_includes.h"
-// This module gathers together all the unit tests for this prototype.
-// Each test returns true on success, false on failure.
+// Constants used as part of the language definition: token types,
+// operator precedence, that sort of thing.
 
 
 namespace MiniScript {
@@ -56,35 +56,59 @@ class MethodCallNodeStorage;
 
 
 
+// Precedence levels (higher precedence binds more strongly)
+enum class Precedence : Int32 {
+	NONE = 0,
+	ASSIGNMENT = 1,
+	OR = 2,
+	AND = 3,
+	EQUALITY = 4,        // == !=
+	COMPARISON = 5,      // < > <= >=
+	SUM = 6,             // + -
+	PRODUCT = 7,         // * / %
+	POWER = 8,           // ^
+	UNARY = 9,           // - not
+	CALL = 10,           // () []
+	PRIMARY = 11
+}; // end of enum Precedence
 
 
-class UnitTests {
+// Token types returned by the lexer
+enum class TokenType : Int32 {
+	END_OF_INPUT,
+	NUMBER,
+	STRING,
+	IDENTIFIER,
+	PLUS,
+	MINUS,
+	TIMES,
+	DIVIDE,
+	MOD,
+	CARET,
+	LPAREN,
+	RPAREN,
+	LBRACKET,
+	RBRACKET,
+	LBRACE,
+	RBRACE,
+	ASSIGN,
+	EQUALS,
+	NOT_EQUAL,
+	LESS_THAN,
+	GREATER_THAN,
+	LESS_EQUAL,
+	GREATER_EQUAL,
+	COMMA,
+	COLON,
+	SEMICOLON,
+	DOT,
+	NOT,
+	AND,
+	OR,
+	EOL,
+	ERROR
+}; // end of enum TokenType
 
-	public: static Boolean Assert(bool condition, String message);
-	
-	public: static Boolean AssertEqual(String actual, String expected);
-		
-	public: static Boolean AssertEqual(UInt32 actual, UInt32 expected);
-		
-	public: static Boolean AssertEqual(Int32 actual, Int32 expected);
-		
-	public: static Boolean AssertEqual(List<String> actual, List<String> expected);
-		
-	public: static Boolean TestStringUtils();
-	
-	public: static Boolean TestDisassembler();
-	
-	public: static Boolean TestAssembler();
-
-	public: static Boolean TestValueMap();
-
-	// Helper for parser tests: parse, simplify, and check result
-	private: static Boolean CheckParse(Parser parser, String input, String expected);
-
-	public: static Boolean TestParser();
-
-	public: static Boolean RunAll();
-}; // end of struct UnitTests
 
 
 

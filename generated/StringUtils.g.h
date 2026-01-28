@@ -21,8 +21,6 @@ struct VM;
 class VMStorage;
 struct Assembler;
 class AssemblerStorage;
-struct Parselet;
-class ParseletStorage;
 struct Parser;
 class ParserStorage;
 struct FuncDef;
@@ -185,7 +183,6 @@ class StringUtils {
 	// Convert a Value to its representation (quoted string for strings, plain for others)
 	// This is used when displaying values in source code form.
 }; // end of struct StringUtils
-
 
 
 

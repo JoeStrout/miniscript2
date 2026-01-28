@@ -129,6 +129,20 @@ public struct Token {
 
 This will cue the transpiler to put the method body in the header, rather than in the .cpp file.
 
+## Memory Management Considerations
+
+### `class` vs. `struct`
+
+Use `struct` for simple classes containing a relatively small amount of data.  In C++, these will be passed around as structs on the stack.  They use copy semantics in both C# and C++.
+
+Use `class` for things that contain more data, or where you really need reference semantics.  In C++, such a class becomes a pair of classes: a reference-counted storage class and a thin wrapper class.
+
+### Class Constructors
+
+C# lets you instantiate a class that does not have an explicit constructor.  The transpiler converts `new Foo` instantiation to `Foo::New()`, but it only makes this `New` factory method when it sees an explicit constructor.  So, every class you might `new` needs to have an explicit constructor, even if it is empty.
+
+
+
 ## Other limitations
 
 - The `switch` statement may only be used with integer types (including enums).  For Strings or other custom types, use `if` statements instead.

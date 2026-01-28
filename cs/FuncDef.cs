@@ -17,6 +17,9 @@ public class FuncDef {
 	public List<Value> ParamNames = new List<Value>();     // parameter names (as Value strings)
 	public List<Value> ParamDefaults = new List<Value>();  // default values for parameters
 
+	public FuncDef() {
+	}
+
 	public void ReserveRegister(Int32 registerNumber) {
 		UInt16 impliedCount = (UInt16)(registerNumber + 1);
 		if (MaxRegs < impliedCount) MaxRegs = impliedCount;

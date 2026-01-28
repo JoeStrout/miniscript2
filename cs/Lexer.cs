@@ -4,46 +4,11 @@
 using System;
 using System.Runtime.CompilerServices;
 using static System.Runtime.CompilerServices.MethodImplOptions;
+// H: #include "LangConstants.g.h"
 // CPP: #include "StringUtils.g.h"
 // CPP: #include "IOHelper.g.h"
 
 namespace MiniScript {
-
-// Token types returned by the lexer
-public enum TokenType : Byte {
-	END_OF_INPUT,
-	NUMBER,
-	STRING,
-	IDENTIFIER,
-	PLUS,
-	MINUS,
-	TIMES,
-	DIVIDE,
-	MOD,
-	CARET,
-	LPAREN,
-	RPAREN,
-	LBRACKET,
-	RBRACKET,
-	LBRACE,
-	RBRACE,
-	ASSIGN,
-	EQUALS,
-	NOT_EQUAL,
-	LESS_THAN,
-	GREATER_THAN,
-	LESS_EQUAL,
-	GREATER_EQUAL,
-	COMMA,
-	COLON,
-	SEMICOLON,
-	DOT,
-	NOT,
-	AND,
-	OR,
-	EOL,
-	ERROR
-}
 
 // Represents a single token from the lexer
 public struct Token {
@@ -54,6 +19,7 @@ public struct Token {
 	public Int32 Line;
 	public Int32 Column;
 
+	// CPP: public: Token() = default;
 	public Token(TokenType type, String text, Int32 line, Int32 column) {
 		Type = type;
 		Text = text;
@@ -70,6 +36,7 @@ public struct Lexer {
 	private Int32 _line;
 	private Int32 _column;
 
+	// CPP: public: Lexer() = default;
 	public Lexer(String source) {
 		_input = source;
 		_position = 0;

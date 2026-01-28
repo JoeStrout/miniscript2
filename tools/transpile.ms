@@ -684,8 +684,6 @@ Transpiler.enterState = function(newState, initAsNew=true)
 				name = "?"
 			end if
 			self.curClass = self.findOrMakeClass(name)
-			self.curClass.declLines += self.preLines
-			self.preLines = []
 			self.curClass.defLines.push ""
 		end if
 		self.nextMethodInline = false
@@ -820,15 +818,18 @@ Transpiler.updateStateNAMESPACE = function
 	else if self.match("≤scope:w≥ static class ≤name:w≥ {") then
 		self.enterState State.CLASS
 		self.curClass.type = ClassType.STRUCT
+		self.curClass.declLines += self.preLines; self.preLines = []
 		self.curClass.declLines.push self.fill("class ≤name≥ {")
 	// struct
 	else if self.match("≤scope:w≥ struct ≤name:w≥ {") then
 		self.enterState State.CLASS
 		self.curClass.type = ClassType.STRUCT
+		self.curClass.declLines += self.preLines; self.preLines = []
 		self.curClass.declLines.push self.fill("struct ≤name≥ {")
 	// class (simple or base class)
 	else if self.match("≤scope:w≥ class ≤name:w≥ {") then
 		self.enterState State.CLASS
+		self.curClass.wrapperLines += self.preLines; self.preLines = []
 		self.curClass.wrapperLines.push self.fill("struct ≤name≥ {")
 		self.curClass.wrapperLines.push self.fill("	protected: std::shared_ptr<≤name≥Storage> storage;")
 		self.curClass.wrapperLines.push "  public:"
@@ -842,18 +843,21 @@ Transpiler.updateStateNAMESPACE = function
 		self.curClass.storageLines.push self.fill("	friend struct ≤name≥;")
 		if self.subclassesOf(self.curClass) then
 			self.curClass.wrapperLines.push self.fill("	template<typename WrapperType, typename StorageType>")
-			self.curClass.wrapperLines.push self.fill("	friend WrapperType As(ASTNode node) {")
-			self.curClass.wrapperLines.push self.fill("		StorageType* stor = dynamic_cast<StorageType*>(node.storage.get());")
+			self.curClass.wrapperLines.push self.fill("	friend WrapperType As(≤name≥ inst) {")
+			self.curClass.wrapperLines.push self.fill("		StorageType* stor = dynamic_cast<StorageType*>(inst.storage.get());")
 			self.curClass.wrapperLines.push self.fill("		if (stor == nullptr) return WrapperType(nullptr);")
-			self.curClass.wrapperLines.push self.fill("		return WrapperType(node.storage);")
+			self.curClass.wrapperLines.push self.fill("		return WrapperType(inst.storage);")
 			self.curClass.wrapperLines.push self.fill("	}")
 			self.curClass.storageLines.push self.fill("	public: virtual ~≤name≥Storage() {}")
 		end if
 		self.curClass.wrapperLines.push ""
 	// class (abstract)
-	else if self.match("≤scope:w≥ abstract class ≤name:w≥ {") then
+	else if self.match("≤scope:w≥ abstract class ≤name:w≥ {") or
+	        self.match("≤scope:w≥ abstract class ≤name:w≥ : ≤baseClass≥ {") then
 		self.enterState State.CLASS
+		if self.m.hasIndex("baseClass") then self.curClass.superclass = self.m.baseClass
 		// wrapper class (we'll take care to write this one out before all storage classes later)
+		self.curClass.wrapperLines += self.preLines; self.preLines = []
 		self.curClass.wrapperLines.push self.fill("struct ≤name≥ {")
 		self.curClass.wrapperLines.push self.fill("	protected: std::shared_ptr<≤name≥Storage> storage;")
 		self.curClass.wrapperLines.push "  public:"
@@ -862,10 +866,10 @@ Transpiler.updateStateNAMESPACE = function
 		self.curClass.wrapperLines.push self.fill("	friend bool IsNull(≤name≥ inst) { return inst.storage == nullptr; }")
 		// (as this is an abstract class, we assume there must be subclasses!)
 		self.curClass.wrapperLines.push self.fill("	template<typename WrapperType, typename StorageType>")
-		self.curClass.wrapperLines.push self.fill("	friend WrapperType As(ASTNode node) {")
-		self.curClass.wrapperLines.push self.fill("		StorageType* stor = dynamic_cast<StorageType*>(node.storage.get());")
+		self.curClass.wrapperLines.push self.fill("	friend WrapperType As(≤name≥ inst) {")
+		self.curClass.wrapperLines.push self.fill("		StorageType* stor = dynamic_cast<StorageType*>(inst.storage.get());")
 		self.curClass.wrapperLines.push self.fill("		if (stor == nullptr) return WrapperType(nullptr);")
-		self.curClass.wrapperLines.push self.fill("		return WrapperType(node.storage);")
+		self.curClass.wrapperLines.push self.fill("		return WrapperType(inst.storage);")
 		self.curClass.wrapperLines.push self.fill("	}")
 		self.curClass.wrapperLines.push ""
 		self.curClass.storageLines.push self.fill("class ≤name≥Storage : public std::enable_shared_from_this<≤name≥Storage> {")
@@ -876,17 +880,24 @@ Transpiler.updateStateNAMESPACE = function
 		self.enterState State.CLASS
 		self.curClass.superclass = self.m.baseClass
 		// subclasses: first a storage class, in the storage lines...
+		self.curClass.storageLines += self.preLines
 		self.curClass.storageLines.push self.fill("class ≤name≥Storage : public ≤baseClass≥Storage {")
 		// ...and then a wrapper class too
+		self.curClass.wrapperLines += self.preLines; self.preLines = []
 		self.curClass.wrapperLines.push self.fill("struct ≤name≥ : public ≤baseClass≥ {")
 		self.curClass.wrapperLines.push self.fill("	public: ≤name≥(std::shared_ptr<≤baseClass≥Storage> stor) : ≤baseClass≥(stor) {}")
+		// Hmm, whether to automatically make a New() method really depends on whether the C# code
+		// already declares one.  We're currently a bit inconsistent about this.
+		//self.curClass.wrapperLines.push self.fill("	static ≤name≥ New() { return ≤name≥(std::make_shared<≤name≥Storage>()); }")
 		self.curClass.wrapperLines.push self.fill("	private: ≤name≥Storage* get() { return static_cast<≤name≥Storage*>(storage.get()); }")
 
 	// enum
 	else if self.match("≤scope:w≥ enum ≤name:w≥ : ≤type≥ {") then
 		self.enterState State.CLASS
 		self.curClass.type = ClassType.ENUM
+		self.curClass.declLines += self.preLines; self.preLines = []
 		self.curClass.declLines.push self.fill("enum class ≤name≥ : ≤type≥ {")
+
 	else if line.full.startsWith("}") then
 		if not line.comment then line.comment = "// end of namespace " + self.namespace
 		self.endLines.push "} " + line.comment
@@ -998,11 +1009,14 @@ Transpiler.updateStateCLASS = function
 		else if self.match("≤scope:w≥ ≤name:w≥(≤params≥) {") then
 			self.enterState State.METHOD
 			if self.curClass.type == ClassType.CLASS then
+				self.curClass.wrapperLines.push self.fill("	≤scope≥: static ≤name≥ New(≤params≥) {")
+				self.curClass.wrapperLines.push self.fill("		return ≤name≥(std::make_shared<≤name≥Storage>(≤args≥));")
+				self.curClass.wrapperLines.push self.fill("	}")
 				self.curClass.storageLines.push self.fill("	≤scope≥: ≤name≥Storage(≤params≥);")
-				root = self.curClass.rootClass(self.allClasses)
-				if root then self.m.rootClass = root.name
 				self.stripDefaultArgs
 				self.curClass.methodLines.push self.fill("≤inline≥≤className≥Storage::≤name≥Storage(≤params≥) {")
+//				root = self.curClass.rootClass(self.allClasses)
+//				if root then self.m.rootClass = root.name
 			else
 				self.curClass.declLines.push self.fill("	≤scope≥: ≤name≥(≤params≥);")
 				self.stripDefaultArgs

@@ -231,4 +231,6 @@ I've also updated the build scripts so that the output (executable) is called `m
 
 So, on to the parser!  I've moved the Pratt parser prototype over from MS2Proto5, and updated it to our current C# coding standards.  That *should* make memory management for AST nodes and parselets "just work".  We have a bunch of unit tests that parse, simplify, and convert back to string, which are all passing on the C# side.
 
-The transpilation (or something about the C# source) still needs a bit of work, though, because I'm getting errors.  The transpiler's scanning seems to have missed all the parselet types... and indeed, none of the Parselet classes are declared in Parselet.g.h at all.  So, something's gone wonky there.  But I'm out of time for today -- debugging this will be the first task next time.
+The transpilation (or something about the C# source) still needs a bit of work, though, because I'm getting errors.  The transpiler's scanning seems to have missed all the parselet types... and indeed, none of the Parselet classes are declared in Parselet.g.h at all.  ...OK, that's fixed.
+
+There are more issues, but it's late.  I'll continue tomorrow.

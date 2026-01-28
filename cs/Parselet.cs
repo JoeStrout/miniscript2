@@ -3,8 +3,9 @@
 
 using System;
 using System.Collections.Generic;
-// CPP: #include "AST.g.h"
-// CPP: #include "Parser.g.h"
+// H: #include "AST.g.h"
+// H: #include "Lexer.g.h"
+// H: #include "Parser.g.h"
 
 namespace MiniScript {
 

@@ -19,41 +19,41 @@ ParserStorage::ParserStorage() {
 }
 void ParserStorage::RegisterParselets() {
 	// Prefix parselets (tokens that can start an expression)
-	RegisterPrefix(TokenType::NUMBER, NumberParselet());
-	RegisterPrefix(TokenType::STRING, StringParselet());
-	RegisterPrefix(TokenType::IDENTIFIER, IdentifierParselet());
-	RegisterPrefix(TokenType::LPAREN, GroupParselet());
-	RegisterPrefix(TokenType::LBRACKET, ListParselet());
-	RegisterPrefix(TokenType::LBRACE, MapParselet());
+	RegisterPrefix(TokenType::NUMBER,  NumberParselet::New());
+	RegisterPrefix(TokenType::STRING,  StringParselet::New());
+	RegisterPrefix(TokenType::IDENTIFIER,  IdentifierParselet::New());
+	RegisterPrefix(TokenType::LPAREN,  GroupParselet::New());
+	RegisterPrefix(TokenType::LBRACKET,  ListParselet::New());
+	RegisterPrefix(TokenType::LBRACE,  MapParselet::New());
 
 	// Unary operators
-	RegisterPrefix(TokenType::MINUS, UnaryOpParselet(Op::MINUS, Precedence::UNARY));
-	RegisterPrefix(TokenType::NOT, UnaryOpParselet(Op::NOT, Precedence::UNARY));
+	RegisterPrefix(TokenType::MINUS,  UnaryOpParselet::New(Op::MINUS, Precedence::UNARY));
+	RegisterPrefix(TokenType::NOT,  UnaryOpParselet::New(Op::NOT, Precedence::UNARY));
 
 	// Binary operators
-	RegisterInfix(TokenType::PLUS, BinaryOpParselet(Op::PLUS, Precedence::SUM));
-	RegisterInfix(TokenType::MINUS, BinaryOpParselet(Op::MINUS, Precedence::SUM));
-	RegisterInfix(TokenType::TIMES, BinaryOpParselet(Op::TIMES, Precedence::PRODUCT));
-	RegisterInfix(TokenType::DIVIDE, BinaryOpParselet(Op::DIVIDE, Precedence::PRODUCT));
-	RegisterInfix(TokenType::MOD, BinaryOpParselet(Op::MOD, Precedence::PRODUCT));
-	RegisterInfix(TokenType::CARET, BinaryOpParselet(Op::POWER, Precedence::POWER, Boolean(true))); // right-assoc
+	RegisterInfix(TokenType::PLUS,  BinaryOpParselet::New(Op::PLUS, Precedence::SUM));
+	RegisterInfix(TokenType::MINUS,  BinaryOpParselet::New(Op::MINUS, Precedence::SUM));
+	RegisterInfix(TokenType::TIMES,  BinaryOpParselet::New(Op::TIMES, Precedence::PRODUCT));
+	RegisterInfix(TokenType::DIVIDE,  BinaryOpParselet::New(Op::DIVIDE, Precedence::PRODUCT));
+	RegisterInfix(TokenType::MOD,  BinaryOpParselet::New(Op::MOD, Precedence::PRODUCT));
+	RegisterInfix(TokenType::CARET,  BinaryOpParselet::New(Op::POWER, Precedence::POWER, Boolean(true))); // right-assoc
 
 	// Comparison operators
-	RegisterInfix(TokenType::EQUALS, BinaryOpParselet(Op::EQUALS, Precedence::EQUALITY));
-	RegisterInfix(TokenType::NOT_EQUAL, BinaryOpParselet(Op::NOT_EQUAL, Precedence::EQUALITY));
-	RegisterInfix(TokenType::LESS_THAN, BinaryOpParselet(Op::LESS_THAN, Precedence::COMPARISON));
-	RegisterInfix(TokenType::GREATER_THAN, BinaryOpParselet(Op::GREATER_THAN, Precedence::COMPARISON));
-	RegisterInfix(TokenType::LESS_EQUAL, BinaryOpParselet(Op::LESS_EQUAL, Precedence::COMPARISON));
-	RegisterInfix(TokenType::GREATER_EQUAL, BinaryOpParselet(Op::GREATER_EQUAL, Precedence::COMPARISON));
+	RegisterInfix(TokenType::EQUALS,  BinaryOpParselet::New(Op::EQUALS, Precedence::EQUALITY));
+	RegisterInfix(TokenType::NOT_EQUAL,  BinaryOpParselet::New(Op::NOT_EQUAL, Precedence::EQUALITY));
+	RegisterInfix(TokenType::LESS_THAN,  BinaryOpParselet::New(Op::LESS_THAN, Precedence::COMPARISON));
+	RegisterInfix(TokenType::GREATER_THAN,  BinaryOpParselet::New(Op::GREATER_THAN, Precedence::COMPARISON));
+	RegisterInfix(TokenType::LESS_EQUAL,  BinaryOpParselet::New(Op::LESS_EQUAL, Precedence::COMPARISON));
+	RegisterInfix(TokenType::GREATER_EQUAL,  BinaryOpParselet::New(Op::GREATER_EQUAL, Precedence::COMPARISON));
 
 	// Logical operators
-	RegisterInfix(TokenType::AND, BinaryOpParselet(Op::AND, Precedence::AND));
-	RegisterInfix(TokenType::OR, BinaryOpParselet(Op::OR, Precedence::OR));
+	RegisterInfix(TokenType::AND,  BinaryOpParselet::New(Op::AND, Precedence::AND));
+	RegisterInfix(TokenType::OR,  BinaryOpParselet::New(Op::OR, Precedence::OR));
 
 	// Call and index operators
-	RegisterInfix(TokenType::LPAREN, CallParselet());
-	RegisterInfix(TokenType::LBRACKET, IndexParselet());
-	RegisterInfix(TokenType::DOT, MemberParselet());
+	RegisterInfix(TokenType::LPAREN,  CallParselet::New());
+	RegisterInfix(TokenType::LBRACKET,  IndexParselet::New());
+	RegisterInfix(TokenType::DOT,  MemberParselet::New());
 }
 void ParserStorage::RegisterPrefix(TokenType type, PrefixParselet parselet) {
 	_prefixParselets[type] = parselet;
@@ -97,7 +97,7 @@ Token ParserStorage::Expect(TokenType type, String errorMessage) {
 Precedence ParserStorage::GetPrecedence() {
 	InfixParselet parselet = nullptr;
 	if (_infixParselets::TryGetValue(_current.Type, &parselet)) {
-		return parselet::Prec;
+		return parselet.Prec();
 	}
 	return Precedence::NONE;
 }
@@ -112,7 +112,7 @@ ASTNode ParserStorage::ParseExpression(Precedence minPrecedence) {
 		return  NumberNode::New(0);
 	}
 
-	ASTNode left = prefix::Parse(Parser(shared_from_this()), token);
+	ASTNode left = prefix.Parse(Parser(shared_from_this()), token);
 
 	// Continue parsing infix expressions while precedence allows
 	while ((Int32)minPrecedence < (Int32)GetPrecedence()) {
@@ -121,7 +121,7 @@ ASTNode ParserStorage::ParseExpression(Precedence minPrecedence) {
 
 		InfixParselet infix = nullptr;
 		if (_infixParselets::TryGetValue(token.Type, &infix)) {
-			left = infix::Parse(Parser(shared_from_this()), left, token);
+			left = infix.Parse(Parser(shared_from_this()), left, token);
 		}
 	}
 

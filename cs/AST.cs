@@ -4,6 +4,8 @@
 using System;
 using System.Collections.Generic;
 // CPP: #include "StringUtils.g.h"
+// CPP: #include "CS_Math.h"
+// CPP: #include <cmath>
 
 namespace MiniScript {
 
@@ -173,7 +175,8 @@ public class BinaryOpNode : ASTNode {
 			} else if (Op == MiniScript.Op.DIVIDE) {
 				return new NumberNode(leftNum.Value / rightNum.Value);
 			} else if (Op == MiniScript.Op.MOD) {
-				return new NumberNode(leftNum.Value % rightNum.Value);
+				Double result = leftNum.Value % rightNum.Value; // CPP: Double result = fmod(leftNum.Value(), rightNum.Value());
+				return new NumberNode(result);
 			} else if (Op == MiniScript.Op.POWER) {
 				return new NumberNode(Math.Pow(leftNum.Value, rightNum.Value));
 			} else if (Op == MiniScript.Op.EQUALS) {

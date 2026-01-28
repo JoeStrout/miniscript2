@@ -6,6 +6,9 @@
 // Parselet.cs - Mini-parsers for the Pratt parser
 // Each parselet is responsible for parsing one type of expression construct.
 
+#include "AST.g.h"
+#include "Lexer.g.h"
+#include "Parser.g.h"
 
 namespace MiniScript {
 
@@ -17,6 +20,32 @@ struct Assembler;
 class AssemblerStorage;
 struct Parselet;
 class ParseletStorage;
+struct PrefixParselet;
+class PrefixParseletStorage;
+struct InfixParselet;
+class InfixParseletStorage;
+struct NumberParselet;
+class NumberParseletStorage;
+struct StringParselet;
+class StringParseletStorage;
+struct IdentifierParselet;
+class IdentifierParseletStorage;
+struct UnaryOpParselet;
+class UnaryOpParseletStorage;
+struct GroupParselet;
+class GroupParseletStorage;
+struct ListParselet;
+class ListParseletStorage;
+struct MapParselet;
+class MapParseletStorage;
+struct BinaryOpParselet;
+class BinaryOpParseletStorage;
+struct CallParselet;
+class CallParseletStorage;
+struct IndexParselet;
+class IndexParseletStorage;
+struct MemberParselet;
+class MemberParseletStorage;
 struct Parser;
 class ParserStorage;
 struct FuncDef;
@@ -77,37 +106,45 @@ enum class Precedence : Int32 {
 }; // end of enum Precedence
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // Base class for all parselets
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-class ParseletStorage : public std::enable_shared_from_this<ParseletStorage> {
-	public: virtual ~ParseletStorage() {}
-	public: Precedence Prec;
-}; // end of class ParseletStorage
-
 struct Parselet {
 	protected: std::shared_ptr<ParseletStorage> storage;
   public:
@@ -115,205 +152,288 @@ struct Parselet {
 	Parselet() : storage(nullptr) {}
 	friend bool IsNull(Parselet inst) { return inst.storage == nullptr; }
 	template<typename WrapperType, typename StorageType>
-	friend WrapperType As(ASTNode node) {
-		StorageType* stor = dynamic_cast<StorageType*>(node.storage.get());
+	friend WrapperType As(Parselet inst) {
+		StorageType* stor = dynamic_cast<StorageType*>(inst.storage.get());
 		if (stor == nullptr) return WrapperType(nullptr);
-		return WrapperType(node.storage);
+		return WrapperType(inst.storage);
 	}
 
 	public: Precedence Prec() { return get()->Prec; }
 	public: void set_Prec(Precedence _v) { get()->Prec = _v; }
 }; // end of struct Parselet
 
+template<typename WrapperType, typename StorageType> WrapperType As(Parselet inst);
 
-// INLINE METHODS
 
-} // end of namespace MiniScript
+// PrefixParselet: abstract base for parselets that handle tokens
+// starting an expression (numbers, identifiers, unary operators).
+struct PrefixParselet {
+	protected: std::shared_ptr<PrefixParseletStorage> storage;
+  public:
+	PrefixParselet(std::shared_ptr<PrefixParseletStorage> stor) : storage(stor) {}
+	PrefixParselet() : storage(nullptr) {}
+	friend bool IsNull(PrefixParselet inst) { return inst.storage == nullptr; }
+	template<typename WrapperType, typename StorageType>
+	friend WrapperType As(PrefixParselet inst) {
+		StorageType* stor = dynamic_cast<StorageType*>(inst.storage.get());
+		if (stor == nullptr) return WrapperType(nullptr);
+		return WrapperType(inst.storage);
+	}
+
+	public: ASTNode Parse(Parser parser, Token token);
+}; // end of struct PrefixParselet
+
+template<typename WrapperType, typename StorageType> WrapperType As(PrefixParselet inst);
+
 
 // InfixParselet: abstract base for parselets that handle infix operators.
-public abstract class InfixParselet : Parselet {
-	public abstract ASTNode Parse(Parser parser, ASTNode left, Token token);
-}
+struct InfixParselet {
+	protected: std::shared_ptr<InfixParseletStorage> storage;
+  public:
+	InfixParselet(std::shared_ptr<InfixParseletStorage> stor) : storage(stor) {}
+	InfixParselet() : storage(nullptr) {}
+	friend bool IsNull(InfixParselet inst) { return inst.storage == nullptr; }
+	template<typename WrapperType, typename StorageType>
+	friend WrapperType As(InfixParselet inst) {
+		StorageType* stor = dynamic_cast<StorageType*>(inst.storage.get());
+		if (stor == nullptr) return WrapperType(nullptr);
+		return WrapperType(inst.storage);
+	}
+
+	public: ASTNode Parse(Parser parser, ASTNode left, Token token);
+}; // end of struct InfixParselet
+
+template<typename WrapperType, typename StorageType> WrapperType As(InfixParselet inst);
+
+class ParseletStorage : public std::enable_shared_from_this<ParseletStorage> {
+	public: virtual ~ParseletStorage() {}
+	public: Precedence Prec;
+}; // end of class ParseletStorage
+
+class PrefixParseletStorage : public std::enable_shared_from_this<PrefixParseletStorage> {
+	public: virtual ~PrefixParseletStorage() {}
+	public: virtual ASTNode Parse(Parser parser, Token token) = 0;
+}; // end of class PrefixParseletStorage
+
+class InfixParseletStorage : public std::enable_shared_from_this<InfixParseletStorage> {
+	public: virtual ~InfixParseletStorage() {}
+	public: virtual ASTNode Parse(Parser parser, ASTNode left, Token token) = 0;
+}; // end of class InfixParseletStorage
+
 
 // NumberParselet: handles number literals.
-public class NumberParselet : PrefixParselet {
-	public override ASTNode Parse(Parser parser, Token token) {
-		return new NumberNode(token.DoubleValue);
-	}
-}
+class NumberParseletStorage : public PrefixParseletStorage {
+	public: ASTNode Parse(Parser parser, Token token);
+}; // end of class NumberParseletStorage
+
 
 // StringParselet: handles string literals.
-public class StringParselet : PrefixParselet {
-	public override ASTNode Parse(Parser parser, Token token) {
-		return new StringNode(token.Text);
-	}
-}
+class StringParseletStorage : public PrefixParseletStorage {
+	public: ASTNode Parse(Parser parser, Token token);
+}; // end of class StringParseletStorage
+
 
 // IdentifierParselet: handles identifiers, which can be:
 // - Variable lookups
 // - Variable assignments (when followed by '=')
 // - Function calls (when followed by '(')
-public class IdentifierParselet : PrefixParselet {
-	public override ASTNode Parse(Parser parser, Token token) {
-		String name = token.Text;
+class IdentifierParseletStorage : public PrefixParseletStorage {
+	public: ASTNode Parse(Parser parser, Token token);
+}; // end of class IdentifierParseletStorage
 
-		// Check what comes next
-		if (parser.Check(TokenType.ASSIGN)) {
-			parser.Consume();  // consume '='
-			ASTNode value = parser.ParseExpression(Precedence.ASSIGNMENT);
-			return new AssignmentNode(name, value);
-		}
-
-		// Just a variable reference
-		return new IdentifierNode(name);
-	}
-}
 
 // UnaryOpParselet: handles prefix unary operators like '-' and 'not'.
-public class UnaryOpParselet : PrefixParselet {
-	private String _op;
+class UnaryOpParseletStorage : public PrefixParseletStorage {
+	private: String _op;
 
-	public UnaryOpParselet(String op, Precedence prec) {
-		_op = op;
-		Prec = prec;
-	}
+	public: UnaryOpParseletStorage(String op, Precedence prec);
 
-	public override ASTNode Parse(Parser parser, Token token) {
-		ASTNode operand = parser.ParseExpression(Prec);
-		return new UnaryOpNode(_op, operand);
-	}
-}
+	public: ASTNode Parse(Parser parser, Token token);
+}; // end of class UnaryOpParseletStorage
+
 
 // GroupParselet: handles parenthesized expressions like '(2 + 3)'.
-public class GroupParselet : PrefixParselet {
-	public override ASTNode Parse(Parser parser, Token token) {
-		ASTNode expr = parser.ParseExpression(Precedence.NONE);
-		parser.Expect(TokenType.RPAREN, "Expected ')' after expression");
-		return new GroupNode(expr);
-	}
-}
+class GroupParseletStorage : public PrefixParseletStorage {
+	public: ASTNode Parse(Parser parser, Token token);
+}; // end of class GroupParseletStorage
+
 
 // ListParselet: handles list literals like '[1, 2, 3]'.
-public class ListParselet : PrefixParselet {
-	public override ASTNode Parse(Parser parser, Token token) {
-		List<ASTNode> elements = new List<ASTNode>();
+class ListParseletStorage : public PrefixParseletStorage {
+	public: ASTNode Parse(Parser parser, Token token);
+}; // end of class ListParseletStorage
 
-		if (!parser.Check(TokenType.RBRACKET)) {
-			do {
-				elements.Add(parser.ParseExpression(Precedence.NONE));
-			} while (parser.Match(TokenType.COMMA));
-		}
-
-		parser.Expect(TokenType.RBRACKET, "Expected ']' after list elements");
-		return new ListNode(elements);
-	}
-}
 
 // MapParselet: handles map literals like '{"a": 1}'.
-public class MapParselet : PrefixParselet {
-	public override ASTNode Parse(Parser parser, Token token) {
-		List<ASTNode> keys = new List<ASTNode>();
-		List<ASTNode> values = new List<ASTNode>();
+class MapParseletStorage : public PrefixParseletStorage {
+	public: ASTNode Parse(Parser parser, Token token);
+}; // end of class MapParseletStorage
 
-		if (!parser.Check(TokenType.RBRACE)) {
-			do {
-				ASTNode key = parser.ParseExpression(Precedence.NONE);
-				parser.Expect(TokenType.COLON, "Expected ':' after map key");
-				ASTNode value = parser.ParseExpression(Precedence.NONE);
-				keys.Add(key);
-				values.Add(value);
-			} while (parser.Match(TokenType.COMMA));
-		}
-
-		parser.Expect(TokenType.RBRACE, "Expected '}' after map entries");
-		return new MapNode(keys, values);
-	}
-}
 
 // BinaryOpParselet: handles binary operators like '+', '-', '*', etc.
-public class BinaryOpParselet : InfixParselet {
-	private String _op;
-	private Boolean _rightAssoc;
+class BinaryOpParseletStorage : public InfixParseletStorage {
+	private: String _op;
+	private: Boolean _rightAssoc;
 
-	public BinaryOpParselet(String op, Precedence prec, Boolean rightAssoc) {
-		_op = op;
-		Prec = prec;
-		_rightAssoc = rightAssoc;
-	}
+	public: BinaryOpParseletStorage(String op, Precedence prec, Boolean rightAssoc);
 
-	public BinaryOpParselet(String op, Precedence prec) {
-		_op = op;
-		Prec = prec;
-		_rightAssoc = false;
-	}
+	public: BinaryOpParseletStorage(String op, Precedence prec);
 
-	public override ASTNode Parse(Parser parser, ASTNode left, Token token) {
-		// For right-associative operators, use lower precedence for RHS
-		Precedence rhsPrec = _rightAssoc ? (Precedence)((Int32)Prec - 1) : Prec;
-		ASTNode right = parser.ParseExpression(rhsPrec);
-		return new BinaryOpNode(_op, left, right);
-	}
-}
+	public: ASTNode Parse(Parser parser, ASTNode left, Token token);
+}; // end of class BinaryOpParseletStorage
+
 
 // CallParselet: handles function calls like 'foo(x, y)' and method calls like 'obj.method(x)'.
-public class CallParselet : InfixParselet {
-	public CallParselet() {
-		Prec = Precedence.CALL;
-	}
+class CallParseletStorage : public InfixParseletStorage {
+	public: CallParseletStorage();
 
-	public override ASTNode Parse(Parser parser, ASTNode left, Token token) {
-		List<ASTNode> args = new List<ASTNode>();
+	public: ASTNode Parse(Parser parser, ASTNode left, Token token);
+}; // end of class CallParseletStorage
 
-		if (!parser.Check(TokenType.RPAREN)) {
-			do {
-				args.Add(parser.ParseExpression(Precedence.NONE));
-			} while (parser.Match(TokenType.COMMA));
-		}
-
-		parser.Expect(TokenType.RPAREN, "Expected ')' after arguments");
-
-		// Simple function call: foo(x, y)
-		IdentifierNode funcName = left as IdentifierNode;
-		if (funcName != null) {
-			return new CallNode(funcName.Name, args);
-		}
-
-		// Method call: obj.method(x, y)
-		MemberNode memberAccess = left as MemberNode;
-		if (memberAccess != null) {
-			return new MethodCallNode(memberAccess.Target, memberAccess.Member, args);
-		}
-
-		// Other cases (e.g., result of function call being called)
-		// For now, report an error - could be extended later
-		parser.ReportError("Expected function name or method access before '('");
-		return new NumberNode(0);
-	}
-}
 
 // IndexParselet: handles index access like 'list[0]' or 'map["key"]'.
-public class IndexParselet : InfixParselet {
-	public IndexParselet() {
-		Prec = Precedence.CALL;
-	}
+class IndexParseletStorage : public InfixParseletStorage {
+	public: IndexParseletStorage();
 
-	public override ASTNode Parse(Parser parser, ASTNode left, Token token) {
-		ASTNode index = parser.ParseExpression(Precedence.NONE);
-		parser.Expect(TokenType.RBRACKET, "Expected ']' after index");
-		return new IndexNode(left, index);
-	}
-}
+	public: ASTNode Parse(Parser parser, ASTNode left, Token token);
+}; // end of class IndexParseletStorage
+
 
 // MemberParselet: handles member access like 'obj.field'.
-public class MemberParselet : InfixParselet {
-	public MemberParselet() {
-		Prec = Precedence.CALL;
+class MemberParseletStorage : public InfixParseletStorage {
+	public: MemberParseletStorage();
+
+	public: ASTNode Parse(Parser parser, ASTNode left, Token token);
+}; // end of class MemberParseletStorage
+
+
+// NumberParselet: handles number literals.
+struct NumberParselet : public PrefixParselet {
+	public: NumberParselet(std::shared_ptr<PrefixParseletStorage> stor) : PrefixParselet(stor) {}
+	private: NumberParseletStorage* get() { return static_cast<NumberParseletStorage*>(storage.get()); }
+	public: ASTNode Parse(Parser parser, Token token) { return get()->Parse(parser, token); }
+}; // end of struct NumberParselet
+
+
+// StringParselet: handles string literals.
+struct StringParselet : public PrefixParselet {
+	public: StringParselet(std::shared_ptr<PrefixParseletStorage> stor) : PrefixParselet(stor) {}
+	private: StringParseletStorage* get() { return static_cast<StringParseletStorage*>(storage.get()); }
+	public: ASTNode Parse(Parser parser, Token token) { return get()->Parse(parser, token); }
+}; // end of struct StringParselet
+
+
+// IdentifierParselet: handles identifiers, which can be:
+// - Variable lookups
+// - Variable assignments (when followed by '=')
+// - Function calls (when followed by '(')
+struct IdentifierParselet : public PrefixParselet {
+	public: IdentifierParselet(std::shared_ptr<PrefixParseletStorage> stor) : PrefixParselet(stor) {}
+	private: IdentifierParseletStorage* get() { return static_cast<IdentifierParseletStorage*>(storage.get()); }
+	public: ASTNode Parse(Parser parser, Token token) { return get()->Parse(parser, token); }
+}; // end of struct IdentifierParselet
+
+
+// UnaryOpParselet: handles prefix unary operators like '-' and 'not'.
+struct UnaryOpParselet : public PrefixParselet {
+	public: UnaryOpParselet(std::shared_ptr<PrefixParseletStorage> stor) : PrefixParselet(stor) {}
+	private: UnaryOpParseletStorage* get() { return static_cast<UnaryOpParseletStorage*>(storage.get()); }
+	private: String _op() { return get()->_op; }
+	private: void set__op(String _v) { get()->_op = _v; }
+
+	public: static UnaryOpParselet New(String op, Precedence prec) {
+		return UnaryOpParselet(std::make_shared<UnaryOpParseletStorage>(op, prec));
 	}
 
-	public override ASTNode Parse(Parser parser, ASTNode left, Token token) {
-		Token memberToken = parser.Expect(TokenType.IDENTIFIER, "Expected member name after '.'");
-		return new MemberNode(left, memberToken.Text);
-	}
-}
+	public: ASTNode Parse(Parser parser, Token token) { return get()->Parse(parser, token); }
+}; // end of struct UnaryOpParselet
 
-}
+
+// GroupParselet: handles parenthesized expressions like '(2 + 3)'.
+struct GroupParselet : public PrefixParselet {
+	public: GroupParselet(std::shared_ptr<PrefixParseletStorage> stor) : PrefixParselet(stor) {}
+	private: GroupParseletStorage* get() { return static_cast<GroupParseletStorage*>(storage.get()); }
+	public: ASTNode Parse(Parser parser, Token token) { return get()->Parse(parser, token); }
+}; // end of struct GroupParselet
+
+
+// ListParselet: handles list literals like '[1, 2, 3]'.
+struct ListParselet : public PrefixParselet {
+	public: ListParselet(std::shared_ptr<PrefixParseletStorage> stor) : PrefixParselet(stor) {}
+	private: ListParseletStorage* get() { return static_cast<ListParseletStorage*>(storage.get()); }
+	public: ASTNode Parse(Parser parser, Token token) { return get()->Parse(parser, token); }
+}; // end of struct ListParselet
+
+
+// MapParselet: handles map literals like '{"a": 1}'.
+struct MapParselet : public PrefixParselet {
+	public: MapParselet(std::shared_ptr<PrefixParseletStorage> stor) : PrefixParselet(stor) {}
+	private: MapParseletStorage* get() { return static_cast<MapParseletStorage*>(storage.get()); }
+	public: ASTNode Parse(Parser parser, Token token) { return get()->Parse(parser, token); }
+}; // end of struct MapParselet
+
+
+// BinaryOpParselet: handles binary operators like '+', '-', '*', etc.
+struct BinaryOpParselet : public InfixParselet {
+	public: BinaryOpParselet(std::shared_ptr<InfixParseletStorage> stor) : InfixParselet(stor) {}
+	private: BinaryOpParseletStorage* get() { return static_cast<BinaryOpParseletStorage*>(storage.get()); }
+	private: String _op() { return get()->_op; }
+	private: void set__op(String _v) { get()->_op = _v; }
+	private: Boolean _rightAssoc() { return get()->_rightAssoc; }
+	private: void set__rightAssoc(Boolean _v) { get()->_rightAssoc = _v; }
+
+	public: static BinaryOpParselet New(String op, Precedence prec, Boolean rightAssoc) {
+		return BinaryOpParselet(std::make_shared<BinaryOpParseletStorage>(op, prec, rightAssoc));
+	}
+
+	public: static BinaryOpParselet New(String op, Precedence prec) {
+		return BinaryOpParselet(std::make_shared<BinaryOpParseletStorage>(op, prec));
+	}
+
+	public: ASTNode Parse(Parser parser, ASTNode left, Token token) { return get()->Parse(parser, left, token); }
+}; // end of struct BinaryOpParselet
+
+
+// CallParselet: handles function calls like 'foo(x, y)' and method calls like 'obj.method(x)'.
+struct CallParselet : public InfixParselet {
+	public: CallParselet(std::shared_ptr<InfixParseletStorage> stor) : InfixParselet(stor) {}
+	private: CallParseletStorage* get() { return static_cast<CallParseletStorage*>(storage.get()); }
+	public: static CallParselet New() {
+		return CallParselet(std::make_shared<CallParseletStorage>());
+	}
+
+	public: ASTNode Parse(Parser parser, ASTNode left, Token token) { return get()->Parse(parser, left, token); }
+}; // end of struct CallParselet
+
+
+// IndexParselet: handles index access like 'list[0]' or 'map["key"]'.
+struct IndexParselet : public InfixParselet {
+	public: IndexParselet(std::shared_ptr<InfixParseletStorage> stor) : InfixParselet(stor) {}
+	private: IndexParseletStorage* get() { return static_cast<IndexParseletStorage*>(storage.get()); }
+	public: static IndexParselet New() {
+		return IndexParselet(std::make_shared<IndexParseletStorage>());
+	}
+
+	public: ASTNode Parse(Parser parser, ASTNode left, Token token) { return get()->Parse(parser, left, token); }
+}; // end of struct IndexParselet
+
+
+// MemberParselet: handles member access like 'obj.field'.
+struct MemberParselet : public InfixParselet {
+	public: MemberParselet(std::shared_ptr<InfixParseletStorage> stor) : InfixParselet(stor) {}
+	private: MemberParseletStorage* get() { return static_cast<MemberParseletStorage*>(storage.get()); }
+	public: static MemberParselet New() {
+		return MemberParselet(std::make_shared<MemberParseletStorage>());
+	}
+
+	public: ASTNode Parse(Parser parser, ASTNode left, Token token) { return get()->Parse(parser, left, token); }
+}; // end of struct MemberParselet
+
+
+// INLINE METHODS
+
+inline ASTNode PrefixParselet::Parse(Parser parser, Token token) { return storage->Parse(parser, token); }
+
+inline ASTNode InfixParselet::Parse(Parser parser, ASTNode left, Token token) { return storage->Parse(parser, left, token); }
+
+} // end of namespace MiniScript

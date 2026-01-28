@@ -17,6 +17,32 @@ struct Assembler;
 class AssemblerStorage;
 struct Parselet;
 class ParseletStorage;
+struct PrefixParselet;
+class PrefixParseletStorage;
+struct InfixParselet;
+class InfixParseletStorage;
+struct NumberParselet;
+class NumberParseletStorage;
+struct StringParselet;
+class StringParseletStorage;
+struct IdentifierParselet;
+class IdentifierParseletStorage;
+struct UnaryOpParselet;
+class UnaryOpParseletStorage;
+struct GroupParselet;
+class GroupParseletStorage;
+struct ListParselet;
+class ListParseletStorage;
+struct MapParselet;
+class MapParseletStorage;
+struct BinaryOpParselet;
+class BinaryOpParseletStorage;
+struct CallParselet;
+class CallParseletStorage;
+struct IndexParselet;
+class IndexParseletStorage;
+struct MemberParselet;
+class MemberParseletStorage;
 struct Parser;
 class ParserStorage;
 struct FuncDef;
@@ -51,6 +77,19 @@ struct MethodCallNode;
 class MethodCallNodeStorage;
 
 // DECLARATIONS
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

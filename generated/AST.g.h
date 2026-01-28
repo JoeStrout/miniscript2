@@ -17,6 +17,32 @@ struct Assembler;
 class AssemblerStorage;
 struct Parselet;
 class ParseletStorage;
+struct PrefixParselet;
+class PrefixParseletStorage;
+struct InfixParselet;
+class InfixParseletStorage;
+struct NumberParselet;
+class NumberParseletStorage;
+struct StringParselet;
+class StringParseletStorage;
+struct IdentifierParselet;
+class IdentifierParseletStorage;
+struct UnaryOpParselet;
+class UnaryOpParseletStorage;
+struct GroupParselet;
+class GroupParseletStorage;
+struct ListParselet;
+class ListParseletStorage;
+struct MapParselet;
+class MapParseletStorage;
+struct BinaryOpParselet;
+class BinaryOpParseletStorage;
+struct CallParselet;
+class CallParseletStorage;
+struct IndexParselet;
+class IndexParseletStorage;
+struct MemberParselet;
+class MemberParseletStorage;
 struct Parser;
 class ParserStorage;
 struct FuncDef;
@@ -67,6 +93,19 @@ class MethodCallNodeStorage;
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
 // Operator constants (stored as strings to ease debugging)
 class Op {
 	public: static const String PLUS;
@@ -87,54 +126,26 @@ class Op {
 }; // end of struct Op
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // Base class for all AST nodes.
 // When transpiled to C++, these become shared_ptr-wrapped classes.
-
-
-// Number literal node (e.g., 42, 3.14)
-
-
-// String literal node (e.g., "hello")
-
-
-// Identifier node (e.g., variable name like "x" or "foo")
-
-
-// Assignment node (e.g., x = 42, foo = bar + 1)
-
-
-// Unary operator node (e.g., -x, not flag)
-
-
-// Binary operator node (e.g., x + y, a * b)
-
-
-// Function call node (e.g., sqrt(x), max(a, b))
-
-
-// Grouping node (e.g., parenthesized expression like "(x + y)")
-// Useful for preserving structure for pretty-printing or code generation.
-
-
-// List literal node (e.g., [1, 2, 3])
-
-
-// Map literal node (e.g., {"a": 1, "b": 2})
-
-
-// Index access node (e.g., list[0], map["key"])
-
-
-// Member access node (e.g., obj.field)
-
-
-// Method call node (e.g., obj.method(x, y))
-// This is distinct from CallNode which handles simple function calls.
-
-
-
-
-
 struct ASTNode {
 	protected: std::shared_ptr<ASTNodeStorage> storage;
   public:
@@ -164,6 +175,8 @@ class ASTNodeStorage : public std::enable_shared_from_this<ASTNodeStorage> {
 	// Returns a simplified version of this node (may be a new node, or this node unchanged)
 }; // end of class ASTNodeStorage
 
+
+// Number literal node (e.g., 42, 3.14)
 class NumberNodeStorage : public ASTNodeStorage {
 	public: Double Value;
 
@@ -174,6 +187,8 @@ class NumberNodeStorage : public ASTNodeStorage {
 	public: ASTNode Simplify();
 }; // end of class NumberNodeStorage
 
+
+// String literal node (e.g., "hello")
 class StringNodeStorage : public ASTNodeStorage {
 	public: String Value;
 
@@ -184,6 +199,8 @@ class StringNodeStorage : public ASTNodeStorage {
 	public: ASTNode Simplify();
 }; // end of class StringNodeStorage
 
+
+// Identifier node (e.g., variable name like "x" or "foo")
 class IdentifierNodeStorage : public ASTNodeStorage {
 	public: String Name;
 
@@ -194,6 +211,8 @@ class IdentifierNodeStorage : public ASTNodeStorage {
 	public: ASTNode Simplify();
 }; // end of class IdentifierNodeStorage
 
+
+// Assignment node (e.g., x = 42, foo = bar + 1)
 class AssignmentNodeStorage : public ASTNodeStorage {
 	public: String Variable; // variable name being assigned to
 	public: ASTNode Value; // expression being assigned
@@ -205,6 +224,8 @@ class AssignmentNodeStorage : public ASTNodeStorage {
 	public: ASTNode Simplify();
 }; // end of class AssignmentNodeStorage
 
+
+// Unary operator node (e.g., -x, not flag)
 class UnaryOpNodeStorage : public ASTNodeStorage {
 	public: String Op; // Op.MINUS, Op.NOT, etc.
 	public: ASTNode Operand; // the expression being operated on
@@ -216,6 +237,8 @@ class UnaryOpNodeStorage : public ASTNodeStorage {
 	public: ASTNode Simplify();
 }; // end of class UnaryOpNodeStorage
 
+
+// Binary operator node (e.g., x + y, a * b)
 class BinaryOpNodeStorage : public ASTNodeStorage {
 	public: String Op; // Op.PLUS, etc.
 	public: ASTNode Left; // left operand
@@ -228,6 +251,8 @@ class BinaryOpNodeStorage : public ASTNodeStorage {
 	public: ASTNode Simplify();
 }; // end of class BinaryOpNodeStorage
 
+
+// Function call node (e.g., sqrt(x), max(a, b))
 class CallNodeStorage : public ASTNodeStorage {
 	public: String Function; // function name
 	public: List<ASTNode> Arguments; // list of argument expressions
@@ -241,6 +266,9 @@ class CallNodeStorage : public ASTNodeStorage {
 	public: ASTNode Simplify();
 }; // end of class CallNodeStorage
 
+
+// Grouping node (e.g., parenthesized expression like "(x + y)")
+// Useful for preserving structure for pretty-printing or code generation.
 class GroupNodeStorage : public ASTNodeStorage {
 	public: ASTNode Expression;
 
@@ -251,6 +279,8 @@ class GroupNodeStorage : public ASTNodeStorage {
 	public: ASTNode Simplify();
 }; // end of class GroupNodeStorage
 
+
+// List literal node (e.g., [1, 2, 3])
 class ListNodeStorage : public ASTNodeStorage {
 	public: List<ASTNode> Elements;
 
@@ -263,6 +293,8 @@ class ListNodeStorage : public ASTNodeStorage {
 	public: ASTNode Simplify();
 }; // end of class ListNodeStorage
 
+
+// Map literal node (e.g., {"a": 1, "b": 2})
 class MapNodeStorage : public ASTNodeStorage {
 	public: List<ASTNode> Keys;
 	public: List<ASTNode> Values;
@@ -276,6 +308,8 @@ class MapNodeStorage : public ASTNodeStorage {
 	public: ASTNode Simplify();
 }; // end of class MapNodeStorage
 
+
+// Index access node (e.g., list[0], map["key"])
 class IndexNodeStorage : public ASTNodeStorage {
 	public: ASTNode Target; // the list/map/string being indexed
 	public: ASTNode Index; // the index expression
@@ -287,6 +321,8 @@ class IndexNodeStorage : public ASTNodeStorage {
 	public: ASTNode Simplify();
 }; // end of class IndexNodeStorage
 
+
+// Member access node (e.g., obj.field)
 class MemberNodeStorage : public ASTNodeStorage {
 	public: ASTNode Target; // the object being accessed
 	public: String Member; // the member name
@@ -298,6 +334,9 @@ class MemberNodeStorage : public ASTNodeStorage {
 	public: ASTNode Simplify();
 }; // end of class MemberNodeStorage
 
+
+// Method call node (e.g., obj.method(x, y))
+// This is distinct from CallNode which handles simple function calls.
 class MethodCallNodeStorage : public ASTNodeStorage {
 	public: ASTNode Target; // the object whose method is being called
 	public: String Method; // the method name
@@ -310,42 +349,59 @@ class MethodCallNodeStorage : public ASTNodeStorage {
 	public: ASTNode Simplify();
 }; // end of class MethodCallNodeStorage
 
+
+// Number literal node (e.g., 42, 3.14)
 struct NumberNode : public ASTNode {
 	public: NumberNode(std::shared_ptr<ASTNodeStorage> stor) : ASTNode(stor) {}
 	private: NumberNodeStorage* get() { return static_cast<NumberNodeStorage*>(storage.get()); }
 	public: Double Value() { return get()->Value; }
 	public: void set_Value(Double _v) { get()->Value = _v; }
 
+	public: static NumberNode New(Double value) {
+		return NumberNode(std::make_shared<NumberNodeStorage>(value));
+	}
 
 	public: String ToStr() { return get()->ToStr(); }
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
 }; // end of struct NumberNode
 
+
+// String literal node (e.g., "hello")
 struct StringNode : public ASTNode {
 	public: StringNode(std::shared_ptr<ASTNodeStorage> stor) : ASTNode(stor) {}
 	private: StringNodeStorage* get() { return static_cast<StringNodeStorage*>(storage.get()); }
 	public: String Value() { return get()->Value; }
 	public: void set_Value(String _v) { get()->Value = _v; }
 
+	public: static StringNode New(String value) {
+		return StringNode(std::make_shared<StringNodeStorage>(value));
+	}
 
 	public: String ToStr() { return get()->ToStr(); }
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
 }; // end of struct StringNode
 
+
+// Identifier node (e.g., variable name like "x" or "foo")
 struct IdentifierNode : public ASTNode {
 	public: IdentifierNode(std::shared_ptr<ASTNodeStorage> stor) : ASTNode(stor) {}
 	private: IdentifierNodeStorage* get() { return static_cast<IdentifierNodeStorage*>(storage.get()); }
 	public: String Name() { return get()->Name; }
 	public: void set_Name(String _v) { get()->Name = _v; }
 
+	public: static IdentifierNode New(String name) {
+		return IdentifierNode(std::make_shared<IdentifierNodeStorage>(name));
+	}
 
 	public: String ToStr() { return get()->ToStr(); }
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
 }; // end of struct IdentifierNode
 
+
+// Assignment node (e.g., x = 42, foo = bar + 1)
 struct AssignmentNode : public ASTNode {
 	public: AssignmentNode(std::shared_ptr<ASTNodeStorage> stor) : ASTNode(stor) {}
 	private: AssignmentNodeStorage* get() { return static_cast<AssignmentNodeStorage*>(storage.get()); }
@@ -354,12 +410,17 @@ struct AssignmentNode : public ASTNode {
 	public: ASTNode Value() { return get()->Value; } // expression being assigned
 	public: void set_Value(ASTNode _v) { get()->Value = _v; } // expression being assigned
 
+	public: static AssignmentNode New(String variable, ASTNode value) {
+		return AssignmentNode(std::make_shared<AssignmentNodeStorage>(variable, value));
+	}
 
 	public: String ToStr() { return get()->ToStr(); }
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
 }; // end of struct AssignmentNode
 
+
+// Unary operator node (e.g., -x, not flag)
 struct UnaryOpNode : public ASTNode {
 	public: UnaryOpNode(std::shared_ptr<ASTNodeStorage> stor) : ASTNode(stor) {}
 	private: UnaryOpNodeStorage* get() { return static_cast<UnaryOpNodeStorage*>(storage.get()); }
@@ -368,12 +429,17 @@ struct UnaryOpNode : public ASTNode {
 	public: ASTNode Operand() { return get()->Operand; } // the expression being operated on
 	public: void set_Operand(ASTNode _v) { get()->Operand = _v; } // the expression being operated on
 
+	public: static UnaryOpNode New(String op, ASTNode operand) {
+		return UnaryOpNode(std::make_shared<UnaryOpNodeStorage>(op, operand));
+	}
 
 	public: String ToStr() { return get()->ToStr(); }
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
 }; // end of struct UnaryOpNode
 
+
+// Binary operator node (e.g., x + y, a * b)
 struct BinaryOpNode : public ASTNode {
 	public: BinaryOpNode(std::shared_ptr<ASTNodeStorage> stor) : ASTNode(stor) {}
 	private: BinaryOpNodeStorage* get() { return static_cast<BinaryOpNodeStorage*>(storage.get()); }
@@ -384,12 +450,17 @@ struct BinaryOpNode : public ASTNode {
 	public: ASTNode Right() { return get()->Right; } // right operand
 	public: void set_Right(ASTNode _v) { get()->Right = _v; } // right operand
 
+	public: static BinaryOpNode New(String op, ASTNode left, ASTNode right) {
+		return BinaryOpNode(std::make_shared<BinaryOpNodeStorage>(op, left, right));
+	}
 
 	public: String ToStr() { return get()->ToStr(); }
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
 }; // end of struct BinaryOpNode
 
+
+// Function call node (e.g., sqrt(x), max(a, b))
 struct CallNode : public ASTNode {
 	public: CallNode(std::shared_ptr<ASTNodeStorage> stor) : ASTNode(stor) {}
 	private: CallNodeStorage* get() { return static_cast<CallNodeStorage*>(storage.get()); }
@@ -398,38 +469,60 @@ struct CallNode : public ASTNode {
 	public: List<ASTNode> Arguments() { return get()->Arguments; } // list of argument expressions
 	public: void set_Arguments(List<ASTNode> _v) { get()->Arguments = _v; } // list of argument expressions
 
+	public: static CallNode New(String function, List<ASTNode> arguments) {
+		return CallNode(std::make_shared<CallNodeStorage>(function, arguments));
+	}
 
+	public: static CallNode New(String function) {
+		return CallNode(std::make_shared<CallNodeStorage>(function));
+	}
 
 	public: String ToStr() { return get()->ToStr(); }
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
 }; // end of struct CallNode
 
+
+// Grouping node (e.g., parenthesized expression like "(x + y)")
+// Useful for preserving structure for pretty-printing or code generation.
 struct GroupNode : public ASTNode {
 	public: GroupNode(std::shared_ptr<ASTNodeStorage> stor) : ASTNode(stor) {}
 	private: GroupNodeStorage* get() { return static_cast<GroupNodeStorage*>(storage.get()); }
 	public: ASTNode Expression() { return get()->Expression; }
 	public: void set_Expression(ASTNode _v) { get()->Expression = _v; }
 
+	public: static GroupNode New(ASTNode expression) {
+		return GroupNode(std::make_shared<GroupNodeStorage>(expression));
+	}
 
 	public: String ToStr() { return get()->ToStr(); }
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
 }; // end of struct GroupNode
 
+
+// List literal node (e.g., [1, 2, 3])
 struct ListNode : public ASTNode {
 	public: ListNode(std::shared_ptr<ASTNodeStorage> stor) : ASTNode(stor) {}
 	private: ListNodeStorage* get() { return static_cast<ListNodeStorage*>(storage.get()); }
 	public: List<ASTNode> Elements() { return get()->Elements; }
 	public: void set_Elements(List<ASTNode> _v) { get()->Elements = _v; }
 
+	public: static ListNode New(List<ASTNode> elements) {
+		return ListNode(std::make_shared<ListNodeStorage>(elements));
+	}
 
+	public: static ListNode New() {
+		return ListNode(std::make_shared<ListNodeStorage>());
+	}
 
 	public: String ToStr() { return get()->ToStr(); }
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
 }; // end of struct ListNode
 
+
+// Map literal node (e.g., {"a": 1, "b": 2})
 struct MapNode : public ASTNode {
 	public: MapNode(std::shared_ptr<ASTNodeStorage> stor) : ASTNode(stor) {}
 	private: MapNodeStorage* get() { return static_cast<MapNodeStorage*>(storage.get()); }
@@ -438,13 +531,21 @@ struct MapNode : public ASTNode {
 	public: List<ASTNode> Values() { return get()->Values; }
 	public: void set_Values(List<ASTNode> _v) { get()->Values = _v; }
 
+	public: static MapNode New(List<ASTNode> keys, List<ASTNode> values) {
+		return MapNode(std::make_shared<MapNodeStorage>(keys, values));
+	}
 
+	public: static MapNode New() {
+		return MapNode(std::make_shared<MapNodeStorage>());
+	}
 
 	public: String ToStr() { return get()->ToStr(); }
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
 }; // end of struct MapNode
 
+
+// Index access node (e.g., list[0], map["key"])
 struct IndexNode : public ASTNode {
 	public: IndexNode(std::shared_ptr<ASTNodeStorage> stor) : ASTNode(stor) {}
 	private: IndexNodeStorage* get() { return static_cast<IndexNodeStorage*>(storage.get()); }
@@ -453,12 +554,17 @@ struct IndexNode : public ASTNode {
 	public: ASTNode Index() { return get()->Index; } // the index expression
 	public: void set_Index(ASTNode _v) { get()->Index = _v; } // the index expression
 
+	public: static IndexNode New(ASTNode target, ASTNode index) {
+		return IndexNode(std::make_shared<IndexNodeStorage>(target, index));
+	}
 
 	public: String ToStr() { return get()->ToStr(); }
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
 }; // end of struct IndexNode
 
+
+// Member access node (e.g., obj.field)
 struct MemberNode : public ASTNode {
 	public: MemberNode(std::shared_ptr<ASTNodeStorage> stor) : ASTNode(stor) {}
 	private: MemberNodeStorage* get() { return static_cast<MemberNodeStorage*>(storage.get()); }
@@ -467,12 +573,18 @@ struct MemberNode : public ASTNode {
 	public: String Member() { return get()->Member; } // the member name
 	public: void set_Member(String _v) { get()->Member = _v; } // the member name
 
+	public: static MemberNode New(ASTNode target, String member) {
+		return MemberNode(std::make_shared<MemberNodeStorage>(target, member));
+	}
 
 	public: String ToStr() { return get()->ToStr(); }
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
 }; // end of struct MemberNode
 
+
+// Method call node (e.g., obj.method(x, y))
+// This is distinct from CallNode which handles simple function calls.
 struct MethodCallNode : public ASTNode {
 	public: MethodCallNode(std::shared_ptr<ASTNodeStorage> stor) : ASTNode(stor) {}
 	private: MethodCallNodeStorage* get() { return static_cast<MethodCallNodeStorage*>(storage.get()); }
@@ -483,6 +595,9 @@ struct MethodCallNode : public ASTNode {
 	public: List<ASTNode> Arguments() { return get()->Arguments; } // list of argument expressions
 	public: void set_Arguments(List<ASTNode> _v) { get()->Arguments = _v; } // list of argument expressions
 
+	public: static MethodCallNode New(ASTNode target, String method, List<ASTNode> arguments) {
+		return MethodCallNode(std::make_shared<MethodCallNodeStorage>(target, method, arguments));
+	}
 
 	public: String ToStr() { return get()->ToStr(); }
 

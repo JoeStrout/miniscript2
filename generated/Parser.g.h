@@ -17,6 +17,32 @@ struct Assembler;
 class AssemblerStorage;
 struct Parselet;
 class ParseletStorage;
+struct PrefixParselet;
+class PrefixParseletStorage;
+struct InfixParselet;
+class InfixParseletStorage;
+struct NumberParselet;
+class NumberParseletStorage;
+struct StringParselet;
+class StringParseletStorage;
+struct IdentifierParselet;
+class IdentifierParseletStorage;
+struct UnaryOpParselet;
+class UnaryOpParseletStorage;
+struct GroupParselet;
+class GroupParseletStorage;
+struct ListParselet;
+class ListParseletStorage;
+struct MapParselet;
+class MapParseletStorage;
+struct BinaryOpParselet;
+class BinaryOpParseletStorage;
+struct CallParselet;
+class CallParseletStorage;
+struct IndexParselet;
+class IndexParseletStorage;
+struct MemberParselet;
+class MemberParseletStorage;
 struct Parser;
 class ParserStorage;
 struct FuncDef;
@@ -65,8 +91,18 @@ class MethodCallNodeStorage;
 
 
 
-// Parser: the main parsing engine.
-// Uses a Pratt parser algorithm with parselets to handle operator precedence.
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -146,6 +182,9 @@ class ParserStorage : public std::enable_shared_from_this<ParserStorage> {
 	public: List<String> GetErrors();
 }; // end of class ParserStorage
 
+
+// Parser: the main parsing engine.
+// Uses a Pratt parser algorithm with parselets to handle operator precedence.
 struct Parser {
 	protected: std::shared_ptr<ParserStorage> storage;
   public:

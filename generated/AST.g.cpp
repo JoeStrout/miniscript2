@@ -3,6 +3,8 @@
 
 #include "AST.g.h"
 #include "StringUtils.g.h"
+#include "CS_Math.h"
+#include <cmath>
 
 namespace MiniScript {
 
@@ -122,7 +124,8 @@ ASTNode BinaryOpNodeStorage::Simplify() {
 		} else if (Op == MiniScript::Op::DIVIDE) {
 			return  NumberNode::New(leftNum.Value() / rightNum.Value());
 		} else if (Op == MiniScript::Op::MOD) {
-			return  NumberNode::New(leftNum.Value() % rightNum.Value());
+			Double result = fmod(leftNum.Value(), rightNum.Value());
+			return  NumberNode::New(result);
 		} else if (Op == MiniScript::Op::POWER) {
 			return  NumberNode::New(Math::Pow(leftNum.Value(), rightNum.Value()));
 		} else if (Op == MiniScript::Op::EQUALS) {

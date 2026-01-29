@@ -234,3 +234,15 @@ So, on to the parser!  I've moved the Pratt parser prototype over from MS2Proto5
 The transpilation (or something about the C# source) still needs a bit of work, though, because I'm getting errors.  The transpiler's scanning seems to have missed all the parselet types... and indeed, none of the Parselet classes are declared in Parselet.g.h at all.  ...OK, that's fixed.
 
 There are more issues, but it's late.  I'll continue tomorrow.
+
+
+## Jan 29, 2026
+
+OK, all the transpiler issues exposed by the new parser code have been fixed, and the transpiled project builds for C++ again.  🥳  There were a number of thorny issues due to the more complex class hierarchy used for ASTNodes and Parselets (and the circular dependency between Parselets and Parser), but it seems like they've all been sorted out now.
+
+There are a couple of minor issues to address next:
+
+1. I get a bunch of "unused parameter" warnings in Parselet.g.cpp; I might be able to fix those by simply omitting the parameter name where we aren't actually using it.
+
+2. One of the unit tests (`build/cpp/miniscript2 -debug`) is failing because the number-to-string function is returning "42.000000" instead of "42".
+

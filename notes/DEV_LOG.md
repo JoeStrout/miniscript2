@@ -242,7 +242,9 @@ OK, all the transpiler issues exposed by the new parser code have been fixed, an
 
 There are a couple of minor issues to address next:
 
-1. I get a bunch of "unused parameter" warnings in Parselet.g.cpp; I might be able to fix those by simply omitting the parameter name where we aren't actually using it.
+1. I get a bunch of "unused parameter" warnings in Parselet.g.cpp; I might be able to fix those by simply omitting the parameter name where we aren't actually using it.  (...UPDATE: nope, that's not even valid C#.  Fixed instead by suppressing this warning for any file that uses core_includes.h.)
 
 2. One of the unit tests (`build/cpp/miniscript2 -debug`) is failing because the number-to-string function is returning "42.000000" instead of "42".
+
+Both issues now fixed.  We have C++/C# parity again!
 

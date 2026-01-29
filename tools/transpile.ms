@@ -222,9 +222,15 @@ parameterNames = function(s)
 	if not s then return s
 	result = []
 	//print s.splitQuoted(",")
+	unnamed = 0
 	for param in s.splitQuoted(",")
 		typeAndRest = param.trim.split(" ", 2)
-		nameEtc = typeAndRest[1].split("=", 2)
+		if typeAndRest.len == 1 then
+			unnamed += 1
+			nameEtc = ["unnamed_" + unnamed]
+		else
+			nameEtc = typeAndRest[1].split("=", 2)
+		end if
 		result.push nameEtc[0]
 	end for
 	return result.join(", ")
@@ -548,7 +554,6 @@ Transpiler.transformStatement = function(trimmedLine)
 		else if tokens[i] == "this" and (i+1 >= tokens.len or tokens[i+1] != ".") then
 			// Ensure we have a _this local variable, then reference that in place of `this`.
 			if not self.curMethod.hasThisLocal then
-				print "THIS NOTED IN: " + tokens
 				self.curClass.methodLines.insert self.curClass.methodStartLine + 1, 
 				  TAB + self.curClass.name + " _this(shared_from_this());"
 				self.curMethod.hasThisLocal = true
@@ -645,6 +650,8 @@ Transpiler.parseParams = function(paramStr)
 	// Parse the given parameter string into a list of VariableInfo.
 	result = []
 	for part in paramStr.split(", ")
+		m = part.match("≤type:w≥")
+		if m then continue  // unnamed (because unused) parameter
 		m = part.match("≤type:w≥ ≤name:w≥ = ≤value≥")
 		if not m then m = part.match("≤type:w≥ ≤name:w≥=≤value≥")
 		if not m then m = part.match("≤type:w≥ ≤name:w≥")

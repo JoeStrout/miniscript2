@@ -591,7 +591,7 @@ inline String operator+(const char* lhs, const String& rhs) {
 
 // Free (i.e. global) ToString methods for atomic types
 inline String ToString(double d, const char *format=nullptr) {
-	if (!format) format = "%f";
+	if (!format) format = "%g";
 	char str[32];
 	snprintf(str, 32, format, d);
 	return String(str);

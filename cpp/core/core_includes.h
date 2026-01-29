@@ -26,6 +26,12 @@ namespace std {
 // This module is part of Layer 2B (Host C# Compatibility Layer)
 #define CORE_LAYER_2B
 
+// Disable the "unused parameter" warning.  Some of our transpiled classes
+// (particularly the ASTNode and Parselet hierarchies) make extensive use
+// of virtual methods, and in many cases, don't need all the parameters,
+// but C# does not allow us to leave such parameters unnamed.
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+
 // Data types which, in C#, are all defined in System.
 // C# code should use these instead of the shortcuts (int, byte, long, etc.)
 using Byte    = uint8_t;   // use this instead of byte

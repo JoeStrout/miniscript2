@@ -17,6 +17,34 @@ struct VM;
 class VMStorage;
 struct Assembler;
 class AssemblerStorage;
+struct Parselet;
+class ParseletStorage;
+struct PrefixParselet;
+class PrefixParseletStorage;
+struct InfixParselet;
+class InfixParseletStorage;
+struct NumberParselet;
+class NumberParseletStorage;
+struct StringParselet;
+class StringParseletStorage;
+struct IdentifierParselet;
+class IdentifierParseletStorage;
+struct UnaryOpParselet;
+class UnaryOpParseletStorage;
+struct GroupParselet;
+class GroupParseletStorage;
+struct ListParselet;
+class ListParseletStorage;
+struct MapParselet;
+class MapParseletStorage;
+struct BinaryOpParselet;
+class BinaryOpParseletStorage;
+struct CallParselet;
+class CallParseletStorage;
+struct IndexParselet;
+class IndexParseletStorage;
+struct MemberParselet;
+class MemberParseletStorage;
 struct Parser;
 class ParserStorage;
 struct FuncDef;
@@ -51,6 +79,21 @@ struct MethodCallNode;
 class MethodCallNodeStorage;
 
 // DECLARATIONS
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -191,28 +234,28 @@ struct Assembler {
 	Assembler() : storage(nullptr) {}
 	Assembler(std::nullptr_t) : storage(nullptr) {}
 	friend bool IsNull(const Assembler& inst) { return inst.storage == nullptr; }
-	private: AssemblerStorage* get() const { return static_cast<AssemblerStorage*>(storage.get()); }
+	private: AssemblerStorage* get() const;
 
 
 	public: static Assembler New() {
 		return Assembler(std::make_shared<AssemblerStorage>());
 	}
-	public: List<FuncDef> Functions() { return get()->Functions; } // all functions
-	public: void set_Functions(List<FuncDef> _v) { get()->Functions = _v; } // all functions
-	public: FuncDef Current() { return get()->Current; } // function we are currently building
-	public: void set_Current(FuncDef _v) { get()->Current = _v; } // function we are currently building
-	private: List<String> _labelNames() { return get()->_labelNames; } // label names within current function
-	private: void set__labelNames(List<String> _v) { get()->_labelNames = _v; } // label names within current function
-	private: List<Int32> _labelAddresses() { return get()->_labelAddresses; } // corresponding instruction addresses within current function
-	private: void set__labelAddresses(List<Int32> _v) { get()->_labelAddresses = _v; } // corresponding instruction addresses within current function
-	public: Boolean HasError() { return get()->HasError; }
-	public: void set_HasError(Boolean _v) { get()->HasError = _v; }
-	public: String ErrorMessage() { return get()->ErrorMessage; }
-	public: void set_ErrorMessage(String _v) { get()->ErrorMessage = _v; }
-	public: Int32 CurrentLineNumber() { return get()->CurrentLineNumber; }
-	public: void set_CurrentLineNumber(Int32 _v) { get()->CurrentLineNumber = _v; }
-	public: String CurrentLine() { return get()->CurrentLine; }
-	public: void set_CurrentLine(String _v) { get()->CurrentLine = _v; }
+	public: List<FuncDef> Functions(); // all functions
+	public: void set_Functions(List<FuncDef> _v); // all functions
+	public: FuncDef Current(); // function we are currently building
+	public: void set_Current(FuncDef _v); // function we are currently building
+	private: List<String> _labelNames(); // label names within current function
+	private: void set__labelNames(List<String> _v); // label names within current function
+	private: List<Int32> _labelAddresses(); // corresponding instruction addresses within current function
+	private: void set__labelAddresses(List<Int32> _v); // corresponding instruction addresses within current function
+	public: Boolean HasError();
+	public: void set_HasError(Boolean _v);
+	public: String ErrorMessage();
+	public: void set_ErrorMessage(String _v);
+	public: Int32 CurrentLineNumber();
+	public: void set_CurrentLineNumber(Int32 _v);
+	public: String CurrentLine();
+	public: void set_CurrentLine(String _v);
 
 	// Multiple functions support
 	
@@ -300,5 +343,23 @@ struct Assembler {
 
 
 // INLINE METHODS
+
+inline AssemblerStorage* Assembler::get() const { return static_cast<AssemblerStorage*>(storage.get()); }
+inline List<FuncDef> Assembler::Functions() { return get()->Functions; } // all functions
+inline void Assembler::set_Functions(List<FuncDef> _v) { get()->Functions = _v; } // all functions
+inline FuncDef Assembler::Current() { return get()->Current; } // function we are currently building
+inline void Assembler::set_Current(FuncDef _v) { get()->Current = _v; } // function we are currently building
+inline List<String> Assembler::_labelNames() { return get()->_labelNames; } // label names within current function
+inline void Assembler::set__labelNames(List<String> _v) { get()->_labelNames = _v; } // label names within current function
+inline List<Int32> Assembler::_labelAddresses() { return get()->_labelAddresses; } // corresponding instruction addresses within current function
+inline void Assembler::set__labelAddresses(List<Int32> _v) { get()->_labelAddresses = _v; } // corresponding instruction addresses within current function
+inline Boolean Assembler::HasError() { return get()->HasError; }
+inline void Assembler::set_HasError(Boolean _v) { get()->HasError = _v; }
+inline String Assembler::ErrorMessage() { return get()->ErrorMessage; }
+inline void Assembler::set_ErrorMessage(String _v) { get()->ErrorMessage = _v; }
+inline Int32 Assembler::CurrentLineNumber() { return get()->CurrentLineNumber; }
+inline void Assembler::set_CurrentLineNumber(Int32 _v) { get()->CurrentLineNumber = _v; }
+inline String Assembler::CurrentLine() { return get()->CurrentLine; }
+inline void Assembler::set_CurrentLine(String _v) { get()->CurrentLine = _v; }
 
 } // end of namespace MiniScript

@@ -32,9 +32,9 @@ CallInfo::CallInfo(Int32 returnPC, Int32 returnBase, Int32 returnFuncIndex, Int3
 }
 Value CallInfo::GetLocalVarMap(List<Value> registers, List<Value> names, int baseIdx, int regCount) {
 	if (is_null(LocalVarMap)) {
-		// Create a VarMap with references to VM's stack and names arrays
+		// Create a new VarMap with references to VM's stack and names arrays
 		if (regCount == 0) {
-			// We have no local vars at all!  Make an ordinary map::
+			// We have no local vars at all!  Make an ordinary map.
 			LocalVarMap = make_map(4);	// This is safe, right?
 		} else {
 			LocalVarMap = make_varmap(&registers[0], &names[0], baseIdx, regCount);
@@ -77,7 +77,7 @@ void VMStorage::InitVM(Int32 stackSlots, Int32 callSlots) {
 	callStackTop = 0;
 	RuntimeError = "";
 
-	// Initialize stack with nullptr values
+	// Initialize stack with null values
 	for (Int32 i = 0; i < stackSlots; i++) {
 		stack.Add(make_null());
 		names.Add(make_null());		// No variable name initially
@@ -222,7 +222,7 @@ void VMStorage::SetupCallFrame(Int32 argCount, Int32 calleeBase, FuncDef callee)
 		names[calleeBase + i] = make_null();
 	}
 
-	// Step 6 is handled by the caller (pushing CallInfo, switching frame, etc::)
+	// Step 6 is handled by the caller (pushing CallInfo, switching frame, etc.)
 }
 Value VMStorage::Execute(FuncDef entry) {
 	return Execute(entry, 0);
@@ -300,8 +300,8 @@ Value VMStorage::Run(UInt32 maxCycles) {
 		}
 
 		UInt32 instruction = curCode[pc++];
-		// Note: CollectionsMarshal::AsSpan requires .NET 5+; not compatible with Mono::
-		// This gives us direct array access without copying, for performance::
+		// Note: CollectionsMarshal.AsSpan requires .NET 5+; not compatible with Mono.
+		// This gives us direct array access without copying, for performance.
 		Value* localStack = stackPtr + baseIndex;
 
 		if (DebugMode) {
@@ -386,7 +386,7 @@ Value VMStorage::Run(UInt32 maxCycles) {
 					localStack[a] = val;
 				} else {
 					// Harder case: value is a funcref, which we must invoke,
-					// and then copy the result into localStack[a] upon return::
+					// and then copy the result into localStack[a] upon return.
 					Int32 funcIndex = funcref_index(val);
 					if (funcIndex < 0 || funcIndex >= functions.Count()) {
 						IOHelper::Print("LOADC to invalid func");
@@ -721,7 +721,7 @@ Value VMStorage::Run(UInt32 maxCycles) {
 			}
 
 			VM_CASE(BRLT_rA_rB_iC) {
-				// if R[A] < R[B] then jump offset C::
+				// if R[A] < R[B] then jump offset C.
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				SByte offset = BytecodeUtil::Cs(instruction);
@@ -732,7 +732,7 @@ Value VMStorage::Run(UInt32 maxCycles) {
 			}
 
 			VM_CASE(BRLT_rA_iB_iC) {
-				// if R[A] < B (immediate) then jump offset C::
+				// if R[A] < B (immediate) then jump offset C.
 				Byte a = BytecodeUtil::Au(instruction);
 				SByte b = BytecodeUtil::Bs(instruction);
 				SByte offset = BytecodeUtil::Cs(instruction);
@@ -743,7 +743,7 @@ Value VMStorage::Run(UInt32 maxCycles) {
 			}
 
 			VM_CASE(BRLT_iA_rB_iC) {
-				// if A (immediate) < R[B] then jump offset C::
+				// if A (immediate) < R[B] then jump offset C.
 				SByte a = BytecodeUtil::As(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				SByte offset = BytecodeUtil::Cs(instruction);
@@ -754,7 +754,7 @@ Value VMStorage::Run(UInt32 maxCycles) {
 			}
 
 			VM_CASE(BRLE_rA_rB_iC) {
-				// if R[A] <= R[B] then jump offset C::
+				// if R[A] <= R[B] then jump offset C.
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				SByte offset = BytecodeUtil::Cs(instruction);
@@ -765,7 +765,7 @@ Value VMStorage::Run(UInt32 maxCycles) {
 			}
 
 			VM_CASE(BRLE_rA_iB_iC) {
-				// if R[A] <= B (immediate) then jump offset C::
+				// if R[A] <= B (immediate) then jump offset C.
 				Byte a = BytecodeUtil::Au(instruction);
 				SByte b = BytecodeUtil::Bs(instruction);
 				SByte offset = BytecodeUtil::Cs(instruction);
@@ -776,7 +776,7 @@ Value VMStorage::Run(UInt32 maxCycles) {
 			}
 
 			VM_CASE(BRLE_iA_rB_iC) {
-				// if A (immediate) <= R[B] then jump offset C::
+				// if A (immediate) <= R[B] then jump offset C.
 				SByte a = BytecodeUtil::As(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				SByte offset = BytecodeUtil::Cs(instruction);
@@ -787,7 +787,7 @@ Value VMStorage::Run(UInt32 maxCycles) {
 			}
 
 			VM_CASE(BREQ_rA_rB_iC) {
-				// if R[A] == R[B] then jump offset C::
+				// if R[A] == R[B] then jump offset C.
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				SByte offset = BytecodeUtil::Cs(instruction);
@@ -798,7 +798,7 @@ Value VMStorage::Run(UInt32 maxCycles) {
 			}
 
 			VM_CASE(BREQ_rA_iB_iC) {
-				// if R[A] == B (immediate) then jump offset C::
+				// if R[A] == B (immediate) then jump offset C.
 				Byte a = BytecodeUtil::Au(instruction);
 				SByte b = BytecodeUtil::Bs(instruction);
 				SByte offset = BytecodeUtil::Cs(instruction);
@@ -809,7 +809,7 @@ Value VMStorage::Run(UInt32 maxCycles) {
 			}
 
 			VM_CASE(BRNE_rA_rB_iC) {
-				// if R[A] != R[B] then jump offset C::
+				// if R[A] != R[B] then jump offset C.
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				SByte offset = BytecodeUtil::Cs(instruction);
@@ -820,7 +820,7 @@ Value VMStorage::Run(UInt32 maxCycles) {
 			}
 
 			VM_CASE(BRNE_rA_iB_iC) {
-				// if R[A] != B (immediate) then jump offset C::
+				// if R[A] != B (immediate) then jump offset C.
 				Byte a = BytecodeUtil::Au(instruction);
 				SByte b = BytecodeUtil::Bs(instruction);
 				SByte offset = BytecodeUtil::Cs(instruction);
@@ -831,7 +831,7 @@ Value VMStorage::Run(UInt32 maxCycles) {
 			}
 
 			VM_CASE(IFLT_rA_rB) {
-				// if R[A] < R[B] is Boolean(false), skip next instruction
+				// if R[A] < R[B] is false, skip next instruction
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				if (!value_lt(localStack[a], localStack[b])) {
@@ -841,7 +841,7 @@ Value VMStorage::Run(UInt32 maxCycles) {
 			}
 
 			VM_CASE(IFLT_rA_iBC) {
-				// if R[A] < BC (immediate) is Boolean(false), skip next instruction
+				// if R[A] < BC (immediate) is false, skip next instruction
 				Byte a = BytecodeUtil::Au(instruction);
 				short bc = BytecodeUtil::BCs(instruction);
 				if (!value_lt(localStack[a], make_int(bc))) {
@@ -851,7 +851,7 @@ Value VMStorage::Run(UInt32 maxCycles) {
 			}
 
 			VM_CASE(IFLT_iAB_rC) {
-				// if AB (immediate) < R[C] is Boolean(false), skip next instruction
+				// if AB (immediate) < R[C] is false, skip next instruction
 				short ab = BytecodeUtil::ABs(instruction);
 				Byte c = BytecodeUtil::Cu(instruction);
 				if (!value_lt(make_int(ab), localStack[c])) {
@@ -861,7 +861,7 @@ Value VMStorage::Run(UInt32 maxCycles) {
 			}
 
 			VM_CASE(IFLE_rA_rB) {
-				// if R[A] <= R[B] is Boolean(false), skip next instruction
+				// if R[A] <= R[B] is false, skip next instruction
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				if (!value_le(localStack[a], localStack[b])) {
@@ -871,7 +871,7 @@ Value VMStorage::Run(UInt32 maxCycles) {
 			}
 
 			VM_CASE(IFLE_rA_iBC) {
-				// if R[A] <= BC (immediate) is Boolean(false), skip next instruction
+				// if R[A] <= BC (immediate) is false, skip next instruction
 				Byte a = BytecodeUtil::Au(instruction);
 				short bc = BytecodeUtil::BCs(instruction);
 				if (!value_le(localStack[a], make_int(bc))) {
@@ -881,7 +881,7 @@ Value VMStorage::Run(UInt32 maxCycles) {
 			}
 
 			VM_CASE(IFLE_iAB_rC) {
-				// if AB (immediate) <= R[C] is Boolean(false), skip next instruction
+				// if AB (immediate) <= R[C] is false, skip next instruction
 				short ab = BytecodeUtil::ABs(instruction);
 				Byte c = BytecodeUtil::Cu(instruction);
 				if (!value_le(make_int(ab), localStack[c])) {
@@ -891,7 +891,7 @@ Value VMStorage::Run(UInt32 maxCycles) {
 			}
 
 			VM_CASE(IFEQ_rA_rB) {
-				// if R[A] == R[B] is Boolean(false), skip next instruction
+				// if R[A] == R[B] is false, skip next instruction
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				if (!value_equal(localStack[a], localStack[b])) {
@@ -901,7 +901,7 @@ Value VMStorage::Run(UInt32 maxCycles) {
 			}
 
 			VM_CASE(IFEQ_rA_iBC) {
-				// if R[A] == BC (immediate) is Boolean(false), skip next instruction
+				// if R[A] == BC (immediate) is false, skip next instruction
 				Byte a = BytecodeUtil::Au(instruction);
 				short bc = BytecodeUtil::BCs(instruction);
 				if (!value_equal(localStack[a], make_int(bc))) {
@@ -911,7 +911,7 @@ Value VMStorage::Run(UInt32 maxCycles) {
 			}
 
 			VM_CASE(IFNE_rA_rB) {
-				// if R[A] != R[B] is Boolean(false), skip next instruction
+				// if R[A] != R[B] is false, skip next instruction
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				if (value_equal(localStack[a], localStack[b])) {
@@ -921,7 +921,7 @@ Value VMStorage::Run(UInt32 maxCycles) {
 			}
 
 			VM_CASE(IFNE_rA_iBC) {
-				// if R[A] != BC (immediate) is Boolean(false), skip next instruction
+				// if R[A] != BC (immediate) is false, skip next instruction
 				Byte a = BytecodeUtil::Au(instruction);
 				short bc = BytecodeUtil::BCs(instruction);
 				if (value_equal(localStack[a], make_int(bc))) {
@@ -1012,18 +1012,18 @@ Value VMStorage::Run(UInt32 maxCycles) {
 			}
 
 			VM_CASE(ARG_rA) {
-				// The VM should never encounter VM(shared_from_this()) opcode on its own; it will
-				// be processed as part of the ARGBLK opcode::  So if we get
-				// here, it's an error::
+				// The VM should never encounter this opcode on its own; it will
+				// be processed as part of the ARGBLK opcode.  So if we get
+				// here, it's an error.
 				RaiseRuntimeError("Internal error: ARG without ARGBLK");
 				GC_POP_SCOPE();
 				return make_null();
 			}
 
 			VM_CASE(ARG_iABC) {
-				// The VM should never encounter VM(shared_from_this()) opcode on its own; it will
-				// be processed as part of the ARGBLK opcode::  So if we get
-				// here, it's an error::
+				// The VM should never encounter this opcode on its own; it will
+				// be processed as part of the ARGBLK opcode.  So if we get
+				// here, it's an error.
 				RaiseRuntimeError("Internal error: ARG without ARGBLK");
 				GC_POP_SCOPE();
 				return make_null();
@@ -1067,12 +1067,12 @@ Value VMStorage::Run(UInt32 maxCycles) {
 			
 			VM_CASE(CALLFN_iA_kBC) {
 				// Call named (intrinsic?) function kBC,
-				// with parameters/return at register A::
+				// with parameters/return at register A.
 				Byte a = BytecodeUtil::Au(instruction);
 				UInt16 constIdx = BytecodeUtil::BCu(instruction);
 				funcName = curConstants[constIdx];
-				// For now, we'll only support intrinsics::
-				// ToDo: change VM(shared_from_this()) once we have variable look-up::
+				// For now, we'll only support intrinsics.
+				// ToDo: change this once we have variable look-up.
 				DoIntrinsic(funcName, baseIndex + a);
 				VM_NEXT();
 			}
@@ -1132,7 +1132,7 @@ Value VMStorage::Run(UInt32 maxCycles) {
 				// Return value convention: value is in base[0]
 				result = stack[baseIndex];
 				if (callStackTop == 0) {
-					// Returning from main function: update instance vars and set IsRunning = Boolean(false)
+					// Returning from main function: update instance vars and set IsRunning = false
 					PC = pc;
 					BaseIndex = baseIndex;
 					_currentFuncIndex = currentFuncIndex;
@@ -1170,7 +1170,7 @@ Value VMStorage::Run(UInt32 maxCycles) {
 	}
 	VM_DISPATCH_BOTTOM();
 
-	// Update instance variables after loop exit (e::g:: from error condition)
+	// Update instance variables after loop exit (e.g. from error condition)
 	PC = pc;
 	BaseIndex = baseIndex;
 	_currentFuncIndex = currentFuncIndex;
@@ -1187,7 +1187,7 @@ void VMStorage::EnsureFrame(Int32 baseIndex, UInt16 neededRegs) {
 }
 Value VMStorage::LookupVariable(Value varName) {
 	// Look up a variable in outer context (and eventually globals)
-	// Returns the value if found, or nullptr if not found
+	// Returns the value if found, or null if not found
 	GC_PUSH_SCOPE();
 	Value outerValue; GC_PROTECT(&outerValue);
 	if (callStackTop > 0) {
@@ -1213,7 +1213,7 @@ const Value VMStorage::FuncNameVal = make_string("val");
 const Value VMStorage::FuncNameRemove = make_string("remove");
 void VMStorage::DoIntrinsic(Value funcName, Int32 baseReg) {
 	// Run the named intrinsic, with its parameters and return value
-	// stored in our stack starting at baseReg::
+	// stored in our stack starting at baseReg.
 	
 	// Prototype implementation:
 	
@@ -1237,7 +1237,7 @@ void VMStorage::DoIntrinsic(Value funcName, Int32 baseReg) {
 	
 	} else if (value_equal(funcName, FuncNameRemove)) {
 		// Remove index r1 from map r0; return (in r0) 1 if successful,
-		// 0 if index not found::
+		// 0 if index not found.
 		container = stack[baseReg];
 		int result = 0;
 		if (is_list(container)) {
@@ -1254,7 +1254,7 @@ void VMStorage::DoIntrinsic(Value funcName, Int32 baseReg) {
 		  StringUtils::Format("ERROR: Unknown function '{0}'", funcName)
 		);
 		stack[baseReg] = make_null();
-		// ToDo: put VM in an error state, so it aborts::
+		// ToDo: put VM in an error state, so it aborts.
 	}
 }
 

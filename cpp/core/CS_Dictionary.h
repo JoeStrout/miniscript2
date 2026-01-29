@@ -33,6 +33,12 @@ inline int Hash(int value) {
 	return value & 0x7FFFFFFF;  // Ensure non-negative
 }
 
+// Hash for enum types (like TokenType)
+template<typename T, typename std::enable_if<std::is_enum<T>::value, int>::type = 0>
+inline int Hash(T value) {
+	return Hash(static_cast<int>(value));
+}
+
 // Hash(const String&) is defined in CS_String.h to avoid circular dependencies
 
 // Dictionary - hash table using std::shared_ptr and std::vector
@@ -103,8 +109,15 @@ private:
 	}
 
 public:
-	// Constructors
+	// Constructor
 	Dictionary(uint8_t /*poolNum*/ = 0) : count(0) {}
+
+    // Factory method - allocates (matches C# "new List<T>()")
+    static Dictionary<TKey, TValue> New() {
+        Dictionary<TKey, TValue> result;
+        result.createStorage(4);
+        return result;
+    }
 
 	// Copy constructor and assignment
 	Dictionary(const Dictionary<TKey, TValue>& other) = default;

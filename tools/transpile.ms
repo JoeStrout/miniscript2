@@ -165,7 +165,9 @@ roughTokenize = function(s)
 	inIdentifier = false
 	inString = false
 	backslashEscape = false
-	for i in s.indexes
+	i = -1
+	while i+1 < s.len
+		i += 1
 		c = s[i]
 		if backslashEscape then
 			backslashEscape = false
@@ -189,16 +191,28 @@ roughTokenize = function(s)
 			inIdentifier = false
 		else if inIdentifier then
 			if isIdentifierChar(c, false) then continue
+			if c == "<" then
+				// templated type, e.g. Dictionary<TokenType, InfixParselet>
+				// ....keep that whole thing together as one token.
+				gtPos = s.indexOf(">", i)
+				if gtPos != null then
+					i = gtPos
+					continue
+				end if
+			end if
 			if i > tokStart then result.push s[tokStart:i]
 			tokStart = i
 			inIdentifier = false
+		else if c == "/" and i > 0 and s[i-1] == "/" then
+			// comment -- treat whole thing as one token
+			break
 		else
 			if not isIdentifierChar(c, true) then continue
 			if i > tokStart then result.push s[tokStart:i]
 			tokStart = i
 			inIdentifier = true
 		end if
-	end for
+	end while
 	result.push s[tokStart:]
 	return result
 end function
@@ -430,7 +444,7 @@ Transpiler.transformStatement = function(trimmedLine)
 	// non-identifier string.
 	tokens = roughTokenize(trimmedLine)
 	
-	deepDebug = false // e.g.: trimmedLine.contains("func.Code")
+	deepDebug = false; //trimmedLine.contains("_prefixParselets")
 	ddprint = function(s); if deepDebug then print "====> " + s; end function
 	summarize = function(obj)
 		if obj == null then return "<null>"
@@ -502,18 +516,10 @@ Transpiler.transformStatement = function(trimmedLine)
 			// using our storage-wrapper pattern), call the `New()` static method instead.
 			cl = self.findClass(tokens[i+2])  // (skipping space)
 			if cl and cl.type == ClassType.CLASS then
+				debugPrint "DEALING WITH ====> " + tokens + "[" + i + "]"
 				tokens.remove i  // remove "new"; i now points to " "
-				tok = tokens[i+1]  // should be something like `Foo`
-				if i+4 < tokens.len and tokens[i+2] == "<" and tokens[i+4].startsWith(">") then
-					// template class
-					templateType = tokens[i+3]
-					tokens[i+1] = tok + "<" + templateType + ">::New"
-					tokens[i+4] = tokens[i+4][1:]
-					tokens.remove i+3
-					tokens.remove i+2
-				else
-					tokens[i+1] = tok + "::New"
-				end if
+				tok = tokens[i+1]  // should be something like `Foo` or `Dictionary<Foo, Bar>`
+				tokens[i+1] = tok + "::New"
 			else
 				// if it's a struct OR an unknown type (which we assume is some other 
 				// class, not one of our storage wrappers), then just remove `new`
@@ -540,7 +546,14 @@ Transpiler.transformStatement = function(trimmedLine)
 			end if
 			continue
 		else if tokens[i] == "this" and (i+1 >= tokens.len or tokens[i+1] != ".") then
-			tokens[i] = self.curClass.name + "(shared_from_this())";
+			// Ensure we have a _this local variable, then reference that in place of `this`.
+			if not self.curMethod.hasThisLocal then
+				print "THIS NOTED IN: " + tokens
+				self.curClass.methodLines.insert self.curClass.methodStartLine + 1, 
+				  TAB + self.curClass.name + " _this(shared_from_this());"
+				self.curMethod.hasThisLocal = true
+			end if
+			tokens[i] = "_this";
 			curInfo = self.curClass;
 			continue
 		else if tokens[i][0] == "(" then  // method call!  or maybe expression...
@@ -696,7 +709,7 @@ Transpiler.enterState = function(newState, initAsNew=true)
 			self.curClass.defLines.push ""
 		end if
 		self.nextMethodInline = false
-		if self.m.hasIndex("name") then self.m.className = self.m.name
+		if self.m and self.m.hasIndex("name") then self.m.className = self.m.name
 
 	else if newState == State.METHOD then
 		if self.curClass.type == ClassType.CLASS then
@@ -722,6 +735,7 @@ Transpiler.enterState = function(newState, initAsNew=true)
 		else
 			self.curClass.methodLines = self.curClass.defLines
 		end if
+		self.curClass.methodStartLine = self.curClass.methodLines.len
 		self.localVars = params[:]
 		self.inVmCase = 0
 		self.pushedGCScope = false
@@ -851,7 +865,7 @@ Transpiler.updateStateNAMESPACE = function
 		//self.curClass.wrapperLines.push self.fill("	static ≤name≥ New() { return ≤name≥(std::make_shared<≤name≥Storage>()); }")
 		self.curClass.wrapperLines.push self.fill("	friend bool IsNull(const ≤name≥& inst) { return inst.storage == nullptr; }")
 		self.curClass.wrapperLines.push self.fill("	private: ≤name≥Storage* get() const;")
-		self.curClass.inlineLines.push  self.fill("	≤name≥Storage* ≤className≥::get() const { return static_cast<≤name≥Storage*>(storage.get()); }")
+		self.curClass.inlineLines.push  self.fill("inline ≤name≥Storage* ≤className≥::get() const { return static_cast<≤name≥Storage*>(storage.get()); }")
 		self.curClass.storageLines.push self.fill("class ≤name≥Storage : public std::enable_shared_from_this<≤name≥Storage> {")
 		self.curClass.storageLines.push self.fill("	friend struct ≤name≥;")
 		if self.subclassesOf(self.curClass) then
@@ -877,6 +891,8 @@ Transpiler.updateStateNAMESPACE = function
 		self.curClass.wrapperLines.push self.fill("	≤name≥(std::shared_ptr<≤name≥Storage> stor) : storage(stor) {}")
 		self.curClass.wrapperLines.push self.fill("	≤name≥() : storage(nullptr) {}")
 		self.curClass.wrapperLines.push self.fill("	friend bool IsNull(≤name≥ inst) { return inst.storage == nullptr; }")
+		self.curClass.wrapperLines.push self.fill("	private: ≤name≥Storage* get() const;")
+		self.curClass.inlineLines.push  self.fill("inline ≤name≥Storage* ≤name≥::get() const { return static_cast<≤name≥Storage*>(storage.get()); }")
 		// (as this is an abstract class, we assume there must be subclasses!)
 		self.curClass.wrapperLines.push self.fill("	template<typename WrapperType, typename StorageType>")
 		self.curClass.wrapperLines.push self.fill("	friend WrapperType As(≤name≥ inst) {")
@@ -897,7 +913,7 @@ Transpiler.updateStateNAMESPACE = function
 		// subclasses: first a storage class, in the storage lines...
 		self.curClass.storageLines += self.preLines
 		if baseIsInterface then
-			self.curClass.storageLines.push self.fill("class ≤name≥Storage {")
+			self.curClass.storageLines.push self.fill("class ≤name≥Storage : public std::enable_shared_from_this<≤name≥Storage>, ≤baseClass≥ {")
 		else
 			self.curClass.storageLines.push self.fill("class ≤name≥Storage : public ≤baseClass≥Storage {")
 		end if
@@ -910,12 +926,14 @@ Transpiler.updateStateNAMESPACE = function
 			self.curClass.wrapperLines.push self.fill("	public: ≤name≥(std::shared_ptr<≤name≥Storage> stor) : storage(stor) {}")
 		else
 			self.curClass.wrapperLines.push self.fill("	public: ≤name≥(std::shared_ptr<≤baseClass≥Storage> stor) : ≤baseClass≥(stor) {}")
+			self.curClass.wrapperLines.push self.fill("	≤name≥(std::nullptr_t) : ≤baseClass≥(nullptr) {}")
+			self.curClass.wrapperLines.push self.fill("	≤name≥() : ≤baseClass≥(nullptr) {}")
 		end if
 		// Note: we no longer implicitly make a New() method (serving as implicit constructor);
 		// every class you might instantiate directly needs an explicit constructor.
 		//self.curClass.wrapperLines.push self.fill("	static ≤name≥ New() { return ≤name≥(std::make_shared<≤name≥Storage>()); }")
 		self.curClass.wrapperLines.push self.fill("	private: ≤name≥Storage* get();")
-		self.curClass.inlineLines.push  self.fill("	≤name≥Storage* ≤className≥::get() { return static_cast<≤name≥Storage*>(storage.get()); }")
+		self.curClass.inlineLines.push  self.fill("inline ≤name≥Storage* ≤className≥::get() { return static_cast<≤name≥Storage*>(storage.get()); }")
 
 	// class interface
 	else if self.match("≤scope:w≥ interface ≤name:w≥ {") then
@@ -1000,7 +1018,7 @@ Transpiler.updateStateCLASS = function
 				self.curClass.storageLines.push self.fill("	≤scope≥: static const ≤type≥ ≤name≥;")
 				self.curClass.defLines.push self.fill("const ≤type≥ ≤className≥Storage::≤name≥ = ≤value≥;")
 				self.curClass.wrapperLines.push self.fill("	≤scope≥: ≤type≥ ≤name≥();")
-				self.curClass.inlineLines.push  self.fill("	≤type≥ ≤className≥::≤name≥() { return get()->≤name≥; }")
+				self.curClass.inlineLines.push  self.fill("inline ≤type≥ ≤className≥::≤name≥() { return get()->≤name≥; }")
 			else
 				self.curClass.declLines.push self.fill("	≤scope≥: static const ≤type≥ ≤name≥;")
 				self.curClass.defLines.push self.fill("const ≤type≥ ≤className≥::≤name≥ = ≤value≥;")
@@ -1030,9 +1048,9 @@ Transpiler.updateStateCLASS = function
 			if self.curClass.type == ClassType.CLASS then
 				self.curClass.storageLines.push self.fill("	≤dec≥;")
 				self.curClass.wrapperLines.push self.fill("	≤scope≥: ≤type≥ ≤name≥();")
-				self.curClass.inlineLines.push  self.fill("	≤type≥ ≤className≥::≤name≥() { return get()->≤name≥; }")
+				self.curClass.inlineLines.push  self.fill("inline ≤type≥ ≤className≥::≤name≥() { return get()->≤name≥; }")
 				self.curClass.wrapperLines.push self.fill("	≤scope≥: void set_≤name≥(≤type≥ _v);")
-				self.curClass.inlineLines.push  self.fill("	void ≤className≥::set_≤name≥(≤type≥ _v) { get()->≤name≥ = _v; }")
+				self.curClass.inlineLines.push  self.fill("inline void ≤className≥::set_≤name≥(≤type≥ _v) { get()->≤name≥ = _v; }")
 			else
 				self.curClass.declLines.push self.fill("	≤dec≥;")
 			end if
@@ -1060,6 +1078,18 @@ Transpiler.updateStateCLASS = function
 				self.curClass.declLines.push self.fill("	≤scope≥: ≤name≥(≤params≥);")
 				self.stripDefaultArgs
 				self.curClass.methodLines.push self.fill("≤inline≥≤className≥::≤name≥(≤params≥) {")
+			end if
+			if self.gatherMode then self.curClass.methods.push MethodInfo.Make(self.m.name)
+
+		// empty constructor
+		else if self.match("≤scope:w≥ ≤name:w≥(≤params≥) {}") then
+			if self.curClass.type == ClassType.CLASS then
+				self.curClass.wrapperLines.push self.fill("	≤scope≥: static ≤name≥ New(≤params≥) {")
+				self.curClass.wrapperLines.push self.fill("		return ≤name≥(std::make_shared<≤name≥Storage>(≤args≥));")
+				self.curClass.wrapperLines.push self.fill("	}")
+				self.curClass.storageLines.push self.fill("	≤scope≥: ≤name≥Storage(≤params≥) {}")
+			else
+				self.curClass.declLines.push self.fill("	≤scope≥: ≤name≥(≤params≥) {}")
 			end if
 			if self.gatherMode then self.curClass.methods.push MethodInfo.Make(self.m.name)
 
@@ -1470,7 +1500,9 @@ runUnitTests = function
 	check roughTokenize("if (""1.0"" == 2.0) {"),
 	  ["if", " ", "(", """1.0"" == 2.0", ")", " {"]
 	
-
+	check roughTokenize("foo = new Dictionary<Bar, Baz>();"),
+	  ["foo", " ", "=", " ", "new", " ", "Dictionary<Bar, Baz>", "();"]
+	
 	check roughTokenize("return new String(""[\"""") + String.Join(""\"", \"""", list) + ""\""]"";"),
 	  ["return", " ", "new", " ", "String", "(", """[\""""", ")", " + ",
 	   "String", ".", "Join", "(", """\"", \"""", ", "list", ")", " + ""\""]"";"]
@@ -1556,7 +1588,7 @@ if locals == globals then
 
 	if not filesToProcess then
 		print "No files to process.  Exiting."
-		exit
+		//exit
 	end if
 	
 	t = Transpiler.Make

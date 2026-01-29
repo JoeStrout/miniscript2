@@ -16,6 +16,34 @@ struct VM;
 class VMStorage;
 struct Assembler;
 class AssemblerStorage;
+struct Parselet;
+class ParseletStorage;
+struct PrefixParselet;
+class PrefixParseletStorage;
+struct InfixParselet;
+class InfixParseletStorage;
+struct NumberParselet;
+class NumberParseletStorage;
+struct StringParselet;
+class StringParseletStorage;
+struct IdentifierParselet;
+class IdentifierParseletStorage;
+struct UnaryOpParselet;
+class UnaryOpParseletStorage;
+struct GroupParselet;
+class GroupParseletStorage;
+struct ListParselet;
+class ListParseletStorage;
+struct MapParselet;
+class MapParseletStorage;
+struct BinaryOpParselet;
+class BinaryOpParseletStorage;
+struct CallParselet;
+class CallParseletStorage;
+struct IndexParselet;
+class IndexParseletStorage;
+struct MemberParselet;
+class MemberParseletStorage;
 struct Parser;
 class ParserStorage;
 struct FuncDef;
@@ -82,6 +110,21 @@ class MethodCallNodeStorage;
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // Represents a single token from the lexer
 struct Token {
 	public: TokenType Type;
@@ -90,9 +133,10 @@ struct Token {
 	public: Double DoubleValue;
 	public: Int32 Line;
 	public: Int32 Column;
+	public: Token() {}
 
+	// H: public: Token() {}
 	public: Token(TokenType type, String text, Int32 line, Int32 column);
-	public: Token() = default;
 }; // end of struct Token
 
 
@@ -101,8 +145,9 @@ struct Lexer {
 	private: Int32 _position;
 	private: Int32 _line;
 	private: Int32 _column;
+	public: Lexer() {}
 
-	public: Lexer() = default;
+	// H: public: Lexer() {}
 	public: Lexer(String source);
 
 	// Peek at current character without advancing
@@ -136,7 +181,7 @@ inline Boolean Lexer::IsDigit(Char c) {
 	return '0' <= c && c <= '9';
 }
 inline Boolean Lexer::IsWhiteSpace(Char c) {
-	// ToDo: rework Lexer(shared_from_this()) whole file to be fully Unicode-savvy in both C# and C++
+	// ToDo: rework this whole file to be fully Unicode-savvy in both C# and C++
 	return UnicodeCharIsWhitespace((long)c);
 }
 inline Boolean Lexer::IsIdentifierStartChar(Char c) {

@@ -38,6 +38,7 @@ public class InfixParselet : Parselet {
 
 // NumberParselet: handles number literals.
 public class NumberParselet : PrefixParselet {
+	public NumberParselet() {}
 	public override ASTNode Parse(IParser parser, Token token) {
 		return new NumberNode(token.DoubleValue);
 	}
@@ -45,6 +46,7 @@ public class NumberParselet : PrefixParselet {
 
 // StringParselet: handles string literals.
 public class StringParselet : PrefixParselet {
+	public StringParselet() {}
 	public override ASTNode Parse(IParser parser, Token token) {
 		return new StringNode(token.Text);
 	}
@@ -55,6 +57,7 @@ public class StringParselet : PrefixParselet {
 // - Variable assignments (when followed by '=')
 // - Function calls (when followed by '(')
 public class IdentifierParselet : PrefixParselet {
+	public IdentifierParselet() {}
 	public override ASTNode Parse(IParser parser, Token token) {
 		String name = token.Text;
 
@@ -87,6 +90,7 @@ public class UnaryOpParselet : PrefixParselet {
 
 // GroupParselet: handles parenthesized expressions like '(2 + 3)'.
 public class GroupParselet : PrefixParselet {
+	public GroupParselet() {}
 	public override ASTNode Parse(IParser parser, Token token) {
 		ASTNode expr = parser.ParseExpression(Precedence.NONE);
 		parser.Expect(TokenType.RPAREN, "Expected ')' after expression");
@@ -96,6 +100,7 @@ public class GroupParselet : PrefixParselet {
 
 // ListParselet: handles list literals like '[1, 2, 3]'.
 public class ListParselet : PrefixParselet {
+	public ListParselet() {}
 	public override ASTNode Parse(IParser parser, Token token) {
 		List<ASTNode> elements = new List<ASTNode>();
 
@@ -112,6 +117,7 @@ public class ListParselet : PrefixParselet {
 
 // MapParselet: handles map literals like '{"a": 1}'.
 public class MapParselet : PrefixParselet {
+	public MapParselet() {}
 	public override ASTNode Parse(IParser parser, Token token) {
 		List<ASTNode> keys = new List<ASTNode>();
 		List<ASTNode> values = new List<ASTNode>();

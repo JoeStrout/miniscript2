@@ -28,7 +28,7 @@ Boolean AssemblerStorage::HasFunction(String name) {
 }
 List<String> AssemblerStorage::GetTokens(String line) {
 	// Clean the string, stripping off comment at '#',
-	// and divide into tokens by whitespace and commas::  Example:
+	// and divide into tokens by whitespace and commas.  Example:
 	//  "   LOAD r5, r6 # comment"  -->  ["LOAD", "r5", "r6"]
 	//  "LOAD r1, \"Hello world\""  -->  ["LOAD", "r1", "\"Hello world\""]
 	
@@ -58,7 +58,7 @@ List<String> AssemblerStorage::GetTokens(String line) {
 			continue;
 		}
 		
-		// Check if Assembler(shared_from_this()) is a delimiter (whitespace or comma), but not inside quotes
+		// Check if this is a delimiter (whitespace or comma), but not inside quotes
 		if ((c == ' ' || c == '\t' || c == ',') && !inQuotes) {
 			// End current token if we have one
 			if (tokenStart >= 0) {
@@ -66,7 +66,7 @@ List<String> AssemblerStorage::GetTokens(String line) {
 				tokenStart = -1;
 			}
 		} else {
-			// Start token if not already started and not already in quotes
+			// Start new token if not already started and not already in quotes
 			if (tokenStart < 0 && !inQuotes) {
 				tokenStart = i;
 			}
@@ -114,7 +114,7 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 	// Check if first token is a label and remove it
 	if (parts.Count() > 0 && IsLabel(parts[0])) parts.RemoveAt(0);
 
-	// If there is no instruction on Assembler(shared_from_this()) line, return 0
+	// If there is no instruction on this line, return 0
 	if (parts.Count() == 0) return 0;
 
 	String mnemonic = parts[0];
@@ -136,7 +136,7 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 		String paramName;
 		Value defaultValue = make_null(); GC_PROTECT(&defaultValue);
 
-		// Check if there's a default value (e::g::, "b=1")
+		// Check if there's a default value (e.g., "b=1")
 		Int32 equalsPos = -1;
 		for (Int32 i = 0; i < paramSpec.Length(); i++) {
 			if (paramSpec[i] == '=') {
@@ -151,12 +151,12 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 			String defaultStr = paramSpec.Substring(equalsPos + 1);
 			defaultValue = ParseAsConstant(defaultStr);
 		} else {
-			// No default value (defaults to nullptr)
+			// No default value (defaults to null)
 			paramName = paramSpec;
 		}
 
 		// Add parameter to current function (store name as Value string)
-		// ToDo: make simple, consistent conversion functions between String and Value, and use everywhere::
+		// ToDo: make simple, consistent conversion functions between String and Value, and use everywhere.
 		Current.ParamNames().Add(make_string(paramName));
 		Current.ParamDefaults().Add(defaultValue);
 
@@ -174,7 +174,7 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 			return 0;
 		}
 		
-		String destReg = parts[1];  // should be "r5" etc::
+		String destReg = parts[1];  // should be "r5" etc.
 		String source = parts[2];   // "r6", "42", "3.14", "hello", or "k20" 
 						
 		Byte dest = ParseRegister(destReg);
@@ -592,9 +592,9 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 			offset = ParseInt32(target);
 		}
 
-		// ToDo: handle other cases similar to Assembler(shared_from_this()), where we parse the number
+		// ToDo: handle other cases similar to this, where we parse the number
 		// as a bigger Int32 but then check the range, so that we can display
-		// a better error message::
+		// a better error message.
 		if (offset < Int16MinValue || offset > Int16MaxValue) {
 			Error("Range error (Cannot fit branch offset into Int16)");  {
 				GC_POP_SCOPE();
@@ -624,9 +624,9 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 			offset = ParseInt32(target);
 		}
 
-		// ToDo: handle other cases similar to Assembler(shared_from_this()), where we parse the number
+		// ToDo: handle other cases similar to this, where we parse the number
 		// as a bigger Int32 but then check the range, so that we can display
-		// a better error message::
+		// a better error message.
 		if (offset < Int16MinValue || offset > Int16MaxValue) {
 			Error("Range error (Cannot fit branch offset into Int16)");  {
 				GC_POP_SCOPE();
@@ -655,9 +655,9 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 			offset = ParseInt32(target);
 		}
 
-		// ToDo: handle other cases similar to Assembler(shared_from_this()), where we parse the number
+		// ToDo: handle other cases similar to this, where we parse the number
 		// as a bigger Int32 but then check the range, so that we can display
-		// a better error message::
+		// a better error message.
 		if (offset < SByteMinValue || offset > SByteMaxValue) {
 			Error("Range error (Cannot fit branch offset into SByte)");  {
 				GC_POP_SCOPE();
@@ -702,9 +702,9 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 			offset = ParseInt32(target);
 		}
 
-		// ToDo: handle other cases similar to Assembler(shared_from_this()), where we parse the number
+		// ToDo: handle other cases similar to this, where we parse the number
 		// as a bigger Int32 but then check the range, so that we can display
-		// a better error message::
+		// a better error message.
 		if (offset < SByteMinValue || offset > SByteMaxValue) {
 			Error("Range error (Cannot fit branch offset into SByte)");  {
 				GC_POP_SCOPE();
@@ -750,9 +750,9 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 			offset = ParseInt32(target);
 		}
 
-		// ToDo: handle other cases similar to Assembler(shared_from_this()), where we parse the number
+		// ToDo: handle other cases similar to this, where we parse the number
 		// as a bigger Int32 but then check the range, so that we can display
-		// a better error message::
+		// a better error message.
 		if (offset < SByteMinValue || offset > SByteMaxValue) {
 			Error("Range error (Cannot fit branch offset into SByte)");  {
 				GC_POP_SCOPE();
@@ -790,9 +790,9 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 			offset = ParseInt32(target);
 		}
 
-		// ToDo: handle other cases similar to Assembler(shared_from_this()), where we parse the number
+		// ToDo: handle other cases similar to this, where we parse the number
 		// as a bigger Int32 but then check the range, so that we can display
-		// a better error message::
+		// a better error message.
 		if (offset < SByteMinValue || offset > SByteMaxValue) {
 			Error("Range error (Cannot fit branch offset into SByte)");  {
 				GC_POP_SCOPE();
@@ -1234,7 +1234,7 @@ void AssemblerStorage::Assemble(List<String> sourceLines) {
 	bool sawMain = Boolean(false);
 	Int32 lineNum = 0;
 	for (lineNum = 0; lineNum < sourceLines.Count(); lineNum++) {
-		if (HasError) return; // Bail &if error occurred
+		if (HasError) return; // Bail out if error occurred
 		List<String> tokens = GetTokens(sourceLines[lineNum]);
 		if (tokens.Count() < 1 || !IsFunctionLabel(tokens[0])) continue;
 		String funcName = ParseLabel(tokens[0]);
@@ -1243,7 +1243,7 @@ void AssemblerStorage::Assemble(List<String> sourceLines) {
 	}
 	if (!sawMain) AddFunction("@main");
 		
-	// Now proceed through the input lines, assembling one function at a time::
+	// Now proceed through the input lines, assembling one function at a time.
 	lineNum = 0;
 	while (lineNum < sourceLines.Count() && !HasError) {			
 		List<String> tokens = GetTokens(sourceLines[lineNum]);
@@ -1254,24 +1254,24 @@ void AssemblerStorage::Assemble(List<String> sourceLines) {
 		
 		// Our first non-empty line will either be "@main:" or an instruction
 		// (to go into the implicit @main function).  After that, we will
-		// always have a function name (@someFunc) here::
+		// always have a function name (@someFunc) here.
 		if (IsFunctionLabel(tokens[0])) {
-			// Starting a function::
+			// Starting a new function.
 			Current.set_Name(ParseLabel(tokens[0]));
 		} else {
-			// No function name -- implicit @main::
+			// No function name -- implicit @main.
 			Current.set_Name("@main");
 		}
 		
 		// Assemble one function, starting at lineNum+1, and proceeding
-		// until the next function or end-of-input::  The result will be
-		// the line number where we should continue with the next function::	
+		// until the next function or end-of-input.  The result will be
+		// the line number where we should continue with the next function.	
 		lineNum = AssembleFunction(sourceLines, lineNum);
 
-		// Bail &if error occurred during function assembly
+		// Bail out if error occurred during function assembly
 		if (HasError) break;
 
-		// Then, store the just-assembled Current function in our function list::
+		// Then, store the just-assembled Current function in our function list.
 		Int32 slot = FindFunctionIndex(Current.Name());
 		Functions[slot] = Current;
 
@@ -1279,13 +1279,13 @@ void AssemblerStorage::Assemble(List<String> sourceLines) {
 	}
 }
 Int32 AssemblerStorage::AssembleFunction(List<String> sourceLines, Int32 startLine) {
-	// Prepare label names/addresses, just for Assembler(shared_from_this()) function::
+	// Prepare label names/addresses, just for this function.
 	// (So it's OK to reuse the same label in multiple functions!)
 	_labelNames.Clear();
 	_labelAddresses.Clear();
 
-	// First pass: collect label positions within Assembler(shared_from_this()) function;
-	// and also find the end line for the second pass::
+	// First pass: collect label positions within this function;
+	// and also find the end line for the second pass.
 	Int32 instructionAddress = 0;
 	Int32 endLine = sourceLines.Count();
 	for (Int32 i = startLine; i < endLine && !HasError; i++) {
@@ -1311,7 +1311,7 @@ Int32 AssemblerStorage::AssembleFunction(List<String> sourceLines, Int32 startLi
 			_labelAddresses.Add(instructionAddress);
 		}
 
-		// Check if there's an instruction on Assembler(shared_from_this()) line
+		// Check if there's an instruction on this line
 		if (!IsLabel(tokens[0]) || tokens[0] == "NOOP" || tokens.Count() > 1) {
 			instructionAddress++;
 		}

@@ -263,7 +263,7 @@ Boolean UnitTests::TestValueMap() {
 	}
 
 	// Test lookup of nonexistent key
-	// (For now; later: UnitTests(shared_from_this()) should invoke error-handling pipeline)
+	// (For now; later: this should invoke error-handling pipeline)
 	Value nonexistent = map_get(map, make_string("missing")); GC_PROTECT(&nonexistent);
 	Boolean nonexistentOk = Assert(is_null(nonexistent), "Nonexistent key should return null");
 
@@ -303,7 +303,7 @@ Boolean UnitTests::TestValueMap() {
 	// Note: We have successfully implemented and tested both conversion approaches:
 	// 1. Runtime C functions (list_to_string, map_to_string) → GC Value strings
 	// 2. Host-level C++ functions (StringUtils::makeString) → StringPool String
-	// Both are working correctly in their respective contexts::
+	// Both are working correctly in their respective contexts.
 
 	// Test clearing
 	map_clear(map);
@@ -359,7 +359,7 @@ Boolean UnitTests::TestParser() {
 	ok = ok && CheckParse(parser, "2 ^ 3", "8");
 	ok = ok && CheckParse(parser, "2 ^ 3 ^ 2", "512");  // 2^(3^2) = 2^9 = 512
 
-	// Test comparison operators (result is 1 for Boolean(true), 0 for Boolean(false))
+	// Test comparison operators (result is 1 for true, 0 for false)
 	ok = ok && CheckParse(parser, "5 == 5", "1");
 	ok = ok && CheckParse(parser, "5 == 6", "0");
 	ok = ok && CheckParse(parser, "5 != 6", "1");

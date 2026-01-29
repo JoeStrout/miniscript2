@@ -127,13 +127,13 @@ ASTNode CallParseletStorage::Parse(IParser& parser, ASTNode left, Token token) {
 		return  CallNode::New(funcName.Name(), args);
 	}
 
-	// Method call: obj::method(x, y)
+	// Method call: obj.method(x, y)
 	MemberNode memberAccess = As<MemberNode, MemberNodeStorage>(left);
 	if (!IsNull(memberAccess)) {
 		return  MethodCallNode::New(memberAccess.Target(), memberAccess.Member(), args);
 	}
 
-	// Other cases (e::g::, result of function call being called)
+	// Other cases (e.g., result of function call being called)
 	// For now, report an error - could be extended later
 	parser.ReportError("Expected function name or method access before '('");
 	return  NumberNode::New(0);

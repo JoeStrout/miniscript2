@@ -132,7 +132,7 @@ class MethodCallNodeStorage;
 
 // Parser: the main parsing engine.
 // Uses a Pratt parser algorithm with parselets to handle operator precedence.
-class ParserStorage {
+class ParserStorage : public std::enable_shared_from_this<ParserStorage>, IParser {
 	friend struct Parser;
 	private: Lexer _lexer;
 	private: Token _current;
@@ -268,18 +268,18 @@ struct Parser : public IParser {
 
 // INLINE METHODS
 
-	ParserStorage* Parser::get() { return static_cast<ParserStorage*>(storage.get()); }
-	Lexer Parser::_lexer() { return get()->_lexer; }
-	void Parser::set__lexer(Lexer _v) { get()->_lexer = _v; }
-	Token Parser::_current() { return get()->_current; }
-	void Parser::set__current(Token _v) { get()->_current = _v; }
-	Boolean Parser::_hadError() { return get()->_hadError; }
-	void Parser::set__hadError(Boolean _v) { get()->_hadError = _v; }
-	List<String> Parser::_errors() { return get()->_errors; }
-	void Parser::set__errors(List<String> _v) { get()->_errors = _v; }
-	Dictionary<TokenType, PrefixParselet> Parser::_prefixParselets() { return get()->_prefixParselets; }
-	void Parser::set__prefixParselets(Dictionary<TokenType, PrefixParselet> _v) { get()->_prefixParselets = _v; }
-	Dictionary<TokenType, InfixParselet> Parser::_infixParselets() { return get()->_infixParselets; }
-	void Parser::set__infixParselets(Dictionary<TokenType, InfixParselet> _v) { get()->_infixParselets = _v; }
+inline ParserStorage* Parser::get() { return static_cast<ParserStorage*>(storage.get()); }
+inline Lexer Parser::_lexer() { return get()->_lexer; }
+inline void Parser::set__lexer(Lexer _v) { get()->_lexer = _v; }
+inline Token Parser::_current() { return get()->_current; }
+inline void Parser::set__current(Token _v) { get()->_current = _v; }
+inline Boolean Parser::_hadError() { return get()->_hadError; }
+inline void Parser::set__hadError(Boolean _v) { get()->_hadError = _v; }
+inline List<String> Parser::_errors() { return get()->_errors; }
+inline void Parser::set__errors(List<String> _v) { get()->_errors = _v; }
+inline Dictionary<TokenType, PrefixParselet> Parser::_prefixParselets() { return get()->_prefixParselets; }
+inline void Parser::set__prefixParselets(Dictionary<TokenType, PrefixParselet> _v) { get()->_prefixParselets = _v; }
+inline Dictionary<TokenType, InfixParselet> Parser::_infixParselets() { return get()->_infixParselets; }
+inline void Parser::set__infixParselets(Dictionary<TokenType, InfixParselet> _v) { get()->_infixParselets = _v; }
 
 } // end of namespace MiniScript

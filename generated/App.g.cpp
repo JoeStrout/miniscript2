@@ -77,7 +77,7 @@ void App::MainProgram(List<String> args) {
 		// Check for assembly errors
 		if (assembler.HasError()) {
 			IOHelper::Print("Assembly failed with errors.");
-			return; // Bail &rather than trying to run a half-assembled program
+			return; // Bail out rather than trying to run a half-assembled program
 		}
 		
 		if (debugMode) IOHelper::Print("Assembly complete.");

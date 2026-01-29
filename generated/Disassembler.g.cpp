@@ -83,7 +83,7 @@ String Disassembler::ToString(UInt32 instruction) {
 	mnemonic = mnemonic.Left(7);
 	
 	// In the following switch, we group opcodes according
-	// to their operand usage::
+	// to their operand usage.
 	switch (opcode) {
 		// No operands:
 		case Opcode::NOOP:

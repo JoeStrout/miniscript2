@@ -10,8 +10,8 @@ namespace MiniScript {
 
 ParserStorage::ParserStorage() {
 	_errors =  List<String>::New();
-	_prefixParselets = Dictionary<TokenType, PrefixParselet>();
-	_infixParselets = Dictionary<TokenType, InfixParselet>();
+	_prefixParselets =  Dictionary<TokenType, PrefixParselet>::New();
+	_infixParselets =  Dictionary<TokenType, InfixParselet>::New();
 
 	RegisterParselets();
 }
@@ -94,23 +94,24 @@ Token ParserStorage::Expect(TokenType type, String errorMessage) {
 }
 Precedence ParserStorage::GetPrecedence() {
 	InfixParselet parselet = nullptr;
-	if (_infixParselets::TryGetValue(_current.Type, &parselet)) {
+	if (_infixParselets.TryGetValue(_current.Type, &parselet)) {
 		return parselet.Prec();
 	}
 	return Precedence::NONE;
 }
 ASTNode ParserStorage::ParseExpression(Precedence minPrecedence) {
+	Parser _this(shared_from_this());
 	Token token = _current;
 	Advance();
 
-	// Look up the prefix parselet for Parser(shared_from_this()) token
+	// Look up the prefix parselet for this token
 	PrefixParselet prefix = nullptr;
-	if (!_prefixParselets::TryGetValue(token.Type, &prefix)) {
+	if (!_prefixParselets.TryGetValue(token.Type, &prefix)) {
 		ReportError(Interp("Unexpected token: {}", token.Text));
 		return  NumberNode::New(0);
 	}
 
-	ASTNode left = prefix.Parse(Parser(shared_from_this()), token);
+	ASTNode left = prefix.Parse(_this, token);
 
 	// Continue parsing infix expressions while precedence allows
 	while ((Int32)minPrecedence < (Int32)GetPrecedence()) {
@@ -118,8 +119,8 @@ ASTNode ParserStorage::ParseExpression(Precedence minPrecedence) {
 		Advance();
 
 		InfixParselet infix = nullptr;
-		if (_infixParselets::TryGetValue(token.Type, &infix)) {
-			left = infix.Parse(Parser(shared_from_this()), left, token);
+		if (_infixParselets.TryGetValue(token.Type, &infix)) {
+			left = infix.Parse(_this, left, token);
 		}
 	}
 

@@ -16,6 +16,34 @@ struct VM;
 class VMStorage;
 struct Assembler;
 class AssemblerStorage;
+struct Parselet;
+class ParseletStorage;
+struct PrefixParselet;
+class PrefixParseletStorage;
+struct InfixParselet;
+class InfixParseletStorage;
+struct NumberParselet;
+class NumberParseletStorage;
+struct StringParselet;
+class StringParseletStorage;
+struct IdentifierParselet;
+class IdentifierParseletStorage;
+struct UnaryOpParselet;
+class UnaryOpParseletStorage;
+struct GroupParselet;
+class GroupParseletStorage;
+struct ListParselet;
+class ListParseletStorage;
+struct MapParselet;
+class MapParseletStorage;
+struct BinaryOpParselet;
+class BinaryOpParseletStorage;
+struct CallParselet;
+class CallParseletStorage;
+struct IndexParselet;
+class IndexParseletStorage;
+struct MemberParselet;
+class MemberParseletStorage;
 struct Parser;
 class ParserStorage;
 struct FuncDef;
@@ -68,6 +96,21 @@ struct CallInfo {
 
 	public: Value GetLocalVarMap(List<Value> registers, List<Value> names, int baseIdx, int regCount);
 }; // end of struct CallInfo
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -185,32 +228,32 @@ struct VM {
 	VM() : storage(nullptr) {}
 	VM(std::nullptr_t) : storage(nullptr) {}
 	friend bool IsNull(const VM& inst) { return inst.storage == nullptr; }
-	private: VMStorage* get() const { return static_cast<VMStorage*>(storage.get()); }
+	private: VMStorage* get() const;
 
-	public: Boolean DebugMode() { return get()->DebugMode; }
-	public: void set_DebugMode(Boolean _v) { get()->DebugMode = _v; }
-	private: List<Value> stack() { return get()->stack; }
-	private: void set_stack(List<Value> _v) { get()->stack = _v; }
-	private: List<Value> names() { return get()->names; } // Variable names parallel to stack (null if unnamed)
-	private: void set_names(List<Value> _v) { get()->names = _v; } // Variable names parallel to stack (null if unnamed)
-	private: List<CallInfo> callStack() { return get()->callStack; }
-	private: void set_callStack(List<CallInfo> _v) { get()->callStack = _v; }
-	private: Int32 callStackTop() { return get()->callStackTop; } // Index of next free call stack slot
-	private: void set_callStackTop(Int32 _v) { get()->callStackTop = _v; } // Index of next free call stack slot
-	private: List<FuncDef> functions() { return get()->functions; } // functions addressed by CALLF
-	private: void set_functions(List<FuncDef> _v) { get()->functions = _v; } // functions addressed by CALLF
-	public: Int32 PC() { return get()->PC; }
-	public: void set_PC(Int32 _v) { get()->PC = _v; }
-	private: Int32 _currentFuncIndex() { return get()->_currentFuncIndex; }
-	private: void set__currentFuncIndex(Int32 _v) { get()->_currentFuncIndex = _v; }
-	public: FuncDef CurrentFunction() { return get()->CurrentFunction; }
-	public: void set_CurrentFunction(FuncDef _v) { get()->CurrentFunction = _v; }
-	public: Boolean IsRunning() { return get()->IsRunning; }
-	public: void set_IsRunning(Boolean _v) { get()->IsRunning = _v; }
-	public: Int32 BaseIndex() { return get()->BaseIndex; }
-	public: void set_BaseIndex(Int32 _v) { get()->BaseIndex = _v; }
-	public: String RuntimeError() { return get()->RuntimeError; }
-	public: void set_RuntimeError(String _v) { get()->RuntimeError = _v; }
+	public: Boolean DebugMode();
+	public: void set_DebugMode(Boolean _v);
+	private: List<Value> stack();
+	private: void set_stack(List<Value> _v);
+	private: List<Value> names(); // Variable names parallel to stack (null if unnamed)
+	private: void set_names(List<Value> _v); // Variable names parallel to stack (null if unnamed)
+	private: List<CallInfo> callStack();
+	private: void set_callStack(List<CallInfo> _v);
+	private: Int32 callStackTop(); // Index of next free call stack slot
+	private: void set_callStackTop(Int32 _v); // Index of next free call stack slot
+	private: List<FuncDef> functions(); // functions addressed by CALLF
+	private: void set_functions(List<FuncDef> _v); // functions addressed by CALLF
+	public: Int32 PC();
+	public: void set_PC(Int32 _v);
+	private: Int32 _currentFuncIndex();
+	private: void set__currentFuncIndex(Int32 _v);
+	public: FuncDef CurrentFunction();
+	public: void set_CurrentFunction(FuncDef _v);
+	public: Boolean IsRunning();
+	public: void set_IsRunning(Boolean _v);
+	public: Int32 BaseIndex();
+	public: void set_BaseIndex(Int32 _v);
+	public: String RuntimeError();
+	public: void set_RuntimeError(String _v);
 
 
 
@@ -265,10 +308,10 @@ struct VM {
 	private: void EnsureFrame(Int32 baseIndex, UInt16 neededRegs) { return get()->EnsureFrame(baseIndex, neededRegs); }
 
 	private: Value LookupVariable(Value varName) { return get()->LookupVariable(varName); }
-	private: Value FuncNamePrint() { return get()->FuncNamePrint; }
-	private: Value FuncNameInput() { return get()->FuncNameInput; }
-	private: Value FuncNameVal() { return get()->FuncNameVal; }
-	private: Value FuncNameRemove() { return get()->FuncNameRemove; }
+	private: Value FuncNamePrint();
+	private: Value FuncNameInput();
+	private: Value FuncNameVal();
+	private: Value FuncNameRemove();
 	
 	
 	private: void DoIntrinsic(Value funcName, Int32 baseReg) { return get()->DoIntrinsic(funcName, baseReg); }
@@ -276,6 +319,36 @@ struct VM {
 
 
 // INLINE METHODS
+
+inline VMStorage* VM::get() const { return static_cast<VMStorage*>(storage.get()); }
+inline Boolean VM::DebugMode() { return get()->DebugMode; }
+inline void VM::set_DebugMode(Boolean _v) { get()->DebugMode = _v; }
+inline List<Value> VM::stack() { return get()->stack; }
+inline void VM::set_stack(List<Value> _v) { get()->stack = _v; }
+inline List<Value> VM::names() { return get()->names; } // Variable names parallel to stack (null if unnamed)
+inline void VM::set_names(List<Value> _v) { get()->names = _v; } // Variable names parallel to stack (null if unnamed)
+inline List<CallInfo> VM::callStack() { return get()->callStack; }
+inline void VM::set_callStack(List<CallInfo> _v) { get()->callStack = _v; }
+inline Int32 VM::callStackTop() { return get()->callStackTop; } // Index of next free call stack slot
+inline void VM::set_callStackTop(Int32 _v) { get()->callStackTop = _v; } // Index of next free call stack slot
+inline List<FuncDef> VM::functions() { return get()->functions; } // functions addressed by CALLF
+inline void VM::set_functions(List<FuncDef> _v) { get()->functions = _v; } // functions addressed by CALLF
+inline Int32 VM::PC() { return get()->PC; }
+inline void VM::set_PC(Int32 _v) { get()->PC = _v; }
+inline Int32 VM::_currentFuncIndex() { return get()->_currentFuncIndex; }
+inline void VM::set__currentFuncIndex(Int32 _v) { get()->_currentFuncIndex = _v; }
+inline FuncDef VM::CurrentFunction() { return get()->CurrentFunction; }
+inline void VM::set_CurrentFunction(FuncDef _v) { get()->CurrentFunction = _v; }
+inline Boolean VM::IsRunning() { return get()->IsRunning; }
+inline void VM::set_IsRunning(Boolean _v) { get()->IsRunning = _v; }
+inline Int32 VM::BaseIndex() { return get()->BaseIndex; }
+inline void VM::set_BaseIndex(Int32 _v) { get()->BaseIndex = _v; }
+inline String VM::RuntimeError() { return get()->RuntimeError; }
+inline void VM::set_RuntimeError(String _v) { get()->RuntimeError = _v; }
+inline Value VM::FuncNamePrint() { return get()->FuncNamePrint; }
+inline Value VM::FuncNameInput() { return get()->FuncNameInput; }
+inline Value VM::FuncNameVal() { return get()->FuncNameVal; }
+inline Value VM::FuncNameRemove() { return get()->FuncNameRemove; }
 
 } // end of namespace MiniScript
 

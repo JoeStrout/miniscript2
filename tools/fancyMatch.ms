@@ -109,7 +109,8 @@ string.match = function(pattern)
 		end if
 		p = s.indexOf(part, p-1)
 		if p == null then return null  // literal part not found
-		if i == 0 and p > 0 then return null
+		if i == 0 and p > 0 then return null  // found, but not at start of string
+		if i == parts.len-1 and p+part.len < s.len then return null // found, but with extra stuff after
 		if i > 0 then
 			fieldContent = parts[i-1][1:-1]
 			fieldValue = s[lastStartPos:p]
@@ -124,6 +125,7 @@ string.match = function(pattern)
 		lastStartPos = p
 		p = p + part.len
 	end for
+	
 	if anyNBSP then
 		for i in result.indexes; result[i] = result[i].replace(NBSP, " "); end for
 	end if
@@ -178,6 +180,9 @@ if locals == globals then
 	
 	assertMatch "foo bar baz", "bar baz", null
 	assertMatch "foo bar baz", "bar ≤anything≥", null
+	assertMatch "foo bar baz", "foo ≤mid:w≥ baz", {"mid":"bar"}
+	assertMatch "foo bar baz", "foo ≤mid:w≥ baz!", null
+	assertMatch "foo bar ab",  "foo ≤name≥ a", null
 	
 	print "All tests complete."
 end if

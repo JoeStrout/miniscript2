@@ -169,6 +169,8 @@ template<typename WrapperType, typename StorageType> WrapperType As(Parselet ins
 // starting an expression (numbers, identifiers, unary operators).
 struct PrefixParselet : public Parselet {
 	public: PrefixParselet(std::shared_ptr<ParseletStorage> stor) : Parselet(stor) {}
+	PrefixParselet(std::nullptr_t) : Parselet(nullptr) {}
+	PrefixParselet() : Parselet(nullptr) {}
 	private: PrefixParseletStorage* get();
 	public: ASTNode Parse(IParser& parser, Token token);
 }; // end of struct PrefixParselet
@@ -179,6 +181,8 @@ template<typename WrapperType, typename StorageType> WrapperType As(PrefixParsel
 // InfixParselet: abstract base for parselets that handle infix operators.
 struct InfixParselet : public Parselet {
 	public: InfixParselet(std::shared_ptr<ParseletStorage> stor) : Parselet(stor) {}
+	InfixParselet(std::nullptr_t) : Parselet(nullptr) {}
+	InfixParselet() : Parselet(nullptr) {}
 	private: InfixParseletStorage* get();
 	public: ASTNode Parse(IParser& parser, ASTNode left, Token token);
 }; // end of struct InfixParselet
@@ -210,6 +214,7 @@ class InfixParseletStorage : public ParseletStorage {
 // NumberParselet: handles number literals.
 class NumberParseletStorage : public PrefixParseletStorage {
 	friend struct NumberParselet;
+	public: NumberParseletStorage() {}
 	public: ASTNode Parse(IParser& parser, Token token);
 }; // end of class NumberParseletStorage
 
@@ -217,6 +222,7 @@ class NumberParseletStorage : public PrefixParseletStorage {
 // StringParselet: handles string literals.
 class StringParseletStorage : public PrefixParseletStorage {
 	friend struct StringParselet;
+	public: StringParseletStorage() {}
 	public: ASTNode Parse(IParser& parser, Token token);
 }; // end of class StringParseletStorage
 
@@ -227,6 +233,7 @@ class StringParseletStorage : public PrefixParseletStorage {
 // - Function calls (when followed by '(')
 class IdentifierParseletStorage : public PrefixParseletStorage {
 	friend struct IdentifierParselet;
+	public: IdentifierParseletStorage() {}
 	public: ASTNode Parse(IParser& parser, Token token);
 }; // end of class IdentifierParseletStorage
 
@@ -245,6 +252,7 @@ class UnaryOpParseletStorage : public PrefixParseletStorage {
 // GroupParselet: handles parenthesized expressions like '(2 + 3)'.
 class GroupParseletStorage : public PrefixParseletStorage {
 	friend struct GroupParselet;
+	public: GroupParseletStorage() {}
 	public: ASTNode Parse(IParser& parser, Token token);
 }; // end of class GroupParseletStorage
 
@@ -252,6 +260,7 @@ class GroupParseletStorage : public PrefixParseletStorage {
 // ListParselet: handles list literals like '[1, 2, 3]'.
 class ListParseletStorage : public PrefixParseletStorage {
 	friend struct ListParselet;
+	public: ListParseletStorage() {}
 	public: ASTNode Parse(IParser& parser, Token token);
 }; // end of class ListParseletStorage
 
@@ -259,6 +268,7 @@ class ListParseletStorage : public PrefixParseletStorage {
 // MapParselet: handles map literals like '{"a": 1}'.
 class MapParseletStorage : public PrefixParseletStorage {
 	friend struct MapParselet;
+	public: MapParseletStorage() {}
 	public: ASTNode Parse(IParser& parser, Token token);
 }; // end of class MapParseletStorage
 
@@ -307,7 +317,12 @@ class MemberParseletStorage : public InfixParseletStorage {
 // NumberParselet: handles number literals.
 struct NumberParselet : public PrefixParselet {
 	public: NumberParselet(std::shared_ptr<PrefixParseletStorage> stor) : PrefixParselet(stor) {}
+	NumberParselet(std::nullptr_t) : PrefixParselet(nullptr) {}
+	NumberParselet() : PrefixParselet(nullptr) {}
 	private: NumberParseletStorage* get();
+	public: static NumberParselet New() {
+		return NumberParselet(std::make_shared<NumberParseletStorage>());
+	}
 	public: ASTNode Parse(IParser& parser, Token token) { return get()->Parse(parser, token); }
 }; // end of struct NumberParselet
 
@@ -315,7 +330,12 @@ struct NumberParselet : public PrefixParselet {
 // StringParselet: handles string literals.
 struct StringParselet : public PrefixParselet {
 	public: StringParselet(std::shared_ptr<PrefixParseletStorage> stor) : PrefixParselet(stor) {}
+	StringParselet(std::nullptr_t) : PrefixParselet(nullptr) {}
+	StringParselet() : PrefixParselet(nullptr) {}
 	private: StringParseletStorage* get();
+	public: static StringParselet New() {
+		return StringParselet(std::make_shared<StringParseletStorage>());
+	}
 	public: ASTNode Parse(IParser& parser, Token token) { return get()->Parse(parser, token); }
 }; // end of struct StringParselet
 
@@ -326,7 +346,12 @@ struct StringParselet : public PrefixParselet {
 // - Function calls (when followed by '(')
 struct IdentifierParselet : public PrefixParselet {
 	public: IdentifierParselet(std::shared_ptr<PrefixParseletStorage> stor) : PrefixParselet(stor) {}
+	IdentifierParselet(std::nullptr_t) : PrefixParselet(nullptr) {}
+	IdentifierParselet() : PrefixParselet(nullptr) {}
 	private: IdentifierParseletStorage* get();
+	public: static IdentifierParselet New() {
+		return IdentifierParselet(std::make_shared<IdentifierParseletStorage>());
+	}
 	public: ASTNode Parse(IParser& parser, Token token) { return get()->Parse(parser, token); }
 }; // end of struct IdentifierParselet
 
@@ -334,6 +359,8 @@ struct IdentifierParselet : public PrefixParselet {
 // UnaryOpParselet: handles prefix unary operators like '-' and 'not'.
 struct UnaryOpParselet : public PrefixParselet {
 	public: UnaryOpParselet(std::shared_ptr<PrefixParseletStorage> stor) : PrefixParselet(stor) {}
+	UnaryOpParselet(std::nullptr_t) : PrefixParselet(nullptr) {}
+	UnaryOpParselet() : PrefixParselet(nullptr) {}
 	private: UnaryOpParseletStorage* get();
 	private: String _op();
 	private: void set__op(String _v);
@@ -349,7 +376,12 @@ struct UnaryOpParselet : public PrefixParselet {
 // GroupParselet: handles parenthesized expressions like '(2 + 3)'.
 struct GroupParselet : public PrefixParselet {
 	public: GroupParselet(std::shared_ptr<PrefixParseletStorage> stor) : PrefixParselet(stor) {}
+	GroupParselet(std::nullptr_t) : PrefixParselet(nullptr) {}
+	GroupParselet() : PrefixParselet(nullptr) {}
 	private: GroupParseletStorage* get();
+	public: static GroupParselet New() {
+		return GroupParselet(std::make_shared<GroupParseletStorage>());
+	}
 	public: ASTNode Parse(IParser& parser, Token token) { return get()->Parse(parser, token); }
 }; // end of struct GroupParselet
 
@@ -357,7 +389,12 @@ struct GroupParselet : public PrefixParselet {
 // ListParselet: handles list literals like '[1, 2, 3]'.
 struct ListParselet : public PrefixParselet {
 	public: ListParselet(std::shared_ptr<PrefixParseletStorage> stor) : PrefixParselet(stor) {}
+	ListParselet(std::nullptr_t) : PrefixParselet(nullptr) {}
+	ListParselet() : PrefixParselet(nullptr) {}
 	private: ListParseletStorage* get();
+	public: static ListParselet New() {
+		return ListParselet(std::make_shared<ListParseletStorage>());
+	}
 	public: ASTNode Parse(IParser& parser, Token token) { return get()->Parse(parser, token); }
 }; // end of struct ListParselet
 
@@ -365,7 +402,12 @@ struct ListParselet : public PrefixParselet {
 // MapParselet: handles map literals like '{"a": 1}'.
 struct MapParselet : public PrefixParselet {
 	public: MapParselet(std::shared_ptr<PrefixParseletStorage> stor) : PrefixParselet(stor) {}
+	MapParselet(std::nullptr_t) : PrefixParselet(nullptr) {}
+	MapParselet() : PrefixParselet(nullptr) {}
 	private: MapParseletStorage* get();
+	public: static MapParselet New() {
+		return MapParselet(std::make_shared<MapParseletStorage>());
+	}
 	public: ASTNode Parse(IParser& parser, Token token) { return get()->Parse(parser, token); }
 }; // end of struct MapParselet
 
@@ -373,6 +415,8 @@ struct MapParselet : public PrefixParselet {
 // BinaryOpParselet: handles binary operators like '+', '-', '*', etc.
 struct BinaryOpParselet : public InfixParselet {
 	public: BinaryOpParselet(std::shared_ptr<InfixParseletStorage> stor) : InfixParselet(stor) {}
+	BinaryOpParselet(std::nullptr_t) : InfixParselet(nullptr) {}
+	BinaryOpParselet() : InfixParselet(nullptr) {}
 	private: BinaryOpParseletStorage* get();
 	private: String _op();
 	private: void set__op(String _v);
@@ -394,6 +438,8 @@ struct BinaryOpParselet : public InfixParselet {
 // CallParselet: handles function calls like 'foo(x, y)' and method calls like 'obj.method(x)'.
 struct CallParselet : public InfixParselet {
 	public: CallParselet(std::shared_ptr<InfixParseletStorage> stor) : InfixParselet(stor) {}
+	CallParselet(std::nullptr_t) : InfixParselet(nullptr) {}
+	CallParselet() : InfixParselet(nullptr) {}
 	private: CallParseletStorage* get();
 	public: static CallParselet New() {
 		return CallParselet(std::make_shared<CallParseletStorage>());
@@ -406,6 +452,8 @@ struct CallParselet : public InfixParselet {
 // IndexParselet: handles index access like 'list[0]' or 'map["key"]'.
 struct IndexParselet : public InfixParselet {
 	public: IndexParselet(std::shared_ptr<InfixParseletStorage> stor) : InfixParselet(stor) {}
+	IndexParselet(std::nullptr_t) : InfixParselet(nullptr) {}
+	IndexParselet() : InfixParselet(nullptr) {}
 	private: IndexParseletStorage* get();
 	public: static IndexParselet New() {
 		return IndexParselet(std::make_shared<IndexParseletStorage>());
@@ -418,6 +466,8 @@ struct IndexParselet : public InfixParselet {
 // MemberParselet: handles member access like 'obj.field'.
 struct MemberParselet : public InfixParselet {
 	public: MemberParselet(std::shared_ptr<InfixParseletStorage> stor) : InfixParselet(stor) {}
+	MemberParselet(std::nullptr_t) : InfixParselet(nullptr) {}
+	MemberParselet() : InfixParselet(nullptr) {}
 	private: MemberParseletStorage* get();
 	public: static MemberParselet New() {
 		return MemberParselet(std::make_shared<MemberParseletStorage>());
@@ -429,42 +479,42 @@ struct MemberParselet : public InfixParselet {
 
 // INLINE METHODS
 
-	ParseletStorage* Parselet::get() const { return static_cast<ParseletStorage*>(storage.get()); }
-	Precedence Parselet::Prec() { return get()->Prec; }
-	void Parselet::set_Prec(Precedence _v) { get()->Prec = _v; }
+inline ParseletStorage* Parselet::get() const { return static_cast<ParseletStorage*>(storage.get()); }
+inline Precedence Parselet::Prec() { return get()->Prec; }
+inline void Parselet::set_Prec(Precedence _v) { get()->Prec = _v; }
 
-	PrefixParseletStorage* PrefixParselet::get() { return static_cast<PrefixParseletStorage*>(storage.get()); }
+inline PrefixParseletStorage* PrefixParselet::get() { return static_cast<PrefixParseletStorage*>(storage.get()); }
 inline ASTNode PrefixParselet::Parse(IParser& parser, Token token) { return get()->Parse(parser, token); }
 
-	InfixParseletStorage* InfixParselet::get() { return static_cast<InfixParseletStorage*>(storage.get()); }
+inline InfixParseletStorage* InfixParselet::get() { return static_cast<InfixParseletStorage*>(storage.get()); }
 inline ASTNode InfixParselet::Parse(IParser& parser, ASTNode left, Token token) { return get()->Parse(parser, left, token); }
 
-	NumberParseletStorage* NumberParselet::get() { return static_cast<NumberParseletStorage*>(storage.get()); }
+inline NumberParseletStorage* NumberParselet::get() { return static_cast<NumberParseletStorage*>(storage.get()); }
 
-	StringParseletStorage* StringParselet::get() { return static_cast<StringParseletStorage*>(storage.get()); }
+inline StringParseletStorage* StringParselet::get() { return static_cast<StringParseletStorage*>(storage.get()); }
 
-	IdentifierParseletStorage* IdentifierParselet::get() { return static_cast<IdentifierParseletStorage*>(storage.get()); }
+inline IdentifierParseletStorage* IdentifierParselet::get() { return static_cast<IdentifierParseletStorage*>(storage.get()); }
 
-	UnaryOpParseletStorage* UnaryOpParselet::get() { return static_cast<UnaryOpParseletStorage*>(storage.get()); }
-	String UnaryOpParselet::_op() { return get()->_op; }
-	void UnaryOpParselet::set__op(String _v) { get()->_op = _v; }
+inline UnaryOpParseletStorage* UnaryOpParselet::get() { return static_cast<UnaryOpParseletStorage*>(storage.get()); }
+inline String UnaryOpParselet::_op() { return get()->_op; }
+inline void UnaryOpParselet::set__op(String _v) { get()->_op = _v; }
 
-	GroupParseletStorage* GroupParselet::get() { return static_cast<GroupParseletStorage*>(storage.get()); }
+inline GroupParseletStorage* GroupParselet::get() { return static_cast<GroupParseletStorage*>(storage.get()); }
 
-	ListParseletStorage* ListParselet::get() { return static_cast<ListParseletStorage*>(storage.get()); }
+inline ListParseletStorage* ListParselet::get() { return static_cast<ListParseletStorage*>(storage.get()); }
 
-	MapParseletStorage* MapParselet::get() { return static_cast<MapParseletStorage*>(storage.get()); }
+inline MapParseletStorage* MapParselet::get() { return static_cast<MapParseletStorage*>(storage.get()); }
 
-	BinaryOpParseletStorage* BinaryOpParselet::get() { return static_cast<BinaryOpParseletStorage*>(storage.get()); }
-	String BinaryOpParselet::_op() { return get()->_op; }
-	void BinaryOpParselet::set__op(String _v) { get()->_op = _v; }
-	Boolean BinaryOpParselet::_rightAssoc() { return get()->_rightAssoc; }
-	void BinaryOpParselet::set__rightAssoc(Boolean _v) { get()->_rightAssoc = _v; }
+inline BinaryOpParseletStorage* BinaryOpParselet::get() { return static_cast<BinaryOpParseletStorage*>(storage.get()); }
+inline String BinaryOpParselet::_op() { return get()->_op; }
+inline void BinaryOpParselet::set__op(String _v) { get()->_op = _v; }
+inline Boolean BinaryOpParselet::_rightAssoc() { return get()->_rightAssoc; }
+inline void BinaryOpParselet::set__rightAssoc(Boolean _v) { get()->_rightAssoc = _v; }
 
-	CallParseletStorage* CallParselet::get() { return static_cast<CallParseletStorage*>(storage.get()); }
+inline CallParseletStorage* CallParselet::get() { return static_cast<CallParseletStorage*>(storage.get()); }
 
-	IndexParseletStorage* IndexParselet::get() { return static_cast<IndexParseletStorage*>(storage.get()); }
+inline IndexParseletStorage* IndexParselet::get() { return static_cast<IndexParseletStorage*>(storage.get()); }
 
-	MemberParseletStorage* MemberParselet::get() { return static_cast<MemberParseletStorage*>(storage.get()); }
+inline MemberParseletStorage* MemberParselet::get() { return static_cast<MemberParseletStorage*>(storage.get()); }
 
 } // end of namespace MiniScript

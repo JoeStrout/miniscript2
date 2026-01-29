@@ -125,6 +125,7 @@ MethodInfo.scope = ""			// Scope.PUBLIC, etc.
 MethodInfo.static = false
 MethodInfo.params = null		// list of VariableInfo
 MethodInfo.inline = false
+MethodInfo.hasThisLocal = false // true when we've defined _this
 
 MethodInfo.Make = function(name="", static=false, type=null)
 	noob = new MethodInfo

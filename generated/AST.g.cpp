@@ -35,7 +35,8 @@ String NumberNodeStorage::ToStr() {
 	return Interp("{}", Value);
 }
 ASTNode NumberNodeStorage::Simplify() {
-	return NumberNode(shared_from_this());
+	NumberNode _this(shared_from_this());
+	return _this;
 }
 
 
@@ -46,7 +47,8 @@ String StringNodeStorage::ToStr() {
 	return "\"" + Value + "\"";
 }
 ASTNode StringNodeStorage::Simplify() {
-	return StringNode(shared_from_this());
+	StringNode _this(shared_from_this());
+	return _this;
 }
 
 
@@ -57,7 +59,8 @@ String IdentifierNodeStorage::ToStr() {
 	return Name;
 }
 ASTNode IdentifierNodeStorage::Simplify() {
-	return IdentifierNode(shared_from_this());
+	IdentifierNode _this(shared_from_this());
+	return _this;
 }
 
 

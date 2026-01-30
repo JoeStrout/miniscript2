@@ -27,12 +27,12 @@ public class Parselet {
 
 // PrefixParselet: abstract base for parselets that handle tokens
 // starting an expression (numbers, identifiers, unary operators).
-public class PrefixParselet : Parselet {
+public abstract class PrefixParselet : Parselet {
 	public abstract ASTNode Parse(IParser parser, Token token);
 }
 
 // InfixParselet: abstract base for parselets that handle infix operators.
-public class InfixParselet : Parselet {
+public abstract class InfixParselet : Parselet {
 	public abstract ASTNode Parse(IParser parser, ASTNode left, Token token);
 }
 

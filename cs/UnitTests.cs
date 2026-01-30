@@ -11,6 +11,8 @@ using static MiniScript.ValueHelpers;
 // CPP: #include "Assembler.g.h"  // We really should automate this.
 // CPP: #include "Parser.g.h"
 // CPP: #include "AST.g.h"
+// CPP: #include "CodeEmitter.g.h"
+// CPP: #include "CodeGenerator.g.h"
 
 namespace MiniScript {
 
@@ -418,12 +420,230 @@ public static class UnitTests {
 		return ok;
 	}
 
+	// Helper for code generator tests: parse, generate, and check assembly output
+	private static Boolean CheckCodeGen(Parser parser, String input, List<String> expectedLines) {
+		ASTNode ast = parser.Parse(input);
+		if (parser.HadError()) {
+			IOHelper.Print($"Parse error for input: {input}");
+			return false;
+		}
+
+		AssemblyEmitter emitter = new AssemblyEmitter();
+		CodeGenerator gen = new CodeGenerator(emitter);
+		gen.CompileFunction(ast, "@main");
+
+		List<String> actualLines = emitter.GetLines();
+
+		// Compare line by line (ignoring comments)
+		if (actualLines.Count != expectedLines.Count) {
+			IOHelper.Print($"CodeGen test failed for: {input}");
+			IOHelper.Print($"  Expected {expectedLines.Count} lines, got {actualLines.Count}");
+			IOHelper.Print("  Actual output:");
+			for (Int32 i = 0; i < actualLines.Count; i++) {
+				IOHelper.Print($"    {actualLines[i]}");
+			}
+			return false;
+		}
+
+		for (Int32 i = 0; i < expectedLines.Count; i++) {
+			// Strip comments from actual line for comparison
+			String actual = actualLines[i];
+			Int32 commentPos = actual.IndexOf(';');
+			if (commentPos >= 0) actual = actual.Substring(0, commentPos).TrimEnd();
+
+			String expected = expectedLines[i];
+			if (actual != expected) {
+				IOHelper.Print($"CodeGen test failed for: {input}");
+				IOHelper.Print($"  Line {i}: expected \"{expected}\" but got \"{actual}\"");
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	// Helper to check bytecode generation produces valid FuncDef
+	private static Boolean CheckBytecodeGen(Parser parser, String input, Int32 expectedInstructions, Int32 expectedConstants) {
+		ASTNode ast = parser.Parse(input);
+		if (parser.HadError()) {
+			IOHelper.Print($"Parse error for input: {input}");
+			return false;
+		}
+
+		BytecodeEmitter emitter = new BytecodeEmitter();
+		CodeGenerator gen = new CodeGenerator(emitter);
+		FuncDef func = gen.CompileFunction(ast, "@main");
+
+		if (func.Code.Count != expectedInstructions) {
+			IOHelper.Print($"BytecodeGen test failed for: {input}");
+			IOHelper.Print($"  Expected {expectedInstructions} instructions, got {func.Code.Count}");
+			return false;
+		}
+
+		if (func.Constants.Count != expectedConstants) {
+			IOHelper.Print($"BytecodeGen test failed for: {input}");
+			IOHelper.Print($"  Expected {expectedConstants} constants, got {func.Constants.Count}");
+			return false;
+		}
+
+		return true;
+	}
+
+	public static Boolean TestCodeGenerator() {
+		IOHelper.Print("  Testing code generator...");
+		Parser parser = new Parser();
+		Boolean ok = true;
+
+		// Test simple integer (immediate form, no constants)
+		ok = ok && CheckBytecodeGen(parser, "42", 2, 0);  // LOAD + RETURN
+
+		// Test float (requires constant)
+		ok = ok && CheckBytecodeGen(parser, "3.14", 2, 1);  // LOAD_kBC + RETURN
+
+		// Test large integer (requires constant)
+		ok = ok && CheckBytecodeGen(parser, "100000", 2, 1);  // LOAD_kBC + RETURN
+
+		// Test string (requires constant)
+		ok = ok && CheckBytecodeGen(parser, "\"hello\"", 2, 1);  // LOAD_kBC + RETURN
+
+		// Test simple addition
+		// 2 + 3: LOAD r0, 2; LOAD r1, 3; ADD r2, r0, r1; LOAD r0, r2; RETURN
+		ok = ok && CheckBytecodeGen(parser, "2 + 3", 5, 0);
+
+		// Test assembly output for simple number
+		ok = ok && CheckCodeGen(parser, "42", new List<String> {
+			"  LOAD_rA_iBC r0, 42",
+			"  RETURN"
+		});
+
+		// Test assembly output for addition
+		ok = ok && CheckCodeGen(parser, "2 + 3", new List<String> {
+			"  LOAD_rA_iBC r0, 2",
+			"  LOAD_rA_iBC r1, 3",
+			"  ADD_rA_rB_rC r2, r0, r1",
+			"  LOAD_rA_rB r0, r2",
+			"  RETURN"
+		});
+
+		// Test subtraction
+		ok = ok && CheckCodeGen(parser, "10 - 4", new List<String> {
+			"  LOAD_rA_iBC r0, 10",
+			"  LOAD_rA_iBC r1, 4",
+			"  SUB_rA_rB_rC r2, r0, r1",
+			"  LOAD_rA_rB r0, r2",
+			"  RETURN"
+		});
+
+		// Test multiplication
+		ok = ok && CheckCodeGen(parser, "6 * 7", new List<String> {
+			"  LOAD_rA_iBC r0, 6",
+			"  LOAD_rA_iBC r1, 7",
+			"  MULT_rA_rB_rC r2, r0, r1",
+			"  LOAD_rA_rB r0, r2",
+			"  RETURN"
+		});
+
+		// Test division
+		ok = ok && CheckCodeGen(parser, "20 / 4", new List<String> {
+			"  LOAD_rA_iBC r0, 20",
+			"  LOAD_rA_iBC r1, 4",
+			"  DIV_rA_rB_rC r2, r0, r1",
+			"  LOAD_rA_rB r0, r2",
+			"  RETURN"
+		});
+
+		// Test comparison (less than)
+		ok = ok && CheckCodeGen(parser, "3 < 5", new List<String> {
+			"  LOAD_rA_iBC r0, 3",
+			"  LOAD_rA_iBC r1, 5",
+			"  LT_rA_rB_rC r2, r0, r1",
+			"  LOAD_rA_rB r0, r2",
+			"  RETURN"
+		});
+
+		// Test comparison (greater than - uses swapped LT)
+		ok = ok && CheckCodeGen(parser, "5 > 3", new List<String> {
+			"  LOAD_rA_iBC r0, 5",
+			"  LOAD_rA_iBC r1, 3",
+			"  LT_rA_rB_rC r2, r1, r0",  // swapped: r1 < r0
+			"  LOAD_rA_rB r0, r2",
+			"  RETURN"
+		});
+
+		// Test unary minus
+		// r0 = 5, r1 = result, r2 = 0, SUB r1, r2, r0 (result = 0 - 5)
+		ok = ok && CheckCodeGen(parser, "-5", new List<String> {
+			"  LOAD_rA_iBC r0, 5",
+			"  LOAD_rA_iBC r2, 0",
+			"  SUB_rA_rB_rC r1, r2, r0",
+			"  LOAD_rA_rB r0, r1",
+			"  RETURN"
+		});
+
+		// Test grouping (parentheses) - should compile inner expression directly
+		ok = ok && CheckCodeGen(parser, "(42)", new List<String> {
+			"  LOAD_rA_iBC r0, 42",
+			"  RETURN"
+		});
+
+		// Test list literal
+		ok = ok && CheckCodeGen(parser, "[1, 2, 3]", new List<String> {
+			"  LIST_rA_iBC r0, 3",
+			"  LOAD_rA_iBC r1, 1",
+			"  PUSH_rA_rB r0, r1",
+			"  LOAD_rA_iBC r1, 2",
+			"  PUSH_rA_rB r0, r1",
+			"  LOAD_rA_iBC r1, 3",
+			"  PUSH_rA_rB r0, r1",
+			"  RETURN"
+		});
+
+		// Test empty list
+		ok = ok && CheckCodeGen(parser, "[]", new List<String> {
+			"  LIST_rA_iBC r0, 0",
+			"  RETURN"
+		});
+
+		// Test map literal
+		ok = ok && CheckBytecodeGen(parser, "{}", 2, 0);  // MAP + RETURN
+
+		// Test index access
+		ok = ok && CheckCodeGen(parser, "x[0]", new List<String> {
+			"  LOAD_rA_iBC r0, 0",   // TODO: load x
+			"  LOAD_rA_iBC r1, 0",   // index 0
+			"  INDEX_rA_rB_rC r2, r0, r1",
+			"  LOAD_rA_rB r0, r2",
+			"  RETURN"
+		});
+
+		// Test nested expression (precedence)
+		// 2 + 3 * 4 = 2 + 12 = 14 (but we compile, not evaluate)
+		// Should generate: LOAD 2, LOAD 3, LOAD 4, MULT, ADD
+		ok = ok && CheckBytecodeGen(parser, "2 + 3 * 4", 7, 0);
+
+		// Test register reuse: after freeing registers, they should be reused
+		// In (1 + 2) + (3 + 4), the inner additions free their operand registers
+		// r0=1, r1=2, r2=1+2, free r0,r1
+		// r0=3, r1=4, r3=3+4, free r0,r1
+		// r4 = r2 + r3
+		// Actually with our stack-based allocator, we only reuse if freeing the topmost
+		// So this tests that the generator works correctly with nested expressions
+		ok = ok && CheckBytecodeGen(parser, "(1 + 2) + (3 + 4)", 9, 0);
+
+		if (ok) {
+			IOHelper.Print("  All code generator tests passed.");
+		}
+
+		return ok;
+	}
+
 	public static Boolean RunAll() {
 		return TestStringUtils()
 			&& TestDisassembler()
 			&& TestAssembler()
 			&& TestValueMap()
-			&& TestParser();
+			&& TestParser()
+			&& TestCodeGenerator();
 	}
 }
 

@@ -248,3 +248,4 @@ There are a couple of minor issues to address next:
 
 Both issues now fixed.  We have C++/C# parity again!
 
+So, now I've started on code generation.  Using a modified Visitor pattern to let the CodeGenerator iterate through a abstract syntax tree, and output either assembly code or bytecode.  I've left some ToDo's in the code, and haven't even tried to transpile it yet, but it's off to a decent start.

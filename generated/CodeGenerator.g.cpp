@@ -8,19 +8,49 @@ namespace MiniScript {
 
 CodeGeneratorStorage::CodeGeneratorStorage(ICodeEmitter& emitter) {
 	_emitter = emitter;
-	_nextReg = 0;
+	_regInUse =  List<Boolean>::New();
+	_firstAvailable = 0;
 	_maxRegUsed = -1;
 }
 Int32 CodeGeneratorStorage::AllocReg() {
-	Int32 reg = _nextReg;
-	_nextReg = _nextReg + 1;
+	// Scan from _firstAvailable to find first free register
+	Int32 reg = _firstAvailable;
+	while (reg < _regInUse.Count() && _regInUse[reg]) {
+		reg = reg + 1;
+	}
+
+	// Expand the list if needed
+	while (_regInUse.Count() <= reg) {
+		_regInUse.Add(Boolean(false));
+	}
+
+	// Mark register as in use
+	_regInUse[reg] = Boolean(true);
+
+	// Update _firstAvailable to search from next position
+	_firstAvailable = reg + 1;
+
+	// Update high water mark
 	if (reg > _maxRegUsed) _maxRegUsed = reg;
+
 	_emitter.ReserveRegister(reg);
 	return reg;
 }
 void CodeGeneratorStorage::FreeReg(Int32 reg) {
-	if (reg == _nextReg - 1) {
-		_nextReg = _nextReg - 1;
+	if (reg < 0 || reg >= _regInUse.Count()) return;
+
+	_regInUse[reg] = Boolean(false);
+
+	// Update _firstAvailable if this register is lower
+	if (reg < _firstAvailable) _firstAvailable = reg;
+
+	// Update _maxRegUsed if we freed the highest register
+	if (reg == _maxRegUsed) {
+		// Search downward for the new maximum register in use
+		_maxRegUsed = reg - 1;
+		while (_maxRegUsed >= 0 && !_regInUse[_maxRegUsed]) {
+			_maxRegUsed = _maxRegUsed - 1;
+		}
 	}
 }
 Int32 CodeGeneratorStorage::Compile(ASTNode ast) {
@@ -29,7 +59,8 @@ Int32 CodeGeneratorStorage::Compile(ASTNode ast) {
 }
 FuncDef CodeGeneratorStorage::CompileFunction(ASTNode ast, String funcName) {
 	CodeGenerator _this(shared_from_this());
-	_nextReg = 0;
+	_regInUse.Clear();
+	_firstAvailable = 0;
 	_maxRegUsed = -1;
 
 	Int32 resultReg = ast.Accept(_this);

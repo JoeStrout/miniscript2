@@ -114,7 +114,7 @@ void App::MainProgram(List<String> args) {
 			while (vm.IsRunning()) {
 				vis.UpdateDisplay();
 				String cmd = IOHelper::Input("Command: ");
-				if (String::IsNullOrEmpty(cmd)) cmd = "step";
+				if (String.IsNullOrEmpty(cmd)) cmd = "step";
 				if (cmd[0] == 'q')  {
 					GC_POP_SCOPE();
 					return;

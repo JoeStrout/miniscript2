@@ -133,6 +133,7 @@ class MethodCallNodeStorage;
 
 
 
+
 struct App {
 	public: static bool debugMode;
 	public: static bool visMode;

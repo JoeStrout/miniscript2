@@ -137,6 +137,7 @@ class MethodCallNodeStorage;
 
 
 
+
 // Represents a single token from the lexer
 struct Token {
 	public: TokenType Type;

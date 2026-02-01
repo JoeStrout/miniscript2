@@ -154,6 +154,7 @@ struct CallInfo {
 
 
 
+
 class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	friend struct VM;
 	public: Boolean DebugMode = false;

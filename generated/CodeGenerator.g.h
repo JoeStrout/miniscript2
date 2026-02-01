@@ -138,11 +138,13 @@ class MethodCallNodeStorage;
 
 
 
+
 // Compiles AST nodes to bytecode
 class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorStorage>, IASTVisitor {
 	friend struct CodeGenerator;
 	private: ICodeEmitter _emitter;
-	private: Int32 _nextReg; // Next available register
+	private: List<Boolean> _regInUse; // Which registers are currently in use
+	private: Int32 _firstAvailable; // Lowest index that might be free
 	private: Int32 _maxRegUsed; // High water mark for register usage
 
 	public: CodeGeneratorStorage(ICodeEmitter& emitter);
@@ -150,12 +152,7 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 	// Allocate a register
 	private: Int32 AllocReg();
 
-	// Free a register (only if it's the most recently allocated)
-	// This enables simple stack-based register reuse
-	// ToDo: consider more sophisticated register-in-use tracking,
-	// so we don't have to free registers in reverse order.
-	// Or possibly something that frees all registers allocated
-	// after a certain point.
+	// Free a register so it can be reused
 	private: void FreeReg(Int32 reg);
 
 	// Compile an expression, placing result in a newly allocated register
@@ -202,8 +199,10 @@ struct CodeGenerator : public IASTVisitor {
 	private: CodeGeneratorStorage* get();
 	private: ICodeEmitter _emitter();
 	private: void set__emitter(ICodeEmitter _v);
-	private: Int32 _nextReg(); // Next available register
-	private: void set__nextReg(Int32 _v); // Next available register
+	private: List<Boolean> _regInUse(); // Which registers are currently in use
+	private: void set__regInUse(List<Boolean> _v); // Which registers are currently in use
+	private: Int32 _firstAvailable(); // Lowest index that might be free
+	private: void set__firstAvailable(Int32 _v); // Lowest index that might be free
 	private: Int32 _maxRegUsed(); // High water mark for register usage
 	private: void set__maxRegUsed(Int32 _v); // High water mark for register usage
 
@@ -214,12 +213,7 @@ struct CodeGenerator : public IASTVisitor {
 	// Allocate a register
 	private: Int32 AllocReg() { return get()->AllocReg(); }
 
-	// Free a register (only if it's the most recently allocated)
-	// This enables simple stack-based register reuse
-	// ToDo: consider more sophisticated register-in-use tracking,
-	// so we don't have to free registers in reverse order.
-	// Or possibly something that frees all registers allocated
-	// after a certain point.
+	// Free a register so it can be reused
 	private: void FreeReg(Int32 reg) { return get()->FreeReg(reg); }
 
 	// Compile an expression, placing result in a newly allocated register
@@ -264,8 +258,10 @@ struct CodeGenerator : public IASTVisitor {
 inline CodeGeneratorStorage* CodeGenerator::get() { return static_cast<CodeGeneratorStorage*>(storage.get()); }
 inline ICodeEmitter CodeGenerator::_emitter() { return get()->_emitter; }
 inline void CodeGenerator::set__emitter(ICodeEmitter _v) { get()->_emitter = _v; }
-inline Int32 CodeGenerator::_nextReg() { return get()->_nextReg; } // Next available register
-inline void CodeGenerator::set__nextReg(Int32 _v) { get()->_nextReg = _v; } // Next available register
+inline List<Boolean> CodeGenerator::_regInUse() { return get()->_regInUse; } // Which registers are currently in use
+inline void CodeGenerator::set__regInUse(List<Boolean> _v) { get()->_regInUse = _v; } // Which registers are currently in use
+inline Int32 CodeGenerator::_firstAvailable() { return get()->_firstAvailable; } // Lowest index that might be free
+inline void CodeGenerator::set__firstAvailable(Int32 _v) { get()->_firstAvailable = _v; } // Lowest index that might be free
 inline Int32 CodeGenerator::_maxRegUsed() { return get()->_maxRegUsed; } // High water mark for register usage
 inline void CodeGenerator::set__maxRegUsed(Int32 _v) { get()->_maxRegUsed = _v; } // High water mark for register usage
 

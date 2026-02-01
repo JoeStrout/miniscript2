@@ -136,6 +136,7 @@ class MethodCallNodeStorage;
 
 
 
+
 class FuncDefStorage : public std::enable_shared_from_this<FuncDefStorage> {
 	friend struct FuncDef;
 	public: String Name = "";

@@ -154,6 +154,7 @@ class Disassembler {
 
 
 
+
 // INLINE METHODS
 
 } // end of namespace MiniScript

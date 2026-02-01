@@ -458,7 +458,7 @@ Boolean UnitTests::CheckCodeGen(Parser parser, String input, List<String> expect
 	for (Int32 i = 0; i < expectedLines.Count(); i++) {
 		// Strip comments from actual line for comparison
 		String actual = actualLines[i];
-		Int32 commentPos = actual::IndexOf(';');
+		Int32 commentPos = actual.IndexOf(';');
 		if (commentPos >= 0) actual = actual.Substring(0, commentPos).TrimEnd();
 
 		String expected = expectedLines[i];

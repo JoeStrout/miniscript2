@@ -190,6 +190,7 @@ enum class TokenType : Int32 {
 
 
 
+
 // INLINE METHODS
 
 } // end of namespace MiniScript

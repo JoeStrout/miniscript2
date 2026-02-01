@@ -116,6 +116,7 @@ class MethodCallNodeStorage;
 
 
 
+
 class IOHelper {
 
 	public: static void Print(String message);

@@ -110,6 +110,7 @@ class MethodCallNodeStorage;
 
 
 
+
 // Emit pattern - indicates which Emit method should be used for an opcode
 enum class EmitPattern : Byte {
 	None,   // Emit(op, comment) - no operands (e.g., RETURN, NOOP)

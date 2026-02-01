@@ -255,3 +255,4 @@ So, now I've started on code generation.  Using a modified Visitor pattern to le
 
 The code generator is looking really good in C#.  There are a few things that are still placeholders, like variable handling and the implementation of the `not` operator (which probably needs to be a new opcode), but the basic structure looks really sound.
 
+One thing needed: better tracking of free registers.  Right now, the way we track it only works if you release registers in inverse order of when they were acquired.

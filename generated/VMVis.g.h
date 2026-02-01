@@ -188,6 +188,7 @@ struct VMVis {
 
 
 
+
 // INLINE METHODS
 
 } // end of namespace MiniScript

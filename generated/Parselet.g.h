@@ -101,6 +101,7 @@ class MethodCallNodeStorage;
 
 
 
+
 // IParser interface: defines the methods that parselets need from the parser.
 // This breaks the circular dependency between Parser and Parselet.
 class IParser {

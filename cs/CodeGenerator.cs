@@ -8,7 +8,7 @@ using static MiniScript.ValueHelpers;
 namespace MiniScript {
 
 // Compiles AST nodes to bytecode
-public class CodeGenerator {
+public class CodeGenerator : IASTVisitor {
 	private ICodeEmitter _emitter;
 	private Int32 _nextReg;      // Next available register
 	private Int32 _maxRegUsed;   // High water mark for register usage
@@ -55,7 +55,7 @@ public class CodeGenerator {
 
 		// Move result to r0 if not already there
 		if (resultReg != 0) {
-			_emitter.Emit(Opcode.LOAD_rA_rB, 0, resultReg, "move result to r0");
+			_emitter.EmitAB(Opcode.LOAD_rA_rB, 0, resultReg, "move result to r0");
 		}
 		_emitter.Emit(Opcode.RETURN, null);
 
@@ -70,11 +70,11 @@ public class CodeGenerator {
 
 		// Check if value fits in signed 16-bit immediate
 		if (value == Math.Floor(value) && value >= -32768 && value <= 32767) {
-			_emitter.Emit(Opcode.LOAD_rA_iBC, reg, (Int32)value, $"{value}");
+			_emitter.EmitAB(Opcode.LOAD_rA_iBC, reg, (Int32)value, $"{value}");
 		} else {
 			// Store in constants and load from there
 			Int32 constIdx = _emitter.AddConstant(make_double(value));
-			_emitter.Emit(Opcode.LOAD_rA_kBC, reg, constIdx, $"{value}");
+			_emitter.EmitAB(Opcode.LOAD_rA_kBC, reg, constIdx, $"{value}");
 		}
 		return reg;
 	}
@@ -82,7 +82,7 @@ public class CodeGenerator {
 	public Int32 Visit(StringNode node) {
 		Int32 reg = AllocReg();
 		Int32 constIdx = _emitter.AddConstant(make_string(node.Value));
-		_emitter.Emit(Opcode.LOAD_rA_kBC, reg, constIdx, $"\"{node.Value}\"");
+		_emitter.EmitAB(Opcode.LOAD_rA_kBC, reg, constIdx, $"\"{node.Value}\"");
 		return reg;
 	}
 
@@ -91,7 +91,7 @@ public class CodeGenerator {
 		// This is a placeholder that will be expanded later
 		Int32 reg = AllocReg();
 		// TODO: Look up variable in scope and load its value
-		_emitter.Emit(Opcode.LOAD_rA_iBC, reg, 0, $"TODO: load {node.Name}");
+		_emitter.EmitAB(Opcode.LOAD_rA_iBC, reg, 0, $"TODO: load {node.Name}");
 		return reg;
 	}
 
@@ -110,8 +110,8 @@ public class CodeGenerator {
 			// Negate: result = 0 - operand
 			Int32 resultReg = AllocReg();
 			Int32 zeroReg = AllocReg();
-			_emitter.Emit(Opcode.LOAD_rA_iBC, zeroReg, 0, "0 for negation");
-			_emitter.Emit(Opcode.SUB_rA_rB_rC, resultReg, zeroReg, operandReg, $"-{node.Operand.ToStr()}");
+			_emitter.EmitAB(Opcode.LOAD_rA_iBC, zeroReg, 0, "0 for negation");
+			_emitter.EmitABC(Opcode.SUB_rA_rB_rC, resultReg, zeroReg, operandReg, $"-{node.Operand.ToStr()}");
 			FreeReg(zeroReg);
 			FreeReg(operandReg);
 			return resultReg;
@@ -119,7 +119,7 @@ public class CodeGenerator {
 			// Logical not: compare with 0, result is 1 if equal, 0 otherwise
 			// (ToDo: proper MiniScript fuzzy-logic NOT)
 			Int32 resultReg = AllocReg();
-			_emitter.Emit(Opcode.EQ_rA_rB_iC, resultReg, operandReg, 0, $"not {node.Operand.ToStr()}");
+			_emitter.EmitABC(Opcode.EQ_rA_rB_iC, resultReg, operandReg, 0, $"not {node.Operand.ToStr()}");
 			FreeReg(operandReg);
 			return resultReg;
 		}
@@ -196,7 +196,7 @@ public class CodeGenerator {
 		}
 
 		if (op != Opcode.NOOP) {
-			_emitter.Emit(op, resultReg, leftReg, rightReg,
+			_emitter.EmitABC(op, resultReg, leftReg, rightReg,
 				$"{node.Left.ToStr()} {opSymbol} {node.Right.ToStr()}");
 		}
 
@@ -208,7 +208,7 @@ public class CodeGenerator {
 	public Int32 Visit(CallNode node) {
 		// Function calls not yet implemented
 		Int32 reg = AllocReg();
-		_emitter.Emit(Opcode.LOAD_rA_iBC, reg, 0, $"TODO: call {node.Function}");
+		_emitter.EmitAB(Opcode.LOAD_rA_iBC, reg, 0, $"TODO: call {node.Function}");
 		return reg;
 	}
 
@@ -221,12 +221,12 @@ public class CodeGenerator {
 		// Create a list with the given number of elements
 		Int32 listReg = AllocReg();
 		Int32 count = node.Elements.Count;
-		_emitter.Emit(Opcode.LIST_rA_iBC, listReg, count, $"new list[{count}]");
+		_emitter.EmitAB(Opcode.LIST_rA_iBC, listReg, count, $"new list[{count}]");
 
 		// Push each element onto the list
 		for (Int32 i = 0; i < count; i++) {
 			Int32 elemReg = node.Elements[i].Accept(this);
-			_emitter.Emit(Opcode.PUSH_rA_rB, listReg, elemReg, $"push element {i}");
+			_emitter.EmitAB(Opcode.PUSH_rA_rB, listReg, elemReg, $"push element {i}");
 			FreeReg(elemReg);
 		}
 
@@ -237,13 +237,13 @@ public class CodeGenerator {
 		// Create a map
 		Int32 mapReg = AllocReg();
 		Int32 count = node.Keys.Count;
-		_emitter.Emit(Opcode.MAP_rA_iBC, mapReg, count, $"new map[{count}]");
+		_emitter.EmitAB(Opcode.MAP_rA_iBC, mapReg, count, $"new map[{count}]");
 
 		// Set each key-value pair
 		for (Int32 i = 0; i < count; i++) {
 			Int32 keyReg = node.Keys[i].Accept(this);
 			Int32 valueReg = node.Values[i].Accept(this);
-			_emitter.Emit(Opcode.IDXSET_rA_rB_rC, mapReg, keyReg, valueReg, $"map[{node.Keys[i].ToStr()}] = {node.Values[i].ToStr()}");
+			_emitter.EmitABC(Opcode.IDXSET_rA_rB_rC, mapReg, keyReg, valueReg, $"map[{node.Keys[i].ToStr()}] = {node.Values[i].ToStr()}");
 			FreeReg(valueReg);
 			FreeReg(keyReg);
 		}
@@ -256,7 +256,7 @@ public class CodeGenerator {
 		Int32 targetReg = node.Target.Accept(this);
 		Int32 indexReg = node.Index.Accept(this);
 
-		_emitter.Emit(Opcode.INDEX_rA_rB_rC, resultReg, targetReg, indexReg,
+		_emitter.EmitABC(Opcode.INDEX_rA_rB_rC, resultReg, targetReg, indexReg,
 			$"{node.Target.ToStr()}[{node.Index.ToStr()}]");
 
 		FreeReg(indexReg);
@@ -269,7 +269,7 @@ public class CodeGenerator {
 		Int32 resultReg = AllocReg();
 		Int32 targetReg = node.Target.Accept(this);
 		// TODO: Implement member access
-		_emitter.Emit(Opcode.LOAD_rA_rB, resultReg, targetReg, $"TODO: {node.Target.ToStr()}.{node.Member}");
+		_emitter.EmitAB(Opcode.LOAD_rA_rB, resultReg, targetReg, $"TODO: {node.Target.ToStr()}.{node.Member}");
 		FreeReg(targetReg);
 		return resultReg;
 	}
@@ -277,7 +277,7 @@ public class CodeGenerator {
 	public Int32 Visit(MethodCallNode node) {
 		// Method calls not yet implemented
 		Int32 reg = AllocReg();
-		_emitter.Emit(Opcode.LOAD_rA_iBC, reg, 0, $"TODO: {node.Target.ToStr()}.{node.Method}()");
+		_emitter.EmitAB(Opcode.LOAD_rA_iBC, reg, 0, $"TODO: {node.Target.ToStr()}.{node.Method}()");
 		return reg;
 	}
 }

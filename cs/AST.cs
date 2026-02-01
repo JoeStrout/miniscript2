@@ -28,7 +28,22 @@ public static class Op {
 	public const String NOT = "NOT";
 }
 
-// Note: CodeGenerator is defined in CodeGenerator.cs (visitor pattern)
+// Visitor interface for AST traversal (e.g., code generation)
+public interface IASTVisitor {
+	Int32 Visit(NumberNode node);
+	Int32 Visit(StringNode node);
+	Int32 Visit(IdentifierNode node);
+	Int32 Visit(AssignmentNode node);
+	Int32 Visit(UnaryOpNode node);
+	Int32 Visit(BinaryOpNode node);
+	Int32 Visit(CallNode node);
+	Int32 Visit(GroupNode node);
+	Int32 Visit(ListNode node);
+	Int32 Visit(MapNode node);
+	Int32 Visit(IndexNode node);
+	Int32 Visit(MemberNode node);
+	Int32 Visit(MethodCallNode node);
+}
 
 // Base class for all AST nodes.
 // When transpiled to C++, these become shared_ptr-wrapped classes.
@@ -40,8 +55,8 @@ public abstract class ASTNode {
 	// Returns a simplified version of this node (may be a new node, or this node unchanged)
 	public abstract ASTNode Simplify();
 
-	// Visitor pattern: accept a CodeGenerator and return the register holding the result
-	public abstract Int32 Accept(CodeGenerator gen);
+	// Visitor pattern: accept a visitor and return the result (e.g., register number)
+	public abstract Int32 Accept(IASTVisitor visitor);
 }
 
 // Number literal node (e.g., 42, 3.14)
@@ -60,8 +75,8 @@ public class NumberNode : ASTNode {
 		return this;
 	}
 
-	public override Int32 Accept(CodeGenerator gen) {
-		return gen.Visit(this);
+	public override Int32 Accept(IASTVisitor visitor) {
+		return visitor.Visit(this);
 	}
 }
 
@@ -81,8 +96,8 @@ public class StringNode : ASTNode {
 		return this;
 	}
 
-	public override Int32 Accept(CodeGenerator gen) {
-		return gen.Visit(this);
+	public override Int32 Accept(IASTVisitor visitor) {
+		return visitor.Visit(this);
 	}
 }
 
@@ -102,8 +117,8 @@ public class IdentifierNode : ASTNode {
 		return this;
 	}
 
-	public override Int32 Accept(CodeGenerator gen) {
-		return gen.Visit(this);
+	public override Int32 Accept(IASTVisitor visitor) {
+		return visitor.Visit(this);
 	}
 }
 
@@ -126,8 +141,8 @@ public class AssignmentNode : ASTNode {
 		return new AssignmentNode(Variable, simplifiedValue);
 	}
 
-	public override Int32 Accept(CodeGenerator gen) {
-		return gen.Visit(this);
+	public override Int32 Accept(IASTVisitor visitor) {
+		return visitor.Visit(this);
 	}
 }
 
@@ -162,8 +177,8 @@ public class UnaryOpNode : ASTNode {
 		return new UnaryOpNode(Op, simplifiedOperand);
 	}
 
-	public override Int32 Accept(CodeGenerator gen) {
-		return gen.Visit(this);
+	public override Int32 Accept(IASTVisitor visitor) {
+		return visitor.Visit(this);
 	}
 }
 
@@ -227,8 +242,8 @@ public class BinaryOpNode : ASTNode {
 		return new BinaryOpNode(Op, simplifiedLeft, simplifiedRight);
 	}
 
-	public override Int32 Accept(CodeGenerator gen) {
-		return gen.Visit(this);
+	public override Int32 Accept(IASTVisitor visitor) {
+		return visitor.Visit(this);
 	}
 }
 
@@ -265,8 +280,8 @@ public class CallNode : ASTNode {
 		return new CallNode(Function, simplifiedArgs);
 	}
 
-	public override Int32 Accept(CodeGenerator gen) {
-		return gen.Visit(this);
+	public override Int32 Accept(IASTVisitor visitor) {
+		return visitor.Visit(this);
 	}
 }
 
@@ -288,8 +303,8 @@ public class GroupNode : ASTNode {
 		return Expression.Simplify();
 	}
 
-	public override Int32 Accept(CodeGenerator gen) {
-		return gen.Visit(this);
+	public override Int32 Accept(IASTVisitor visitor) {
+		return visitor.Visit(this);
 	}
 }
 
@@ -323,8 +338,8 @@ public class ListNode : ASTNode {
 		return new ListNode(simplifiedElements);
 	}
 
-	public override Int32 Accept(CodeGenerator gen) {
-		return gen.Visit(this);
+	public override Int32 Accept(IASTVisitor visitor) {
+		return visitor.Visit(this);
 	}
 }
 
@@ -363,8 +378,8 @@ public class MapNode : ASTNode {
 		return new MapNode(simplifiedKeys, simplifiedValues);
 	}
 
-	public override Int32 Accept(CodeGenerator gen) {
-		return gen.Visit(this);
+	public override Int32 Accept(IASTVisitor visitor) {
+		return visitor.Visit(this);
 	}
 }
 
@@ -386,8 +401,8 @@ public class IndexNode : ASTNode {
 		return new IndexNode(Target.Simplify(), Index.Simplify());
 	}
 
-	public override Int32 Accept(CodeGenerator gen) {
-		return gen.Visit(this);
+	public override Int32 Accept(IASTVisitor visitor) {
+		return visitor.Visit(this);
 	}
 }
 
@@ -409,8 +424,8 @@ public class MemberNode : ASTNode {
 		return new MemberNode(Target.Simplify(), Member);
 	}
 
-	public override Int32 Accept(CodeGenerator gen) {
-		return gen.Visit(this);
+	public override Int32 Accept(IASTVisitor visitor) {
+		return visitor.Visit(this);
 	}
 }
 
@@ -445,8 +460,8 @@ public class MethodCallNode : ASTNode {
 		return new MethodCallNode(Target.Simplify(), Method, simplifiedArgs);
 	}
 
-	public override Int32 Accept(CodeGenerator gen) {
-		return gen.Visit(this);
+	public override Int32 Accept(IASTVisitor visitor) {
+		return visitor.Visit(this);
 	}
 }
 

@@ -9,11 +9,13 @@ namespace MiniScript {
 
 // Interface for emitting code (bytecode or assembly text)
 public interface ICodeEmitter {
-	// Emit instructions with varying operand counts
-	void Emit(Opcode op, String comment);
-	void Emit(Opcode op, Int32 a, String comment);
-	void Emit(Opcode op, Int32 a, Int32 bc, String comment);
-	void Emit(Opcode op, Int32 a, Int32 b, Int32 c, String comment);
+	// Emit instructions with varying operand patterns
+	// Method names match BytecodeUtil.INS_* patterns
+	void Emit(Opcode op, String comment);              // INS: opcode only
+	void EmitA(Opcode op, Int32 a, String comment);    // INS_A: 8-bit A field
+	void EmitAB(Opcode op, Int32 a, Int32 bc, String comment);   // INS_AB: 8-bit A + 16-bit BC
+	void EmitBC(Opcode op, Int32 ab, Int32 c, String comment);   // INS_BC: 16-bit AB + 8-bit C
+	void EmitABC(Opcode op, Int32 a, Int32 b, Int32 c, String comment);  // INS_ABC: 8-bit A + 8-bit B + 8-bit C
 
 	// Add a constant to the constant pool, return its index
 	Int32 AddConstant(Value value);
@@ -57,22 +59,27 @@ public class BytecodeEmitter : ICodeEmitter {
 	}
 
 	public void Emit(Opcode op, String comment) {
+		BytecodeUtil.CheckEmitPattern(op, EmitPattern.None);
 		_code.Add(BytecodeUtil.INS(op));
 	}
 
-	// ToDo: properly type (Byte vs Int32) the following parameters,
-	// and cover both the INS_AB and INS_BC forms.  Possibly
-	// include code to compare against the actual mnemonic pattern
-	// to ensure correct usage.
-	public void Emit(Opcode op, Int32 a, String comment) {
+	public void EmitA(Opcode op, Int32 a, String comment) {
+		BytecodeUtil.CheckEmitPattern(op, EmitPattern.A);
 		_code.Add(BytecodeUtil.INS_A(op, (Byte)a));
 	}
 
-	public void Emit(Opcode op, Int32 a, Int32 bc, String comment) {
+	public void EmitAB(Opcode op, Int32 a, Int32 bc, String comment) {
+		BytecodeUtil.CheckEmitPattern(op, EmitPattern.AB);
 		_code.Add(BytecodeUtil.INS_AB(op, (Byte)a, (Int16)bc));
 	}
 
-	public void Emit(Opcode op, Int32 a, Int32 b, Int32 c, String comment) {
+	public void EmitBC(Opcode op, Int32 ab, Int32 c, String comment) {
+		BytecodeUtil.CheckEmitPattern(op, EmitPattern.BC);
+		_code.Add(BytecodeUtil.INS_BC(op, (Int16)ab, (Byte)c));
+	}
+
+	public void EmitABC(Opcode op, Int32 a, Int32 b, Int32 c, String comment) {
+		BytecodeUtil.CheckEmitPattern(op, EmitPattern.ABC);
 		_code.Add(BytecodeUtil.INS_ABC(op, (Byte)a, (Byte)b, (Byte)c));
 	}
 
@@ -153,18 +160,21 @@ public class AssemblyEmitter : ICodeEmitter {
 	}
 
 	public void Emit(Opcode op, String comment) {
+		BytecodeUtil.CheckEmitPattern(op, EmitPattern.None);
 		String line = "  " + BytecodeUtil.ToMnemonic(op);
 		if (comment != null) line = line + "  ; " + comment;
 		_lines.Add(line);
 	}
 
-	public void Emit(Opcode op, Int32 a, String comment) {
+	public void EmitA(Opcode op, Int32 a, String comment) {
+		BytecodeUtil.CheckEmitPattern(op, EmitPattern.A);
 		String line = "  " + BytecodeUtil.ToMnemonic(op) + " r" + a;
 		if (comment != null) line = line + "  ; " + comment;
 		_lines.Add(line);
 	}
 
-	public void Emit(Opcode op, Int32 a, Int32 bc, String comment) {
+	public void EmitAB(Opcode op, Int32 a, Int32 bc, String comment) {
+		BytecodeUtil.CheckEmitPattern(op, EmitPattern.AB);
 		String mnemonic = BytecodeUtil.ToMnemonic(op);
 		String line;
 		if (mnemonic.Contains("_kBC")) {
@@ -178,7 +188,21 @@ public class AssemblyEmitter : ICodeEmitter {
 		_lines.Add(line);
 	}
 
-	public void Emit(Opcode op, Int32 a, Int32 b, Int32 c, String comment) {
+	public void EmitBC(Opcode op, Int32 ab, Int32 c, String comment) {
+		BytecodeUtil.CheckEmitPattern(op, EmitPattern.BC);
+		String mnemonic = BytecodeUtil.ToMnemonic(op);
+		String line;
+		if (mnemonic.Contains("_rC")) {
+			line = "  " + mnemonic + " " + ab + ", r" + c;
+		} else {
+			line = "  " + mnemonic + " " + ab + ", " + c;
+		}
+		if (comment != null) line = line + "  ; " + comment;
+		_lines.Add(line);
+	}
+
+	public void EmitABC(Opcode op, Int32 a, Int32 b, Int32 c, String comment) {
+		BytecodeUtil.CheckEmitPattern(op, EmitPattern.ABC);
 		String mnemonic = BytecodeUtil.ToMnemonic(op);
 		String line = "  " + mnemonic + " r" + a + ", r" + b + ", r" + c;
 		if (comment != null) line = line + "  ; " + comment;

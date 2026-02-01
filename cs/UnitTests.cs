@@ -507,8 +507,8 @@ public static class UnitTests {
 		ok = ok && CheckBytecodeGen(parser, "\"hello\"", 2, 1);  // LOAD_kBC + RETURN
 
 		// Test simple addition
-		// 2 + 3: LOAD r0, 2; LOAD r1, 3; ADD r2, r0, r1; LOAD r0, r2; RETURN
-		ok = ok && CheckBytecodeGen(parser, "2 + 3", 5, 0);
+		// With resultReg allocated first: LOAD r1,2; LOAD r2,3; ADD r0,r1,r2; RETURN
+		ok = ok && CheckBytecodeGen(parser, "2 + 3", 4, 0);
 
 		// Test assembly output for simple number
 		ok = ok && CheckCodeGen(parser, "42", new List<String> {
@@ -516,57 +516,51 @@ public static class UnitTests {
 			"  RETURN"
 		});
 
-		// Test assembly output for addition
+		// Test assembly output for addition (resultReg r0 allocated first)
 		ok = ok && CheckCodeGen(parser, "2 + 3", new List<String> {
-			"  LOAD_rA_iBC r0, 2",
-			"  LOAD_rA_iBC r1, 3",
-			"  ADD_rA_rB_rC r2, r0, r1",
-			"  LOAD_rA_rB r0, r2",
+			"  LOAD_rA_iBC r1, 2",
+			"  LOAD_rA_iBC r2, 3",
+			"  ADD_rA_rB_rC r0, r1, r2",
 			"  RETURN"
 		});
 
 		// Test subtraction
 		ok = ok && CheckCodeGen(parser, "10 - 4", new List<String> {
-			"  LOAD_rA_iBC r0, 10",
-			"  LOAD_rA_iBC r1, 4",
-			"  SUB_rA_rB_rC r2, r0, r1",
-			"  LOAD_rA_rB r0, r2",
+			"  LOAD_rA_iBC r1, 10",
+			"  LOAD_rA_iBC r2, 4",
+			"  SUB_rA_rB_rC r0, r1, r2",
 			"  RETURN"
 		});
 
 		// Test multiplication
 		ok = ok && CheckCodeGen(parser, "6 * 7", new List<String> {
-			"  LOAD_rA_iBC r0, 6",
-			"  LOAD_rA_iBC r1, 7",
-			"  MULT_rA_rB_rC r2, r0, r1",
-			"  LOAD_rA_rB r0, r2",
+			"  LOAD_rA_iBC r1, 6",
+			"  LOAD_rA_iBC r2, 7",
+			"  MULT_rA_rB_rC r0, r1, r2",
 			"  RETURN"
 		});
 
 		// Test division
 		ok = ok && CheckCodeGen(parser, "20 / 4", new List<String> {
-			"  LOAD_rA_iBC r0, 20",
-			"  LOAD_rA_iBC r1, 4",
-			"  DIV_rA_rB_rC r2, r0, r1",
-			"  LOAD_rA_rB r0, r2",
+			"  LOAD_rA_iBC r1, 20",
+			"  LOAD_rA_iBC r2, 4",
+			"  DIV_rA_rB_rC r0, r1, r2",
 			"  RETURN"
 		});
 
 		// Test comparison (less than)
 		ok = ok && CheckCodeGen(parser, "3 < 5", new List<String> {
-			"  LOAD_rA_iBC r0, 3",
-			"  LOAD_rA_iBC r1, 5",
-			"  LT_rA_rB_rC r2, r0, r1",
-			"  LOAD_rA_rB r0, r2",
+			"  LOAD_rA_iBC r1, 3",
+			"  LOAD_rA_iBC r2, 5",
+			"  LT_rA_rB_rC r0, r1, r2",
 			"  RETURN"
 		});
 
 		// Test comparison (greater than - uses swapped LT)
 		ok = ok && CheckCodeGen(parser, "5 > 3", new List<String> {
-			"  LOAD_rA_iBC r0, 5",
-			"  LOAD_rA_iBC r1, 3",
-			"  LT_rA_rB_rC r2, r1, r0",  // swapped: r1 < r0
-			"  LOAD_rA_rB r0, r2",
+			"  LOAD_rA_iBC r1, 5",
+			"  LOAD_rA_iBC r2, 3",
+			"  LT_rA_rB_rC r0, r2, r1",  // swapped: r2 < r1
 			"  RETURN"
 		});
 
@@ -607,33 +601,59 @@ public static class UnitTests {
 		// Test map literal
 		ok = ok && CheckBytecodeGen(parser, "{}", 2, 0);  // MAP + RETURN
 
-		// Test index access
+		// Test index access (resultReg r0 allocated first)
 		ok = ok && CheckCodeGen(parser, "x[0]", new List<String> {
-			"  LOAD_rA_iBC r0, 0",   // TODO: load x
-			"  LOAD_rA_iBC r1, 0",   // index 0
-			"  INDEX_rA_rB_rC r2, r0, r1",
-			"  LOAD_rA_rB r0, r2",
+			"  LOAD_rA_iBC r1, 0",   // TODO: load x
+			"  LOAD_rA_iBC r2, 0",   // index 0
+			"  INDEX_rA_rB_rC r0, r1, r2",
 			"  RETURN"
 		});
 
 		// Test nested expression (precedence)
-		// 2 + 3 * 4 = 2 + 12 = 14 (but we compile, not evaluate)
-		// Should generate: LOAD 2, LOAD 3, LOAD 4, MULT, ADD
-		ok = ok && CheckBytecodeGen(parser, "2 + 3 * 4", 7, 0);
+		// 2 + 3 * 4: outer result r0, load 2 into r1, inner mult result r2, load 3,4 into r3,r4
+		// LOAD r1,2; LOAD r3,3; LOAD r4,4; MULT r2,r3,r4; ADD r0,r1,r2; RETURN
+		ok = ok && CheckBytecodeGen(parser, "2 + 3 * 4", 6, 0);
 
-		// Test register reuse: after freeing registers, they should be reused
-		// In (1 + 2) + (3 + 4), the inner additions free their operand registers
-		// r0=1, r1=2, r2=1+2, free r0,r1
-		// r0=3, r1=4, r3=3+4, free r0,r1
-		// r4 = r2 + r3
-		// Actually with our stack-based allocator, we only reuse if freeing the topmost
-		// So this tests that the generator works correctly with nested expressions
-		ok = ok && CheckBytecodeGen(parser, "(1 + 2) + (3 + 4)", 9, 0);
+		// Test register reuse with nested expressions
+		// (1 + 2) + (3 + 4): outer r0, first group r1 (with r2,r3 for operands),
+		// second group r2 (reused after freeing r2,r3), with r3,r4 for operands
+		// LOAD r2,1; LOAD r3,2; ADD r1,r2,r3; LOAD r3,3; LOAD r4,4; ADD r2,r3,r4; ADD r0,r1,r2; RETURN
+		ok = ok && CheckBytecodeGen(parser, "(1 + 2) + (3 + 4)", 8, 0);
 
 		if (ok) {
 			IOHelper.Print("  All code generator tests passed.");
 		}
 
+		return ok;
+	}
+
+	public static Boolean TestEmitPatternValidation() {
+		IOHelper.Print("  Testing emit pattern validation...");
+		Boolean ok = true;
+
+		// Test that GetEmitPattern correctly identifies patterns
+		ok = ok && Assert(BytecodeUtil.GetEmitPattern(Opcode.RETURN) == EmitPattern.None,
+			"RETURN should be EmitPattern.None");
+		ok = ok && Assert(BytecodeUtil.GetEmitPattern(Opcode.NOOP) == EmitPattern.None,
+			"NOOP should be EmitPattern.None");
+		ok = ok && Assert(BytecodeUtil.GetEmitPattern(Opcode.LOCALS_rA) == EmitPattern.A,
+			"LOCALS_rA should be EmitPattern.A");
+		ok = ok && Assert(BytecodeUtil.GetEmitPattern(Opcode.ARG_rA) == EmitPattern.A,
+			"ARG_rA should be EmitPattern.A");
+		ok = ok && Assert(BytecodeUtil.GetEmitPattern(Opcode.LOAD_rA_iBC) == EmitPattern.AB,
+			"LOAD_rA_iBC should be EmitPattern.AB");
+		ok = ok && Assert(BytecodeUtil.GetEmitPattern(Opcode.LOAD_rA_rB) == EmitPattern.AB,
+			"LOAD_rA_rB should be EmitPattern.AB");
+		ok = ok && Assert(BytecodeUtil.GetEmitPattern(Opcode.IFLT_iAB_rC) == EmitPattern.BC,
+			"IFLT_iAB_rC should be EmitPattern.BC");
+		ok = ok && Assert(BytecodeUtil.GetEmitPattern(Opcode.ADD_rA_rB_rC) == EmitPattern.ABC,
+			"ADD_rA_rB_rC should be EmitPattern.ABC");
+		ok = ok && Assert(BytecodeUtil.GetEmitPattern(Opcode.LT_rA_rB_iC) == EmitPattern.ABC,
+			"LT_rA_rB_iC should be EmitPattern.ABC");
+
+		if (ok) {
+			IOHelper.Print("  All emit pattern validation tests passed.");
+		}
 		return ok;
 	}
 
@@ -643,7 +663,8 @@ public static class UnitTests {
 			&& TestAssembler()
 			&& TestValueMap()
 			&& TestParser()
-			&& TestCodeGenerator();
+			&& TestCodeGenerator()
+			&& TestEmitPatternValidation();
 	}
 }
 

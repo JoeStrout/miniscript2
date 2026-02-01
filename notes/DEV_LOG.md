@@ -249,3 +249,9 @@ There are a couple of minor issues to address next:
 Both issues now fixed.  We have C++/C# parity again!
 
 So, now I've started on code generation.  Using a modified Visitor pattern to let the CodeGenerator iterate through a abstract syntax tree, and output either assembly code or bytecode.  I've left some ToDo's in the code, and haven't even tried to transpile it yet, but it's off to a decent start.
+
+
+## Feb 01, 2026
+
+The code generator is looking really good in C#.  There are a few things that are still placeholders, like variable handling and the implementation of the `not` operator (which probably needs to be a new opcode), but the basic structure looks really sound.
+

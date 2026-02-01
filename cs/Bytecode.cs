@@ -1,8 +1,18 @@
 using System;
 using System.Collections.Generic;
 // CPP: #include "value.h"
+// CPP: #include "IOHelper.g.h"
 
 namespace MiniScript {
+
+// Emit pattern - indicates which Emit method should be used for an opcode
+public enum EmitPattern : Byte {
+	None,   // Emit(op, comment) - no operands (e.g., RETURN, NOOP)
+	A,      // EmitA(op, a, comment) - 8-bit A only (e.g., LOCALS_rA)
+	AB,     // EmitAB(op, a, bc, comment) - 8-bit A + 16-bit BC (e.g., LOAD_rA_iBC)
+	BC,     // EmitBC(op, ab, c, comment) - 16-bit AB + 8-bit C (e.g., IFLT_iAB_rC)
+	ABC     // EmitABC(op, a, b, c, comment) - 8-bit A + B + C (e.g., ADD_rA_rB_rC)
+}
 
 // Opcodes.  Note that these must have sequential values, starting at 0.
 public enum Opcode : Byte {
@@ -72,6 +82,63 @@ public enum Opcode : Byte {
 }
 
 public static class BytecodeUtil {
+	// Set to false to disable opcode validation in Emit methods (for production)
+	public static Boolean ValidateOpcodes = true;
+
+	// Determine the expected emit pattern for an opcode based on its mnemonic
+	public static EmitPattern GetEmitPattern(Opcode opcode) {
+		String mnemonic = ToMnemonic(opcode);
+
+		// Check for specific patterns in the mnemonic suffix
+		// Order matters: check more specific patterns first
+
+		// ABC patterns: _rA_rB_rC, _rA_rB_iC, _rA_iB_rC, _iA_rB_iC, _rA_rB_kC
+		if (mnemonic.Contains("_rA_rB_rC") || mnemonic.Contains("_rA_rB_iC") ||
+			mnemonic.Contains("_rA_iB_rC") || mnemonic.Contains("_iA_rB_iC") ||
+			mnemonic.Contains("_rA_rB_kC")) {
+			return EmitPattern.ABC;
+		}
+
+		// BC patterns: _iAB_rC, _iAB_iC
+		if (mnemonic.Contains("_iAB_rC") || mnemonic.Contains("_iAB_iC")) {
+			return EmitPattern.BC;
+		}
+
+		// AB patterns: _rA_rB, _rA_iBC, _rA_kBC, _iA_iBC, _iA_kBC
+		if (mnemonic.Contains("_rA_rB") || mnemonic.Contains("_rA_iBC") ||
+			mnemonic.Contains("_rA_kBC") || mnemonic.Contains("_iA_iBC") ||
+			mnemonic.Contains("_iA_kBC")) {
+			return EmitPattern.AB;
+		}
+
+		// A patterns: _rA, _iA (but not followed by B or BC)
+		if (mnemonic.EndsWith("_rA") || mnemonic.EndsWith("_iA")) {
+			return EmitPattern.A;
+		}
+
+		// iABC pattern (24-bit immediate, like JUMP_iABC, ARG_iABC, ARGBLK_iABC)
+		if (mnemonic.Contains("_iABC")) {
+			return EmitPattern.ABC;  // Uses all 24 bits as one value
+		}
+
+		// No suffix - opcode only (NOOP, RETURN, etc.)
+		return EmitPattern.None;
+	}
+
+	// Validate that an opcode matches the expected emit pattern
+	// Returns true if valid, false if mismatch (and prints error)
+	public static Boolean CheckEmitPattern(Opcode opcode, EmitPattern expected) {
+		if (!ValidateOpcodes) return true;
+
+		EmitPattern actual = GetEmitPattern(opcode);
+		if (actual == expected) return true;
+
+		// Mismatch - report error
+		String mnemonic = ToMnemonic(opcode);
+		IOHelper.Print($"ERROR: Opcode {mnemonic} expects Emit{actual} but Emit{expected} was called");
+		return false;
+	}
+
 	// Instruction field extraction helpers
 	public static Byte OP(UInt32 instruction) => (Byte)((instruction >> 24) & 0xFF);
 	

@@ -4,6 +4,7 @@
 #pragma once
 #include "core_includes.h"
 
+#include "CodeEmitter.g.h"
 
 namespace MiniScript {
 
@@ -13,6 +14,8 @@ struct CodeGenerator;
 class CodeGeneratorStorage;
 struct VM;
 class VMStorage;
+struct CodeEmitterBase;
+class CodeEmitterBaseStorage;
 struct BytecodeEmitter;
 class BytecodeEmitterStorage;
 struct AssemblyEmitter;
@@ -139,7 +142,19 @@ struct App {
 	public: static bool visMode;
 	
 	public: static void MainProgram(List<String> args);
-	
+
+	// Compile MiniScript source code to a list of functions
+	private: static List<FuncDef> CompileSource(String source);
+
+	// Compile a MiniScript source file (.ms) to a list of functions
+	private: static List<FuncDef> CompileSourceFile(String filePath);
+
+	// Assemble an assembly file (.msa) to a list of functions
+	private: static List<FuncDef> AssembleFile(String filePath);
+
+	// Run a program given its list of functions
+	private: static void RunProgram(List<FuncDef> functions);
+
 }; // end of struct App
 
 

@@ -4,8 +4,10 @@
 #pragma once
 #include "core_includes.h"
 // CodeGenerator.cs - Compiles AST nodes to bytecode using the visitor pattern
-// Uses ICodeEmitter to support both direct bytecode and assembly text output.
+// Uses CodeEmitterBase to support both direct bytecode and assembly text output.
 
+#include "AST.g.h"
+#include "CodeEmitter.g.h"
 
 namespace MiniScript {
 
@@ -15,6 +17,8 @@ struct CodeGenerator;
 class CodeGeneratorStorage;
 struct VM;
 class VMStorage;
+struct CodeEmitterBase;
+class CodeEmitterBaseStorage;
 struct BytecodeEmitter;
 class BytecodeEmitterStorage;
 struct AssemblyEmitter;
@@ -142,12 +146,12 @@ class MethodCallNodeStorage;
 // Compiles AST nodes to bytecode
 class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorStorage>, IASTVisitor {
 	friend struct CodeGenerator;
-	private: ICodeEmitter _emitter;
+	private: CodeEmitterBase _emitter;
 	private: List<Boolean> _regInUse; // Which registers are currently in use
 	private: Int32 _firstAvailable; // Lowest index that might be free
 	private: Int32 _maxRegUsed; // High water mark for register usage
 
-	public: CodeGeneratorStorage(ICodeEmitter& emitter);
+	public: CodeGeneratorStorage(CodeEmitterBase emitter);
 
 	// Allocate a register
 	private: Int32 AllocReg();
@@ -197,8 +201,8 @@ struct CodeGenerator : public IASTVisitor {
 	protected: std::shared_ptr<CodeGeneratorStorage> storage;
 	public: CodeGenerator(std::shared_ptr<CodeGeneratorStorage> stor) : storage(stor) {}
 	private: CodeGeneratorStorage* get();
-	private: ICodeEmitter _emitter();
-	private: void set__emitter(ICodeEmitter _v);
+	private: CodeEmitterBase _emitter();
+	private: void set__emitter(CodeEmitterBase _v);
 	private: List<Boolean> _regInUse(); // Which registers are currently in use
 	private: void set__regInUse(List<Boolean> _v); // Which registers are currently in use
 	private: Int32 _firstAvailable(); // Lowest index that might be free
@@ -206,7 +210,7 @@ struct CodeGenerator : public IASTVisitor {
 	private: Int32 _maxRegUsed(); // High water mark for register usage
 	private: void set__maxRegUsed(Int32 _v); // High water mark for register usage
 
-	public: static CodeGenerator New(ICodeEmitter& emitter) {
+	public: static CodeGenerator New(CodeEmitterBase emitter) {
 		return CodeGenerator(std::make_shared<CodeGeneratorStorage>(emitter));
 	}
 
@@ -256,8 +260,8 @@ struct CodeGenerator : public IASTVisitor {
 // INLINE METHODS
 
 inline CodeGeneratorStorage* CodeGenerator::get() { return static_cast<CodeGeneratorStorage*>(storage.get()); }
-inline ICodeEmitter CodeGenerator::_emitter() { return get()->_emitter; }
-inline void CodeGenerator::set__emitter(ICodeEmitter _v) { get()->_emitter = _v; }
+inline CodeEmitterBase CodeGenerator::_emitter() { return get()->_emitter; }
+inline void CodeGenerator::set__emitter(CodeEmitterBase _v) { get()->_emitter = _v; }
 inline List<Boolean> CodeGenerator::_regInUse() { return get()->_regInUse; } // Which registers are currently in use
 inline void CodeGenerator::set__regInUse(List<Boolean> _v) { get()->_regInUse = _v; } // Which registers are currently in use
 inline Int32 CodeGenerator::_firstAvailable() { return get()->_firstAvailable; } // Lowest index that might be free

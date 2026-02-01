@@ -889,14 +889,19 @@ Transpiler.updateStateNAMESPACE = function
 	else if self.match("≤scope:w≥ abstract class ≤name:w≥ {") or
 	        self.match("≤scope:w≥ abstract class ≤name:w≥ : ≤baseClass≥ {") then
 		self.enterState State.CLASS
-		if self.m.hasIndex("baseClass") then self.curClass.superclass = self.m.baseClass
 		// wrapper class (we'll take care to write this one out before all storage classes later)
 		self.curClass.wrapperLines += self.preLines; self.preLines = []
-		self.curClass.wrapperLines.push self.fill("struct ≤name≥ {")
+		if self.m.hasIndex("baseClass") then
+			self.curClass.superclass = self.m.baseClass
+			self.curClass.wrapperLines.push self.fill("struct ≤name≥ : public ≤baseClass≥ {")
+		else
+			self.curClass.wrapperLines.push self.fill("struct ≤name≥ {")
+		end if
 		self.curClass.wrapperLines.push self.fill("	protected: std::shared_ptr<≤name≥Storage> storage;")
 		self.curClass.wrapperLines.push "  public:"
 		self.curClass.wrapperLines.push self.fill("	≤name≥(std::shared_ptr<≤name≥Storage> stor) : storage(stor) {}")
 		self.curClass.wrapperLines.push self.fill("	≤name≥() : storage(nullptr) {}")
+		self.curClass.wrapperLines.push self.fill("	≤name≥(std::nullptr_t) : storage(nullptr) {}")
 		self.curClass.wrapperLines.push self.fill("	friend bool IsNull(≤name≥ inst) { return inst.storage == nullptr; }")
 		self.curClass.wrapperLines.push self.fill("	private: ≤name≥Storage* get() const;")
 		self.curClass.inlineLines.push  self.fill("inline ≤name≥Storage* ≤name≥::get() const { return static_cast<≤name≥Storage*>(storage.get()); }")
@@ -908,7 +913,11 @@ Transpiler.updateStateNAMESPACE = function
 		self.curClass.wrapperLines.push self.fill("		return WrapperType(inst.storage);")
 		self.curClass.wrapperLines.push self.fill("	}")
 		self.curClass.wrapperLines.push ""
-		self.curClass.storageLines.push self.fill("class ≤name≥Storage : public std::enable_shared_from_this<≤name≥Storage> {")
+		if self.m.hasIndex("baseClass") then
+			self.curClass.storageLines.push self.fill("class ≤name≥Storage : public std::enable_shared_from_this<≤name≥Storage>, public ≤baseClass≥Storage {")
+		else
+			self.curClass.storageLines.push self.fill("class ≤name≥Storage : public std::enable_shared_from_this<≤name≥Storage> {")
+		end if
 		self.curClass.storageLines.push self.fill("	public: virtual ~≤name≥Storage() {}")
 		
 	// class (subclass)
@@ -926,7 +935,7 @@ Transpiler.updateStateNAMESPACE = function
 		// subclasses: first a storage class, in the storage lines...
 		self.curClass.storageLines += self.preLines
 		if baseIsInterface then
-			self.curClass.storageLines.push self.fill("class ≤name≥Storage : public std::enable_shared_from_this<≤name≥Storage>, ≤baseClass≥ {")
+			self.curClass.storageLines.push self.fill("class ≤name≥Storage : public std::enable_shared_from_this<≤name≥Storage>, public ≤baseClass≥ {")
 		else
 			self.curClass.storageLines.push self.fill("class ≤name≥Storage : public ≤baseClass≥Storage {")
 		end if

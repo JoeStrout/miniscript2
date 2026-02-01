@@ -18,6 +18,8 @@ struct CodeGenerator;
 class CodeGeneratorStorage;
 struct VM;
 class VMStorage;
+struct CodeEmitterBase;
+class CodeEmitterBaseStorage;
 struct BytecodeEmitter;
 class BytecodeEmitterStorage;
 struct AssemblyEmitter;
@@ -180,11 +182,12 @@ template<typename WrapperType, typename StorageType> WrapperType As(Parselet ins
 
 // PrefixParselet: abstract base for parselets that handle tokens
 // starting an expression (numbers, identifiers, unary operators).
-struct PrefixParselet {
+struct PrefixParselet : public Parselet {
 	protected: std::shared_ptr<PrefixParseletStorage> storage;
   public:
 	PrefixParselet(std::shared_ptr<PrefixParseletStorage> stor) : storage(stor) {}
 	PrefixParselet() : storage(nullptr) {}
+	PrefixParselet(std::nullptr_t) : storage(nullptr) {}
 	friend bool IsNull(PrefixParselet inst) { return inst.storage == nullptr; }
 	private: PrefixParseletStorage* get() const;
 	template<typename WrapperType, typename StorageType>
@@ -201,11 +204,12 @@ template<typename WrapperType, typename StorageType> WrapperType As(PrefixParsel
 
 
 // InfixParselet: abstract base for parselets that handle infix operators.
-struct InfixParselet {
+struct InfixParselet : public Parselet {
 	protected: std::shared_ptr<InfixParseletStorage> storage;
   public:
 	InfixParselet(std::shared_ptr<InfixParseletStorage> stor) : storage(stor) {}
 	InfixParselet() : storage(nullptr) {}
+	InfixParselet(std::nullptr_t) : storage(nullptr) {}
 	friend bool IsNull(InfixParselet inst) { return inst.storage == nullptr; }
 	private: InfixParseletStorage* get() const;
 	template<typename WrapperType, typename StorageType>
@@ -226,12 +230,12 @@ class ParseletStorage : public std::enable_shared_from_this<ParseletStorage> {
 	public: Precedence Prec;
 }; // end of class ParseletStorage
 
-class PrefixParseletStorage : public std::enable_shared_from_this<PrefixParseletStorage> {
+class PrefixParseletStorage : public std::enable_shared_from_this<PrefixParseletStorage>, public ParseletStorage {
 	public: virtual ~PrefixParseletStorage() {}
 	public: virtual ASTNode Parse(IParser& parser, Token token) = 0;
 }; // end of class PrefixParseletStorage
 
-class InfixParseletStorage : public std::enable_shared_from_this<InfixParseletStorage> {
+class InfixParseletStorage : public std::enable_shared_from_this<InfixParseletStorage>, public ParseletStorage {
 	public: virtual ~InfixParseletStorage() {}
 	public: virtual ASTNode Parse(IParser& parser, ASTNode left, Token token) = 0;
 }; // end of class InfixParseletStorage

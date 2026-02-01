@@ -3,7 +3,7 @@
 
 #pragma once
 #include "core_includes.h"
-// CodeEmitter.cs - Interface and implementations for emitting bytecode or assembly
+// CodeEmitter.cs - Base class and implementations for emitting bytecode or assembly
 // Provides an abstraction layer for code generation output.
 
 #include "Bytecode.g.h"
@@ -18,6 +18,8 @@ struct CodeGenerator;
 class CodeGeneratorStorage;
 struct VM;
 class VMStorage;
+struct CodeEmitterBase;
+class CodeEmitterBaseStorage;
 struct BytecodeEmitter;
 class BytecodeEmitterStorage;
 struct AssemblyEmitter;
@@ -96,33 +98,6 @@ class MethodCallNodeStorage;
 
 
 
-// Interface for emitting code (bytecode or assembly text)
-class ICodeEmitter {
-  public:
-	virtual ~ICodeEmitter() = default;
-	virtual void Emit(Opcode op, String comment) = 0; // INS: opcode only
-	virtual void EmitA(Opcode op, Int32 a, String comment) = 0; // INS_A: 8-bit A field
-	virtual void EmitAB(Opcode op, Int32 a, Int32 bc, String comment) = 0; // INS_AB: 8-bit A + 16-bit BC
-	virtual void EmitBC(Opcode op, Int32 ab, Int32 c, String comment) = 0; // INS_BC: 16-bit AB + 8-bit C
-	virtual void EmitABC(Opcode op, Int32 a, Int32 b, Int32 c, String comment) = 0; // INS_ABC: 8-bit A + 8-bit B + 8-bit C
-	virtual Int32 AddConstant(Value value) = 0;
-	virtual Int32 CreateLabel() = 0;
-	virtual void PlaceLabel(Int32 labelId) = 0;
-	virtual void EmitJump(Opcode op, Int32 labelId, String comment) = 0;
-	virtual void ReserveRegister(Int32 registerNumber) = 0;
-	virtual FuncDef Finalize(String name) = 0;
-	// Emit instructions with varying operand patterns
-	// Method names match BytecodeUtil.INS_* patterns
-
-	// Add a constant to the constant pool, return its index
-
-	// Label management for jumps
-
-	// Track register usage
-
-	// Finalize and return the compiled function
-}; // end of interface ICodeEmitter
-
 
 // Tracks a pending label reference that needs patching
 struct LabelRef {
@@ -177,9 +152,65 @@ struct LabelRef {
 
 
 
+// Abstract base class for emitting code (bytecode or assembly text)
+struct CodeEmitterBase {
+	protected: std::shared_ptr<CodeEmitterBaseStorage> storage;
+  public:
+	CodeEmitterBase(std::shared_ptr<CodeEmitterBaseStorage> stor) : storage(stor) {}
+	CodeEmitterBase() : storage(nullptr) {}
+	friend bool IsNull(CodeEmitterBase inst) { return inst.storage == nullptr; }
+	private: CodeEmitterBaseStorage* get() const;
+	template<typename WrapperType, typename StorageType>
+	friend WrapperType As(CodeEmitterBase inst) {
+		StorageType* stor = dynamic_cast<StorageType*>(inst.storage.get());
+		if (stor == nullptr) return WrapperType(nullptr);
+		return WrapperType(inst.storage);
+	}
+
+	public: void Emit(Opcode op, String comment); // INS: opcode only
+	public: void EmitA(Opcode op, Int32 a, String comment); // INS_A: 8-bit A field
+	public: void EmitAB(Opcode op, Int32 a, Int32 bc, String comment); // INS_AB: 8-bit A + 16-bit BC
+	public: void EmitBC(Opcode op, Int32 ab, Int32 c, String comment); // INS_BC: 16-bit AB + 8-bit C
+	public: void EmitABC(Opcode op, Int32 a, Int32 b, Int32 c, String comment); // INS_ABC: 8-bit A + 8-bit B + 8-bit C
+	public: Int32 AddConstant(Value value);
+	public: Int32 CreateLabel();
+	public: void PlaceLabel(Int32 labelId);
+	public: void EmitJump(Opcode op, Int32 labelId, String comment);
+	public: void ReserveRegister(Int32 registerNumber);
+	public: FuncDef Finalize(String name);
+}; // end of struct CodeEmitterBase
+
+template<typename WrapperType, typename StorageType> WrapperType As(CodeEmitterBase inst);
+
+class CodeEmitterBaseStorage : public std::enable_shared_from_this<CodeEmitterBaseStorage> {
+	public: virtual ~CodeEmitterBaseStorage() {}
+	public: virtual void Emit(Opcode op, String comment) = 0; // INS: opcode only
+	public: virtual void EmitA(Opcode op, Int32 a, String comment) = 0; // INS_A: 8-bit A field
+	public: virtual void EmitAB(Opcode op, Int32 a, Int32 bc, String comment) = 0; // INS_AB: 8-bit A + 16-bit BC
+	public: virtual void EmitBC(Opcode op, Int32 ab, Int32 c, String comment) = 0; // INS_BC: 16-bit AB + 8-bit C
+	public: virtual void EmitABC(Opcode op, Int32 a, Int32 b, Int32 c, String comment) = 0; // INS_ABC: 8-bit A + 8-bit B + 8-bit C
+	public: virtual Int32 AddConstant(Value value) = 0;
+	public: virtual Int32 CreateLabel() = 0;
+	public: virtual void PlaceLabel(Int32 labelId) = 0;
+	public: virtual void EmitJump(Opcode op, Int32 labelId, String comment) = 0;
+	public: virtual void ReserveRegister(Int32 registerNumber) = 0;
+	public: virtual FuncDef Finalize(String name) = 0;
+	// Emit instructions with varying operand patterns
+	// Method names match BytecodeUtil.INS_* patterns
+
+	// Add a constant to the constant pool, return its index
+
+	// Label management for jumps
+
+	// Track register usage
+
+	// Finalize and return the compiled function
+}; // end of class CodeEmitterBaseStorage
+
+
 
 // Emits directly to bytecode (production use)
-class BytecodeEmitterStorage : public std::enable_shared_from_this<BytecodeEmitterStorage>, ICodeEmitter {
+class BytecodeEmitterStorage : public CodeEmitterBaseStorage {
 	friend struct BytecodeEmitter;
 	private: List<UInt32> _code;
 	private: List<Value> _constants;
@@ -215,7 +246,7 @@ class BytecodeEmitterStorage : public std::enable_shared_from_this<BytecodeEmitt
 
 
 // Emits assembly text (for debugging and testing)
-class AssemblyEmitterStorage : public std::enable_shared_from_this<AssemblyEmitterStorage>, ICodeEmitter {
+class AssemblyEmitterStorage : public CodeEmitterBaseStorage {
 	friend struct AssemblyEmitter;
 	private: List<String> _lines;
 	private: List<Value> _constants;
@@ -257,9 +288,10 @@ class AssemblyEmitterStorage : public std::enable_shared_from_this<AssemblyEmitt
 
 
 // Emits directly to bytecode (production use)
-struct BytecodeEmitter : public ICodeEmitter {
-	protected: std::shared_ptr<BytecodeEmitterStorage> storage;
-	public: BytecodeEmitter(std::shared_ptr<BytecodeEmitterStorage> stor) : storage(stor) {}
+struct BytecodeEmitter : public CodeEmitterBase {
+	public: BytecodeEmitter(std::shared_ptr<CodeEmitterBaseStorage> stor) : CodeEmitterBase(stor) {}
+	BytecodeEmitter(std::nullptr_t) : CodeEmitterBase(nullptr) {}
+	BytecodeEmitter() : CodeEmitterBase(nullptr) {}
 	private: BytecodeEmitterStorage* get();
 	private: List<UInt32> _code();
 	private: void set__code(List<UInt32> _v);
@@ -303,9 +335,10 @@ struct BytecodeEmitter : public ICodeEmitter {
 
 
 // Emits assembly text (for debugging and testing)
-struct AssemblyEmitter : public ICodeEmitter {
-	protected: std::shared_ptr<AssemblyEmitterStorage> storage;
-	public: AssemblyEmitter(std::shared_ptr<AssemblyEmitterStorage> stor) : storage(stor) {}
+struct AssemblyEmitter : public CodeEmitterBase {
+	public: AssemblyEmitter(std::shared_ptr<CodeEmitterBaseStorage> stor) : CodeEmitterBase(stor) {}
+	AssemblyEmitter(std::nullptr_t) : CodeEmitterBase(nullptr) {}
+	AssemblyEmitter() : CodeEmitterBase(nullptr) {}
 	private: AssemblyEmitterStorage* get();
 	private: List<String> _lines();
 	private: void set__lines(List<String> _v);
@@ -353,6 +386,19 @@ struct AssemblyEmitter : public ICodeEmitter {
 
 
 // INLINE METHODS
+
+inline CodeEmitterBaseStorage* CodeEmitterBase::get() const { return static_cast<CodeEmitterBaseStorage*>(storage.get()); }
+inline void CodeEmitterBase::Emit(Opcode op, String comment) { return get()->Emit(op, comment); } // INS: opcode only
+inline void CodeEmitterBase::EmitA(Opcode op, Int32 a, String comment) { return get()->EmitA(op, a, comment); } // INS_A: 8-bit A field
+inline void CodeEmitterBase::EmitAB(Opcode op, Int32 a, Int32 bc, String comment) { return get()->EmitAB(op, a, bc, comment); } // INS_AB: 8-bit A + 16-bit BC
+inline void CodeEmitterBase::EmitBC(Opcode op, Int32 ab, Int32 c, String comment) { return get()->EmitBC(op, ab, c, comment); } // INS_BC: 16-bit AB + 8-bit C
+inline void CodeEmitterBase::EmitABC(Opcode op, Int32 a, Int32 b, Int32 c, String comment) { return get()->EmitABC(op, a, b, c, comment); } // INS_ABC: 8-bit A + 8-bit B + 8-bit C
+inline Int32 CodeEmitterBase::AddConstant(Value value) { return get()->AddConstant(value); }
+inline Int32 CodeEmitterBase::CreateLabel() { return get()->CreateLabel(); }
+inline void CodeEmitterBase::PlaceLabel(Int32 labelId) { return get()->PlaceLabel(labelId); }
+inline void CodeEmitterBase::EmitJump(Opcode op, Int32 labelId, String comment) { return get()->EmitJump(op, labelId, comment); }
+inline void CodeEmitterBase::ReserveRegister(Int32 registerNumber) { return get()->ReserveRegister(registerNumber); }
+inline FuncDef CodeEmitterBase::Finalize(String name) { return get()->Finalize(name); }
 
 inline BytecodeEmitterStorage* BytecodeEmitter::get() { return static_cast<BytecodeEmitterStorage*>(storage.get()); }
 inline List<UInt32> BytecodeEmitter::_code() { return get()->_code; }

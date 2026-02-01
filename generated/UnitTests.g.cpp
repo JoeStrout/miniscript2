@@ -521,7 +521,7 @@ Boolean UnitTests::TestCodeGenerator() {
 	ok = ok && CheckCodeGen(parser, "42",  List<String>::New({
 		"  LOAD_rA_iBC r0, 42",
 		"  RETURN"
-	});
+	}));
 
 	// Test assembly output for addition (resultReg r0 allocated first)
 	ok = ok && CheckCodeGen(parser, "2 + 3",  List<String>::New({
@@ -529,7 +529,7 @@ Boolean UnitTests::TestCodeGenerator() {
 		"  LOAD_rA_iBC r2, 3",
 		"  ADD_rA_rB_rC r0, r1, r2",
 		"  RETURN"
-	});
+	}));
 
 	// Test subtraction
 	ok = ok && CheckCodeGen(parser, "10 - 4",  List<String>::New({
@@ -537,7 +537,7 @@ Boolean UnitTests::TestCodeGenerator() {
 		"  LOAD_rA_iBC r2, 4",
 		"  SUB_rA_rB_rC r0, r1, r2",
 		"  RETURN"
-	});
+	}));
 
 	// Test multiplication
 	ok = ok && CheckCodeGen(parser, "6 * 7",  List<String>::New({
@@ -545,7 +545,7 @@ Boolean UnitTests::TestCodeGenerator() {
 		"  LOAD_rA_iBC r2, 7",
 		"  MULT_rA_rB_rC r0, r1, r2",
 		"  RETURN"
-	});
+	}));
 
 	// Test division
 	ok = ok && CheckCodeGen(parser, "20 / 4",  List<String>::New({
@@ -553,7 +553,7 @@ Boolean UnitTests::TestCodeGenerator() {
 		"  LOAD_rA_iBC r2, 4",
 		"  DIV_rA_rB_rC r0, r1, r2",
 		"  RETURN"
-	});
+	}));
 
 	// Test comparison (less than)
 	ok = ok && CheckCodeGen(parser, "3 < 5",  List<String>::New({
@@ -561,7 +561,7 @@ Boolean UnitTests::TestCodeGenerator() {
 		"  LOAD_rA_iBC r2, 5",
 		"  LT_rA_rB_rC r0, r1, r2",
 		"  RETURN"
-	});
+	}));
 
 	// Test comparison (greater than - uses swapped LT)
 	ok = ok && CheckCodeGen(parser, "5 > 3",  List<String>::New({
@@ -569,7 +569,7 @@ Boolean UnitTests::TestCodeGenerator() {
 		"  LOAD_rA_iBC r2, 3",
 		"  LT_rA_rB_rC r0, r2, r1",  // swapped: r2 < r1
 		"  RETURN"
-	});
+	}));
 
 	// Test unary minus
 	// r0 = 5, r1 = result, r2 = 0, SUB r1, r2, r0 (result = 0 - 5)
@@ -577,33 +577,33 @@ Boolean UnitTests::TestCodeGenerator() {
 		"  LOAD_rA_iBC r0, 5",
 		"  LOAD_rA_iBC r2, 0",
 		"  SUB_rA_rB_rC r1, r2, r0",
-		"  LOAD_rA_rB r0, r1",
+		"  LOAD_rA_rB r0, r1, r0",
 		"  RETURN"
-	});
+	}));
 
 	// Test grouping (parentheses) - should compile inner expression directly
 	ok = ok && CheckCodeGen(parser, "(42)",  List<String>::New({
 		"  LOAD_rA_iBC r0, 42",
 		"  RETURN"
-	});
+	}));
 
 	// Test list literal
 	ok = ok && CheckCodeGen(parser, "[1, 2, 3]",  List<String>::New({
 		"  LIST_rA_iBC r0, 3",
 		"  LOAD_rA_iBC r1, 1",
-		"  PUSH_rA_rB r0, r1",
+		"  PUSH_rA_rB r0, r1, r0",
 		"  LOAD_rA_iBC r1, 2",
-		"  PUSH_rA_rB r0, r1",
+		"  PUSH_rA_rB r0, r1, r0",
 		"  LOAD_rA_iBC r1, 3",
-		"  PUSH_rA_rB r0, r1",
+		"  PUSH_rA_rB r0, r1, r0",
 		"  RETURN"
-	});
+	}));
 
 	// Test empty list
 	ok = ok && CheckCodeGen(parser, "[]",  List<String>::New({
 		"  LIST_rA_iBC r0, 0",
 		"  RETURN"
-	});
+	}));
 
 	// Test map literal
 	ok = ok && CheckBytecodeGen(parser, "{}", 2, 0);  // MAP + RETURN
@@ -614,7 +614,7 @@ Boolean UnitTests::TestCodeGenerator() {
 		"  LOAD_rA_iBC r2, 0",   // index 0
 		"  INDEX_rA_rB_rC r0, r1, r2",
 		"  RETURN"
-	});
+	}));
 
 	// Test nested expression (precedence)
 	// 2 + 3 * 4: outer result r0, load 2 into r1, inner mult result r2, load 3,4 into r3,r4
@@ -648,8 +648,8 @@ Boolean UnitTests::TestEmitPatternValidation() {
 		"ARG_rA should be EmitPattern.A");
 	ok = ok && Assert(BytecodeUtil::GetEmitPattern(Opcode::LOAD_rA_iBC) == EmitPattern::AB,
 		"LOAD_rA_iBC should be EmitPattern.AB");
-	ok = ok && Assert(BytecodeUtil::GetEmitPattern(Opcode::LOAD_rA_rB) == EmitPattern::AB,
-		"LOAD_rA_rB should be EmitPattern.AB");
+	ok = ok && Assert(BytecodeUtil::GetEmitPattern(Opcode::LOAD_rA_rB) == EmitPattern::ABC,
+		"LOAD_rA_rB should be EmitPattern.ABC");
 	ok = ok && Assert(BytecodeUtil::GetEmitPattern(Opcode::IFLT_iAB_rC) == EmitPattern::BC,
 		"IFLT_iAB_rC should be EmitPattern.BC");
 	ok = ok && Assert(BytecodeUtil::GetEmitPattern(Opcode::ADD_rA_rB_rC) == EmitPattern::ABC,

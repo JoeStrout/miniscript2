@@ -19,10 +19,11 @@ EmitPattern BytecodeUtil::GetEmitPattern(Opcode opcode) {
 	// Check for specific patterns in the mnemonic suffix
 	// Order matters: check more specific patterns first
 
-	// ABC patterns: _rA_rB_rC, _rA_rB_iC, _rA_iB_rC, _iA_rB_iC, _rA_rB_kC
+	// ABC patterns: three operands, or two register operands (A and B as separate 8-bit fields)
+	// _rA_rB_rC, _rA_rB_iC, _rA_iB_rC, _iA_rB_iC, _rA_rB_kC, _rA_rB (two registers)
 	if (mnemonic.Contains("_rA_rB_rC") || mnemonic.Contains("_rA_rB_iC") ||
 		mnemonic.Contains("_rA_iB_rC") || mnemonic.Contains("_iA_rB_iC") ||
-		mnemonic.Contains("_rA_rB_kC")) {
+		mnemonic.Contains("_rA_rB_kC") || mnemonic.EndsWith("_rA_rB")) {
 		return EmitPattern::ABC;
 	}
 
@@ -31,10 +32,9 @@ EmitPattern BytecodeUtil::GetEmitPattern(Opcode opcode) {
 		return EmitPattern::BC;
 	}
 
-	// AB patterns: _rA_rB, _rA_iBC, _rA_kBC, _iA_iBC, _iA_kBC
-	if (mnemonic.Contains("_rA_rB") || mnemonic.Contains("_rA_iBC") ||
-		mnemonic.Contains("_rA_kBC") || mnemonic.Contains("_iA_iBC") ||
-		mnemonic.Contains("_iA_kBC")) {
+	// AB patterns: _rA_iBC, _rA_kBC, _iA_iBC, _iA_kBC (one 8-bit field + one 16-bit field)
+	if (mnemonic.Contains("_rA_iBC") || mnemonic.Contains("_rA_kBC") ||
+		mnemonic.Contains("_iA_iBC") || mnemonic.Contains("_iA_kBC")) {
 		return EmitPattern::AB;
 	}
 

@@ -21,6 +21,8 @@ struct CodeGenerator;
 class CodeGeneratorStorage;
 struct VM;
 class VMStorage;
+struct CodeEmitterBase;
+class CodeEmitterBaseStorage;
 struct BytecodeEmitter;
 class BytecodeEmitterStorage;
 struct AssemblyEmitter;

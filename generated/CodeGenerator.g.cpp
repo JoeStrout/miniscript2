@@ -2,11 +2,12 @@
 // Transpiled from: CodeGenerator.cs
 
 #include "CodeGenerator.g.h"
+#include "CS_Math.h"
 
 namespace MiniScript {
 
 
-CodeGeneratorStorage::CodeGeneratorStorage(ICodeEmitter& emitter) {
+CodeGeneratorStorage::CodeGeneratorStorage(CodeEmitterBase emitter) {
 	_emitter = emitter;
 	_regInUse =  List<Boolean>::New();
 	_firstAvailable = 0;
@@ -67,7 +68,7 @@ FuncDef CodeGeneratorStorage::CompileFunction(ASTNode ast, String funcName) {
 
 	// Move result to r0 if not already there
 	if (resultReg != 0) {
-		_emitter.EmitAB(Opcode::LOAD_rA_rB, 0, resultReg, "move result to r0");
+		_emitter.EmitABC(Opcode::LOAD_rA_rB, 0, resultReg, 0, "move result to r0");
 	}
 	_emitter.Emit(Opcode::RETURN, nullptr);
 
@@ -79,18 +80,18 @@ Int32 CodeGeneratorStorage::Visit(NumberNode node) {
 
 	// Check if value fits in signed 16-bit immediate
 	if (value == Math::Floor(value) && value >= -32768 && value <= 32767) {
-		_emitter.EmitAB(Opcode::LOAD_rA_iBC, reg, (Int32)value, Interp("{}", value));
+		_emitter.EmitAB(Opcode::LOAD_rA_iBC, reg, (Int32)value, Interp("r{} = {}", reg, value));
 	} else {
 		// Store in constants and load from there
 		Int32 constIdx = _emitter.AddConstant(make_double(value));
-		_emitter.EmitAB(Opcode::LOAD_rA_kBC, reg, constIdx, Interp("{}", value));
+		_emitter.EmitAB(Opcode::LOAD_rA_kBC, reg, constIdx, Interp("r{} = {}", reg, value));
 	}
 	return reg;
 }
 Int32 CodeGeneratorStorage::Visit(StringNode node) {
 	Int32 reg = AllocReg();
 	Int32 constIdx = _emitter.AddConstant(make_string(node.Value()));
-	_emitter.EmitAB(Opcode::LOAD_rA_kBC, reg, constIdx, Interp("\"{}\"", node.Value()));
+	_emitter.EmitAB(Opcode::LOAD_rA_kBC, reg, constIdx, Interp("r{} = \"{}\"", reg, node.Value()));
 	return reg;
 }
 Int32 CodeGeneratorStorage::Visit(IdentifierNode node) {
@@ -117,8 +118,8 @@ Int32 CodeGeneratorStorage::Visit(UnaryOpNode node) {
 		// Negate: result = 0 - operand
 		Int32 resultReg = AllocReg();
 		Int32 zeroReg = AllocReg();
-		_emitter.EmitAB(Opcode::LOAD_rA_iBC, zeroReg, 0, "0 for negation");
-		_emitter.EmitABC(Opcode::SUB_rA_rB_rC, resultReg, zeroReg, operandReg, Interp("-{}", node.Operand().ToStr()));
+		_emitter.EmitAB(Opcode::LOAD_rA_iBC, zeroReg, 0, "r{zeroReg} = 0 (for negation)");
+		_emitter.EmitABC(Opcode::SUB_rA_rB_rC, resultReg, zeroReg, operandReg, Interp("r{} = -{}", resultReg, node.Operand().ToStr()));
 		FreeReg(zeroReg);
 		FreeReg(operandReg);
 		return resultReg;
@@ -204,7 +205,7 @@ Int32 CodeGeneratorStorage::Visit(BinaryOpNode node) {
 
 	if (op != Opcode::NOOP) {
 		_emitter.EmitABC(op, resultReg, leftReg, rightReg,
-			Interp("{} {} {}", node.Left().ToStr(), opSymbol, node.Right().ToStr()));
+			Interp("r{} = {} {} {}", resultReg, node.Left().ToStr(), opSymbol, node.Right().ToStr()));
 	}
 
 	FreeReg(rightReg);
@@ -227,12 +228,12 @@ Int32 CodeGeneratorStorage::Visit(ListNode node) {
 	// Create a list with the given number of elements
 	Int32 listReg = AllocReg();
 	Int32 count = node.Elements().Count();
-	_emitter.EmitAB(Opcode::LIST_rA_iBC, listReg, count, Interp("new list[{}]", count));
+	_emitter.EmitAB(Opcode::LIST_rA_iBC, listReg, count, Interp("r{} = new list[{}]", listReg, count));
 
 	// Push each element onto the list
 	for (Int32 i = 0; i < count; i++) {
 		Int32 elemReg = node.Elements()[i].Accept(_this);
-		_emitter.EmitAB(Opcode::PUSH_rA_rB, listReg, elemReg, Interp("push element {}", i));
+		_emitter.EmitABC(Opcode::PUSH_rA_rB, listReg, elemReg, 0, Interp("push element {} onto r{}", i, listReg));
 		FreeReg(elemReg);
 	}
 
@@ -275,7 +276,7 @@ Int32 CodeGeneratorStorage::Visit(MemberNode node) {
 	Int32 resultReg = AllocReg();
 	Int32 targetReg = node.Target().Accept(_this);
 	// TODO: Implement member access
-	_emitter.EmitAB(Opcode::LOAD_rA_rB, resultReg, targetReg, Interp("TODO: {}.{}", node.Target().ToStr(), node.Member()));
+	_emitter.EmitABC(Opcode::LOAD_rA_rB, resultReg, targetReg, 0, Interp("TODO: {}.{}", node.Target().ToStr(), node.Member()));
 	FreeReg(targetReg);
 	return resultReg;
 }

@@ -1,20 +1,23 @@
 // CodeGenerator.cs - Compiles AST nodes to bytecode using the visitor pattern
-// Uses ICodeEmitter to support both direct bytecode and assembly text output.
+// Uses CodeEmitterBase to support both direct bytecode and assembly text output.
 
 using System;
 using System.Collections.Generic;
 using static MiniScript.ValueHelpers;
+// H: #include "AST.g.h"
+// H: #include "CodeEmitter.g.h"
+// CPP: #include "CS_Math.h"
 
 namespace MiniScript {
 
 // Compiles AST nodes to bytecode
 public class CodeGenerator : IASTVisitor {
-	private ICodeEmitter _emitter;
+	private CodeEmitterBase _emitter;
 	private List<Boolean> _regInUse;    // Which registers are currently in use
 	private Int32 _firstAvailable;      // Lowest index that might be free
 	private Int32 _maxRegUsed;          // High water mark for register usage
 
-	public CodeGenerator(ICodeEmitter emitter) {
+	public CodeGenerator(CodeEmitterBase emitter) {
 		_emitter = emitter;
 		_regInUse = new List<Boolean>();
 		_firstAvailable = 0;
@@ -82,7 +85,7 @@ public class CodeGenerator : IASTVisitor {
 
 		// Move result to r0 if not already there
 		if (resultReg != 0) {
-			_emitter.EmitAB(Opcode.LOAD_rA_rB, 0, resultReg, "move result to r0");
+			_emitter.EmitABC(Opcode.LOAD_rA_rB, 0, resultReg, 0, "move result to r0");
 		}
 		_emitter.Emit(Opcode.RETURN, null);
 
@@ -97,11 +100,11 @@ public class CodeGenerator : IASTVisitor {
 
 		// Check if value fits in signed 16-bit immediate
 		if (value == Math.Floor(value) && value >= -32768 && value <= 32767) {
-			_emitter.EmitAB(Opcode.LOAD_rA_iBC, reg, (Int32)value, $"{value}");
+			_emitter.EmitAB(Opcode.LOAD_rA_iBC, reg, (Int32)value, $"r{reg} = {value}");
 		} else {
 			// Store in constants and load from there
 			Int32 constIdx = _emitter.AddConstant(make_double(value));
-			_emitter.EmitAB(Opcode.LOAD_rA_kBC, reg, constIdx, $"{value}");
+			_emitter.EmitAB(Opcode.LOAD_rA_kBC, reg, constIdx, $"r{reg} = {value}");
 		}
 		return reg;
 	}
@@ -109,7 +112,7 @@ public class CodeGenerator : IASTVisitor {
 	public Int32 Visit(StringNode node) {
 		Int32 reg = AllocReg();
 		Int32 constIdx = _emitter.AddConstant(make_string(node.Value));
-		_emitter.EmitAB(Opcode.LOAD_rA_kBC, reg, constIdx, $"\"{node.Value}\"");
+		_emitter.EmitAB(Opcode.LOAD_rA_kBC, reg, constIdx, $"r{reg} = \"{node.Value}\"");
 		return reg;
 	}
 
@@ -137,8 +140,8 @@ public class CodeGenerator : IASTVisitor {
 			// Negate: result = 0 - operand
 			Int32 resultReg = AllocReg();
 			Int32 zeroReg = AllocReg();
-			_emitter.EmitAB(Opcode.LOAD_rA_iBC, zeroReg, 0, "0 for negation");
-			_emitter.EmitABC(Opcode.SUB_rA_rB_rC, resultReg, zeroReg, operandReg, $"-{node.Operand.ToStr()}");
+			_emitter.EmitAB(Opcode.LOAD_rA_iBC, zeroReg, 0, "r{zeroReg} = 0 (for negation)");
+			_emitter.EmitABC(Opcode.SUB_rA_rB_rC, resultReg, zeroReg, operandReg, $"r{resultReg} = -{node.Operand.ToStr()}");
 			FreeReg(zeroReg);
 			FreeReg(operandReg);
 			return resultReg;
@@ -224,7 +227,7 @@ public class CodeGenerator : IASTVisitor {
 
 		if (op != Opcode.NOOP) {
 			_emitter.EmitABC(op, resultReg, leftReg, rightReg,
-				$"{node.Left.ToStr()} {opSymbol} {node.Right.ToStr()}");
+				$"r{resultReg} = {node.Left.ToStr()} {opSymbol} {node.Right.ToStr()}");
 		}
 
 		FreeReg(rightReg);
@@ -248,12 +251,12 @@ public class CodeGenerator : IASTVisitor {
 		// Create a list with the given number of elements
 		Int32 listReg = AllocReg();
 		Int32 count = node.Elements.Count;
-		_emitter.EmitAB(Opcode.LIST_rA_iBC, listReg, count, $"new list[{count}]");
+		_emitter.EmitAB(Opcode.LIST_rA_iBC, listReg, count, $"r{listReg} = new list[{count}]");
 
 		// Push each element onto the list
 		for (Int32 i = 0; i < count; i++) {
 			Int32 elemReg = node.Elements[i].Accept(this);
-			_emitter.EmitAB(Opcode.PUSH_rA_rB, listReg, elemReg, $"push element {i}");
+			_emitter.EmitABC(Opcode.PUSH_rA_rB, listReg, elemReg, 0, $"push element {i} onto r{listReg}");
 			FreeReg(elemReg);
 		}
 
@@ -296,7 +299,7 @@ public class CodeGenerator : IASTVisitor {
 		Int32 resultReg = AllocReg();
 		Int32 targetReg = node.Target.Accept(this);
 		// TODO: Implement member access
-		_emitter.EmitAB(Opcode.LOAD_rA_rB, resultReg, targetReg, $"TODO: {node.Target.ToStr()}.{node.Member}");
+		_emitter.EmitABC(Opcode.LOAD_rA_rB, resultReg, targetReg, 0, $"TODO: {node.Target.ToStr()}.{node.Member}");
 		FreeReg(targetReg);
 		return resultReg;
 	}

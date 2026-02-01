@@ -154,7 +154,7 @@ void VMStorage::RaiseRuntimeError(String message) {
 	IsRunning = Boolean(false);
 }
 bool VMStorage::ReportRuntimeError() {
-	if (String.IsNullOrEmpty(RuntimeError)) return Boolean(false);
+	if (String::IsNullOrEmpty(RuntimeError)) return Boolean(false);
 	IOHelper::Print(StringUtils::Format("Runtime error: {0} [{1} line {2}]",
 	  RuntimeError, CurrentFunction.Name(), PC - 1));
 	return Boolean(true);

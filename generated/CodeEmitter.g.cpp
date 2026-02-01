@@ -148,7 +148,7 @@ void AssemblyEmitterStorage::EmitABC(Opcode op, Int32 a, Int32 b, Int32 c, Strin
 Int32 AssemblyEmitterStorage::AddConstant(Value value) {
 	// Check if constant already exists (deduplication)
 	for (Int32 i = 0; i < _constants.Count(); i++) {
-		if (Value::Equal(_constants[i], value)) return i;
+		if (value_equal(_constants[i], value)) return i;
 	}
 	_constants.Add(value);
 	return _constants.Count() - 1;

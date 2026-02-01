@@ -58,6 +58,15 @@ public:
     // Assignment operator - shares the underlying vector
     List<T>& operator=(const List<T>& other) = default;
 
+    // nullptr constructor - creates null/unallocated list
+    List(std::nullptr_t) : data(nullptr) {}
+
+    // nullptr assignment - resets to null/unallocated state
+    List<T>& operator=(std::nullptr_t) {
+        data = nullptr;
+        return *this;
+    }
+
     // Destructor
     ~List() = default;
 

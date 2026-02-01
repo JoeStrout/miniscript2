@@ -1,4 +1,4 @@
-// CodeEmitter.cs - Interface and implementations for emitting bytecode or assembly
+// CodeEmitter.cs - Base class and implementations for emitting bytecode or assembly
 // Provides an abstraction layer for code generation output.
 
 using System;
@@ -10,29 +10,29 @@ using static MiniScript.ValueHelpers;
 
 namespace MiniScript {
 
-// Interface for emitting code (bytecode or assembly text)
-public interface ICodeEmitter {
+// Abstract base class for emitting code (bytecode or assembly text)
+public abstract class CodeEmitterBase {
 	// Emit instructions with varying operand patterns
 	// Method names match BytecodeUtil.INS_* patterns
-	void Emit(Opcode op, String comment);              // INS: opcode only
-	void EmitA(Opcode op, Int32 a, String comment);    // INS_A: 8-bit A field
-	void EmitAB(Opcode op, Int32 a, Int32 bc, String comment);   // INS_AB: 8-bit A + 16-bit BC
-	void EmitBC(Opcode op, Int32 ab, Int32 c, String comment);   // INS_BC: 16-bit AB + 8-bit C
-	void EmitABC(Opcode op, Int32 a, Int32 b, Int32 c, String comment);  // INS_ABC: 8-bit A + 8-bit B + 8-bit C
+	public abstract void Emit(Opcode op, String comment);              // INS: opcode only
+	public abstract void EmitA(Opcode op, Int32 a, String comment);    // INS_A: 8-bit A field
+	public abstract void EmitAB(Opcode op, Int32 a, Int32 bc, String comment);   // INS_AB: 8-bit A + 16-bit BC
+	public abstract void EmitBC(Opcode op, Int32 ab, Int32 c, String comment);   // INS_BC: 16-bit AB + 8-bit C
+	public abstract void EmitABC(Opcode op, Int32 a, Int32 b, Int32 c, String comment);  // INS_ABC: 8-bit A + 8-bit B + 8-bit C
 
 	// Add a constant to the constant pool, return its index
-	Int32 AddConstant(Value value);
+	public abstract Int32 AddConstant(Value value);
 
 	// Label management for jumps
-	Int32 CreateLabel();
-	void PlaceLabel(Int32 labelId);
-	void EmitJump(Opcode op, Int32 labelId, String comment);
+	public abstract Int32 CreateLabel();
+	public abstract void PlaceLabel(Int32 labelId);
+	public abstract void EmitJump(Opcode op, Int32 labelId, String comment);
 
 	// Track register usage
-	void ReserveRegister(Int32 registerNumber);
+	public abstract void ReserveRegister(Int32 registerNumber);
 
 	// Finalize and return the compiled function
-	FuncDef Finalize(String name);
+	public abstract FuncDef Finalize(String name);
 }
 
 // Tracks a pending label reference that needs patching
@@ -45,7 +45,7 @@ public struct LabelRef {
 
 
 // Emits directly to bytecode (production use)
-public class BytecodeEmitter : ICodeEmitter {
+public class BytecodeEmitter : CodeEmitterBase {
 	private List<UInt32> _code;
 	private List<Value> _constants;
 	private UInt16 _maxRegs;
@@ -62,32 +62,32 @@ public class BytecodeEmitter : ICodeEmitter {
 		_nextLabelId = 0;
 	}
 
-	public void Emit(Opcode op, String comment) {
+	public override void Emit(Opcode op, String comment) {
 		BytecodeUtil.CheckEmitPattern(op, EmitPattern.None);
 		_code.Add(BytecodeUtil.INS(op));
 	}
 
-	public void EmitA(Opcode op, Int32 a, String comment) {
+	public override void EmitA(Opcode op, Int32 a, String comment) {
 		BytecodeUtil.CheckEmitPattern(op, EmitPattern.A);
 		_code.Add(BytecodeUtil.INS_A(op, (Byte)a));
 	}
 
-	public void EmitAB(Opcode op, Int32 a, Int32 bc, String comment) {
+	public override void EmitAB(Opcode op, Int32 a, Int32 bc, String comment) {
 		BytecodeUtil.CheckEmitPattern(op, EmitPattern.AB);
 		_code.Add(BytecodeUtil.INS_AB(op, (Byte)a, (Int16)bc));
 	}
 
-	public void EmitBC(Opcode op, Int32 ab, Int32 c, String comment) {
+	public override void EmitBC(Opcode op, Int32 ab, Int32 c, String comment) {
 		BytecodeUtil.CheckEmitPattern(op, EmitPattern.BC);
 		_code.Add(BytecodeUtil.INS_BC(op, (Int16)ab, (Byte)c));
 	}
 
-	public void EmitABC(Opcode op, Int32 a, Int32 b, Int32 c, String comment) {
+	public override void EmitABC(Opcode op, Int32 a, Int32 b, Int32 c, String comment) {
 		BytecodeUtil.CheckEmitPattern(op, EmitPattern.ABC);
 		_code.Add(BytecodeUtil.INS_ABC(op, (Byte)a, (Byte)b, (Byte)c));
 	}
 
-	public Int32 AddConstant(Value value) {
+	public override Int32 AddConstant(Value value) {
 		// Check if constant already exists (deduplication)
 		for (Int32 i = 0; i < _constants.Count; i++) {
 			if (value_equal(_constants[i], value)) return i;
@@ -96,17 +96,17 @@ public class BytecodeEmitter : ICodeEmitter {
 		return _constants.Count - 1;
 	}
 
-	public Int32 CreateLabel() {
+	public override Int32 CreateLabel() {
 		Int32 labelId = _nextLabelId;
 		_nextLabelId = _nextLabelId + 1;
 		return labelId;
 	}
 
-	public void PlaceLabel(Int32 labelId) {
+	public override void PlaceLabel(Int32 labelId) {
 		_labelAddresses[labelId] = _code.Count;
 	}
 
-	public void EmitJump(Opcode op, Int32 labelId, String comment) {
+	public override void EmitJump(Opcode op, Int32 labelId, String comment) {
 		// Emit placeholder instruction, record for later patching
 		LabelRef labelRef;
 		labelRef.CodeIndex = _code.Count;
@@ -117,12 +117,12 @@ public class BytecodeEmitter : ICodeEmitter {
 		_code.Add(BytecodeUtil.INS(op));  // placeholder
 	}
 
-	public void ReserveRegister(Int32 registerNumber) {
+	public override void ReserveRegister(Int32 registerNumber) {
 		UInt16 impliedCount = (UInt16)(registerNumber + 1);
 		if (_maxRegs < impliedCount) _maxRegs = impliedCount;
 	}
 
-	public FuncDef Finalize(String name) {
+	public override FuncDef Finalize(String name) {
 		// Patch all label references
 		for (Int32 i = 0; i < _labelRefs.Count; i++) {
 			LabelRef labelRef = _labelRefs[i];
@@ -148,7 +148,7 @@ public class BytecodeEmitter : ICodeEmitter {
 }
 
 // Emits assembly text (for debugging and testing)
-public class AssemblyEmitter : ICodeEmitter {
+public class AssemblyEmitter : CodeEmitterBase {
 	private List<String> _lines;
 	private List<Value> _constants;
 	private UInt16 _maxRegs;
@@ -163,21 +163,21 @@ public class AssemblyEmitter : ICodeEmitter {
 		_nextLabelId = 0;
 	}
 
-	public void Emit(Opcode op, String comment) {
+	public override void Emit(Opcode op, String comment) {
 		BytecodeUtil.CheckEmitPattern(op, EmitPattern.None);
 		String line = $"  {BytecodeUtil.ToMnemonic(op)}";
 		if (comment != null) line += $"  ; {comment}";
 		_lines.Add(line);
 	}
 
-	public void EmitA(Opcode op, Int32 a, String comment) {
+	public override void EmitA(Opcode op, Int32 a, String comment) {
 		BytecodeUtil.CheckEmitPattern(op, EmitPattern.A);
 		String line = $"  {BytecodeUtil.ToMnemonic(op)} r{a}";
 		if (comment != null) line += $"  ; {comment}";
 		_lines.Add(line);
 	}
 
-	public void EmitAB(Opcode op, Int32 a, Int32 bc, String comment) {
+	public override void EmitAB(Opcode op, Int32 a, Int32 bc, String comment) {
 		BytecodeUtil.CheckEmitPattern(op, EmitPattern.AB);
 		String mnemonic = BytecodeUtil.ToMnemonic(op);
 		String line;
@@ -192,7 +192,7 @@ public class AssemblyEmitter : ICodeEmitter {
 		_lines.Add(line);
 	}
 
-	public void EmitBC(Opcode op, Int32 ab, Int32 c, String comment) {
+	public override void EmitBC(Opcode op, Int32 ab, Int32 c, String comment) {
 		BytecodeUtil.CheckEmitPattern(op, EmitPattern.BC);
 		String mnemonic = BytecodeUtil.ToMnemonic(op);
 		String line;
@@ -205,7 +205,7 @@ public class AssemblyEmitter : ICodeEmitter {
 		_lines.Add(line);
 	}
 
-	public void EmitABC(Opcode op, Int32 a, Int32 b, Int32 c, String comment) {
+	public override void EmitABC(Opcode op, Int32 a, Int32 b, Int32 c, String comment) {
 		BytecodeUtil.CheckEmitPattern(op, EmitPattern.ABC);
 		String mnemonic = BytecodeUtil.ToMnemonic(op);
 		String line = $"  {mnemonic} r{a}, r{b}, r{c}";
@@ -213,38 +213,38 @@ public class AssemblyEmitter : ICodeEmitter {
 		_lines.Add(line);
 	}
 
-	public Int32 AddConstant(Value value) {
+	public override Int32 AddConstant(Value value) {
 		// Check if constant already exists (deduplication)
 		for (Int32 i = 0; i < _constants.Count; i++) {
-			if (Value.Equal(_constants[i], value)) return i;
+			if (value_equal(_constants[i], value)) return i;
 		}
 		_constants.Add(value);
 		return _constants.Count - 1;
 	}
 
-	public Int32 CreateLabel() {
+	public override Int32 CreateLabel() {
 		Int32 labelId = _nextLabelId;
 		_nextLabelId = _nextLabelId + 1;
 		_labelNames[labelId] = $"L{labelId}";
 		return labelId;
 	}
 
-	public void PlaceLabel(Int32 labelId) {
+	public override void PlaceLabel(Int32 labelId) {
 		_lines.Add($"{_labelNames[labelId]}:");
 	}
 
-	public void EmitJump(Opcode op, Int32 labelId, String comment) {
+	public override void EmitJump(Opcode op, Int32 labelId, String comment) {
 		String line = $"  {BytecodeUtil.ToMnemonic(op)} {_labelNames[labelId]}";
 		if (comment != null) line += $"  ; {comment}";
 		_lines.Add(line);
 	}
 
-	public void ReserveRegister(Int32 registerNumber) {
+	public override void ReserveRegister(Int32 registerNumber) {
 		UInt16 impliedCount = (UInt16)(registerNumber + 1);
 		if (_maxRegs < impliedCount) _maxRegs = impliedCount;
 	}
 
-	public FuncDef Finalize(String name) {
+	public override FuncDef Finalize(String name) {
 		// For assembly emitter, we don't actually produce a FuncDef
 		// This is primarily for debugging output
 		FuncDef func = new FuncDef();

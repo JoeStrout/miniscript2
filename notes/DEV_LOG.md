@@ -255,4 +255,12 @@ So, now I've started on code generation.  Using a modified Visitor pattern to le
 
 The code generator is looking really good in C#.  There are a few things that are still placeholders, like variable handling and the implementation of the `not` operator (which probably needs to be a new opcode), but the basic structure looks really sound.
 
-One thing needed: better tracking of free registers.  Right now, the way we track it only works if you release registers in inverse order of when they were acquired.
+One thing needed: better tracking of free registers.  Right now, the way we track it only works if you release registers in inverse order of when they were acquired.  ...Now fixed.
+
+So, gee.  What now?  We have (in theory) a complete pipeline from source code to executable bytecode, but currently only accessed piecemeal, in unit tests.  I guess the next step is to put it all together.  The main program should accept a .ms file, compile it, run it, and print the output.  Then we can start building a test suite.
+
+While working on that, discovered a snag.  We have interfaces defined for ICodeEmitter and IASTVisitor.  Both of these are implemented by reference types.  That works as far as values passed into a method (where the transpiler sneaks a `&` onto the parameter type), but it does not work for local variables or class fields.  Both the App class, and the CodeGenerator class, were trying to keep a field of type ICodeEmitter.
+
+So, I'm changing ICodeEmitter to CodeEmitterBase, and making it a true base class.  Then it can contain the storage (smart pointer), and everything should Just Work™️.   ...OK, that's all sorted out now.
+
+

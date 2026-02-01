@@ -123,6 +123,17 @@ public:
 	Dictionary(const Dictionary<TKey, TValue>& other) = default;
 	Dictionary<TKey, TValue>& operator=(const Dictionary<TKey, TValue>& other) = default;
 
+	// nullptr constructor - creates null/unallocated dictionary
+	Dictionary(std::nullptr_t) : count(0) {}
+
+	// nullptr assignment - resets to null/unallocated state
+	Dictionary<TKey, TValue>& operator=(std::nullptr_t) {
+		buckets = nullptr;
+		entries = nullptr;
+		count = 0;
+		return *this;
+	}
+
 	// Destructor
 	~Dictionary() = default;
 

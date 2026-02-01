@@ -15,6 +15,7 @@
 #include <stdio.h>
 #include <memory>
 #include <vector>
+#include <type_traits>  // for std::is_enum, std::enable_if (SFINAE)
 
 // This module is part of Layer 2B (Host C# Compatibility Layer)
 #define CORE_LAYER_2B
@@ -95,7 +96,16 @@ public:
     // Copy constructor and assignment (defaulted for trivial copyability)
     String(const String& other) = default;
     String& operator=(const String& other) = default;
-    
+
+    // nullptr constructor - creates empty string
+    String(std::nullptr_t) : ref(nullptr) {}
+
+    // nullptr assignment - resets to empty string
+    String& operator=(std::nullptr_t) {
+        ref = nullptr;
+        return *this;
+    }
+
     // Assignment from C string
     String& operator=(const char* cstr) {
 		if (!cstr || *cstr == '\0') {
@@ -603,7 +613,7 @@ inline String ToString(int i) {
 	return String(str);
 }
 
-// String interpolation function - forward declarations for variadic template
+// String interpolation function - full implementation (inline/template)
 namespace InterpImpl {
 	// Helper to convert any argument to String
 	inline String ArgToString(int val) { return ToString(val); }
@@ -612,8 +622,109 @@ namespace InterpImpl {
 	inline String ArgToString(const char* val) { return String(val ? val : ""); }
 	inline String ArgToString(const String& val) { return val; }
 
+	// Enum support via SFINAE - converts any enum to its underlying int
+	template<typename T, typename std::enable_if<std::is_enum<T>::value, int>::type = 0>
+	inline String ArgToString(T val) { return ToString(static_cast<int>(val)); }
+
 	// Helper to format a double with a format specifier (e.g., "0.00" -> 2 decimal places)
-	inline String FormatDouble(double val, const char* formatSpec);
+	inline String FormatDouble(double val, const char* formatSpec) {
+		// Parse format like "0.00" to determine decimal places
+		int decimalPlaces = -1;
+		if (formatSpec) {
+			const char* dot = strchr(formatSpec, '.');
+			if (dot) {
+				// Count zeros after the decimal point
+				decimalPlaces = 0;
+				const char* p = dot + 1;
+				while (*p == '0') {
+					decimalPlaces++;
+					p++;
+				}
+			}
+		}
+
+		// Format the double
+		char buf[64];
+		if (decimalPlaces >= 0) {
+			char fmt[16];
+			snprintf(fmt, sizeof(fmt), "%%.%df", decimalPlaces);
+			snprintf(buf, sizeof(buf), fmt, val);
+		} else {
+			snprintf(buf, sizeof(buf), "%g", val);  // General format (no trailing zeros)
+		}
+
+		return String(buf);
+	}
+
+	// Helper to convert argument to string with optional format spec
+	inline String ConvertArg(double val, const char* formatSpec) {
+		if (formatSpec && *formatSpec) {
+			return FormatDouble(val, formatSpec);
+		}
+		return ArgToString(val);
+	}
+
+	inline String ConvertArg(float val, const char* formatSpec) {
+		if (formatSpec && *formatSpec) {
+			return FormatDouble(val, formatSpec);
+		}
+		return ArgToString((double)val);
+	}
+
+	template<typename T>
+	inline String ConvertArg(T val, const char* /*formatSpec*/) {
+		return ArgToString(val);
+	}
+
+	// Base case: no more arguments
+	inline void InterpRecursive(String& result, const char* format, int& pos) {
+		// Append remaining format string
+		if (format[pos]) {
+			result += String(format + pos);
+		}
+	}
+
+	// Recursive case: process one argument
+	template<typename T, typename... Rest>
+	inline void InterpRecursive(String& result, const char* format, int& pos, T first, Rest... rest) {
+		// Find next {}
+		while (format[pos]) {
+			if (format[pos] == '{') {
+				// Check for format specifier
+				int start = pos + 1;
+				int end = start;
+				while (format[end] && format[end] != '}') end++;
+
+				if (format[end] == '}') {
+					// Extract format spec (if any)
+					char formatSpec[32] = {0};
+					if (end > start) {
+						int len = end - start;
+						if (len >= (int)sizeof(formatSpec)) len = sizeof(formatSpec) - 1;
+						strncpy(formatSpec, format + start, len);
+						formatSpec[len] = '\0';
+					}
+
+					// Convert argument to string using overload resolution
+					String argStr = ConvertArg(first, formatSpec);
+
+					result += argStr;
+					pos = end + 1;
+
+					// Process remaining arguments
+					InterpRecursive(result, format, pos, rest...);
+					return;
+				}
+			}
+
+			// Not a placeholder, append this character
+			result += format[pos];
+			pos++;
+		}
+
+		// If we get here, we ran out of format string before using all arguments
+		// Just ignore remaining arguments
+	}
 }
 
 // String interpolation - replaces {} placeholders with arguments
@@ -621,7 +732,14 @@ namespace InterpImpl {
 // Usage: Interp("Value: {}", 42) -> "Value: 42"
 //        Interp("Pi: {0.00}", 3.14159) -> "Pi: 3.14"
 template<typename... Args>
-String Interp(const char* format, Args... args);
+inline String Interp(const char* format, Args... args) {
+	if (!format) return String();
+
+	String result;
+	int pos = 0;
+	InterpImpl::InterpRecursive(result, format, pos, args...);
+	return result;
+}
 
 // Hash function for String (used by Dictionary<String, TValue>)
 inline int Hash(const String& str) {

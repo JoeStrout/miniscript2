@@ -69,6 +69,7 @@ public:
 		return std::cos(x);
 	}
 	
+	
     // Additional common math functions can be added here as needed
 
 private:

@@ -12,6 +12,8 @@ struct CodeGenerator;
 class CodeGeneratorStorage;
 struct VM;
 class VMStorage;
+struct CodeEmitterBase;
+class CodeEmitterBaseStorage;
 struct BytecodeEmitter;
 class BytecodeEmitterStorage;
 struct AssemblyEmitter;
@@ -111,7 +113,9 @@ class MethodCallNodeStorage;
 
 
 
-// Emit pattern - indicates which Emit method should be used for an opcode
+// Emit pattern - indicates which INS_ instruction encoding should be used for 
+// an opcode.  Note that EmitABC is also used for opcodes that take two 8-bit
+// operands, e.g. LOAD_rA_rB (the C field in such cases is unused).
 enum class EmitPattern : Byte {
 	None,   // Emit(op, comment) - no operands (e.g., RETURN, NOOP)
 	A,      // EmitA(op, a, comment) - 8-bit A only (e.g., LOCALS_rA)
@@ -227,7 +231,7 @@ class BytecodeUtil {
 	public: static UInt32 INS_BC(Opcode op, Int16 ab, Byte c) { return (UInt32)(((Byte)op << 24) | ((UInt16)ab << 8) | c); } // Note: ab is casted to (UInt16) instead of (Int16) in the encoding to avoid padding with 1's which overwrites the opcode. We could also use & instead.
 	public: static UInt32 INS_ABC(Opcode op, Byte a, Byte b, Byte c) { return (UInt32)(((Byte)op << 24) | (a << 16) | (b << 8) | c); }
 	
-	// Instruction encoding helpers
+	// Instruction encoding helpers (matching the EmitPattern enum above)
 	
 	// Conversion to/from opcode mnemonics (names)
 	public: static String ToMnemonic(Opcode opcode);

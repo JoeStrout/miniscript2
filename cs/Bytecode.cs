@@ -5,7 +5,9 @@ using System.Collections.Generic;
 
 namespace MiniScript {
 
-// Emit pattern - indicates which Emit method should be used for an opcode
+// Emit pattern - indicates which INS_ instruction encoding should be used for 
+// an opcode.  Note that EmitABC is also used for opcodes that take two 8-bit
+// operands, e.g. LOAD_rA_rB (the C field in such cases is unused).
 public enum EmitPattern : Byte {
 	None,   // Emit(op, comment) - no operands (e.g., RETURN, NOOP)
 	A,      // EmitA(op, a, comment) - 8-bit A only (e.g., LOCALS_rA)
@@ -92,10 +94,11 @@ public static class BytecodeUtil {
 		// Check for specific patterns in the mnemonic suffix
 		// Order matters: check more specific patterns first
 
-		// ABC patterns: _rA_rB_rC, _rA_rB_iC, _rA_iB_rC, _iA_rB_iC, _rA_rB_kC
+		// ABC patterns: three operands, or two register operands (A and B as separate 8-bit fields)
+		// _rA_rB_rC, _rA_rB_iC, _rA_iB_rC, _iA_rB_iC, _rA_rB_kC, _rA_rB (two registers)
 		if (mnemonic.Contains("_rA_rB_rC") || mnemonic.Contains("_rA_rB_iC") ||
 			mnemonic.Contains("_rA_iB_rC") || mnemonic.Contains("_iA_rB_iC") ||
-			mnemonic.Contains("_rA_rB_kC")) {
+			mnemonic.Contains("_rA_rB_kC") || mnemonic.EndsWith("_rA_rB")) {
 			return EmitPattern.ABC;
 		}
 
@@ -104,10 +107,9 @@ public static class BytecodeUtil {
 			return EmitPattern.BC;
 		}
 
-		// AB patterns: _rA_rB, _rA_iBC, _rA_kBC, _iA_iBC, _iA_kBC
-		if (mnemonic.Contains("_rA_rB") || mnemonic.Contains("_rA_iBC") ||
-			mnemonic.Contains("_rA_kBC") || mnemonic.Contains("_iA_iBC") ||
-			mnemonic.Contains("_iA_kBC")) {
+		// AB patterns: _rA_iBC, _rA_kBC, _iA_iBC, _iA_kBC (one 8-bit field + one 16-bit field)
+		if (mnemonic.Contains("_rA_iBC") || mnemonic.Contains("_rA_kBC") ||
+			mnemonic.Contains("_iA_iBC") || mnemonic.Contains("_iA_kBC")) {
 			return EmitPattern.AB;
 		}
 
@@ -168,7 +170,7 @@ public static class BytecodeUtil {
 		return (Int32)value;
 	}
 	
-	// Instruction encoding helpers
+	// Instruction encoding helpers (matching the EmitPattern enum above)
 	public static UInt32 INS(Opcode op) => (UInt32)((Byte)op << 24);
 	public static UInt32 INS_A(Opcode op, Byte a) => (UInt32)(((Byte)op << 24) | (a << 16));
 	public static UInt32 INS_AB(Opcode op, Byte a, Int16 bc) => (UInt32)(((Byte)op << 24) | (a << 16) | ((UInt16)bc));

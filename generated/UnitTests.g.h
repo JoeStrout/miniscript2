@@ -11,8 +11,14 @@ namespace MiniScript {
 
 // FORWARD DECLARATIONS
 
+struct CodeGenerator;
+class CodeGeneratorStorage;
 struct VM;
 class VMStorage;
+struct BytecodeEmitter;
+class BytecodeEmitterStorage;
+struct AssemblyEmitter;
+class AssemblyEmitterStorage;
 struct Assembler;
 class AssemblerStorage;
 struct Parselet;
@@ -86,6 +92,10 @@ class MethodCallNodeStorage;
 
 
 
+
+
+
+
 class UnitTests {
 
 	public: static Boolean Assert(bool condition, String message);
@@ -111,8 +121,20 @@ class UnitTests {
 
 	public: static Boolean TestParser();
 
+	// Helper for code generator tests: parse, generate, and check assembly output
+	private: static Boolean CheckCodeGen(Parser parser, String input, List<String> expectedLines);
+
+	// Helper to check bytecode generation produces valid FuncDef
+	private: static Boolean CheckBytecodeGen(Parser parser, String input, Int32 expectedInstructions, Int32 expectedConstants);
+
+	public: static Boolean TestCodeGenerator();
+
+	public: static Boolean TestEmitPatternValidation();
+
 	public: static Boolean RunAll();
 }; // end of struct UnitTests
+
+
 
 
 

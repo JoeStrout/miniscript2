@@ -1,0 +1,195 @@
+// AUTO-GENERATED FILE.  DO NOT MODIFY.
+// Transpiled from: CodeEmitter.cs
+
+#include "CodeEmitter.g.h"
+
+namespace MiniScript {
+
+
+
+
+
+
+BytecodeEmitterStorage::BytecodeEmitterStorage() {
+	_code =  List<UInt32>::New();
+	_constants =  List<Value>::New();
+	_maxRegs = 0;
+	_labelAddresses =  Dictionary<Int32, Int32>::New();
+	_labelRefs =  List<LabelRef>::New();
+	_nextLabelId = 0;
+}
+void BytecodeEmitterStorage::Emit(Opcode op, String comment) {
+	BytecodeUtil::CheckEmitPattern(op, EmitPattern::None);
+	_code.Add(BytecodeUtil::INS(op));
+}
+void BytecodeEmitterStorage::EmitA(Opcode op, Int32 a, String comment) {
+	BytecodeUtil::CheckEmitPattern(op, EmitPattern::A);
+	_code.Add(BytecodeUtil::INS_A(op, (Byte)a));
+}
+void BytecodeEmitterStorage::EmitAB(Opcode op, Int32 a, Int32 bc, String comment) {
+	BytecodeUtil::CheckEmitPattern(op, EmitPattern::AB);
+	_code.Add(BytecodeUtil::INS_AB(op, (Byte)a, (Int16)bc));
+}
+void BytecodeEmitterStorage::EmitBC(Opcode op, Int32 ab, Int32 c, String comment) {
+	BytecodeUtil::CheckEmitPattern(op, EmitPattern::BC);
+	_code.Add(BytecodeUtil::INS_BC(op, (Int16)ab, (Byte)c));
+}
+void BytecodeEmitterStorage::EmitABC(Opcode op, Int32 a, Int32 b, Int32 c, String comment) {
+	BytecodeUtil::CheckEmitPattern(op, EmitPattern::ABC);
+	_code.Add(BytecodeUtil::INS_ABC(op, (Byte)a, (Byte)b, (Byte)c));
+}
+Int32 BytecodeEmitterStorage::AddConstant(Value value) {
+	// Check if constant already exists (deduplication)
+	for (Int32 i = 0; i < _constants.Count(); i++) {
+		if (value_equal(_constants[i], value)) return i;
+	}
+	_constants.Add(value);
+	return _constants.Count() - 1;
+}
+Int32 BytecodeEmitterStorage::CreateLabel() {
+	Int32 labelId = _nextLabelId;
+	_nextLabelId = _nextLabelId + 1;
+	return labelId;
+}
+void BytecodeEmitterStorage::PlaceLabel(Int32 labelId) {
+	_labelAddresses[labelId] = _code.Count();
+}
+void BytecodeEmitterStorage::EmitJump(Opcode op, Int32 labelId, String comment) {
+	// Emit placeholder instruction, record for later patching
+	LabelRef labelRef;
+	labelRef.CodeIndex = _code.Count();
+	labelRef.LabelId = labelId;
+	labelRef.Op = op;
+	labelRef.A = 0;
+	_labelRefs.Add(labelRef);
+	_code.Add(BytecodeUtil::INS(op));  // placeholder
+}
+void BytecodeEmitterStorage::ReserveRegister(Int32 registerNumber) {
+	UInt16 impliedCount = (UInt16)(registerNumber + 1);
+	if (_maxRegs < impliedCount) _maxRegs = impliedCount;
+}
+FuncDef BytecodeEmitterStorage::Finalize(String name) {
+	// Patch all label references
+	for (Int32 i = 0; i < _labelRefs.Count(); i++) {
+		LabelRef labelRef = _labelRefs[i];
+		if (!_labelAddresses.ContainsKey(labelRef.LabelId)) {
+			// Error: undefined label
+			continue;
+		}
+		Int32 targetAddr = _labelAddresses[labelRef.LabelId];
+		Int32 currentAddr = labelRef.CodeIndex;
+		Int32 offset = targetAddr - currentAddr - 1;  // relative offset
+
+		// Re-encode with the correct offset
+		_code[labelRef.CodeIndex] = BytecodeUtil::INS_AB(labelRef.Op, (Byte)labelRef.A, (Int16)offset);
+	}
+
+	FuncDef func =  FuncDef::New();
+	func.set_Name(name);
+	func.set_Code(_code);
+	func.set_Constants(_constants);
+	func.set_MaxRegs(_maxRegs);
+	return func;
+}
+
+
+AssemblyEmitterStorage::AssemblyEmitterStorage() {
+	_lines =  List<String>::New();
+	_constants =  List<Value>::New();
+	_maxRegs = 0;
+	_labelNames =  Dictionary<Int32, String>::New();
+	_nextLabelId = 0;
+}
+void AssemblyEmitterStorage::Emit(Opcode op, String comment) {
+	BytecodeUtil::CheckEmitPattern(op, EmitPattern::None);
+	String line = Interp("  {}", BytecodeUtil::ToMnemonic(op));
+	if (!IsNull(comment)) line += Interp("  ; {}", comment);
+	_lines.Add(line);
+}
+void AssemblyEmitterStorage::EmitA(Opcode op, Int32 a, String comment) {
+	BytecodeUtil::CheckEmitPattern(op, EmitPattern::A);
+	String line = Interp("  {} r{}", BytecodeUtil::ToMnemonic(op), a);
+	if (!IsNull(comment)) line += Interp("  ; {}", comment);
+	_lines.Add(line);
+}
+void AssemblyEmitterStorage::EmitAB(Opcode op, Int32 a, Int32 bc, String comment) {
+	BytecodeUtil::CheckEmitPattern(op, EmitPattern::AB);
+	String mnemonic = BytecodeUtil::ToMnemonic(op);
+	String line;
+	if (mnemonic.Contains("_kBC")) {
+		line = Interp("  {} r{}, k{}", mnemonic, a, bc);
+	} else if (mnemonic.Contains("_rB")) {
+		line = Interp("  {} r{}, r{}", mnemonic, a, bc);
+	} else {
+		line = Interp("  {} r{}, {}", mnemonic, a, bc);
+	}
+	if (!IsNull(comment)) line += Interp("  ; {}", comment);
+	_lines.Add(line);
+}
+void AssemblyEmitterStorage::EmitBC(Opcode op, Int32 ab, Int32 c, String comment) {
+	BytecodeUtil::CheckEmitPattern(op, EmitPattern::BC);
+	String mnemonic = BytecodeUtil::ToMnemonic(op);
+	String line;
+	if (mnemonic.Contains("_rC")) {
+		line = Interp("  {} {}, r{}", mnemonic, ab, c);
+	} else {
+		line = Interp("  {} {}, {}", mnemonic, ab, c);
+	}
+	if (!IsNull(comment)) line += Interp("  ; {}", comment);
+	_lines.Add(line);
+}
+void AssemblyEmitterStorage::EmitABC(Opcode op, Int32 a, Int32 b, Int32 c, String comment) {
+	BytecodeUtil::CheckEmitPattern(op, EmitPattern::ABC);
+	String mnemonic = BytecodeUtil::ToMnemonic(op);
+	String line = Interp("  {} r{}, r{}, r{}", mnemonic, a, b, c);
+	if (!IsNull(comment)) line += Interp("  ; {}", comment);
+	_lines.Add(line);
+}
+Int32 AssemblyEmitterStorage::AddConstant(Value value) {
+	// Check if constant already exists (deduplication)
+	for (Int32 i = 0; i < _constants.Count(); i++) {
+		if (Value::Equal(_constants[i], value)) return i;
+	}
+	_constants.Add(value);
+	return _constants.Count() - 1;
+}
+Int32 AssemblyEmitterStorage::CreateLabel() {
+	Int32 labelId = _nextLabelId;
+	_nextLabelId = _nextLabelId + 1;
+	_labelNames[labelId] = Interp("L{}", labelId);
+	return labelId;
+}
+void AssemblyEmitterStorage::PlaceLabel(Int32 labelId) {
+	_lines.Add(Interp("{}:", _labelNames[labelId]));
+}
+void AssemblyEmitterStorage::EmitJump(Opcode op, Int32 labelId, String comment) {
+	String line = Interp("  {} {}", BytecodeUtil::ToMnemonic(op), _labelNames[labelId]);
+	if (!IsNull(comment)) line += Interp("  ; {}", comment);
+	_lines.Add(line);
+}
+void AssemblyEmitterStorage::ReserveRegister(Int32 registerNumber) {
+	UInt16 impliedCount = (UInt16)(registerNumber + 1);
+	if (_maxRegs < impliedCount) _maxRegs = impliedCount;
+}
+FuncDef AssemblyEmitterStorage::Finalize(String name) {
+	// For assembly emitter, we don't actually produce a FuncDef
+	// This is primarily for debugging output
+	FuncDef func =  FuncDef::New();
+	func.set_Name(name);
+	func.set_Constants(_constants);
+	func.set_MaxRegs(_maxRegs);
+	return func;
+}
+List<String> AssemblyEmitterStorage::GetLines() {
+	return _lines;
+}
+String AssemblyEmitterStorage::GetAssembly() {
+	String result = "";
+	for (Int32 i = 0; i < _lines.Count(); i++) {
+		result = result + _lines[i] + "\n";
+	}
+	return result;
+}
+
+
+} // end of namespace MiniScript

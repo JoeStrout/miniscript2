@@ -11,8 +11,14 @@ namespace MiniScript {
 
 // FORWARD DECLARATIONS
 
+struct CodeGenerator;
+class CodeGeneratorStorage;
 struct VM;
 class VMStorage;
+struct BytecodeEmitter;
+class BytecodeEmitterStorage;
+struct AssemblyEmitter;
+class AssemblyEmitterStorage;
 struct Assembler;
 class AssemblerStorage;
 struct Parselet;
@@ -105,6 +111,11 @@ class MethodCallNodeStorage;
 
 
 
+
+
+
+
+
 class IOHelper {
 
 	public: static void Print(String message);
@@ -114,6 +125,7 @@ class IOHelper {
 	public: static List<String> ReadFile(String filePath);
 	
 }; // end of struct IOHelper
+
 
 
 

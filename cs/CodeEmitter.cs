@@ -4,6 +4,9 @@
 using System;
 using System.Collections.Generic;
 using static MiniScript.ValueHelpers;
+// H: #include "Bytecode.g.h"
+// H: #include "value.h"
+// H: #include "FuncDef.g.h"
 
 namespace MiniScript {
 
@@ -32,6 +35,15 @@ public interface ICodeEmitter {
 	FuncDef Finalize(String name);
 }
 
+// Tracks a pending label reference that needs patching
+public struct LabelRef {
+	public Int32 CodeIndex;    // index in _code where the instruction is
+	public Int32 LabelId;      // label being referenced
+	public Opcode Op;          // opcode (for re-encoding)
+	public Int32 A;            // A operand (for re-encoding)
+}
+
+
 // Emits directly to bytecode (production use)
 public class BytecodeEmitter : ICodeEmitter {
 	private List<UInt32> _code;
@@ -40,14 +52,6 @@ public class BytecodeEmitter : ICodeEmitter {
 	private Dictionary<Int32, Int32> _labelAddresses;  // labelId -> code address
 	private List<LabelRef> _labelRefs;                 // pending label references
 	private Int32 _nextLabelId;
-
-	// Tracks a pending label reference that needs patching
-	private struct LabelRef {
-		public Int32 CodeIndex;    // index in _code where the instruction is
-		public Int32 LabelId;      // label being referenced
-		public Opcode Op;          // opcode (for re-encoding)
-		public Int32 A;            // A operand (for re-encoding)
-	}
 
 	public BytecodeEmitter() {
 		_code = new List<UInt32>();
@@ -86,7 +90,7 @@ public class BytecodeEmitter : ICodeEmitter {
 	public Int32 AddConstant(Value value) {
 		// Check if constant already exists (deduplication)
 		for (Int32 i = 0; i < _constants.Count; i++) {
-			if (Value.Equal(_constants[i], value)) return i;
+			if (value_equal(_constants[i], value)) return i;
 		}
 		_constants.Add(value);
 		return _constants.Count - 1;
@@ -161,15 +165,15 @@ public class AssemblyEmitter : ICodeEmitter {
 
 	public void Emit(Opcode op, String comment) {
 		BytecodeUtil.CheckEmitPattern(op, EmitPattern.None);
-		String line = "  " + BytecodeUtil.ToMnemonic(op);
-		if (comment != null) line = line + "  ; " + comment;
+		String line = $"  {BytecodeUtil.ToMnemonic(op)}";
+		if (comment != null) line += $"  ; {comment}";
 		_lines.Add(line);
 	}
 
 	public void EmitA(Opcode op, Int32 a, String comment) {
 		BytecodeUtil.CheckEmitPattern(op, EmitPattern.A);
-		String line = "  " + BytecodeUtil.ToMnemonic(op) + " r" + a;
-		if (comment != null) line = line + "  ; " + comment;
+		String line = $"  {BytecodeUtil.ToMnemonic(op)} r{a}";
+		if (comment != null) line += $"  ; {comment}";
 		_lines.Add(line);
 	}
 
@@ -178,13 +182,13 @@ public class AssemblyEmitter : ICodeEmitter {
 		String mnemonic = BytecodeUtil.ToMnemonic(op);
 		String line;
 		if (mnemonic.Contains("_kBC")) {
-			line = "  " + mnemonic + " r" + a + ", k" + bc;
+			line = $"  {mnemonic} r{a}, k{bc}";
 		} else if (mnemonic.Contains("_rB")) {
-			line = "  " + mnemonic + " r" + a + ", r" + bc;
+			line = $"  {mnemonic} r{a}, r{bc}";
 		} else {
-			line = "  " + mnemonic + " r" + a + ", " + bc;
+			line = $"  {mnemonic} r{a}, {bc}";
 		}
-		if (comment != null) line = line + "  ; " + comment;
+		if (comment != null) line += $"  ; {comment}";
 		_lines.Add(line);
 	}
 
@@ -193,19 +197,19 @@ public class AssemblyEmitter : ICodeEmitter {
 		String mnemonic = BytecodeUtil.ToMnemonic(op);
 		String line;
 		if (mnemonic.Contains("_rC")) {
-			line = "  " + mnemonic + " " + ab + ", r" + c;
+			line = $"  {mnemonic} {ab}, r{c}";
 		} else {
-			line = "  " + mnemonic + " " + ab + ", " + c;
+			line = $"  {mnemonic} {ab}, {c}";
 		}
-		if (comment != null) line = line + "  ; " + comment;
+		if (comment != null) line += $"  ; {comment}";
 		_lines.Add(line);
 	}
 
 	public void EmitABC(Opcode op, Int32 a, Int32 b, Int32 c, String comment) {
 		BytecodeUtil.CheckEmitPattern(op, EmitPattern.ABC);
 		String mnemonic = BytecodeUtil.ToMnemonic(op);
-		String line = "  " + mnemonic + " r" + a + ", r" + b + ", r" + c;
-		if (comment != null) line = line + "  ; " + comment;
+		String line = $"  {mnemonic} r{a}, r{b}, r{c}";
+		if (comment != null) line += $"  ; {comment}";
 		_lines.Add(line);
 	}
 
@@ -221,17 +225,17 @@ public class AssemblyEmitter : ICodeEmitter {
 	public Int32 CreateLabel() {
 		Int32 labelId = _nextLabelId;
 		_nextLabelId = _nextLabelId + 1;
-		_labelNames[labelId] = "L" + labelId;
+		_labelNames[labelId] = $"L{labelId}";
 		return labelId;
 	}
 
 	public void PlaceLabel(Int32 labelId) {
-		_lines.Add(_labelNames[labelId] + ":");
+		_lines.Add($"{_labelNames[labelId]}:");
 	}
 
 	public void EmitJump(Opcode op, Int32 labelId, String comment) {
-		String line = "  " + BytecodeUtil.ToMnemonic(op) + " " + _labelNames[labelId];
-		if (comment != null) line = line + "  ; " + comment;
+		String line = $"  {BytecodeUtil.ToMnemonic(op)} {_labelNames[labelId]}";
+		if (comment != null) line += $"  ; {comment}";
 		_lines.Add(line);
 	}
 

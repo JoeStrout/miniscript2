@@ -8,8 +8,14 @@ namespace MiniScript {
 
 // FORWARD DECLARATIONS
 
+struct CodeGenerator;
+class CodeGeneratorStorage;
 struct VM;
 class VMStorage;
+struct BytecodeEmitter;
+class BytecodeEmitterStorage;
+struct AssemblyEmitter;
+class AssemblyEmitterStorage;
 struct Assembler;
 class AssemblerStorage;
 struct Parselet;
@@ -100,6 +106,20 @@ class MethodCallNodeStorage;
 
 
 
+
+
+
+
+// Emit pattern - indicates which Emit method should be used for an opcode
+enum class EmitPattern : Byte {
+	None,   // Emit(op, comment) - no operands (e.g., RETURN, NOOP)
+	A,      // EmitA(op, a, comment) - 8-bit A only (e.g., LOCALS_rA)
+	AB,     // EmitAB(op, a, bc, comment) - 8-bit A + 16-bit BC (e.g., LOAD_rA_iBC)
+	BC,     // EmitBC(op, ab, c, comment) - 16-bit AB + 8-bit C (e.g., IFLT_iAB_rC)
+	ABC     // EmitABC(op, a, b, c, comment) - 8-bit A + B + C (e.g., ADD_rA_rB_rC)
+}; // end of enum EmitPattern
+
+
 // Opcodes.  Note that these must have sequential values, starting at 0.
 enum class Opcode : Byte {
 	NOOP = 0,
@@ -169,6 +189,15 @@ enum class Opcode : Byte {
 
 
 class BytecodeUtil {
+	public: static Boolean ValidateOpcodes;
+	// Set to false to disable opcode validation in Emit methods (for production)
+
+	// Determine the expected emit pattern for an opcode based on its mnemonic
+	public: static EmitPattern GetEmitPattern(Opcode opcode);
+
+	// Validate that an opcode matches the expected emit pattern
+	// Returns true if valid, false if mismatch (and prints error)
+	public: static Boolean CheckEmitPattern(Opcode opcode, EmitPattern expected);
 	public: static Byte OP(UInt32 instruction) { return (Byte)((instruction >> 24) & 0xFF); }
 	public: static Byte Au(UInt32 instruction) { return (Byte)((instruction >> 16) & 0xFF); }
 	public: static Byte Bu(UInt32 instruction) { return (Byte)((instruction >> 8) & 0xFF); }
@@ -181,6 +210,7 @@ class BytecodeUtil {
 	public: static UInt16 BCu(UInt32 instruction) { return (UInt16)(instruction & 0xFFFF); }
 	public: static Int16 BCs(UInt32 instruction) { return (Int16)BCu(instruction); }
 	public: static UInt32 ABCu(UInt32 instruction) { return instruction & 0xFFFFFF; }
+
 	// Instruction field extraction helpers
 	
 	// 8-bit field extractors
@@ -203,6 +233,7 @@ class BytecodeUtil {
 	
 	public: static Opcode FromMnemonic(String s);
 }; // end of struct BytecodeUtil
+
 
 
 

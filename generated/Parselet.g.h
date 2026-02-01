@@ -14,8 +14,14 @@ namespace MiniScript {
 
 // FORWARD DECLARATIONS
 
+struct CodeGenerator;
+class CodeGeneratorStorage;
 struct VM;
 class VMStorage;
+struct BytecodeEmitter;
+class BytecodeEmitterStorage;
+struct AssemblyEmitter;
+class AssemblyEmitterStorage;
 struct Assembler;
 class AssemblerStorage;
 struct Parselet;
@@ -91,6 +97,10 @@ class MethodCallNodeStorage;
 
 
 
+
+
+
+
 // IParser interface: defines the methods that parselets need from the parser.
 // This breaks the circular dependency between Parser and Parselet.
 class IParser {
@@ -103,6 +113,8 @@ class IParser {
 	virtual ASTNode ParseExpression(Precedence minPrecedence) = 0;
 	virtual void ReportError(String message) = 0;
 }; // end of interface IParser
+
+
 
 
 
@@ -167,11 +179,20 @@ template<typename WrapperType, typename StorageType> WrapperType As(Parselet ins
 
 // PrefixParselet: abstract base for parselets that handle tokens
 // starting an expression (numbers, identifiers, unary operators).
-struct PrefixParselet : public Parselet {
-	public: PrefixParselet(std::shared_ptr<ParseletStorage> stor) : Parselet(stor) {}
-	PrefixParselet(std::nullptr_t) : Parselet(nullptr) {}
-	PrefixParselet() : Parselet(nullptr) {}
-	private: PrefixParseletStorage* get();
+struct PrefixParselet {
+	protected: std::shared_ptr<PrefixParseletStorage> storage;
+  public:
+	PrefixParselet(std::shared_ptr<PrefixParseletStorage> stor) : storage(stor) {}
+	PrefixParselet() : storage(nullptr) {}
+	friend bool IsNull(PrefixParselet inst) { return inst.storage == nullptr; }
+	private: PrefixParseletStorage* get() const;
+	template<typename WrapperType, typename StorageType>
+	friend WrapperType As(PrefixParselet inst) {
+		StorageType* stor = dynamic_cast<StorageType*>(inst.storage.get());
+		if (stor == nullptr) return WrapperType(nullptr);
+		return WrapperType(inst.storage);
+	}
+
 	public: ASTNode Parse(IParser& parser, Token token);
 }; // end of struct PrefixParselet
 
@@ -179,11 +200,20 @@ template<typename WrapperType, typename StorageType> WrapperType As(PrefixParsel
 
 
 // InfixParselet: abstract base for parselets that handle infix operators.
-struct InfixParselet : public Parselet {
-	public: InfixParselet(std::shared_ptr<ParseletStorage> stor) : Parselet(stor) {}
-	InfixParselet(std::nullptr_t) : Parselet(nullptr) {}
-	InfixParselet() : Parselet(nullptr) {}
-	private: InfixParseletStorage* get();
+struct InfixParselet {
+	protected: std::shared_ptr<InfixParseletStorage> storage;
+  public:
+	InfixParselet(std::shared_ptr<InfixParseletStorage> stor) : storage(stor) {}
+	InfixParselet() : storage(nullptr) {}
+	friend bool IsNull(InfixParselet inst) { return inst.storage == nullptr; }
+	private: InfixParseletStorage* get() const;
+	template<typename WrapperType, typename StorageType>
+	friend WrapperType As(InfixParselet inst) {
+		StorageType* stor = dynamic_cast<StorageType*>(inst.storage.get());
+		if (stor == nullptr) return WrapperType(nullptr);
+		return WrapperType(inst.storage);
+	}
+
 	public: ASTNode Parse(IParser& parser, ASTNode left, Token token);
 }; // end of struct InfixParselet
 
@@ -195,18 +225,13 @@ class ParseletStorage : public std::enable_shared_from_this<ParseletStorage> {
 	public: Precedence Prec;
 }; // end of class ParseletStorage
 
-
-// PrefixParselet: abstract base for parselets that handle tokens
-// starting an expression (numbers, identifiers, unary operators).
-class PrefixParseletStorage : public ParseletStorage {
-	friend struct PrefixParselet;
+class PrefixParseletStorage : public std::enable_shared_from_this<PrefixParseletStorage> {
+	public: virtual ~PrefixParseletStorage() {}
 	public: virtual ASTNode Parse(IParser& parser, Token token) = 0;
 }; // end of class PrefixParseletStorage
 
-
-// InfixParselet: abstract base for parselets that handle infix operators.
-class InfixParseletStorage : public ParseletStorage {
-	friend struct InfixParselet;
+class InfixParseletStorage : public std::enable_shared_from_this<InfixParseletStorage> {
+	public: virtual ~InfixParseletStorage() {}
 	public: virtual ASTNode Parse(IParser& parser, ASTNode left, Token token) = 0;
 }; // end of class InfixParseletStorage
 
@@ -483,10 +508,10 @@ inline ParseletStorage* Parselet::get() const { return static_cast<ParseletStora
 inline Precedence Parselet::Prec() { return get()->Prec; }
 inline void Parselet::set_Prec(Precedence _v) { get()->Prec = _v; }
 
-inline PrefixParseletStorage* PrefixParselet::get() { return static_cast<PrefixParseletStorage*>(storage.get()); }
+inline PrefixParseletStorage* PrefixParselet::get() const { return static_cast<PrefixParseletStorage*>(storage.get()); }
 inline ASTNode PrefixParselet::Parse(IParser& parser, Token token) { return get()->Parse(parser, token); }
 
-inline InfixParseletStorage* InfixParselet::get() { return static_cast<InfixParseletStorage*>(storage.get()); }
+inline InfixParseletStorage* InfixParselet::get() const { return static_cast<InfixParseletStorage*>(storage.get()); }
 inline ASTNode InfixParselet::Parse(IParser& parser, ASTNode left, Token token) { return get()->Parse(parser, left, token); }
 
 inline NumberParseletStorage* NumberParselet::get() { return static_cast<NumberParseletStorage*>(storage.get()); }

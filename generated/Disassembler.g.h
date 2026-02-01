@@ -9,8 +9,14 @@ namespace MiniScript {
 
 // FORWARD DECLARATIONS
 
+struct CodeGenerator;
+class CodeGeneratorStorage;
 struct VM;
 class VMStorage;
+struct BytecodeEmitter;
+class BytecodeEmitterStorage;
+struct AssemblyEmitter;
+class AssemblyEmitterStorage;
 struct Assembler;
 class AssemblerStorage;
 struct Parselet;
@@ -94,6 +100,12 @@ class Disassembler {
 	public: static List<String> Disassemble(List<FuncDef> functions, Boolean detailed=true);
 
 }; // end of struct Disassembler
+
+
+
+
+
+
 
 
 

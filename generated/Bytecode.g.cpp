@@ -3,12 +3,65 @@
 
 #include "Bytecode.g.h"
 #include "value.h"
+#include "IOHelper.g.h"
 
 namespace MiniScript {
 
 
 
 
+
+
+Boolean BytecodeUtil::ValidateOpcodes = true;
+EmitPattern BytecodeUtil::GetEmitPattern(Opcode opcode) {
+	String mnemonic = ToMnemonic(opcode);
+
+	// Check for specific patterns in the mnemonic suffix
+	// Order matters: check more specific patterns first
+
+	// ABC patterns: _rA_rB_rC, _rA_rB_iC, _rA_iB_rC, _iA_rB_iC, _rA_rB_kC
+	if (mnemonic.Contains("_rA_rB_rC") || mnemonic.Contains("_rA_rB_iC") ||
+		mnemonic.Contains("_rA_iB_rC") || mnemonic.Contains("_iA_rB_iC") ||
+		mnemonic.Contains("_rA_rB_kC")) {
+		return EmitPattern::ABC;
+	}
+
+	// BC patterns: _iAB_rC, _iAB_iC
+	if (mnemonic.Contains("_iAB_rC") || mnemonic.Contains("_iAB_iC")) {
+		return EmitPattern::BC;
+	}
+
+	// AB patterns: _rA_rB, _rA_iBC, _rA_kBC, _iA_iBC, _iA_kBC
+	if (mnemonic.Contains("_rA_rB") || mnemonic.Contains("_rA_iBC") ||
+		mnemonic.Contains("_rA_kBC") || mnemonic.Contains("_iA_iBC") ||
+		mnemonic.Contains("_iA_kBC")) {
+		return EmitPattern::AB;
+	}
+
+	// A patterns: _rA, _iA (but not followed by B or BC)
+	if (mnemonic.EndsWith("_rA") || mnemonic.EndsWith("_iA")) {
+		return EmitPattern::A;
+	}
+
+	// iABC pattern (24-bit immediate, like JUMP_iABC, ARG_iABC, ARGBLK_iABC)
+	if (mnemonic.Contains("_iABC")) {
+		return EmitPattern::ABC;  // Uses all 24 bits as one value
+	}
+
+	// No suffix - opcode only (NOOP, RETURN, etc.)
+	return EmitPattern::None;
+}
+Boolean BytecodeUtil::CheckEmitPattern(Opcode opcode, EmitPattern expected) {
+	if (!ValidateOpcodes) return Boolean(true);
+
+	EmitPattern actual = GetEmitPattern(opcode);
+	if (actual == expected) return Boolean(true);
+
+	// Mismatch - report error
+	String mnemonic = ToMnemonic(opcode);
+	IOHelper::Print(Interp("ERROR: Opcode {} expects Emit{} but Emit{} was called", mnemonic, actual, expected));
+	return Boolean(false);
+}
 Int32 BytecodeUtil::ABCs(UInt32 instruction) {
 	UInt32 value = ABCu(instruction);
 	// If bit 23 is set (sign bit), extend the sign to upper 8 bits

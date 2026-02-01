@@ -9,6 +9,8 @@
 #include "Assembler.g.h"  // We really should automate this.
 #include "Parser.g.h"
 #include "AST.g.h"
+#include "CodeEmitter.g.h"
+#include "CodeGenerator.g.h"
 
 namespace MiniScript {
 
@@ -429,12 +431,245 @@ Boolean UnitTests::TestParser() {
 
 	return ok;
 }
+Boolean UnitTests::CheckCodeGen(Parser parser, String input, List<String> expectedLines) {
+	ASTNode ast = parser.Parse(input);
+	if (parser.HadError()) {
+		IOHelper::Print(Interp("Parse error for input: {}", input));
+		return Boolean(false);
+	}
+
+	AssemblyEmitter emitter =  AssemblyEmitter::New();
+	CodeGenerator gen =  CodeGenerator::New(emitter);
+	gen.CompileFunction(ast, "@main");
+
+	List<String> actualLines = emitter.GetLines();
+
+	// Compare line by line (ignoring comments)
+	if (actualLines.Count() != expectedLines.Count()) {
+		IOHelper::Print(Interp("CodeGen test failed for: {}", input));
+		IOHelper::Print(Interp("  Expected {} lines, got {}", expectedLines.Count(), actualLines.Count()));
+		IOHelper::Print("  Actual output:");
+		for (Int32 i = 0; i < actualLines.Count(); i++) {
+			IOHelper::Print(Interp("    {}", actualLines[i]));
+		}
+		return Boolean(false);
+	}
+
+	for (Int32 i = 0; i < expectedLines.Count(); i++) {
+		// Strip comments from actual line for comparison
+		String actual = actualLines[i];
+		Int32 commentPos = actual::IndexOf(';');
+		if (commentPos >= 0) actual = actual.Substring(0, commentPos).TrimEnd();
+
+		String expected = expectedLines[i];
+		if (actual != expected) {
+			IOHelper::Print(Interp("CodeGen test failed for: {}", input));
+			IOHelper::Print(Interp("  Line {}: expected \"{}\" but got \"{}\"", i, expected, actual));
+			return Boolean(false);
+		}
+	}
+
+	return Boolean(true);
+}
+Boolean UnitTests::CheckBytecodeGen(Parser parser, String input, Int32 expectedInstructions, Int32 expectedConstants) {
+	ASTNode ast = parser.Parse(input);
+	if (parser.HadError()) {
+		IOHelper::Print(Interp("Parse error for input: {}", input));
+		return Boolean(false);
+	}
+
+	BytecodeEmitter emitter =  BytecodeEmitter::New();
+	CodeGenerator gen =  CodeGenerator::New(emitter);
+	FuncDef func = gen.CompileFunction(ast, "@main");
+
+	if (func.Code().Count() != expectedInstructions) {
+		IOHelper::Print(Interp("BytecodeGen test failed for: {}", input));
+		IOHelper::Print(Interp("  Expected {} instructions, got {}", expectedInstructions, func.Code().Count()));
+		return Boolean(false);
+	}
+
+	if (func.Constants().Count() != expectedConstants) {
+		IOHelper::Print(Interp("BytecodeGen test failed for: {}", input));
+		IOHelper::Print(Interp("  Expected {} constants, got {}", expectedConstants, func.Constants().Count()));
+		return Boolean(false);
+	}
+
+	return Boolean(true);
+}
+Boolean UnitTests::TestCodeGenerator() {
+	IOHelper::Print("  Testing code generator...");
+	Parser parser =  Parser::New();
+	Boolean ok = Boolean(true);
+
+	// Test simple integer (immediate form, no constants)
+	ok = ok && CheckBytecodeGen(parser, "42", 2, 0);  // LOAD + RETURN
+
+	// Test float (requires constant)
+	ok = ok && CheckBytecodeGen(parser, "3.14", 2, 1);  // LOAD_kBC + RETURN
+
+	// Test large integer (requires constant)
+	ok = ok && CheckBytecodeGen(parser, "100000", 2, 1);  // LOAD_kBC + RETURN
+
+	// Test string (requires constant)
+	ok = ok && CheckBytecodeGen(parser, "\"hello\"", 2, 1);  // LOAD_kBC + RETURN
+
+	// Test simple addition
+	// With resultReg allocated first: LOAD r1,2; LOAD r2,3; ADD r0,r1,r2; RETURN
+	ok = ok && CheckBytecodeGen(parser, "2 + 3", 4, 0);
+
+	// Test assembly output for simple number
+	ok = ok && CheckCodeGen(parser, "42",  List<String>::New({
+		"  LOAD_rA_iBC r0, 42",
+		"  RETURN"
+	});
+
+	// Test assembly output for addition (resultReg r0 allocated first)
+	ok = ok && CheckCodeGen(parser, "2 + 3",  List<String>::New({
+		"  LOAD_rA_iBC r1, 2",
+		"  LOAD_rA_iBC r2, 3",
+		"  ADD_rA_rB_rC r0, r1, r2",
+		"  RETURN"
+	});
+
+	// Test subtraction
+	ok = ok && CheckCodeGen(parser, "10 - 4",  List<String>::New({
+		"  LOAD_rA_iBC r1, 10",
+		"  LOAD_rA_iBC r2, 4",
+		"  SUB_rA_rB_rC r0, r1, r2",
+		"  RETURN"
+	});
+
+	// Test multiplication
+	ok = ok && CheckCodeGen(parser, "6 * 7",  List<String>::New({
+		"  LOAD_rA_iBC r1, 6",
+		"  LOAD_rA_iBC r2, 7",
+		"  MULT_rA_rB_rC r0, r1, r2",
+		"  RETURN"
+	});
+
+	// Test division
+	ok = ok && CheckCodeGen(parser, "20 / 4",  List<String>::New({
+		"  LOAD_rA_iBC r1, 20",
+		"  LOAD_rA_iBC r2, 4",
+		"  DIV_rA_rB_rC r0, r1, r2",
+		"  RETURN"
+	});
+
+	// Test comparison (less than)
+	ok = ok && CheckCodeGen(parser, "3 < 5",  List<String>::New({
+		"  LOAD_rA_iBC r1, 3",
+		"  LOAD_rA_iBC r2, 5",
+		"  LT_rA_rB_rC r0, r1, r2",
+		"  RETURN"
+	});
+
+	// Test comparison (greater than - uses swapped LT)
+	ok = ok && CheckCodeGen(parser, "5 > 3",  List<String>::New({
+		"  LOAD_rA_iBC r1, 5",
+		"  LOAD_rA_iBC r2, 3",
+		"  LT_rA_rB_rC r0, r2, r1",  // swapped: r2 < r1
+		"  RETURN"
+	});
+
+	// Test unary minus
+	// r0 = 5, r1 = result, r2 = 0, SUB r1, r2, r0 (result = 0 - 5)
+	ok = ok && CheckCodeGen(parser, "-5",  List<String>::New({
+		"  LOAD_rA_iBC r0, 5",
+		"  LOAD_rA_iBC r2, 0",
+		"  SUB_rA_rB_rC r1, r2, r0",
+		"  LOAD_rA_rB r0, r1",
+		"  RETURN"
+	});
+
+	// Test grouping (parentheses) - should compile inner expression directly
+	ok = ok && CheckCodeGen(parser, "(42)",  List<String>::New({
+		"  LOAD_rA_iBC r0, 42",
+		"  RETURN"
+	});
+
+	// Test list literal
+	ok = ok && CheckCodeGen(parser, "[1, 2, 3]",  List<String>::New({
+		"  LIST_rA_iBC r0, 3",
+		"  LOAD_rA_iBC r1, 1",
+		"  PUSH_rA_rB r0, r1",
+		"  LOAD_rA_iBC r1, 2",
+		"  PUSH_rA_rB r0, r1",
+		"  LOAD_rA_iBC r1, 3",
+		"  PUSH_rA_rB r0, r1",
+		"  RETURN"
+	});
+
+	// Test empty list
+	ok = ok && CheckCodeGen(parser, "[]",  List<String>::New({
+		"  LIST_rA_iBC r0, 0",
+		"  RETURN"
+	});
+
+	// Test map literal
+	ok = ok && CheckBytecodeGen(parser, "{}", 2, 0);  // MAP + RETURN
+
+	// Test index access (resultReg r0 allocated first)
+	ok = ok && CheckCodeGen(parser, "x[0]",  List<String>::New({
+		"  LOAD_rA_iBC r1, 0",   // TODO: load x
+		"  LOAD_rA_iBC r2, 0",   // index 0
+		"  INDEX_rA_rB_rC r0, r1, r2",
+		"  RETURN"
+	});
+
+	// Test nested expression (precedence)
+	// 2 + 3 * 4: outer result r0, load 2 into r1, inner mult result r2, load 3,4 into r3,r4
+	// LOAD r1,2; LOAD r3,3; LOAD r4,4; MULT r2,r3,r4; ADD r0,r1,r2; RETURN
+	ok = ok && CheckBytecodeGen(parser, "2 + 3 * 4", 6, 0);
+
+	// Test register reuse with nested expressions
+	// (1 + 2) + (3 + 4): outer r0, first group r1 (with r2,r3 for operands),
+	// second group r2 (reused after freeing r2,r3), with r3,r4 for operands
+	// LOAD r2,1; LOAD r3,2; ADD r1,r2,r3; LOAD r3,3; LOAD r4,4; ADD r2,r3,r4; ADD r0,r1,r2; RETURN
+	ok = ok && CheckBytecodeGen(parser, "(1 + 2) + (3 + 4)", 8, 0);
+
+	if (ok) {
+		IOHelper::Print("  All code generator tests passed.");
+	}
+
+	return ok;
+}
+Boolean UnitTests::TestEmitPatternValidation() {
+	IOHelper::Print("  Testing emit pattern validation...");
+	Boolean ok = Boolean(true);
+
+	// Test that GetEmitPattern correctly identifies patterns
+	ok = ok && Assert(BytecodeUtil::GetEmitPattern(Opcode::RETURN) == EmitPattern::None,
+		"RETURN should be EmitPattern.None");
+	ok = ok && Assert(BytecodeUtil::GetEmitPattern(Opcode::NOOP) == EmitPattern::None,
+		"NOOP should be EmitPattern.None");
+	ok = ok && Assert(BytecodeUtil::GetEmitPattern(Opcode::LOCALS_rA) == EmitPattern::A,
+		"LOCALS_rA should be EmitPattern.A");
+	ok = ok && Assert(BytecodeUtil::GetEmitPattern(Opcode::ARG_rA) == EmitPattern::A,
+		"ARG_rA should be EmitPattern.A");
+	ok = ok && Assert(BytecodeUtil::GetEmitPattern(Opcode::LOAD_rA_iBC) == EmitPattern::AB,
+		"LOAD_rA_iBC should be EmitPattern.AB");
+	ok = ok && Assert(BytecodeUtil::GetEmitPattern(Opcode::LOAD_rA_rB) == EmitPattern::AB,
+		"LOAD_rA_rB should be EmitPattern.AB");
+	ok = ok && Assert(BytecodeUtil::GetEmitPattern(Opcode::IFLT_iAB_rC) == EmitPattern::BC,
+		"IFLT_iAB_rC should be EmitPattern.BC");
+	ok = ok && Assert(BytecodeUtil::GetEmitPattern(Opcode::ADD_rA_rB_rC) == EmitPattern::ABC,
+		"ADD_rA_rB_rC should be EmitPattern.ABC");
+	ok = ok && Assert(BytecodeUtil::GetEmitPattern(Opcode::LT_rA_rB_iC) == EmitPattern::ABC,
+		"LT_rA_rB_iC should be EmitPattern.ABC");
+
+	if (ok) {
+		IOHelper::Print("  All emit pattern validation tests passed.");
+	}
+	return ok;
+}
 Boolean UnitTests::RunAll() {
 	return TestStringUtils()
 		&& TestDisassembler()
 		&& TestAssembler()
 		&& TestValueMap()
-		&& TestParser();
+		&& TestParser()
+		&& TestCodeGenerator()
+		&& TestEmitPatternValidation();
 }
 
 

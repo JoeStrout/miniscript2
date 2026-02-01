@@ -17,8 +17,14 @@ namespace MiniScript {
 
 // FORWARD DECLARATIONS
 
+struct CodeGenerator;
+class CodeGeneratorStorage;
 struct VM;
 class VMStorage;
+struct BytecodeEmitter;
+class BytecodeEmitterStorage;
+struct AssemblyEmitter;
+class AssemblyEmitterStorage;
 struct Assembler;
 class AssemblerStorage;
 struct Parselet;
@@ -83,6 +89,7 @@ struct MethodCallNode;
 class MethodCallNodeStorage;
 
 // DECLARATIONS
+
 
 
 
@@ -211,6 +218,11 @@ class StringUtils {
 	// Convert a Value to its representation (quoted string for strings, plain for others)
 	// This is used when displaying values in source code form.
 }; // end of struct StringUtils
+
+
+
+
+
 
 
 

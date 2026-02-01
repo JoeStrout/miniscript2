@@ -11,8 +11,14 @@ namespace MiniScript {
 
 // FORWARD DECLARATIONS
 
+struct CodeGenerator;
+class CodeGeneratorStorage;
 struct VM;
 class VMStorage;
+struct BytecodeEmitter;
+class BytecodeEmitterStorage;
+struct AssemblyEmitter;
+class AssemblyEmitterStorage;
 struct Assembler;
 class AssemblerStorage;
 struct Parselet;
@@ -84,6 +90,7 @@ class MethodCallNodeStorage;
 
 
 
+
 // Precedence levels (higher precedence binds more strongly)
 enum class Precedence : Int32 {
 	NONE = 0,
@@ -136,6 +143,11 @@ enum class TokenType : Int32 {
 	EOL,
 	ERROR
 }; // end of enum TokenType
+
+
+
+
+
 
 
 

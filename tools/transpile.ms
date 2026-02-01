@@ -916,7 +916,13 @@ Transpiler.updateStateNAMESPACE = function
 		self.enterState State.CLASS
 		self.curClass.superclass = self.m.baseClass
 		baseClass = self.findClass(self.m.baseClass)
-		baseIsInterface = baseClass.type == ClassType.INTERFACE
+		if baseClass then
+			baseIsInterface = baseClass.type == ClassType.INTERFACE
+		else
+			// If we can't find the base class -- perhaps because we haven't gotten
+			// to it yet -- then assume an interface if its name is like IWhatever.
+			baseIsInterface = (self.m.baseClass[0] == "I" and "A" <= self.m.baseClass[1] <= "Z")
+		end if
 		// subclasses: first a storage class, in the storage lines...
 		self.curClass.storageLines += self.preLines
 		if baseIsInterface then

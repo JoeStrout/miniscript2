@@ -11,8 +11,14 @@ namespace MiniScript {
 
 // FORWARD DECLARATIONS
 
+struct CodeGenerator;
+class CodeGeneratorStorage;
 struct VM;
 class VMStorage;
+struct BytecodeEmitter;
+class BytecodeEmitterStorage;
+struct AssemblyEmitter;
+class AssemblyEmitterStorage;
 struct Assembler;
 class AssemblerStorage;
 struct Parselet;
@@ -83,6 +89,7 @@ class MethodCallNodeStorage;
 
 
 
+
 struct VMVis {
 	private: static const String Esc;
 	private: static const String Clear;
@@ -132,6 +139,11 @@ struct VMVis {
 
 	public: void UpdateDisplay();
 }; // end of struct VMVis
+
+
+
+
+
 
 
 

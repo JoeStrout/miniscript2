@@ -12,8 +12,14 @@ namespace MiniScript {
 
 // FORWARD DECLARATIONS
 
+struct CodeGenerator;
+class CodeGeneratorStorage;
 struct VM;
 class VMStorage;
+struct BytecodeEmitter;
+class BytecodeEmitterStorage;
+struct AssemblyEmitter;
+class AssemblyEmitterStorage;
 struct Assembler;
 class AssemblerStorage;
 struct Parselet;
@@ -81,6 +87,7 @@ class MethodCallNodeStorage;
 
 
 
+
 // Call stack frame (return info)
 struct CallInfo {
 	public: Int32 ReturnPC; // where to continue in caller (PC index)
@@ -96,6 +103,11 @@ struct CallInfo {
 
 	public: Value GetLocalVarMap(List<Value> registers, List<Value> names, int baseIdx, int regCount);
 }; // end of struct CallInfo
+
+
+
+
+
 
 
 

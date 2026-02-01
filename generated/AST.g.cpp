@@ -28,6 +28,8 @@ const String Op::NOT = "NOT";
 
 
 
+
+
 NumberNodeStorage::NumberNodeStorage(Double value) {
 	Value = value;
 }
@@ -37,6 +39,10 @@ String NumberNodeStorage::ToStr() {
 ASTNode NumberNodeStorage::Simplify() {
 	NumberNode _this(shared_from_this());
 	return _this;
+}
+Int32 NumberNodeStorage::Accept(IASTVisitor& visitor) {
+	NumberNode _this(shared_from_this());
+	return visitor.Visit(_this);
 }
 
 
@@ -50,6 +56,10 @@ ASTNode StringNodeStorage::Simplify() {
 	StringNode _this(shared_from_this());
 	return _this;
 }
+Int32 StringNodeStorage::Accept(IASTVisitor& visitor) {
+	StringNode _this(shared_from_this());
+	return visitor.Visit(_this);
+}
 
 
 IdentifierNodeStorage::IdentifierNodeStorage(String name) {
@@ -61,6 +71,10 @@ String IdentifierNodeStorage::ToStr() {
 ASTNode IdentifierNodeStorage::Simplify() {
 	IdentifierNode _this(shared_from_this());
 	return _this;
+}
+Int32 IdentifierNodeStorage::Accept(IASTVisitor& visitor) {
+	IdentifierNode _this(shared_from_this());
+	return visitor.Visit(_this);
 }
 
 
@@ -74,6 +88,10 @@ String AssignmentNodeStorage::ToStr() {
 ASTNode AssignmentNodeStorage::Simplify() {
 	ASTNode simplifiedValue = Value.Simplify();
 	return  AssignmentNode::New(Variable, simplifiedValue);
+}
+Int32 AssignmentNodeStorage::Accept(IASTVisitor& visitor) {
+	AssignmentNode _this(shared_from_this());
+	return visitor.Visit(_this);
 }
 
 
@@ -99,6 +117,10 @@ ASTNode UnaryOpNodeStorage::Simplify() {
 
 	// Otherwise return unary op with simplified operand
 	return  UnaryOpNode::New(Op, simplifiedOperand);
+}
+Int32 UnaryOpNodeStorage::Accept(IASTVisitor& visitor) {
+	UnaryOpNode _this(shared_from_this());
+	return visitor.Visit(_this);
 }
 
 
@@ -153,6 +175,10 @@ ASTNode BinaryOpNodeStorage::Simplify() {
 	// Otherwise return binary op with simplified operands
 	return  BinaryOpNode::New(Op, simplifiedLeft, simplifiedRight);
 }
+Int32 BinaryOpNodeStorage::Accept(IASTVisitor& visitor) {
+	BinaryOpNode _this(shared_from_this());
+	return visitor.Visit(_this);
+}
 
 
 CallNodeStorage::CallNodeStorage(String function, List<ASTNode> arguments) {
@@ -179,6 +205,10 @@ ASTNode CallNodeStorage::Simplify() {
 	}
 	return  CallNode::New(Function, simplifiedArgs);
 }
+Int32 CallNodeStorage::Accept(IASTVisitor& visitor) {
+	CallNode _this(shared_from_this());
+	return visitor.Visit(_this);
+}
 
 
 GroupNodeStorage::GroupNodeStorage(ASTNode expression) {
@@ -190,6 +220,10 @@ String GroupNodeStorage::ToStr() {
 ASTNode GroupNodeStorage::Simplify() {
 	// Groups don't affect value, just return simplified child
 	return Expression.Simplify();
+}
+Int32 GroupNodeStorage::Accept(IASTVisitor& visitor) {
+	GroupNode _this(shared_from_this());
+	return visitor.Visit(_this);
 }
 
 
@@ -214,6 +248,10 @@ ASTNode ListNodeStorage::Simplify() {
 		simplifiedElements.Add(Elements[i].Simplify());
 	}
 	return  ListNode::New(simplifiedElements);
+}
+Int32 ListNodeStorage::Accept(IASTVisitor& visitor) {
+	ListNode _this(shared_from_this());
+	return visitor.Visit(_this);
 }
 
 
@@ -243,6 +281,10 @@ ASTNode MapNodeStorage::Simplify() {
 	}
 	return  MapNode::New(simplifiedKeys, simplifiedValues);
 }
+Int32 MapNodeStorage::Accept(IASTVisitor& visitor) {
+	MapNode _this(shared_from_this());
+	return visitor.Visit(_this);
+}
 
 
 IndexNodeStorage::IndexNodeStorage(ASTNode target, ASTNode index) {
@@ -255,6 +297,10 @@ String IndexNodeStorage::ToStr() {
 ASTNode IndexNodeStorage::Simplify() {
 	return  IndexNode::New(Target.Simplify(), Index.Simplify());
 }
+Int32 IndexNodeStorage::Accept(IASTVisitor& visitor) {
+	IndexNode _this(shared_from_this());
+	return visitor.Visit(_this);
+}
 
 
 MemberNodeStorage::MemberNodeStorage(ASTNode target, String member) {
@@ -266,6 +312,10 @@ String MemberNodeStorage::ToStr() {
 }
 ASTNode MemberNodeStorage::Simplify() {
 	return  MemberNode::New(Target.Simplify(), Member);
+}
+Int32 MemberNodeStorage::Accept(IASTVisitor& visitor) {
+	MemberNode _this(shared_from_this());
+	return visitor.Visit(_this);
 }
 
 
@@ -289,6 +339,10 @@ ASTNode MethodCallNodeStorage::Simplify() {
 		simplifiedArgs.Add(Arguments[i].Simplify());
 	}
 	return  MethodCallNode::New(Target.Simplify(), Method, simplifiedArgs);
+}
+Int32 MethodCallNodeStorage::Accept(IASTVisitor& visitor) {
+	MethodCallNode _this(shared_from_this());
+	return visitor.Visit(_this);
 }
 
 

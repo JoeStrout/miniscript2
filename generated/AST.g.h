@@ -11,8 +11,14 @@ namespace MiniScript {
 
 // FORWARD DECLARATIONS
 
+struct CodeGenerator;
+class CodeGeneratorStorage;
 struct VM;
 class VMStorage;
+struct BytecodeEmitter;
+class BytecodeEmitterStorage;
+struct AssemblyEmitter;
+class AssemblyEmitterStorage;
 struct Assembler;
 class AssemblerStorage;
 struct Parselet;
@@ -108,6 +114,11 @@ class MethodCallNodeStorage;
 
 
 
+
+
+
+
+
 // Operator constants (stored as strings to ease debugging)
 class Op {
 	public: static const String PLUS;
@@ -126,6 +137,26 @@ class Op {
 	public: static const String OR;
 	public: static const String NOT;
 }; // end of struct Op
+
+
+// Visitor interface for AST traversal (e.g., code generation)
+class IASTVisitor {
+  public:
+	virtual ~IASTVisitor() = default;
+	virtual Int32 Visit(NumberNode node) = 0;
+	virtual Int32 Visit(StringNode node) = 0;
+	virtual Int32 Visit(IdentifierNode node) = 0;
+	virtual Int32 Visit(AssignmentNode node) = 0;
+	virtual Int32 Visit(UnaryOpNode node) = 0;
+	virtual Int32 Visit(BinaryOpNode node) = 0;
+	virtual Int32 Visit(CallNode node) = 0;
+	virtual Int32 Visit(GroupNode node) = 0;
+	virtual Int32 Visit(ListNode node) = 0;
+	virtual Int32 Visit(MapNode node) = 0;
+	virtual Int32 Visit(IndexNode node) = 0;
+	virtual Int32 Visit(MemberNode node) = 0;
+	virtual Int32 Visit(MethodCallNode node) = 0;
+}; // end of interface IASTVisitor
 
 
 
@@ -163,6 +194,7 @@ struct ASTNode {
 
 	public: String ToStr();
 	public: ASTNode Simplify();
+	public: Int32 Accept(IASTVisitor& visitor);
 }; // end of struct ASTNode
 
 template<typename WrapperType, typename StorageType> WrapperType As(ASTNode inst);
@@ -171,10 +203,13 @@ class ASTNodeStorage : public std::enable_shared_from_this<ASTNodeStorage> {
 	public: virtual ~ASTNodeStorage() {}
 	public: virtual String ToStr() = 0;
 	public: virtual ASTNode Simplify() = 0;
+	public: virtual Int32 Accept(IASTVisitor& visitor) = 0;
 	// Each node type should override this to provide a string representation
 
 	// Simplify this node (constant folding and other optimizations)
 	// Returns a simplified version of this node (may be a new node, or this node unchanged)
+
+	// Visitor pattern: accept a visitor and return the result (e.g., register number)
 }; // end of class ASTNodeStorage
 
 
@@ -188,6 +223,8 @@ class NumberNodeStorage : public ASTNodeStorage {
 	public: String ToStr();
 
 	public: ASTNode Simplify();
+
+	public: Int32 Accept(IASTVisitor& visitor);
 }; // end of class NumberNodeStorage
 
 
@@ -201,6 +238,8 @@ class StringNodeStorage : public ASTNodeStorage {
 	public: String ToStr();
 
 	public: ASTNode Simplify();
+
+	public: Int32 Accept(IASTVisitor& visitor);
 }; // end of class StringNodeStorage
 
 
@@ -214,6 +253,8 @@ class IdentifierNodeStorage : public ASTNodeStorage {
 	public: String ToStr();
 
 	public: ASTNode Simplify();
+
+	public: Int32 Accept(IASTVisitor& visitor);
 }; // end of class IdentifierNodeStorage
 
 
@@ -228,6 +269,8 @@ class AssignmentNodeStorage : public ASTNodeStorage {
 	public: String ToStr();
 
 	public: ASTNode Simplify();
+
+	public: Int32 Accept(IASTVisitor& visitor);
 }; // end of class AssignmentNodeStorage
 
 
@@ -242,6 +285,8 @@ class UnaryOpNodeStorage : public ASTNodeStorage {
 	public: String ToStr();
 
 	public: ASTNode Simplify();
+
+	public: Int32 Accept(IASTVisitor& visitor);
 }; // end of class UnaryOpNodeStorage
 
 
@@ -257,6 +302,8 @@ class BinaryOpNodeStorage : public ASTNodeStorage {
 	public: String ToStr();
 
 	public: ASTNode Simplify();
+
+	public: Int32 Accept(IASTVisitor& visitor);
 }; // end of class BinaryOpNodeStorage
 
 
@@ -273,6 +320,8 @@ class CallNodeStorage : public ASTNodeStorage {
 	public: String ToStr();
 
 	public: ASTNode Simplify();
+
+	public: Int32 Accept(IASTVisitor& visitor);
 }; // end of class CallNodeStorage
 
 
@@ -287,6 +336,8 @@ class GroupNodeStorage : public ASTNodeStorage {
 	public: String ToStr();
 
 	public: ASTNode Simplify();
+
+	public: Int32 Accept(IASTVisitor& visitor);
 }; // end of class GroupNodeStorage
 
 
@@ -302,6 +353,8 @@ class ListNodeStorage : public ASTNodeStorage {
 	public: String ToStr();
 
 	public: ASTNode Simplify();
+
+	public: Int32 Accept(IASTVisitor& visitor);
 }; // end of class ListNodeStorage
 
 
@@ -318,6 +371,8 @@ class MapNodeStorage : public ASTNodeStorage {
 	public: String ToStr();
 
 	public: ASTNode Simplify();
+
+	public: Int32 Accept(IASTVisitor& visitor);
 }; // end of class MapNodeStorage
 
 
@@ -332,6 +387,8 @@ class IndexNodeStorage : public ASTNodeStorage {
 	public: String ToStr();
 
 	public: ASTNode Simplify();
+
+	public: Int32 Accept(IASTVisitor& visitor);
 }; // end of class IndexNodeStorage
 
 
@@ -346,6 +403,8 @@ class MemberNodeStorage : public ASTNodeStorage {
 	public: String ToStr();
 
 	public: ASTNode Simplify();
+
+	public: Int32 Accept(IASTVisitor& visitor);
 }; // end of class MemberNodeStorage
 
 
@@ -362,6 +421,8 @@ class MethodCallNodeStorage : public ASTNodeStorage {
 	public: String ToStr();
 
 	public: ASTNode Simplify();
+
+	public: Int32 Accept(IASTVisitor& visitor);
 }; // end of class MethodCallNodeStorage
 
 
@@ -381,6 +442,8 @@ struct NumberNode : public ASTNode {
 	public: String ToStr() { return get()->ToStr(); }
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
+
+	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct NumberNode
 
 
@@ -400,6 +463,8 @@ struct StringNode : public ASTNode {
 	public: String ToStr() { return get()->ToStr(); }
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
+
+	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct StringNode
 
 
@@ -419,6 +484,8 @@ struct IdentifierNode : public ASTNode {
 	public: String ToStr() { return get()->ToStr(); }
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
+
+	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct IdentifierNode
 
 
@@ -440,6 +507,8 @@ struct AssignmentNode : public ASTNode {
 	public: String ToStr() { return get()->ToStr(); }
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
+
+	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct AssignmentNode
 
 
@@ -461,6 +530,8 @@ struct UnaryOpNode : public ASTNode {
 	public: String ToStr() { return get()->ToStr(); }
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
+
+	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct UnaryOpNode
 
 
@@ -484,6 +555,8 @@ struct BinaryOpNode : public ASTNode {
 	public: String ToStr() { return get()->ToStr(); }
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
+
+	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct BinaryOpNode
 
 
@@ -509,6 +582,8 @@ struct CallNode : public ASTNode {
 	public: String ToStr() { return get()->ToStr(); }
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
+
+	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct CallNode
 
 
@@ -529,6 +604,8 @@ struct GroupNode : public ASTNode {
 	public: String ToStr() { return get()->ToStr(); }
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
+
+	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct GroupNode
 
 
@@ -552,6 +629,8 @@ struct ListNode : public ASTNode {
 	public: String ToStr() { return get()->ToStr(); }
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
+
+	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct ListNode
 
 
@@ -577,6 +656,8 @@ struct MapNode : public ASTNode {
 	public: String ToStr() { return get()->ToStr(); }
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
+
+	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct MapNode
 
 
@@ -598,6 +679,8 @@ struct IndexNode : public ASTNode {
 	public: String ToStr() { return get()->ToStr(); }
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
+
+	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct IndexNode
 
 
@@ -619,6 +702,8 @@ struct MemberNode : public ASTNode {
 	public: String ToStr() { return get()->ToStr(); }
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
+
+	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct MemberNode
 
 
@@ -643,6 +728,8 @@ struct MethodCallNode : public ASTNode {
 	public: String ToStr() { return get()->ToStr(); }
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
+
+	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct MethodCallNode
 
 
@@ -651,6 +738,7 @@ struct MethodCallNode : public ASTNode {
 inline ASTNodeStorage* ASTNode::get() const { return static_cast<ASTNodeStorage*>(storage.get()); }
 inline String ASTNode::ToStr() { return get()->ToStr(); }
 inline ASTNode ASTNode::Simplify() { return get()->Simplify(); }
+inline Int32 ASTNode::Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 
 inline NumberNodeStorage* NumberNode::get() { return static_cast<NumberNodeStorage*>(storage.get()); }
 inline Double NumberNode::Value() { return get()->Value; }

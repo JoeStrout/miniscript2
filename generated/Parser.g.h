@@ -144,10 +144,7 @@ class MethodCallNodeStorage;
 
 
 
-
-// Parser: the main parsing engine.
-// Uses a Pratt parser algorithm with parselets to handle operator precedence.
-class ParserStorage : public std::enable_shared_from_this<ParserStorage>, IParser {
+class ParserStorage : public std::enable_shared_from_this<ParserStorage>, public IParser {
 	friend struct Parser;
 	private: Lexer _lexer;
 	private: Token _current;
@@ -212,8 +209,13 @@ class ParserStorage : public std::enable_shared_from_this<ParserStorage>, IParse
 // Uses a Pratt parser algorithm with parselets to handle operator precedence.
 struct Parser : public IParser {
 	protected: std::shared_ptr<ParserStorage> storage;
-	public: Parser(std::shared_ptr<ParserStorage> stor) : storage(stor) {}
-	private: ParserStorage* get();
+  public:
+	Parser(std::shared_ptr<ParserStorage> stor) : storage(stor) {}
+	Parser() : storage(nullptr) {}
+	Parser(std::nullptr_t) : storage(nullptr) {}
+	friend bool IsNull(const Parser& inst) { return inst.storage == nullptr; }
+	private: ParserStorage* get() const;
+
 	private: Lexer _lexer();
 	private: void set__lexer(Lexer _v);
 	private: Token _current();
@@ -283,7 +285,7 @@ struct Parser : public IParser {
 
 // INLINE METHODS
 
-inline ParserStorage* Parser::get() { return static_cast<ParserStorage*>(storage.get()); }
+inline ParserStorage* Parser::get() const { return static_cast<ParserStorage*>(storage.get()); }
 inline Lexer Parser::_lexer() { return get()->_lexer; }
 inline void Parser::set__lexer(Lexer _v) { get()->_lexer = _v; }
 inline Token Parser::_current() { return get()->_current; }

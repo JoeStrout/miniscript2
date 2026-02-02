@@ -158,13 +158,14 @@ struct CodeEmitterBase {
   public:
 	CodeEmitterBase(std::shared_ptr<CodeEmitterBaseStorage> stor) : storage(stor) {}
 	CodeEmitterBase() : storage(nullptr) {}
-	friend bool IsNull(CodeEmitterBase inst) { return inst.storage == nullptr; }
+	CodeEmitterBase(std::nullptr_t) : storage(nullptr) {}
+	friend bool IsNull(const CodeEmitterBase& inst) { return inst.storage == nullptr; }
 	private: CodeEmitterBaseStorage* get() const;
 	template<typename WrapperType, typename StorageType>
 	friend WrapperType As(CodeEmitterBase inst) {
-		StorageType* stor = dynamic_cast<StorageType*>(inst.storage.get());
+		auto stor = std::dynamic_pointer_cast<StorageType>(inst.storage);
 		if (stor == nullptr) return WrapperType(nullptr);
-		return WrapperType(inst.storage);
+		return WrapperType(stor); 
 	}
 
 	public: void Emit(Opcode op, String comment); // INS: opcode only
@@ -183,6 +184,7 @@ struct CodeEmitterBase {
 template<typename WrapperType, typename StorageType> WrapperType As(CodeEmitterBase inst);
 
 class CodeEmitterBaseStorage : public std::enable_shared_from_this<CodeEmitterBaseStorage> {
+	friend struct CodeEmitterBase;
 	public: virtual ~CodeEmitterBaseStorage() {}
 	public: virtual void Emit(Opcode op, String comment) = 0; // INS: opcode only
 	public: virtual void EmitA(Opcode op, Int32 a, String comment) = 0; // INS_A: 8-bit A field
@@ -207,9 +209,6 @@ class CodeEmitterBaseStorage : public std::enable_shared_from_this<CodeEmitterBa
 	// Finalize and return the compiled function
 }; // end of class CodeEmitterBaseStorage
 
-
-
-// Emits directly to bytecode (production use)
 class BytecodeEmitterStorage : public CodeEmitterBaseStorage {
 	friend struct BytecodeEmitter;
 	private: List<UInt32> _code;
@@ -244,8 +243,6 @@ class BytecodeEmitterStorage : public CodeEmitterBaseStorage {
 	public: FuncDef Finalize(String name);
 }; // end of class BytecodeEmitterStorage
 
-
-// Emits assembly text (for debugging and testing)
 class AssemblyEmitterStorage : public CodeEmitterBaseStorage {
 	friend struct AssemblyEmitter;
 	private: List<String> _lines;
@@ -289,10 +286,11 @@ class AssemblyEmitterStorage : public CodeEmitterBaseStorage {
 
 // Emits directly to bytecode (production use)
 struct BytecodeEmitter : public CodeEmitterBase {
-	public: BytecodeEmitter(std::shared_ptr<CodeEmitterBaseStorage> stor) : CodeEmitterBase(stor) {}
+	BytecodeEmitter(std::shared_ptr<BytecodeEmitterStorage> stor);
+	BytecodeEmitter() : CodeEmitterBase() {}
 	BytecodeEmitter(std::nullptr_t) : CodeEmitterBase(nullptr) {}
-	BytecodeEmitter() : CodeEmitterBase(nullptr) {}
-	private: BytecodeEmitterStorage* get();
+	private: BytecodeEmitterStorage* get() const;
+
 	private: List<UInt32> _code();
 	private: void set__code(List<UInt32> _v);
 	private: List<Value> _constants();
@@ -336,10 +334,11 @@ struct BytecodeEmitter : public CodeEmitterBase {
 
 // Emits assembly text (for debugging and testing)
 struct AssemblyEmitter : public CodeEmitterBase {
-	public: AssemblyEmitter(std::shared_ptr<CodeEmitterBaseStorage> stor) : CodeEmitterBase(stor) {}
+	AssemblyEmitter(std::shared_ptr<AssemblyEmitterStorage> stor);
+	AssemblyEmitter() : CodeEmitterBase() {}
 	AssemblyEmitter(std::nullptr_t) : CodeEmitterBase(nullptr) {}
-	AssemblyEmitter() : CodeEmitterBase(nullptr) {}
-	private: AssemblyEmitterStorage* get();
+	private: AssemblyEmitterStorage* get() const;
+
 	private: List<String> _lines();
 	private: void set__lines(List<String> _v);
 	private: List<Value> _constants();
@@ -400,7 +399,8 @@ inline void CodeEmitterBase::EmitJump(Opcode op, Int32 labelId, String comment) 
 inline void CodeEmitterBase::ReserveRegister(Int32 registerNumber) { return get()->ReserveRegister(registerNumber); }
 inline FuncDef CodeEmitterBase::Finalize(String name) { return get()->Finalize(name); }
 
-inline BytecodeEmitterStorage* BytecodeEmitter::get() { return static_cast<BytecodeEmitterStorage*>(storage.get()); }
+inline BytecodeEmitter::BytecodeEmitter(std::shared_ptr<BytecodeEmitterStorage> stor) : CodeEmitterBase(stor) {}
+inline BytecodeEmitterStorage* BytecodeEmitter::get() const { return static_cast<BytecodeEmitterStorage*>(storage.get()); }
 inline List<UInt32> BytecodeEmitter::_code() { return get()->_code; }
 inline void BytecodeEmitter::set__code(List<UInt32> _v) { get()->_code = _v; }
 inline List<Value> BytecodeEmitter::_constants() { return get()->_constants; }
@@ -414,7 +414,8 @@ inline void BytecodeEmitter::set__labelRefs(List<LabelRef> _v) { get()->_labelRe
 inline Int32 BytecodeEmitter::_nextLabelId() { return get()->_nextLabelId; }
 inline void BytecodeEmitter::set__nextLabelId(Int32 _v) { get()->_nextLabelId = _v; }
 
-inline AssemblyEmitterStorage* AssemblyEmitter::get() { return static_cast<AssemblyEmitterStorage*>(storage.get()); }
+inline AssemblyEmitter::AssemblyEmitter(std::shared_ptr<AssemblyEmitterStorage> stor) : CodeEmitterBase(stor) {}
+inline AssemblyEmitterStorage* AssemblyEmitter::get() const { return static_cast<AssemblyEmitterStorage*>(storage.get()); }
 inline List<String> AssemblyEmitter::_lines() { return get()->_lines; }
 inline void AssemblyEmitter::set__lines(List<String> _v) { get()->_lines = _v; }
 inline List<Value> AssemblyEmitter::_constants() { return get()->_constants; }

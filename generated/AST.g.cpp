@@ -37,11 +37,11 @@ String NumberNodeStorage::ToStr() {
 	return Interp("{}", Value);
 }
 ASTNode NumberNodeStorage::Simplify() {
-	NumberNode _this(shared_from_this());
+	NumberNode _this(std::static_pointer_cast<NumberNodeStorage>(shared_from_this()));
 	return _this;
 }
 Int32 NumberNodeStorage::Accept(IASTVisitor& visitor) {
-	NumberNode _this(shared_from_this());
+	NumberNode _this(std::static_pointer_cast<NumberNodeStorage>(shared_from_this()));
 	return visitor.Visit(_this);
 }
 
@@ -53,11 +53,11 @@ String StringNodeStorage::ToStr() {
 	return "\"" + Value + "\"";
 }
 ASTNode StringNodeStorage::Simplify() {
-	StringNode _this(shared_from_this());
+	StringNode _this(std::static_pointer_cast<StringNodeStorage>(shared_from_this()));
 	return _this;
 }
 Int32 StringNodeStorage::Accept(IASTVisitor& visitor) {
-	StringNode _this(shared_from_this());
+	StringNode _this(std::static_pointer_cast<StringNodeStorage>(shared_from_this()));
 	return visitor.Visit(_this);
 }
 
@@ -69,11 +69,11 @@ String IdentifierNodeStorage::ToStr() {
 	return Name;
 }
 ASTNode IdentifierNodeStorage::Simplify() {
-	IdentifierNode _this(shared_from_this());
+	IdentifierNode _this(std::static_pointer_cast<IdentifierNodeStorage>(shared_from_this()));
 	return _this;
 }
 Int32 IdentifierNodeStorage::Accept(IASTVisitor& visitor) {
-	IdentifierNode _this(shared_from_this());
+	IdentifierNode _this(std::static_pointer_cast<IdentifierNodeStorage>(shared_from_this()));
 	return visitor.Visit(_this);
 }
 
@@ -90,7 +90,7 @@ ASTNode AssignmentNodeStorage::Simplify() {
 	return  AssignmentNode::New(Variable, simplifiedValue);
 }
 Int32 AssignmentNodeStorage::Accept(IASTVisitor& visitor) {
-	AssignmentNode _this(shared_from_this());
+	AssignmentNode _this(std::static_pointer_cast<AssignmentNodeStorage>(shared_from_this()));
 	return visitor.Visit(_this);
 }
 
@@ -119,7 +119,7 @@ ASTNode UnaryOpNodeStorage::Simplify() {
 	return  UnaryOpNode::New(Op, simplifiedOperand);
 }
 Int32 UnaryOpNodeStorage::Accept(IASTVisitor& visitor) {
-	UnaryOpNode _this(shared_from_this());
+	UnaryOpNode _this(std::static_pointer_cast<UnaryOpNodeStorage>(shared_from_this()));
 	return visitor.Visit(_this);
 }
 
@@ -176,7 +176,7 @@ ASTNode BinaryOpNodeStorage::Simplify() {
 	return  BinaryOpNode::New(Op, simplifiedLeft, simplifiedRight);
 }
 Int32 BinaryOpNodeStorage::Accept(IASTVisitor& visitor) {
-	BinaryOpNode _this(shared_from_this());
+	BinaryOpNode _this(std::static_pointer_cast<BinaryOpNodeStorage>(shared_from_this()));
 	return visitor.Visit(_this);
 }
 
@@ -206,7 +206,7 @@ ASTNode CallNodeStorage::Simplify() {
 	return  CallNode::New(Function, simplifiedArgs);
 }
 Int32 CallNodeStorage::Accept(IASTVisitor& visitor) {
-	CallNode _this(shared_from_this());
+	CallNode _this(std::static_pointer_cast<CallNodeStorage>(shared_from_this()));
 	return visitor.Visit(_this);
 }
 
@@ -222,7 +222,7 @@ ASTNode GroupNodeStorage::Simplify() {
 	return Expression.Simplify();
 }
 Int32 GroupNodeStorage::Accept(IASTVisitor& visitor) {
-	GroupNode _this(shared_from_this());
+	GroupNode _this(std::static_pointer_cast<GroupNodeStorage>(shared_from_this()));
 	return visitor.Visit(_this);
 }
 
@@ -250,7 +250,7 @@ ASTNode ListNodeStorage::Simplify() {
 	return  ListNode::New(simplifiedElements);
 }
 Int32 ListNodeStorage::Accept(IASTVisitor& visitor) {
-	ListNode _this(shared_from_this());
+	ListNode _this(std::static_pointer_cast<ListNodeStorage>(shared_from_this()));
 	return visitor.Visit(_this);
 }
 
@@ -282,7 +282,7 @@ ASTNode MapNodeStorage::Simplify() {
 	return  MapNode::New(simplifiedKeys, simplifiedValues);
 }
 Int32 MapNodeStorage::Accept(IASTVisitor& visitor) {
-	MapNode _this(shared_from_this());
+	MapNode _this(std::static_pointer_cast<MapNodeStorage>(shared_from_this()));
 	return visitor.Visit(_this);
 }
 
@@ -298,7 +298,7 @@ ASTNode IndexNodeStorage::Simplify() {
 	return  IndexNode::New(Target.Simplify(), Index.Simplify());
 }
 Int32 IndexNodeStorage::Accept(IASTVisitor& visitor) {
-	IndexNode _this(shared_from_this());
+	IndexNode _this(std::static_pointer_cast<IndexNodeStorage>(shared_from_this()));
 	return visitor.Visit(_this);
 }
 
@@ -314,7 +314,7 @@ ASTNode MemberNodeStorage::Simplify() {
 	return  MemberNode::New(Target.Simplify(), Member);
 }
 Int32 MemberNodeStorage::Accept(IASTVisitor& visitor) {
-	MemberNode _this(shared_from_this());
+	MemberNode _this(std::static_pointer_cast<MemberNodeStorage>(shared_from_this()));
 	return visitor.Visit(_this);
 }
 
@@ -341,7 +341,7 @@ ASTNode MethodCallNodeStorage::Simplify() {
 	return  MethodCallNode::New(Target.Simplify(), Method, simplifiedArgs);
 }
 Int32 MethodCallNodeStorage::Accept(IASTVisitor& visitor) {
-	MethodCallNode _this(shared_from_this());
+	MethodCallNode _this(std::static_pointer_cast<MethodCallNodeStorage>(shared_from_this()));
 	return visitor.Visit(_this);
 }
 

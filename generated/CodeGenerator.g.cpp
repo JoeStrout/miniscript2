@@ -55,11 +55,11 @@ void CodeGeneratorStorage::FreeReg(Int32 reg) {
 	}
 }
 Int32 CodeGeneratorStorage::Compile(ASTNode ast) {
-	CodeGenerator _this(shared_from_this());
+	CodeGenerator _this(std::static_pointer_cast<CodeGeneratorStorage>(shared_from_this()));
 	return ast.Accept(_this);
 }
 FuncDef CodeGeneratorStorage::CompileFunction(ASTNode ast, String funcName) {
-	CodeGenerator _this(shared_from_this());
+	CodeGenerator _this(std::static_pointer_cast<CodeGeneratorStorage>(shared_from_this()));
 	_regInUse.Clear();
 	_firstAvailable = 0;
 	_maxRegUsed = -1;
@@ -103,7 +103,7 @@ Int32 CodeGeneratorStorage::Visit(IdentifierNode node) {
 	return reg;
 }
 Int32 CodeGeneratorStorage::Visit(AssignmentNode node) {
-	CodeGenerator _this(shared_from_this());
+	CodeGenerator _this(std::static_pointer_cast<CodeGeneratorStorage>(shared_from_this()));
 	// For now, assignment is not fully supported (requires variable scope)
 	// Compile the value expression and return its register
 	Int32 valueReg = node.Value().Accept(_this);
@@ -111,7 +111,7 @@ Int32 CodeGeneratorStorage::Visit(AssignmentNode node) {
 	return valueReg;
 }
 Int32 CodeGeneratorStorage::Visit(UnaryOpNode node) {
-	CodeGenerator _this(shared_from_this());
+	CodeGenerator _this(std::static_pointer_cast<CodeGeneratorStorage>(shared_from_this()));
 	Int32 operandReg = node.Operand().Accept(_this);
 
 	if (node.Op() == Op::MINUS) {
@@ -137,7 +137,7 @@ Int32 CodeGeneratorStorage::Visit(UnaryOpNode node) {
 	return operandReg;
 }
 Int32 CodeGeneratorStorage::Visit(BinaryOpNode node) {
-	CodeGenerator _this(shared_from_this());
+	CodeGenerator _this(std::static_pointer_cast<CodeGeneratorStorage>(shared_from_this()));
 	Int32 resultReg = AllocReg();
 	Int32 leftReg = node.Left().Accept(_this);
 	Int32 rightReg = node.Right().Accept(_this);
@@ -219,12 +219,12 @@ Int32 CodeGeneratorStorage::Visit(CallNode node) {
 	return reg;
 }
 Int32 CodeGeneratorStorage::Visit(GroupNode node) {
-	CodeGenerator _this(shared_from_this());
+	CodeGenerator _this(std::static_pointer_cast<CodeGeneratorStorage>(shared_from_this()));
 	// Groups just delegate to their inner expression
 	return node.Expression().Accept(_this);
 }
 Int32 CodeGeneratorStorage::Visit(ListNode node) {
-	CodeGenerator _this(shared_from_this());
+	CodeGenerator _this(std::static_pointer_cast<CodeGeneratorStorage>(shared_from_this()));
 	// Create a list with the given number of elements
 	Int32 listReg = AllocReg();
 	Int32 count = node.Elements().Count();
@@ -240,7 +240,7 @@ Int32 CodeGeneratorStorage::Visit(ListNode node) {
 	return listReg;
 }
 Int32 CodeGeneratorStorage::Visit(MapNode node) {
-	CodeGenerator _this(shared_from_this());
+	CodeGenerator _this(std::static_pointer_cast<CodeGeneratorStorage>(shared_from_this()));
 	// Create a map
 	Int32 mapReg = AllocReg();
 	Int32 count = node.Keys().Count();
@@ -258,7 +258,7 @@ Int32 CodeGeneratorStorage::Visit(MapNode node) {
 	return mapReg;
 }
 Int32 CodeGeneratorStorage::Visit(IndexNode node) {
-	CodeGenerator _this(shared_from_this());
+	CodeGenerator _this(std::static_pointer_cast<CodeGeneratorStorage>(shared_from_this()));
 	Int32 resultReg = AllocReg();
 	Int32 targetReg = node.Target().Accept(_this);
 	Int32 indexReg = node.Index().Accept(_this);
@@ -271,7 +271,7 @@ Int32 CodeGeneratorStorage::Visit(IndexNode node) {
 	return resultReg;
 }
 Int32 CodeGeneratorStorage::Visit(MemberNode node) {
-	CodeGenerator _this(shared_from_this());
+	CodeGenerator _this(std::static_pointer_cast<CodeGeneratorStorage>(shared_from_this()));
 	// Member access not yet fully implemented
 	Int32 resultReg = AllocReg();
 	Int32 targetReg = node.Target().Accept(_this);

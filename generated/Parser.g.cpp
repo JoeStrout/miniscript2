@@ -100,7 +100,7 @@ Precedence ParserStorage::GetPrecedence() {
 	return Precedence::NONE;
 }
 ASTNode ParserStorage::ParseExpression(Precedence minPrecedence) {
-	Parser _this(shared_from_this());
+	Parser _this(std::static_pointer_cast<ParserStorage>(shared_from_this()));
 	Token token = _current;
 	Advance();
 

@@ -522,7 +522,6 @@ Transpiler.transformStatement = function(trimmedLine)
 			// using our storage-wrapper pattern), call the `New()` static method instead.
 			cl = self.findClass(tokens[i+2])  // (skipping space)
 			if cl and cl.type == ClassType.CLASS then
-				debugPrint "DEALING WITH ====> " + tokens + "[" + i + "]"
 				tokens.remove i  // remove "new"; i now points to " "
 				tok = tokens[i+1]  // should be something like `Foo` or `Dictionary<Foo, Bar>`
 				tokens[i+1] = tok + "::New"
@@ -555,7 +554,7 @@ Transpiler.transformStatement = function(trimmedLine)
 			// Ensure we have a _this local variable, then reference that in place of `this`.
 			if not self.curMethod.hasThisLocal then
 				self.curClass.methodLines.insert self.curClass.methodStartLine + 1, 
-				  TAB + self.curClass.name + " _this(shared_from_this());"
+				  "	≤name≥ _this(std::static_pointer_cast<≤name≥Storage>(shared_from_this()));".fill(self.curClass)
 				self.curMethod.hasThisLocal = true
 			end if
 			tokens[i] = "_this";
@@ -835,6 +834,84 @@ Transpiler.updateStateSTART = function
 	end if
 end function
 
+Transpiler.prepareRefClass = function
+	// Enter the CLASS state based on match terms in self.m.  This handles
+	// the various permutations: whether it has a base class (interface or
+	// otherwise), and whether it has any subclasses.
+	baseClass = ""
+	baseIsInterface = false
+	if self.m.hasIndex("baseClass") then
+		baseClass = self.m.baseClass
+		baseClassInfo = self.findClass(baseClass)
+		if baseClassInfo then
+			baseIsInterface = baseClassInfo.type == ClassType.INTERFACE
+		else
+			// If we can't find the base class -- perhaps because we haven't gotten
+			// to it yet -- then assume an interface if its name is like IWhatever.
+			baseIsInterface = (self.m.baseClass[0] == "I" and "A" <= self.m.baseClass[1] <= "Z")
+		end if
+	end if	
+	
+	self.enterState State.CLASS
+	// add any pre-class comments
+	self.curClass.wrapperLines += self.preLines; self.preLines = []
+	
+	// prepare the wrapper class
+	if baseClass and not baseIsInterface then
+		// With a (true) base class, we don't need to declare the storage pointer; and our
+		// constructors all need to call through to the base class.  But that does mean
+		// we have to defer fully defining the constructor until the inline section.
+		self.curClass.superclass = self.m.baseClass
+		self.curClass.wrapperLines.push self.fill("struct ≤name≥ : public ≤baseClass≥ {")
+		self.curClass.wrapperLines.push self.fill("	≤name≥(std::shared_ptr<≤name≥Storage> stor);")
+		self.curClass.inlineLines.push self.fill("inline ≤name≥::≤name≥(std::shared_ptr<≤name≥Storage> stor) : ≤baseClass≥(stor) {}")
+		self.curClass.wrapperLines.push self.fill("	≤name≥() : ≤baseClass≥() {}")
+		self.curClass.wrapperLines.push self.fill("	≤name≥(std::nullptr_t) : ≤baseClass≥(nullptr) {}")
+	else
+		// No base class (or just an interface): we need to declare the storage pointer and associated methods.
+		if baseClass then  // (just an interface in this case)
+			self.curClass.wrapperLines.push self.fill("struct ≤name≥ : public ≤baseClass≥ {")
+		else
+			self.curClass.wrapperLines.push self.fill("struct ≤name≥ {")
+		end if
+		self.curClass.wrapperLines.push self.fill("	protected: std::shared_ptr<≤name≥Storage> storage;")
+		self.curClass.wrapperLines.push "  public:"
+		self.curClass.wrapperLines.push self.fill("	≤name≥(std::shared_ptr<≤name≥Storage> stor) : storage(stor) {}")
+		self.curClass.wrapperLines.push self.fill("	≤name≥() : storage(nullptr) {}")
+		self.curClass.wrapperLines.push self.fill("	≤name≥(std::nullptr_t) : storage(nullptr) {}")
+		self.curClass.wrapperLines.push self.fill("	friend bool IsNull(const ≤name≥& inst) { return inst.storage == nullptr; }")
+	end if
+	
+	// every wrappr class needs a get() method, properly typed
+	self.curClass.wrapperLines.push self.fill("	private: ≤name≥Storage* get() const;")
+	self.curClass.inlineLines.push  self.fill("inline ≤name≥Storage* ≤className≥::get() const { return static_cast<≤name≥Storage*>(storage.get()); }")
+
+	// prepare the storage class
+	if baseIsInterface then
+		self.curClass.storageLines.push self.fill("class ≤name≥Storage : public std::enable_shared_from_this<≤name≥Storage>, public ≤baseClass≥ {")
+	else if baseClass then
+		self.curClass.storageLines.push self.fill("class ≤name≥Storage : public ≤baseClass≥Storage {")
+	else
+		self.curClass.storageLines.push self.fill("class ≤name≥Storage : public std::enable_shared_from_this<≤name≥Storage> {")
+	end if
+	self.curClass.storageLines.push self.fill("	friend struct ≤name≥;")
+	
+	// if this is the base of the class hierarchy, *and* we have any subclasses,
+	// then make an As method for downcasting to subclass types.
+	if not baseClass and self.subclassesOf(self.curClass) then
+		self.curClass.wrapperLines.push self.fill("	template<typename WrapperType, typename StorageType>")
+		self.curClass.wrapperLines.push self.fill("	friend WrapperType As(≤name≥ inst) {")
+		self.curClass.wrapperLines.push self.fill("		auto stor = std::dynamic_pointer_cast<StorageType>(inst.storage);")
+		self.curClass.wrapperLines.push self.fill("		if (stor == nullptr) return WrapperType(nullptr);")
+		self.curClass.wrapperLines.push self.fill("		return WrapperType(stor); ")
+		self.curClass.wrapperLines.push self.fill("	}")
+		// and in this case, we also need a virtual destructor
+		self.curClass.storageLines.push self.fill("	public: virtual ~≤name≥Storage() {}")
+	end if
+	self.curClass.wrapperLines.push ""
+
+end function
+
 Transpiler.updateStateNAMESPACE = function
 	line = self.line
 	comment = self.line.comment
@@ -857,105 +934,13 @@ Transpiler.updateStateNAMESPACE = function
 		self.curClass.type = ClassType.STRUCT
 		self.curClass.declLines += self.preLines; self.preLines = []
 		self.curClass.declLines.push self.fill("struct ≤name≥ {")
-	// class (simple or base class)
-	else if self.match("≤scope:w≥ class ≤name:w≥ {") then
-		self.enterState State.CLASS
-		self.curClass.wrapperLines += self.preLines; self.preLines = []
-		self.curClass.wrapperLines.push self.fill("struct ≤name≥ {")
-		self.curClass.wrapperLines.push self.fill("	protected: std::shared_ptr<≤name≥Storage> storage;")
-		self.curClass.wrapperLines.push "  public:"
-		self.curClass.wrapperLines.push self.fill("	≤name≥(std::shared_ptr<≤name≥Storage> stor) : storage(stor) {}")
-		self.curClass.wrapperLines.push self.fill("	≤name≥() : storage(nullptr) {}")
-		self.curClass.wrapperLines.push self.fill("	≤name≥(std::nullptr_t) : storage(nullptr) {}")
-		// Note: we no longer implicitly make a New() method (serving as implicit constructor);
-		// every class you might instantiate directly needs an explicit constructor.
-		//self.curClass.wrapperLines.push self.fill("	static ≤name≥ New() { return ≤name≥(std::make_shared<≤name≥Storage>()); }")
-		self.curClass.wrapperLines.push self.fill("	friend bool IsNull(const ≤name≥& inst) { return inst.storage == nullptr; }")
-		self.curClass.wrapperLines.push self.fill("	private: ≤name≥Storage* get() const;")
-		self.curClass.inlineLines.push  self.fill("inline ≤name≥Storage* ≤className≥::get() const { return static_cast<≤name≥Storage*>(storage.get()); }")
-		self.curClass.storageLines.push self.fill("class ≤name≥Storage : public std::enable_shared_from_this<≤name≥Storage> {")
-		self.curClass.storageLines.push self.fill("	friend struct ≤name≥;")
-		if self.subclassesOf(self.curClass) then
-			self.curClass.wrapperLines.push self.fill("	template<typename WrapperType, typename StorageType>")
-			self.curClass.wrapperLines.push self.fill("	friend WrapperType As(≤name≥ inst) {")
-			self.curClass.wrapperLines.push self.fill("		StorageType* stor = dynamic_cast<StorageType*>(inst.storage.get());")
-			self.curClass.wrapperLines.push self.fill("		if (stor == nullptr) return WrapperType(nullptr);")
-			self.curClass.wrapperLines.push self.fill("		return WrapperType(inst.storage);")
-			self.curClass.wrapperLines.push self.fill("	}")
-			self.curClass.storageLines.push self.fill("	public: virtual ~≤name≥Storage() {}")
-		end if
-		self.curClass.wrapperLines.push ""
-	// class (abstract)
-	else if self.match("≤scope:w≥ abstract class ≤name:w≥ {") or
-	        self.match("≤scope:w≥ abstract class ≤name:w≥ : ≤baseClass≥ {") then
-		self.enterState State.CLASS
-		// wrapper class (we'll take care to write this one out before all storage classes later)
-		self.curClass.wrapperLines += self.preLines; self.preLines = []
-		if self.m.hasIndex("baseClass") then
-			self.curClass.superclass = self.m.baseClass
-			self.curClass.wrapperLines.push self.fill("struct ≤name≥ : public ≤baseClass≥ {")
-		else
-			self.curClass.wrapperLines.push self.fill("struct ≤name≥ {")
-		end if
-		self.curClass.wrapperLines.push self.fill("	protected: std::shared_ptr<≤name≥Storage> storage;")
-		self.curClass.wrapperLines.push "  public:"
-		self.curClass.wrapperLines.push self.fill("	≤name≥(std::shared_ptr<≤name≥Storage> stor) : storage(stor) {}")
-		self.curClass.wrapperLines.push self.fill("	≤name≥() : storage(nullptr) {}")
-		self.curClass.wrapperLines.push self.fill("	≤name≥(std::nullptr_t) : storage(nullptr) {}")
-		self.curClass.wrapperLines.push self.fill("	friend bool IsNull(≤name≥ inst) { return inst.storage == nullptr; }")
-		self.curClass.wrapperLines.push self.fill("	private: ≤name≥Storage* get() const;")
-		self.curClass.inlineLines.push  self.fill("inline ≤name≥Storage* ≤name≥::get() const { return static_cast<≤name≥Storage*>(storage.get()); }")
-		// (as this is an abstract class, we assume there must be subclasses!)
-		self.curClass.wrapperLines.push self.fill("	template<typename WrapperType, typename StorageType>")
-		self.curClass.wrapperLines.push self.fill("	friend WrapperType As(≤name≥ inst) {")
-		self.curClass.wrapperLines.push self.fill("		StorageType* stor = dynamic_cast<StorageType*>(inst.storage.get());")
-		self.curClass.wrapperLines.push self.fill("		if (stor == nullptr) return WrapperType(nullptr);")
-		self.curClass.wrapperLines.push self.fill("		return WrapperType(inst.storage);")
-		self.curClass.wrapperLines.push self.fill("	}")
-		self.curClass.wrapperLines.push ""
-		if self.m.hasIndex("baseClass") then
-			self.curClass.storageLines.push self.fill("class ≤name≥Storage : public std::enable_shared_from_this<≤name≥Storage>, public ≤baseClass≥Storage {")
-		else
-			self.curClass.storageLines.push self.fill("class ≤name≥Storage : public std::enable_shared_from_this<≤name≥Storage> {")
-		end if
-		self.curClass.storageLines.push self.fill("	public: virtual ~≤name≥Storage() {}")
 		
-	// class (subclass)
-	else if self.match("≤scope:w≥ class ≤name:w≥ : ≤baseClass≥ {") then
-		self.enterState State.CLASS
-		self.curClass.superclass = self.m.baseClass
-		baseClass = self.findClass(self.m.baseClass)
-		if baseClass then
-			baseIsInterface = baseClass.type == ClassType.INTERFACE
-		else
-			// If we can't find the base class -- perhaps because we haven't gotten
-			// to it yet -- then assume an interface if its name is like IWhatever.
-			baseIsInterface = (self.m.baseClass[0] == "I" and "A" <= self.m.baseClass[1] <= "Z")
-		end if
-		// subclasses: first a storage class, in the storage lines...
-		self.curClass.storageLines += self.preLines
-		if baseIsInterface then
-			self.curClass.storageLines.push self.fill("class ≤name≥Storage : public std::enable_shared_from_this<≤name≥Storage>, public ≤baseClass≥ {")
-		else
-			self.curClass.storageLines.push self.fill("class ≤name≥Storage : public ≤baseClass≥Storage {")
-		end if
-		self.curClass.storageLines.push self.fill("	friend struct ≤name≥;")
-		// ...and then a wrapper class too
-		self.curClass.wrapperLines += self.preLines; self.preLines = []
-		self.curClass.wrapperLines.push self.fill("struct ≤name≥ : public ≤baseClass≥ {")
-		if baseIsInterface then
-			self.curClass.wrapperLines.push self.fill("	protected: std::shared_ptr<≤name≥Storage> storage;")
-			self.curClass.wrapperLines.push self.fill("	public: ≤name≥(std::shared_ptr<≤name≥Storage> stor) : storage(stor) {}")
-		else
-			self.curClass.wrapperLines.push self.fill("	public: ≤name≥(std::shared_ptr<≤baseClass≥Storage> stor) : ≤baseClass≥(stor) {}")
-			self.curClass.wrapperLines.push self.fill("	≤name≥(std::nullptr_t) : ≤baseClass≥(nullptr) {}")
-			self.curClass.wrapperLines.push self.fill("	≤name≥() : ≤baseClass≥(nullptr) {}")
-		end if
-		// Note: we no longer implicitly make a New() method (serving as implicit constructor);
-		// every class you might instantiate directly needs an explicit constructor.
-		//self.curClass.wrapperLines.push self.fill("	static ≤name≥ New() { return ≤name≥(std::make_shared<≤name≥Storage>()); }")
-		self.curClass.wrapperLines.push self.fill("	private: ≤name≥Storage* get();")
-		self.curClass.inlineLines.push  self.fill("inline ≤name≥Storage* ≤className≥::get() { return static_cast<≤name≥Storage*>(storage.get()); }")
+	// class (reference type -- becomes a storage class + wrapper)
+	else if self.match("≤scope:w≥ class ≤name:w≥ {") or
+	        self.match("≤scope:w≥ class ≤name:w≥ : ≤baseClass≥ {") or
+	        self.match("≤scope:w≥ abstract class ≤name:w≥ {") or
+	        self.match("≤scope:w≥ abstract class ≤name:w≥ : ≤baseClass≥ {") then
+		self.prepareRefClass
 
 	// class interface
 	else if self.match("≤scope:w≥ interface ≤name:w≥ {") then

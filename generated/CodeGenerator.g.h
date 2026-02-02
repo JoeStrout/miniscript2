@@ -142,9 +142,7 @@ class MethodCallNodeStorage;
 
 
 
-
-// Compiles AST nodes to bytecode
-class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorStorage>, IASTVisitor {
+class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorStorage>, public IASTVisitor {
 	friend struct CodeGenerator;
 	private: CodeEmitterBase _emitter;
 	private: List<Boolean> _regInUse; // Which registers are currently in use
@@ -199,8 +197,13 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 // Compiles AST nodes to bytecode
 struct CodeGenerator : public IASTVisitor {
 	protected: std::shared_ptr<CodeGeneratorStorage> storage;
-	public: CodeGenerator(std::shared_ptr<CodeGeneratorStorage> stor) : storage(stor) {}
-	private: CodeGeneratorStorage* get();
+  public:
+	CodeGenerator(std::shared_ptr<CodeGeneratorStorage> stor) : storage(stor) {}
+	CodeGenerator() : storage(nullptr) {}
+	CodeGenerator(std::nullptr_t) : storage(nullptr) {}
+	friend bool IsNull(const CodeGenerator& inst) { return inst.storage == nullptr; }
+	private: CodeGeneratorStorage* get() const;
+
 	private: CodeEmitterBase _emitter();
 	private: void set__emitter(CodeEmitterBase _v);
 	private: List<Boolean> _regInUse(); // Which registers are currently in use
@@ -259,7 +262,7 @@ struct CodeGenerator : public IASTVisitor {
 
 // INLINE METHODS
 
-inline CodeGeneratorStorage* CodeGenerator::get() { return static_cast<CodeGeneratorStorage*>(storage.get()); }
+inline CodeGeneratorStorage* CodeGenerator::get() const { return static_cast<CodeGeneratorStorage*>(storage.get()); }
 inline CodeEmitterBase CodeGenerator::_emitter() { return get()->_emitter; }
 inline void CodeGenerator::set__emitter(CodeEmitterBase _v) { get()->_emitter = _v; }
 inline List<Boolean> CodeGenerator::_regInUse() { return get()->_regInUse; } // Which registers are currently in use

@@ -263,4 +263,8 @@ While working on that, discovered a snag.  We have interfaces defined for ICodeE
 
 So, I'm changing ICodeEmitter to CodeEmitterBase, and making it a true base class.  Then it can contain the storage (smart pointer), and everything should Just Work™️.   ...OK, that's all sorted out now.
 
+So, the miniscript2 executable now accepts a .ms file (OR a .msa file), which it compiles and runs and prints the output of.  Or you can give it some code after a "-c" argument, just like Python.  Neat!
 
+However this has exposed some bug in the C++ code; it's now segfaulting inside the unit tests.  lldb shows that this is inside Parser::GetPrecedence, which has a bad pointer (value 0x18, probably some offset from a null pointer).
+
+Ah.  Turns out to be a flaw in the way wrapper classes were generated in some cases; the subclass had its own `storage` pointer, shadowing the base class one, which never got initialized.  I've refactored previously duplicate and twisty logic for those wrapper classes into a single, much neater `prepareRefClass` method in the transpiler, fixed the flaw, and now the C++ code is passing all tests.  Both builds now execute code (consisting of simple numeric expressions) given via -c or a .ms file.

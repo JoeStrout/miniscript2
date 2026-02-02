@@ -110,7 +110,7 @@ private:
 
 public:
 	// Constructor
-	Dictionary(uint8_t /*poolNum*/ = 0) : count(0) {}
+	Dictionary() : count(0) {}
 
     // Factory method - allocates (matches C# "new List<T>()")
     static Dictionary<TKey, TValue> New() {
@@ -136,6 +136,11 @@ public:
 
 	// Destructor
 	~Dictionary() = default;
+
+    // Check if dictionary is null (unallocated)
+    friend bool IsNull(const Dictionary<TKey, TValue>& dict) {
+        return dict.buckets == nullptr || dict.entries == nullptr;
+    }
 
 	// Properties
 	int Count() const {

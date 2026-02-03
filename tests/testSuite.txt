@@ -1,0 +1,56 @@
+==== MiniScript Integration Test Suite
+==== This file defines a number of small tests of basic MiniScript compiler
+==== and execution tests.  Lines that begin with `====` are comments, but
+==== also define test blocks.  A test block is one or more lines that do not
+==== start with `====`.  A test block is further divided into input and
+==== output, separated by a line starting with `----`.
+====
+==== The integration test runner should try each test with a fresh MiniScript
+==== context, and compare the actual output to the expected output, flagging
+==== a test failure if they do not match.
+====
+================================================================================
+==== Basic arithmetic, including order of operations
+================================================================================
+2+2
+--------------------------------
+4
+================================
+2 + 3 * 4  // * has higher precedence than +
+--------------------------------
+14
+================================
+(2 + 3)*4
+--------------------------------
+20
+================================
+2*3/4*28
+--------------------------------
+42
+================================
+5+2^3
+--------------------------------
+13
+================================
+-3+45
+--------------------------------
+42
+================================
+-3+45
+--------------------------------
+42
+================================
+10 % 7
+--------------------------------
+3
+================================
+// note: mod with negative left operand produces negative result
+-10 % 7  
+--------------------------------
+-3
+================================
+// ...but negating right operand has no effect
+10 % -7
+--------------------------------
+3
+

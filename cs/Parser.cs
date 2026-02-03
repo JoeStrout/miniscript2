@@ -88,9 +88,11 @@ public class Parser : IParser {
 		Advance();  // Prime the pump with the first token
 	}
 
-	// Advance to the next token
+	// Advance to the next token, skipping comments
 	private void Advance() {
-		_current = _lexer.NextToken();
+		do {
+			_current = _lexer.NextToken();
+		} while (_current.Type == TokenType.COMMENT);
 	}
 
 	// Check if current token matches the given type (without consuming)
@@ -170,6 +172,12 @@ public class Parser : IParser {
 	// Parse a complete expression from source code
 	public ASTNode Parse(String source) {
 		Init(source);
+
+		// Skip leading blank lines (EOL tokens)
+		while (_current.Type == TokenType.EOL) {
+			Advance();
+		}
+
 		ASTNode result = ParseExpression();
 
 		// Check for trailing tokens (except END_OF_INPUT)

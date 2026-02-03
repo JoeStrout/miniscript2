@@ -66,7 +66,9 @@ void ParserStorage::Init(String source) {
 	Advance();  // Prime the pump with the first token
 }
 void ParserStorage::Advance() {
-	_current = _lexer.NextToken();
+	do {
+		_current = _lexer.NextToken();
+	} while (_current.Type == TokenType::COMMENT);
 }
 Boolean ParserStorage::Check(TokenType type) {
 	return _current.Type == type;
@@ -131,6 +133,12 @@ ASTNode ParserStorage::ParseExpression() {
 }
 ASTNode ParserStorage::Parse(String source) {
 	Init(source);
+
+	// Skip leading blank lines (EOL tokens)
+	while (_current.Type == TokenType::EOL) {
+		Advance();
+	}
+
 	ASTNode result = ParseExpression();
 
 	// Check for trailing tokens (except END_OF_INPUT)

@@ -152,6 +152,12 @@ struct App {
 	// Assemble an assembly file (.msa) to a list of functions
 	private: static List<FuncDef> AssembleFile(String filePath);
 
+	// Run integration tests from a test suite file
+	public: static bool RunIntegrationTests(String filePath);
+
+	// Run a single integration test
+	private: static bool RunSingleTest(List<String> inputLines, List<String> expectedLines, Int32 lineNum);
+
 	// Run a program given its list of functions
 	private: static void RunProgram(List<FuncDef> functions);
 

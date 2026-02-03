@@ -8,6 +8,7 @@
 #include "gc.h"
 #include "Assembler.g.h"  // We really should automate this.
 #include "Parser.g.h"
+#include "Lexer.g.h"
 #include "AST.g.h"
 #include "CodeEmitter.g.h"
 #include "CodeGenerator.g.h"
@@ -662,11 +663,110 @@ Boolean UnitTests::TestEmitPatternValidation() {
 	}
 	return ok;
 }
+Boolean UnitTests::TestLexer() {
+	IOHelper::Print("  Testing lexer...");
+	Boolean ok = Boolean(true);
+
+	// Helper to check a single token
+	Lexer lexer;
+	Token tok;
+
+	// Test simple number
+	lexer = Lexer("42");
+	tok = lexer.NextToken();
+	ok = ok && Assert(tok.Type == TokenType::NUMBER, "Expected NUMBER token");
+	ok = ok && AssertEqual(tok.Text, "42");
+	ok = ok && AssertEqual(tok.IntValue, 42);
+
+	// Test float
+	lexer = Lexer("3.14");
+	tok = lexer.NextToken();
+	ok = ok && Assert(tok.Type == TokenType::NUMBER, "Expected NUMBER token for float");
+	ok = ok && AssertEqual(tok.Text, "3.14");
+
+	// Test string
+	lexer = Lexer("\"hello\"");
+	tok = lexer.NextToken();
+	ok = ok && Assert(tok.Type == TokenType::STRING, "Expected STRING token");
+	ok = ok && AssertEqual(tok.Text, "hello");
+
+	// Test identifier
+	lexer = Lexer("myVar");
+	tok = lexer.NextToken();
+	ok = ok && Assert(tok.Type == TokenType::IDENTIFIER, "Expected IDENTIFIER token");
+	ok = ok && AssertEqual(tok.Text, "myVar");
+
+	// Test operators
+	lexer = Lexer("+ - * / %");
+	ok = ok && Assert(lexer.NextToken().Type == TokenType::PLUS, "Expected PLUS");
+	ok = ok && Assert(lexer.NextToken().Type == TokenType::MINUS, "Expected MINUS");
+	ok = ok && Assert(lexer.NextToken().Type == TokenType::TIMES, "Expected TIMES");
+	ok = ok && Assert(lexer.NextToken().Type == TokenType::DIVIDE, "Expected DIVIDE");
+	ok = ok && Assert(lexer.NextToken().Type == TokenType::MOD, "Expected MOD");
+
+	// Test comparison operators
+	lexer = Lexer("== != < > <= >=");
+	ok = ok && Assert(lexer.NextToken().Type == TokenType::EQUALS, "Expected EQUALS");
+	ok = ok && Assert(lexer.NextToken().Type == TokenType::NOT_EQUAL, "Expected NOT_EQUAL");
+	ok = ok && Assert(lexer.NextToken().Type == TokenType::LESS_THAN, "Expected LESS_THAN");
+	ok = ok && Assert(lexer.NextToken().Type == TokenType::GREATER_THAN, "Expected GREATER_THAN");
+	ok = ok && Assert(lexer.NextToken().Type == TokenType::LESS_EQUAL, "Expected LESS_EQUAL");
+	ok = ok && Assert(lexer.NextToken().Type == TokenType::GREATER_EQUAL, "Expected GREATER_EQUAL");
+
+	// Test keywords
+	lexer = Lexer("and or not");
+	ok = ok && Assert(lexer.NextToken().Type == TokenType::AND, "Expected AND");
+	ok = ok && Assert(lexer.NextToken().Type == TokenType::OR, "Expected OR");
+	ok = ok && Assert(lexer.NextToken().Type == TokenType::NOT, "Expected NOT");
+
+	// Test comment at end of line
+	lexer = Lexer("42 // this is a comment");
+	tok = lexer.NextToken();
+	ok = ok && Assert(tok.Type == TokenType::NUMBER, "Expected NUMBER before comment");
+	ok = ok && AssertEqual(tok.Text, "42");
+	tok = lexer.NextToken();
+	ok = ok && Assert(tok.Type == TokenType::COMMENT, "Expected COMMENT token");
+	ok = ok && AssertEqual(tok.Text, "// this is a comment");
+
+	// Test comment-only line
+	lexer = Lexer("// just a comment");
+	tok = lexer.NextToken();
+	ok = ok && Assert(tok.Type == TokenType::COMMENT, "Expected COMMENT token for comment-only");
+	ok = ok && AssertEqual(tok.Text, "// just a comment");
+
+	// Test comment followed by newline and more code
+	lexer = Lexer("x // comment\ny");
+	tok = lexer.NextToken();
+	ok = ok && Assert(tok.Type == TokenType::IDENTIFIER, "Expected IDENTIFIER x");
+	ok = ok && AssertEqual(tok.Text, "x");
+	tok = lexer.NextToken();
+	ok = ok && Assert(tok.Type == TokenType::COMMENT, "Expected COMMENT");
+	tok = lexer.NextToken();
+	ok = ok && Assert(tok.Type == TokenType::EOL, "Expected EOL after comment");
+	tok = lexer.NextToken();
+	ok = ok && Assert(tok.Type == TokenType::IDENTIFIER, "Expected IDENTIFIER y");
+	ok = ok && AssertEqual(tok.Text, "y");
+
+	// Test division vs comment
+	lexer = Lexer("10 / 2");
+	tok = lexer.NextToken();
+	ok = ok && Assert(tok.Type == TokenType::NUMBER, "Expected NUMBER 10");
+	tok = lexer.NextToken();
+	ok = ok && Assert(tok.Type == TokenType::DIVIDE, "Expected DIVIDE, not COMMENT");
+	tok = lexer.NextToken();
+	ok = ok && Assert(tok.Type == TokenType::NUMBER, "Expected NUMBER 2");
+
+	if (ok) {
+		IOHelper::Print("  All lexer tests passed.");
+	}
+	return ok;
+}
 Boolean UnitTests::RunAll() {
 	return TestStringUtils()
 		&& TestDisassembler()
 		&& TestAssembler()
 		&& TestValueMap()
+		&& TestLexer()
 		&& TestParser()
 		&& TestCodeGenerator()
 		&& TestEmitPatternValidation();

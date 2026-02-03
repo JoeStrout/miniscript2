@@ -123,6 +123,17 @@ Token Lexer::NextToken() {
 		return Token(TokenType::GREATER_EQUAL, ">=", startLine, startColumn);
 	}
 
+	// Comments: // to end of line
+	if (c == '/' && _position + 1 < _input.Length() && _input[_position + 1] == '/') {
+		Int32 start = _position;
+		// Consume until end of line (but not the newline itself)
+		while (_position < _input.Length() && _input[_position] != '\n') {
+			Advance();
+		}
+		String text = _input.Substring(start, _position - start);
+		return Token(TokenType::COMMENT, text, startLine, startColumn);
+	}
+
 	// Single-character operators and punctuation
 	Advance();
 	switch (c) {

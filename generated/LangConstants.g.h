@@ -143,6 +143,7 @@ enum class TokenType : Int32 {
 	AND,
 	OR,
 	EOL,
+	COMMENT,
 	ERROR
 }; // end of enum TokenType
 

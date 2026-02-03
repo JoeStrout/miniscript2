@@ -268,3 +268,9 @@ So, the miniscript2 executable now accepts a .ms file (OR a .msa file), which it
 However this has exposed some bug in the C++ code; it's now segfaulting inside the unit tests.  lldb shows that this is inside Parser::GetPrecedence, which has a bad pointer (value 0x18, probably some offset from a null pointer).
 
 Ah.  Turns out to be a flaw in the way wrapper classes were generated in some cases; the subclass had its own `storage` pointer, shadowing the base class one, which never got initialized.  I've refactored previously duplicate and twisty logic for those wrapper classes into a single, much neater `prepareRefClass` method in the transpiler, fixed the flaw, and now the C++ code is passing all tests.  Both builds now execute code (consisting of simple numeric expressions) given via -c or a .ms file.
+
+
+## Feb 03, 2026
+
+Since we have code compiling & execution now, it's time to start on the integration test suite!  Rather than try to run the MiniScript 1.x TestSuite.txt, which would contain tons of stuff we don't support yet, I'm starting a new one.  I'll try to be more thorough and complete with it this time around, too.  This one is at tests/testSuite.txt, and it will be run automatically whenever miniscript2 is started with the -debug flag.
+

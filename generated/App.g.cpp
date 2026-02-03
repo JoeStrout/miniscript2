@@ -62,6 +62,10 @@ void App::MainProgram(List<String> args) {
 		IOHelper::Print("Running unit tests...");
 		if (!UnitTests::RunAll()) return;
 		IOHelper::Print("Unit tests complete.");
+
+		IOHelper::Print("Running integration tests...");
+		if (!RunIntegrationTests("tests/testSuite.txt")) return;
+		IOHelper::Print("Integration tests complete.");
 	}
 	
 	// Handle inline code (-c) or file argument
@@ -169,6 +173,144 @@ List<FuncDef> App::AssembleFile(String filePath) {
 	if (debugMode) IOHelper::Print("Assembly complete.");
 
 	return assembler.Functions();
+}
+bool App::RunIntegrationTests(String filePath) {
+	List<String> lines = IOHelper::ReadFile(filePath);
+	if (lines.Count() == 0) {
+		IOHelper::Print(StringUtils::Format("Could not read test file: {0}", filePath));
+		return Boolean(false);
+	}
+
+	Int32 testCount = 0;
+	Int32 passCount = 0;
+	Int32 failCount = 0;
+
+	// Parse and run tests
+	List<String> inputLines =  List<String>::New();
+	List<String> expectedLines =  List<String>::New();
+	bool inExpected = Boolean(false);
+	Int32 testStartLine = 0;
+
+	for (Int32 i = 0; i < lines.Count(); i++) {
+		String line = lines[i];
+
+		// Lines starting with ==== are comments/separators
+		if (line.StartsWith("====")) {
+			// If we have a pending test, run it
+			if (inputLines.Count() > 0) {
+				testCount++;
+				bool passed = RunSingleTest(inputLines, expectedLines, testStartLine);
+				if (passed) {
+					passCount++;
+				} else {
+					failCount++;
+				}
+			}
+			// Reset for next test
+			inputLines =  List<String>::New();
+			expectedLines =  List<String>::New();
+			inExpected = Boolean(false);
+			testStartLine = i + 2;  // Next line after this comment
+			continue;
+		}
+
+		// Lines starting with ---- separate input from expected output
+		if (line.StartsWith("----")) {
+			inExpected = Boolean(true);
+			continue;
+		}
+
+		// Accumulate lines
+		if (inExpected) {
+			expectedLines.Add(line);
+		} else {
+			inputLines.Add(line);
+		}
+	}
+
+	// Handle final test if file doesn't end with ====
+	if (inputLines.Count() > 0) {
+		testCount++;
+		bool passed = RunSingleTest(inputLines, expectedLines, testStartLine);
+		if (passed) {
+			passCount++;
+		} else {
+			failCount++;
+		}
+	}
+
+	// Report results
+	IOHelper::Print(StringUtils::Format("Integration tests: {0} passed, {1} failed, {2} total",
+		passCount, failCount, testCount));
+
+	return failCount == 0;
+}
+bool App::RunSingleTest(List<String> inputLines, List<String> expectedLines, Int32 lineNum) {
+	// Join input lines into source code
+	String source = "";
+	for (Int32 i = 0; i < inputLines.Count(); i++) {
+		if (i > 0) source += "\n";
+		source += inputLines[i];
+	}
+
+	// Skip empty tests
+	if (String::IsNullOrEmpty(source.Trim())) return Boolean(true);
+
+	// Compile the source
+	Parser parser =  Parser::New();
+	ASTNode ast = parser.Parse(source);
+
+	if (parser.HadError()) {
+		IOHelper::Print(StringUtils::Format("FAIL (line {0}): Parse error in: {1}", lineNum, source));
+		return Boolean(false);
+	}
+
+	// Simplify the AST
+	ast = ast.Simplify();
+
+	// Compile to bytecode
+	BytecodeEmitter emitter =  BytecodeEmitter::New();
+	CodeGenerator generator =  CodeGenerator::New(emitter);
+	FuncDef mainFunc = generator.CompileFunction(ast, "@main");
+
+	List<FuncDef> functions =  List<FuncDef>::New();
+	functions.Add(mainFunc);
+
+	// Run the program
+	VM vm =  VM::New();
+	vm.Reset(functions);
+	GC_PUSH_SCOPE();
+	Value result = vm.Run(); GC_PROTECT(&result);
+
+	// Check for runtime errors
+	if (!String::IsNullOrEmpty(vm.RuntimeError())) {
+		IOHelper::Print(StringUtils::Format("FAIL (line {0}): Runtime error: {1}", lineNum, vm.RuntimeError()));
+		IOHelper::Print(StringUtils::Format("  Source: {0}", source));
+		GC_POP_SCOPE();
+		return Boolean(false);
+	}
+
+	// Get expected output (join lines, trim trailing empty lines)
+	String expected = "";
+	for (Int32 i = 0; i < expectedLines.Count(); i++) {
+		if (i > 0) expected += "\n";
+		expected += expectedLines[i];
+	}
+	expected = expected.Trim();
+
+	// Compare result to expected
+	String actual = StringUtils::Format("{0}", result);
+
+	if (actual != expected) {
+		IOHelper::Print(StringUtils::Format("FAIL (line {0}): {1}", lineNum, source));
+		IOHelper::Print(StringUtils::Format("  Expected: {0}", expected));
+		IOHelper::Print(StringUtils::Format("  Actual:   {0}", actual));
+		GC_POP_SCOPE();
+		return Boolean(false);
+	}
+
+	GC_POP_SCOPE();
+	return Boolean(true);
 }
 void App::RunProgram(List<FuncDef> functions) {
 	// Disassemble and print program (debug only)

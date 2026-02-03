@@ -134,6 +134,8 @@ class UnitTests {
 
 	public: static Boolean TestEmitPatternValidation();
 
+	public: static Boolean TestLexer();
+
 	public: static Boolean RunAll();
 }; // end of struct UnitTests
 

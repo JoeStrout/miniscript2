@@ -167,7 +167,7 @@ class ParserStorage : public std::enable_shared_from_this<ParserStorage>, public
 	// Initialize the parser with source code
 	public: void Init(String source);
 
-	// Advance to the next token
+	// Advance to the next token, skipping comments
 	private: void Advance();
 
 	// Check if current token matches the given type (without consuming)
@@ -245,7 +245,7 @@ struct Parser : public IParser {
 	// Initialize the parser with source code
 	public: void Init(String source) { return get()->Init(source); }
 
-	// Advance to the next token
+	// Advance to the next token, skipping comments
 	private: void Advance() { return get()->Advance(); }
 
 	// Check if current token matches the given type (without consuming)

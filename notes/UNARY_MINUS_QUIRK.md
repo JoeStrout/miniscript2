@@ -28,9 +28,21 @@ The table below shows some concrete examples.
 |Statement|Interpretation|
 |---------|--------------|
 |`a - b` | subtraction |
-|`a- b' | subtraction |
+|`a- b` | subtraction |
 |`a-b` | subtraction |
 |`a -b` | `a(-b)` |
 |`-b` | negation |
 |`- b` | negation |
 
+
+## MiniScript 1.x Implementation
+
+The MiniScript 1 parser handled this by having the tokenizer set an `afterSpace` flag on each token it returned, indicating whether that token was found after some whitespace.  The tokenizer also provided an `IsAtWhiteSpace()` function to check whether our current position in the token stream was on some whitespace (i.e., whitespace is found after the current token).  Finally, every method in the recursive-descent parser gets a `statementStart` parameter indicating whether we are currently at the start of a statement.  Then, the `ParseAddSub` (addition/subtraction) function simply checks:
+
+```
+			while (tok.type == Token.Type.OpPlus || 
+					(tok.type == Token.Type.OpMinus
+					&& (!statementStart || !tok.afterSpace  || tokens.IsAtWhitespace()))) {
+```
+
+This encodes the extra restrictions on OpMinus being interpreted as subtraction.

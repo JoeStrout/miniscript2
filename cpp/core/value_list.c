@@ -233,8 +233,8 @@ Value list_to_string(Value list_val) {
             result = string_concat(result, comma);
         }
 
-        // Get string representation of item (may call to_string recursively)
-        Value item_str = to_string(list->items[i]);
+        // Get repr of item (quotes strings, may call recursively for nested lists)
+        Value item_str = value_repr(list->items[i]);
         result = string_concat(result, item_str);
     }
 

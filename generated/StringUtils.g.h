@@ -149,7 +149,7 @@ class StringUtils {
 			// general.  I think MS1.0 limits nesting to 16 levels deep.  But
 			// whatever we do, we shouldn't just crash with a stack overflow.
 			for (int i = 0; i < list_count(v); i++) {
-				oss << (i != 0 ? ", " : "") << makeString(list_get(v, i)).c_str();
+				oss << (i != 0 ? ", " : "") << makeRepr(list_get(v, i)).c_str();
 			}
 			oss << "]";
 			return String(oss.str().c_str());

@@ -7,7 +7,6 @@ using static MiniScript.ValueHelpers;
 
 // CPP: #include "StringUtils.g.h"
 // CPP: #include "CS_Math.h"
-// CPP: #include "SemanticUtils.g.h"
 // CPP: #include <cmath>
 
 namespace MiniScript {

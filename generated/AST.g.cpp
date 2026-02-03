@@ -4,7 +4,6 @@
 #include "AST.g.h"
 #include "StringUtils.g.h"
 #include "CS_Math.h"
-#include "SemanticUtils.g.h"
 #include <cmath>
 
 namespace MiniScript {

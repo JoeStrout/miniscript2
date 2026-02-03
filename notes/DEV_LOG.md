@@ -274,3 +274,4 @@ Ah.  Turns out to be a flaw in the way wrapper classes were generated in some ca
 
 Since we have code compiling & execution now, it's time to start on the integration test suite!  Rather than try to run the MiniScript 1.x TestSuite.txt, which would contain tons of stuff we don't support yet, I'm starting a new one.  I'll try to be more thorough and complete with it this time around, too.  This one is at tests/testSuite.txt, and it will be run automatically whenever miniscript2 is started with the -debug flag.
 
+Also today: adding support for the `and`, `or`, and `not` operators.

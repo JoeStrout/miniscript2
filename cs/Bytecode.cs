@@ -32,6 +32,9 @@ public enum Opcode : Byte {
 	MULT_rA_rB_rC,	// ToDo: rename this MUL, to match ADD SUB DIV and MOD
 	DIV_rA_rB_rC,
 	MOD_rA_rB_rC,
+	AND_rA_rB_rC,
+	OR_rA_rB_rC,
+	NOT_rA_rB,
 	LIST_rA_iBC,
 	MAP_rA_iBC,
 	PUSH_rA_rB,
@@ -194,6 +197,9 @@ public static class BytecodeUtil {
 			case Opcode.MULT_rA_rB_rC:  return "MULT_rA_rB_rC";
 			case Opcode.DIV_rA_rB_rC:   return "DIV_rA_rB_rC";
 			case Opcode.MOD_rA_rB_rC:   return "MOD_rA_rB_rC";
+			case Opcode.AND_rA_rB_rC:   return "AND_rA_rB_rC";
+			case Opcode.OR_rA_rB_rC:    return "OR_rA_rB_rC";
+			case Opcode.NOT_rA_rB:      return "NOT_rA_rB";
 			case Opcode.LIST_rA_iBC:    return "LIST_rA_iBC";
 			case Opcode.MAP_rA_iBC:     return "MAP_rA_iBC";
 			case Opcode.PUSH_rA_rB:     return "PUSH_rA_rB";
@@ -262,6 +268,9 @@ public static class BytecodeUtil {
 		if (s == "MULT_rA_rB_rC")   return Opcode.MULT_rA_rB_rC;
 		if (s == "DIV_rA_rB_rC")    return Opcode.DIV_rA_rB_rC;
 		if (s == "MOD_rA_rB_rC")    return Opcode.MOD_rA_rB_rC;
+		if (s == "AND_rA_rB_rC")    return Opcode.AND_rA_rB_rC;
+		if (s == "OR_rA_rB_rC")     return Opcode.OR_rA_rB_rC;
+		if (s == "NOT_rA_rB")       return Opcode.NOT_rA_rB;
 		if (s == "LIST_rA_iBC")     return Opcode.LIST_rA_iBC;
 		if (s == "MAP_rA_iBC")      return Opcode.MAP_rA_iBC;
 		if (s == "PUSH_rA_rB")      return Opcode.PUSH_rA_rB;

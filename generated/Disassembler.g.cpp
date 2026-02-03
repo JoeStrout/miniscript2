@@ -23,6 +23,9 @@ String Disassembler::AssemOp(Opcode opcode) {
 		case Opcode::MULT_rA_rB_rC: return "MULT";
 		case Opcode::DIV_rA_rB_rC:  return "DIV";
 		case Opcode::MOD_rA_rB_rC:  return "MOD";
+		case Opcode::AND_rA_rB_rC:  return "AND";
+		case Opcode::OR_rA_rB_rC:   return "OR";
+		case Opcode::NOT_rA_rB:     return "NOT";
 		case Opcode::LIST_rA_iBC:   return "LIST";
 		case Opcode::MAP_rA_iBC:    return "MAP";
 		case Opcode::PUSH_rA_rB:    return "PUSH";
@@ -108,6 +111,7 @@ String Disassembler::ToString(UInt32 instruction) {
 		// rA, rB
 		case Opcode::LOAD_rA_rB:
 		case Opcode::PUSH_rA_rB:
+		case Opcode::NOT_rA_rB:
 		case Opcode::IFLT_rA_rB:
 		case Opcode::IFLE_rA_rB:
 		case Opcode::IFEQ_rA_rB:
@@ -177,6 +181,8 @@ String Disassembler::ToString(UInt32 instruction) {
 		case Opcode::MULT_rA_rB_rC:
 		case Opcode::DIV_rA_rB_rC:
 		case Opcode::MOD_rA_rB_rC:
+		case Opcode::AND_rA_rB_rC:
+		case Opcode::OR_rA_rB_rC:
 		case Opcode::LT_rA_rB_rC:
 		case Opcode::LE_rA_rB_rC:
 		case Opcode::EQ_rA_rB_rC:

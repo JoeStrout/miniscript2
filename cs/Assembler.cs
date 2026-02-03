@@ -357,7 +357,30 @@ public class Assembler {
 			Byte src1 = ParseRegister(parts[2]);
 			Byte src2 = ParseRegister(parts[3]);
 			instruction = BytecodeUtil.INS_ABC(Opcode.MOD_rA_rB_rC, dest, src1, src2);
-		
+
+		} else if (mnemonic == "AND") {
+			if (parts.Count != 4) { Error("Syntax error"); return 0; }
+			Byte dest = ParseRegister(parts[1]);
+			Current.ReserveRegister(dest);
+			Byte src1 = ParseRegister(parts[2]);
+			Byte src2 = ParseRegister(parts[3]);
+			instruction = BytecodeUtil.INS_ABC(Opcode.AND_rA_rB_rC, dest, src1, src2);
+
+		} else if (mnemonic == "OR") {
+			if (parts.Count != 4) { Error("Syntax error"); return 0; }
+			Byte dest = ParseRegister(parts[1]);
+			Current.ReserveRegister(dest);
+			Byte src1 = ParseRegister(parts[2]);
+			Byte src2 = ParseRegister(parts[3]);
+			instruction = BytecodeUtil.INS_ABC(Opcode.OR_rA_rB_rC, dest, src1, src2);
+
+		} else if (mnemonic == "NOT") {
+			if (parts.Count != 3) { Error("Syntax error"); return 0; }
+			Byte dest = ParseRegister(parts[1]);
+			Current.ReserveRegister(dest);
+			Byte src = ParseRegister(parts[2]);
+			instruction = BytecodeUtil.INS_ABC(Opcode.NOT_rA_rB, dest, src, 0);
+
 		} else if (mnemonic == "LIST") {
 			if (parts.Count != 3) { Error("Syntax error"); return 0; }
 			Byte dest = ParseRegister(parts[1]);

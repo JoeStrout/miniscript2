@@ -36,6 +36,14 @@ Our internal opcode names include a verb/mnemonic, and a description of how the 
 | DIV_rA_rB_rC | R[A] := R[B] / R[C] |
 | MOD_rA_rB_rC | R[A] := R[B] % R[C] |
 
+### Logical (Fuzzy Logic)
+
+| Mnemonic | Description |
+| --- | --- |
+| AND_rA_rB_rC | R[A] := R[B] and R[C] (fuzzy: AbsClamp01(a * b)) |
+| OR_rA_rB_rC | R[A] := R[B] or R[C] (fuzzy: AbsClamp01(a + b - a*b)) |
+| NOT_rA_rB | R[A] := not R[B] (fuzzy: 1 - AbsClamp01(b)) |
+
 ### Boolean Storage
 
 | Mnemonic | Description |

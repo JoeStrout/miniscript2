@@ -124,10 +124,9 @@ Int32 CodeGeneratorStorage::Visit(UnaryOpNode node) {
 		FreeReg(operandReg);
 		return resultReg;
 	} else if (node.Op() == Op::NOT) {
-		// Logical not: compare with 0, result is 1 if equal, 0 otherwise
-		// (ToDo: proper MiniScript fuzzy-logic NOT)
+		// Fuzzy logic NOT: 1 - AbsClamp01(operand)
 		Int32 resultReg = AllocReg();
-		_emitter.EmitABC(Opcode::EQ_rA_rB_iC, resultReg, operandReg, 0, Interp("not {}", node.Operand().ToStr()));
+		_emitter.EmitABC(Opcode::NOT_rA_rB, resultReg, operandReg, 0, Interp("not {}", node.Operand().ToStr()));
 		FreeReg(operandReg);
 		return resultReg;
 	}
@@ -194,12 +193,12 @@ Int32 CodeGeneratorStorage::Visit(BinaryOpNode node) {
 		op = Opcode::NOOP;
 		opSymbol = "^";
 	} else if (node.Op() == Op::AND) {
-		// Logical AND - not yet implemented (requires short-circuit evaluation)
-		op = Opcode::NOOP;
+		// Fuzzy logic AND: AbsClamp01(a * b)
+		op = Opcode::AND_rA_rB_rC;
 		opSymbol = "and";
 	} else if (node.Op() == Op::OR) {
-		// Logical OR - not yet implemented (requires short-circuit evaluation)
-		op = Opcode::NOOP;
+		// Fuzzy logic OR: AbsClamp01(a + b - a*b)
+		op = Opcode::OR_rA_rB_rC;
 		opSymbol = "or";
 	}
 

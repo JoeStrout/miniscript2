@@ -63,7 +63,10 @@ public struct App {
 			IOHelper.Print("Unit tests complete.");
 
 			IOHelper.Print("Running integration tests...");
-			if (!RunIntegrationTests("tests/testSuite.txt")) return;
+			if (!RunIntegrationTests("tests/testSuite.txt")) {
+				IOHelper.Print("Some integration tests failed.");
+				return;
+			}
 			IOHelper.Print("Integration tests complete.");
 		}
 		

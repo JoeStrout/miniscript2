@@ -598,6 +598,7 @@ public static class ValueHelpers {
 			(is_string(v) && StringOperations.StringLength(v) != 0)
 			));
 	
+	
 	// Arithmetic operations (matching value.h)
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value value_add(Value a, Value b) => Value.Add(a, b);
@@ -613,7 +614,49 @@ public static class ValueHelpers {
 	
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value value_sub(Value a, Value b) => Value.Sub(a, b);
-	
+
+	// Fuzzy logic operations
+	// Helper: convert a value to a fuzzy truth value (0-1)
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static Double ToFuzzyBool(Value v) {
+		if (is_int(v)) return (Double)as_int(v);
+		if (is_double(v)) return as_double(v);
+		// For non-numeric values, use boolean truth: truthy = 1, falsey = 0
+		return is_truthy(v) ? 1.0 : 0.0;
+	}
+
+	// Helper: take the absolute value, and then clamp to [0-1]
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static Double AbsClamp01(Double d) {
+		if (d < 0) d = -d;
+		if (d > 1) return 1;
+		return d;
+	}
+
+
+	// AND: AbsClamp01(a * b)
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static Value value_and(Value a, Value b) {
+		Double fA = ToFuzzyBool(a);
+		Double fB = ToFuzzyBool(b);
+		return make_double(AbsClamp01(fA * fB));
+	}
+
+	// OR: AbsClamp01(a + b - a*b)
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static Value value_or(Value a, Value b) {
+		Double fA = ToFuzzyBool(a);
+		Double fB = ToFuzzyBool(b);
+		return make_double(AbsClamp01(fA + fB - fA * fB));
+	}
+
+	// NOT: 1 - AbsClamp01(a)
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static Value value_not(Value a) {
+		Double fA = ToFuzzyBool(a);
+		return make_double(1.0 - AbsClamp01(fA));
+	}
+
 	// Comparison operations (matching value.h)
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool value_identical(Value a, Value b) => Value.Identical(a, b);

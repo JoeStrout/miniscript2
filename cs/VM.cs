@@ -554,6 +554,32 @@ public class VM {
 					break;
 				}
 
+				case Opcode.AND_rA_rB_rC: { // CPP: VM_CASE(AND_rA_rB_rC) {
+					// R[A] = R[B] and R[C] (fuzzy logic: AbsClamp01(a * b))
+					Byte a = BytecodeUtil.Au(instruction);
+					Byte b = BytecodeUtil.Bu(instruction);
+					Byte c = BytecodeUtil.Cu(instruction);
+					localStack[a] = value_and(localStack[b], localStack[c]);
+					break; // CPP: VM_NEXT();
+				}
+
+				case Opcode.OR_rA_rB_rC: { // CPP: VM_CASE(OR_rA_rB_rC) {
+					// R[A] = R[B] or R[C] (fuzzy logic: AbsClamp01(a + b - a*b))
+					Byte a = BytecodeUtil.Au(instruction);
+					Byte b = BytecodeUtil.Bu(instruction);
+					Byte c = BytecodeUtil.Cu(instruction);
+					localStack[a] = value_or(localStack[b], localStack[c]);
+					break; // CPP: VM_NEXT();
+				}
+
+				case Opcode.NOT_rA_rB: { // CPP: VM_CASE(NOT_rA_rB) {
+					// R[A] = not R[B] (fuzzy logic: 1 - AbsClamp01(b))
+					Byte a = BytecodeUtil.Au(instruction);
+					Byte b = BytecodeUtil.Bu(instruction);
+					localStack[a] = value_not(localStack[b]);
+					break; // CPP: VM_NEXT();
+				}
+
 				case Opcode.LIST_rA_iBC: {
 					// R[A] = make_list(BC)
 					Byte a = BytecodeUtil.Au(instruction);

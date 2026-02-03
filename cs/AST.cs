@@ -3,8 +3,11 @@
 
 using System;
 using System.Collections.Generic;
+using static MiniScript.ValueHelpers;
+
 // CPP: #include "StringUtils.g.h"
 // CPP: #include "CS_Math.h"
+// CPP: #include "SemanticUtils.g.h"
 // CPP: #include <cmath>
 
 namespace MiniScript {
@@ -169,7 +172,8 @@ public class UnaryOpNode : ASTNode {
 			if (Op == MiniScript.Op.MINUS) {
 				return new NumberNode(-num.Value);
 			} else if (Op == MiniScript.Op.NOT) {
-				return new NumberNode(num.Value == 0 ? 1 : 0);
+				// Fuzzy logic NOT: 1 - AbsClamp01(value)
+				return new NumberNode(1.0 - AbsClamp01(num.Value));
 			}
 		}
 
@@ -232,9 +236,15 @@ public class BinaryOpNode : ASTNode {
 			} else if (Op == MiniScript.Op.GREATER_EQUAL) {
 				return new NumberNode(leftNum.Value >= rightNum.Value ? 1 : 0);
 			} else if (Op == MiniScript.Op.AND) {
-				return new NumberNode((leftNum.Value != 0 && rightNum.Value != 0) ? 1 : 0);
+				// Fuzzy logic AND: AbsClamp01(a * b)
+				Double a = leftNum.Value;
+				Double b = rightNum.Value;
+				return new NumberNode(AbsClamp01(a * b));
 			} else if (Op == MiniScript.Op.OR) {
-				return new NumberNode((leftNum.Value != 0 || rightNum.Value != 0) ? 1 : 0);
+				// Fuzzy logic OR: AbsClamp01(a + b - a*b)
+				Double a = leftNum.Value;
+				Double b = rightNum.Value;
+				return new NumberNode(AbsClamp01(a + b - a * b));
 			}
 		}
 

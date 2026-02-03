@@ -141,6 +141,9 @@ enum class Opcode : Byte {
 	MULT_rA_rB_rC,	// ToDo: rename this MUL, to match ADD SUB DIV and MOD
 	DIV_rA_rB_rC,
 	MOD_rA_rB_rC,
+	AND_rA_rB_rC,
+	OR_rA_rB_rC,
+	NOT_rA_rB,
 	LIST_rA_iBC,
 	MAP_rA_iBC,
 	PUSH_rA_rB,

@@ -4,6 +4,7 @@
 #include "AST.g.h"
 #include "StringUtils.g.h"
 #include "CS_Math.h"
+#include "SemanticUtils.g.h"
 #include <cmath>
 
 namespace MiniScript {
@@ -111,7 +112,8 @@ ASTNode UnaryOpNodeStorage::Simplify() {
 		if (Op == MiniScript::Op::MINUS) {
 			return  NumberNode::New(-num.Value());
 		} else if (Op == MiniScript::Op::NOT) {
-			return  NumberNode::New(num.Value() == 0 ? 1 : 0);
+			// Fuzzy logic NOT: 1 - AbsClamp01(value)
+			return  NumberNode::New(1.0 - AbsClamp01(num.Value()));
 		}
 	}
 
@@ -166,9 +168,15 @@ ASTNode BinaryOpNodeStorage::Simplify() {
 		} else if (Op == MiniScript::Op::GREATER_EQUAL) {
 			return  NumberNode::New(leftNum.Value() >= rightNum.Value() ? 1 : 0);
 		} else if (Op == MiniScript::Op::AND) {
-			return  NumberNode::New((leftNum.Value() != 0 && rightNum.Value() != 0) ? 1 : 0);
+			// Fuzzy logic AND: AbsClamp01(a * b)
+			Double a = leftNum.Value();
+			Double b = rightNum.Value();
+			return  NumberNode::New(AbsClamp01(a * b));
 		} else if (Op == MiniScript::Op::OR) {
-			return  NumberNode::New((leftNum.Value() != 0 || rightNum.Value() != 0) ? 1 : 0);
+			// Fuzzy logic OR: AbsClamp01(a + b - a*b)
+			Double a = leftNum.Value();
+			Double b = rightNum.Value();
+			return  NumberNode::New(AbsClamp01(a + b - a * b));
 		}
 	}
 

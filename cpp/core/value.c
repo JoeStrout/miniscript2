@@ -110,21 +110,7 @@ bool value_equal(Value a, Value b) {
 }
 
 // ToDo: make all the bitwise ops work with doubles, too (as in MiniScript)
-// Bitwise AND
-Value value_and(Value a, Value b) {
-    if (is_int(a) && is_int(b)) {
-        return make_int(as_int(a) & as_int(b));
-    }
-    return make_null();
-}
-
-// Bitwise OR
-Value value_or(Value a, Value b) {
-    if (is_int(a) && is_int(b)) {
-        return make_int(as_int(a) | as_int(b));
-    }
-    return make_null();
-}
+// (or really todo: eliminate these, they should be intrinsics)
 
 // Bitwise XOR
 Value value_xor(Value a, Value b) {

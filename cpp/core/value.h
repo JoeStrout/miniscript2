@@ -1,7 +1,7 @@
 // value.h
 //
 // Purpose: this module defines the Value type, an 8-byte NaN-box representation
-// of our dynamic type.  This Value will always be either a valid Double, or
+// of our dynamic type.  This Value will always be either a valid double, or
 // an actual numeric NaN, or a representation of some other type (possibly pointing
 // to additional data in the heap, in the case of strings, lists, and maps).
 //
@@ -373,10 +373,43 @@ bool value_le(Value a, Value b);
 static inline bool value_gt(Value a, Value b) { return !value_le(a, b); }
 static inline bool value_ge(Value a, Value b) { return !value_lt(a, b); }
 
+// Helper methods
+static inline double ToFuzzyBool(Value v) {
+	if (is_int(v)) return (double)as_int(v);
+	if (is_double(v)) return as_double(v);
+	// For non-numeric values, use boolean truth: truthy = 1, falsey = 0
+	return is_truthy(v) ? 1.0 : 0.0;
+}
+
+static inline double AbsClamp01(double d) {
+	if (d < 0) d = -d;
+	if (d > 1) return 1;
+	return d;
+}
+
+// Logical operations
+// AND: AbsClamp01(a * b)
+static inline Value value_and(Value a, Value b) {
+	double fA = ToFuzzyBool(a);
+	double fB = ToFuzzyBool(b);
+	return make_double(AbsClamp01(fA * fB));
+}
+
+// OR: AbsClamp01(a + b - a*b)
+static inline Value value_or(Value a, Value b) {
+	double fA = ToFuzzyBool(a);
+	double fB = ToFuzzyBool(b);
+	return make_double(AbsClamp01(fA + fB - fA * fB));
+}
+
+// NOT: 1 - AbsClamp01(a)
+static inline Value value_not(Value a) {
+	double fA = ToFuzzyBool(a);
+	return make_double(1.0 - AbsClamp01(fA));
+}
+
 
 // Bit-wise operations
-Value value_and(Value a, Value b);
-Value value_or(Value a, Value b);
 Value value_xor(Value a, Value b);
 Value value_unary(Value a);  // ~ (not)
 Value value_shr(Value v, int shift);

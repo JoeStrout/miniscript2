@@ -28,10 +28,11 @@ public class FuncDef {
 	// Returns a string like "functionName(a, b=1, c=0)"
 	public override String ToString() {
 		String result = Name + "(";
+		Value defaultVal;
 		for (Int32 i = 0; i < ParamNames.Count; i++) {
 			if (i > 0) result += ", ";
 			result += as_cstring(ParamNames[i]);
-			Value defaultVal = ParamDefaults[i];
+			defaultVal = ParamDefaults[i];
 			if (!is_null(defaultVal)) {
 				result += "=";
 				result += as_cstring(value_repr(defaultVal));

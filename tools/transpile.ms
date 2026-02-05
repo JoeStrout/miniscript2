@@ -1249,7 +1249,7 @@ Transpiler.updateStateMETHOD = function
 		if self.m.type == "Value" then
 			// Also, make sure these are not too indented; Value declarations should always
 			// be at the root level of a method (especially, never in a loop).
-			self.assert line.indentation.len < 3, "Value declaration must be at method root"
+			self.assert line.indentation.len < 2, "Value declaration must be at method root"
 			// And be sure to call GC_PROTECT before the first such
 			if not self.pushedGCScope then
 				self.curClass.methodLines.push line.indentation + "GC_PUSH_SCOPE();"

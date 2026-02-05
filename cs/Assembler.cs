@@ -152,6 +152,7 @@ public class Assembler {
 		String mnemonic = parts[0];
 		UInt32 instruction = 0;
 		Value constantValue;
+		Value defaultValue = make_null();
 
 		// Handle .param directive (not an instruction, but a function parameter definition)
 		if (mnemonic == ".param") {
@@ -164,7 +165,6 @@ public class Assembler {
 
 			String paramSpec = parts[1];
 			String paramName;
-			Value defaultValue = make_null();
 
 			// Check if there's a default value (e.g., "b=1")
 			Int32 equalsPos = -1;

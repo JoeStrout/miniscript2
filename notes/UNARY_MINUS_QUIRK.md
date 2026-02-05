@@ -46,3 +46,14 @@ The MiniScript 1 parser handled this by having the tokenizer set an `afterSpace`
 ```
 
 This encodes the extra restrictions on OpMinus being interpreted as subtraction.
+
+## Possible Alternative
+
+Another way to approach this might be to have the tokenizer itself distinguish these as two different tokens:
+
+1. STRONG_NEGATE: <whitespace> `-` <no_whitespace>
+2. WEAK_NEGATE: any other `-`
+
+Then, where the grammar looks for subtraction, it would use only WEAK_NEGATE; while where it looks for negation, it would accept either STRONG_NEGATE or WEAK_NEGATE.  This would solve the cases above.  It would disallow syntax like `1 + 2 -3`, but this syntax doesn't work in MiniScript 1.x either (though that is more of a side-effect than in intent).
+
+This might be a simpler model both to implement and to explain.

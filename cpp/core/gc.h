@@ -109,10 +109,15 @@ typedef struct {
     size_t gc_threshold;
     int collections_count;
     int root_count;
+    int scope_depth;      // Current GC scope stack depth
+    int max_scope_depth;  // Maximum allowed scope depth
     bool is_enabled;
 } GCStats;
 
 GCStats gc_get_stats(void);
+
+// Get current scope depth (useful for debugging scope leaks)
+int gc_get_scope_depth(void);
 
 // Accessor functions for debug output (used by gc_debug_output.c)
 // These allow traversing internal GC structures without exposing implementation details

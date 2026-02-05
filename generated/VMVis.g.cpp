@@ -134,6 +134,7 @@ void VMVis::DrawOneRegister(Int32 stackIndex, String label, Int32 displayRow) {
 
 	GoTo(RegisterDisplayColumn + 1, displayRow);
 	Write(StringUtils::SpacePad(line, 44));
+	GC_POP_SCOPE();
 }
 void VMVis::DrawRegisters() {
 	if (!_vm.IsRunning()) return;

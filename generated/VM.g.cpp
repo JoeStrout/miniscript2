@@ -44,6 +44,7 @@ Value CallInfo::GetLocalVarMap(List<Value> registers, List<Value> names, int bas
 }
 
 
+	std::function<void(const String&)> VMStorage::sPrintCallback;
 Int32 VMStorage::StackSize() {
 	return stack.Count();
 }
@@ -1246,7 +1247,12 @@ void VMStorage::DoIntrinsic(Value funcName, Int32 baseReg) {
 	GC_PUSH_SCOPE();
 	Value container; GC_PROTECT(&container);
 	if (value_equal(funcName, FuncNamePrint)) {
-		IOHelper::Print(StringUtils::Format("{0}", stack[baseReg]));
+		String output = StringUtils::Format("{0}", stack[baseReg]);
+		if (VMStorage::sPrintCallback) {
+			VMStorage::sPrintCallback(output);
+		} else {
+			IOHelper::Print(output);
+		}
 		stack[baseReg] = make_null();
 	
 	} else if (value_equal(funcName, FuncNameInput)) {
@@ -1282,6 +1288,7 @@ void VMStorage::DoIntrinsic(Value funcName, Int32 baseReg) {
 		stack[baseReg] = make_null();
 		// ToDo: put VM in an error state, so it aborts.
 	}
+	GC_POP_SCOPE();
 }
 
 

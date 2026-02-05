@@ -148,6 +148,7 @@ struct Token {
 	public: Double DoubleValue;
 	public: Int32 Line;
 	public: Int32 Column;
+	public: Boolean AfterSpace; // True if whitespace preceded this token
 	public: Token() {}
 
 	// H: public: Token() {}
@@ -180,7 +181,8 @@ struct Lexer {
 	public: static Boolean IsIdentifierChar(Char c);
 
 	// Skip whitespace (but not newlines, which may be significant)
-	private: void SkipWhitespace();
+	// Returns true if any whitespace was skipped
+	private: Boolean SkipWhitespace();
 
 	// Get the next token from _input
 	public: Token NextToken();
@@ -206,13 +208,16 @@ inline Boolean Lexer::IsIdentifierStartChar(Char c) {
 inline Boolean Lexer::IsIdentifierChar(Char c) {
 	return IsIdentifierStartChar(c) || IsDigit(c);
 }
-inline void Lexer::SkipWhitespace() {
+inline Boolean Lexer::SkipWhitespace() {
+	Boolean skipped = Boolean(false);
 	while (_position < _input.Length()) {
 		Char ch = _input[_position];
 		if (ch == '\n') break;  // newlines are significant
 		if (!IsWhiteSpace(ch)) break;
 		Advance();
+		skipped = Boolean(true);
 	}
+	return skipped;
 }
 
 } // end of namespace MiniScript

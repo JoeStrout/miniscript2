@@ -18,6 +18,7 @@ public interface IParser {
 	Token Expect(TokenType type, String errorMessage);
 	ASTNode ParseExpression(Precedence minPrecedence);
 	void ReportError(String message);
+	Boolean CanStartExpression(TokenType type);
 }
 
 // Base class for all parselets

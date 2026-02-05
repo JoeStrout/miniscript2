@@ -3,8 +3,14 @@
 
 #pragma once
 #include "core_includes.h"
-// Parser.cs - Pratt parser for MiniScript expressions
+// Parser.cs - Pratt parser for MiniScript
 // Uses parselets to handle operator precedence and associativity.
+// Structure follows the grammar in miniscript.g4:
+//   program : (eol | statement)* EOF
+//   statement : simpleStatement eol
+//   simpleStatement : callStatement | assignmentStatement | expressionStatement
+//   callStatement : expression '(' argList ')' | expression argList
+//   expressionStatement : expression
 
 #include "LangConstants.g.h"
 #include "Lexer.g.h"
@@ -185,13 +191,42 @@ class ParserStorage : public std::enable_shared_from_this<ParserStorage>, public
 	// Get the precedence of the infix parselet for the current token
 	private: Precedence GetPrecedence();
 
-	// Parse an expression with the given minimum precedence
+	// Check if a token type can start an expression (used as prefix)
+	public: Boolean CanStartExpression(TokenType type);
+
+	// Check if a token type can start an argument in a no-parens call statement.
+	// Note: The parser uses Token.AfterSpace to distinguish between:
+	//   "print [1,2,3]" (call with list arg - has whitespace before '[')
+	//   "list[0]" (index expression - no whitespace before '[')
+	//   "print (2+3)*4" (call with grouped expr - has whitespace before '(')
+	//   "func(args)" (call syntax via CallParselet - NO whitespace before '(')
+	private: Boolean CanStartCallArgument(TokenType type);
+
+	// Parse an expression with the given minimum precedence (Pratt parser core)
 	public: ASTNode ParseExpression(Precedence minPrecedence);
 
 	// Parse an expression (convenience method with default precedence)
 	public: ASTNode ParseExpression();
 
-	// Parse a complete expression from source code
+	// Continue parsing an expression given a starting left operand.
+	// Used when we've already consumed a token (like an identifier) and need
+	// to continue with any infix operators that follow.
+	private: ASTNode ParseExpressionFrom(ASTNode left);
+
+	// Parse a simple statement (grammar: simpleStatement)
+	// Handles: callStatement, assignmentStatement, expressionStatement
+	private: ASTNode ParseSimpleStatement();
+
+	// Parse a statement (grammar: statement : simpleStatement eol)
+	// For now, we only handle simpleStatement (no block statements yet)
+	public: ASTNode ParseStatement();
+
+	// Parse a program (grammar: program : (eol | statement)* EOF)
+	// Returns a list of statement AST nodes
+	public: List<ASTNode> ParseProgram();
+
+	// Parse a complete source string (convenience method)
+	// For single expressions/statements, returns the AST node
 	public: ASTNode Parse(String source);
 
 	// Report an error
@@ -263,13 +298,42 @@ struct Parser : public IParser {
 	// Get the precedence of the infix parselet for the current token
 	private: Precedence GetPrecedence() { return get()->GetPrecedence(); }
 
-	// Parse an expression with the given minimum precedence
+	// Check if a token type can start an expression (used as prefix)
+	public: Boolean CanStartExpression(TokenType type) { return get()->CanStartExpression(type); }
+
+	// Check if a token type can start an argument in a no-parens call statement.
+	// Note: The parser uses Token.AfterSpace to distinguish between:
+	//   "print [1,2,3]" (call with list arg - has whitespace before '[')
+	//   "list[0]" (index expression - no whitespace before '[')
+	//   "print (2+3)*4" (call with grouped expr - has whitespace before '(')
+	//   "func(args)" (call syntax via CallParselet - NO whitespace before '(')
+	private: Boolean CanStartCallArgument(TokenType type) { return get()->CanStartCallArgument(type); }
+
+	// Parse an expression with the given minimum precedence (Pratt parser core)
 	public: ASTNode ParseExpression(Precedence minPrecedence) { return get()->ParseExpression(minPrecedence); }
 
 	// Parse an expression (convenience method with default precedence)
 	public: ASTNode ParseExpression() { return get()->ParseExpression(); }
 
-	// Parse a complete expression from source code
+	// Continue parsing an expression given a starting left operand.
+	// Used when we've already consumed a token (like an identifier) and need
+	// to continue with any infix operators that follow.
+	private: ASTNode ParseExpressionFrom(ASTNode left) { return get()->ParseExpressionFrom(left); }
+
+	// Parse a simple statement (grammar: simpleStatement)
+	// Handles: callStatement, assignmentStatement, expressionStatement
+	private: ASTNode ParseSimpleStatement() { return get()->ParseSimpleStatement(); }
+
+	// Parse a statement (grammar: statement : simpleStatement eol)
+	// For now, we only handle simpleStatement (no block statements yet)
+	public: ASTNode ParseStatement() { return get()->ParseStatement(); }
+
+	// Parse a program (grammar: program : (eol | statement)* EOF)
+	// Returns a list of statement AST nodes
+	public: List<ASTNode> ParseProgram() { return get()->ParseProgram(); }
+
+	// Parse a complete source string (convenience method)
+	// For single expressions/statements, returns the AST node
 	public: ASTNode Parse(String source) { return get()->Parse(source); }
 
 	// Report an error

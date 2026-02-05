@@ -115,6 +115,7 @@ class IParser {
 	virtual Token Expect(TokenType type, String errorMessage) = 0;
 	virtual ASTNode ParseExpression(Precedence minPrecedence) = 0;
 	virtual void ReportError(String message) = 0;
+	virtual Boolean CanStartExpression(TokenType type) = 0;
 }; // end of interface IParser
 
 

@@ -162,6 +162,10 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	public: Boolean DebugMode = false;
 	private: List<Value> stack;
 	private: List<Value> names; // Variable names parallel to stack (null if unnamed)
+	public: std::function<void(const String&)> _printCallback;
+	public: void SetPrintCallback(std::function<void(const String&)> cb) { _printCallback = cb; }
+	public: std::function<void(const String&)> GetPrintCallback() { return _printCallback; }
+	public: static std::function<void(const String&)> sPrintCallback;
 	private: List<CallInfo> callStack;
 	private: Int32 callStackTop; // Index of next free call stack slot
 	private: List<FuncDef> functions; // functions addressed by CALLF
@@ -171,6 +175,14 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	public: Boolean IsRunning;
 	public: Int32 BaseIndex;
 	public: String RuntimeError;
+
+	// Print callback: if set, print output goes here instead of IOHelper.Print
+	// H: public: std::function<void(const String&)> _printCallback;
+	// H: public: void SetPrintCallback(std::function<void(const String&)> cb) { _printCallback = cb; }
+	// H: public: std::function<void(const String&)> GetPrintCallback() { return _printCallback; }
+
+	// Static callback for C++ (accessible from VM wrapper)
+	// H: public: static std::function<void(const String&)> sPrintCallback;
 
 
 
@@ -269,6 +281,14 @@ struct VM {
 	public: void set_BaseIndex(Int32 _v);
 	public: String RuntimeError();
 	public: void set_RuntimeError(String _v);
+
+	// Print callback: if set, print output goes here instead of IOHelper.Print
+	// H: public: std::function<void(const String&)> _printCallback;
+	// H: public: void SetPrintCallback(std::function<void(const String&)> cb) { _printCallback = cb; }
+	// H: public: std::function<void(const String&)> GetPrintCallback() { return _printCallback; }
+
+	// Static callback for C++ (accessible from VM wrapper)
+	// H: public: static std::function<void(const String&)> sPrintCallback;
 
 
 

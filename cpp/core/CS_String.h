@@ -177,12 +177,13 @@ public:
     // Comparison
     bool operator==(const String& other) const {
         if (ref == other.ref) return true;
-        
+
         const StringStorage* s1 = getStorageRaw();
         const StringStorage* s2 = other.getStorageRaw();
         if (!s1) return !s2;
+        if (!s2) return false;  // s1 is non-null, s2 is null -> not equal
         if (s1->lenB != s2->lenB) return false;
-        
+
         return ss_equals(s1, s2);
     }
     

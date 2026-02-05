@@ -5,9 +5,7 @@ program
 	: (eol | statement)* EOF
 	;
 
-eol
-    : (WHITESPACE | COMMENT)* NEWLINE
-    ;
+eol : NEWLINE;
 
 statement
 	: (simpleStatement
@@ -96,7 +94,8 @@ returnStatement
 	;
 
 callStatement
-    : expression argList
+	: expression '(' argList ')'
+    | expression argList
     ;
 
 expressionStatement
@@ -158,10 +157,7 @@ WHITESPACE
 	: [ \t]+ -> channel(HIDDEN)
 	;
 
-NEWLINE
-	: [\r\n]+
-	| ';' 	// Semicolons can be used to separate statements on one line
-	;
+NEWLINE : (';' | '\r'? '\n' | '\r')+;
 
 NUMBER
 	: [0-9]+ ('.' [0-9]+)?

@@ -65,6 +65,20 @@ public class VM {
 	private List<Value> stack;
 	private List<Value> names;		// Variable names parallel to stack (null if unnamed)
 
+	// Print callback: if set, print output goes here instead of IOHelper.Print
+	//*** BEGIN CS_ONLY ***
+	private Action<String> _printCallback = null;
+	public void SetPrintCallback(Action<String> callback) { _printCallback = callback; }
+	public Action<String> GetPrintCallback() { return _printCallback; }
+	//*** END CS_ONLY ***
+	// H: public: std::function<void(const String&)> _printCallback;
+	// H: public: void SetPrintCallback(std::function<void(const String&)> cb) { _printCallback = cb; }
+	// H: public: std::function<void(const String&)> GetPrintCallback() { return _printCallback; }
+
+	// Static callback for C++ (accessible from VM wrapper)
+	// H: public: static std::function<void(const String&)> sPrintCallback;
+	// CPP: std::function<void(const String&)> VMStorage::sPrintCallback;
+
 	private List<CallInfo> callStack;
 	private Int32 callStackTop;	   // Index of next free call stack slot
 
@@ -1294,9 +1308,14 @@ public class VM {
 		
 		// Prototype implementation:
 		
-		Value container;		
+		Value container;
 		if (value_equal(funcName, FuncNamePrint)) {
-			IOHelper.Print(StringUtils.Format("{0}", stack[baseReg]));
+			String output = StringUtils.Format("{0}", stack[baseReg]);
+			if (GetPrintCallback() != null) {  // CPP: if (VMStorage::sPrintCallback) {
+				GetPrintCallback()(output);  // CPP: VMStorage::sPrintCallback(output);
+			} else {
+				IOHelper.Print(output);
+			}
 			stack[baseReg] = make_null();
 		
 		} else if (value_equal(funcName, FuncNameInput)) {

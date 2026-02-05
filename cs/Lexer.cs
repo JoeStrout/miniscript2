@@ -18,6 +18,7 @@ public struct Token {
 	public Double DoubleValue;
 	public Int32 Line;
 	public Int32 Column;
+	public Boolean AfterSpace;  // True if whitespace preceded this token
 
 	// H: public: Token() {}
 	public Token(TokenType type, String text, Int32 line, Int32 column) {
@@ -27,6 +28,7 @@ public struct Token {
 		DoubleValue = 0;
 		Line = line;
 		Column = column;
+		AfterSpace = false;
 	}
 }
 
@@ -86,26 +88,32 @@ public struct Lexer {
 	}
 
 	// Skip whitespace (but not newlines, which may be significant)
+	// Returns true if any whitespace was skipped
 	[MethodImpl(AggressiveInlining)]
-	private void SkipWhitespace() {
+	private Boolean SkipWhitespace() {
+		Boolean skipped = false;
 		while (_position < _input.Length) {
 			Char ch = _input[_position];
 			if (ch == '\n') break;  // newlines are significant
 			if (!IsWhiteSpace(ch)) break;
 			Advance();
+			skipped = true;
 		}
+		return skipped;
 	}
 
 	// Get the next token from _input
 	public Token NextToken() {
-		SkipWhitespace();
+		Boolean hadWhitespace = SkipWhitespace();
 
 		Int32 startLine = _line;
 		Int32 startColumn = _column;
 
 		// End of _input
 		if (_position >= _input.Length) {
-			return new Token(TokenType.END_OF_INPUT, "", startLine, startColumn);
+			Token eofTok = new Token(TokenType.END_OF_INPUT, "", startLine, startColumn);
+			eofTok.AfterSpace = hadWhitespace;
+			return eofTok;
 		}
 
 		Char c = Peek();
@@ -125,6 +133,7 @@ public struct Lexer {
 			}
 			String numStr = _input.Substring(start, _position - start);
 			Token tok = new Token(TokenType.NUMBER, numStr, startLine, startColumn);
+			tok.AfterSpace = hadWhitespace;
 			if (numStr.Contains(".")) {
 				tok.DoubleValue = StringUtils.ParseDouble(numStr);
 			} else {
@@ -141,11 +150,19 @@ public struct Lexer {
 				Advance();
 			}
 			String text = _input.Substring(start, _position - start);
+			Token tok;
 			// Check for keywords
-			if (text == "and") return new Token(TokenType.AND, text, startLine, startColumn);
-			if (text == "or") return new Token(TokenType.OR, text, startLine, startColumn);
-			if (text == "not") return new Token(TokenType.NOT, text, startLine, startColumn);
-			return new Token(TokenType.IDENTIFIER, text, startLine, startColumn);
+			if (text == "and") {
+				tok = new Token(TokenType.AND, text, startLine, startColumn);
+			} else if (text == "or") {
+				tok = new Token(TokenType.OR, text, startLine, startColumn);
+			} else if (text == "not") {
+				tok = new Token(TokenType.NOT, text, startLine, startColumn);
+			} else {
+				tok = new Token(TokenType.IDENTIFIER, text, startLine, startColumn);
+			}
+			tok.AfterSpace = hadWhitespace;
+			return tok;
 		}
 
 		// String literals
@@ -160,25 +177,36 @@ public struct Lexer {
 			}
 			String text = _input.Substring(start, _position - start);
 			if (Peek() == '"') Advance(); // consume closing quote
-			return new Token(TokenType.STRING, text, startLine, startColumn);
+			Token tok = new Token(TokenType.STRING, text, startLine, startColumn);
+			tok.AfterSpace = hadWhitespace;
+			return tok;
 		}
 
 		// Multi-character operators (check before consuming)
+		Token multiTok;
 		if (c == '=' && _position + 1 < _input.Length && _input[_position + 1] == '=') {
 			Advance(); Advance();
-			return new Token(TokenType.EQUALS, "==", startLine, startColumn);
+			multiTok = new Token(TokenType.EQUALS, "==", startLine, startColumn);
+			multiTok.AfterSpace = hadWhitespace;
+			return multiTok;
 		}
 		if (c == '!' && _position + 1 < _input.Length && _input[_position + 1] == '=') {
 			Advance(); Advance();
-			return new Token(TokenType.NOT_EQUAL, "!=", startLine, startColumn);
+			multiTok = new Token(TokenType.NOT_EQUAL, "!=", startLine, startColumn);
+			multiTok.AfterSpace = hadWhitespace;
+			return multiTok;
 		}
 		if (c == '<' && _position + 1 < _input.Length && _input[_position + 1] == '=') {
 			Advance(); Advance();
-			return new Token(TokenType.LESS_EQUAL, "<=", startLine, startColumn);
+			multiTok = new Token(TokenType.LESS_EQUAL, "<=", startLine, startColumn);
+			multiTok.AfterSpace = hadWhitespace;
+			return multiTok;
 		}
 		if (c == '>' && _position + 1 < _input.Length && _input[_position + 1] == '=') {
 			Advance(); Advance();
-			return new Token(TokenType.GREATER_EQUAL, ">=", startLine, startColumn);
+			multiTok = new Token(TokenType.GREATER_EQUAL, ">=", startLine, startColumn);
+			multiTok.AfterSpace = hadWhitespace;
+			return multiTok;
 		}
 
 		// Comments: // to end of line
@@ -189,35 +217,40 @@ public struct Lexer {
 				Advance();
 			}
 			String text = _input.Substring(start, _position - start);
-			return new Token(TokenType.COMMENT, text, startLine, startColumn);
+			Token commentTok = new Token(TokenType.COMMENT, text, startLine, startColumn);
+			commentTok.AfterSpace = hadWhitespace;
+			return commentTok;
 		}
 
 		// Single-character operators and punctuation
 		Advance();
+		Token singleTok;
 		switch (c) {
-			case '+': return new Token(TokenType.PLUS, "+", startLine, startColumn);
-			case '-': return new Token(TokenType.MINUS, "-", startLine, startColumn);
-			case '*': return new Token(TokenType.TIMES, "*", startLine, startColumn);
-			case '/': return new Token(TokenType.DIVIDE, "/", startLine, startColumn);
-			case '%': return new Token(TokenType.MOD, "%", startLine, startColumn);
-			case '^': return new Token(TokenType.CARET, "^", startLine, startColumn);
-			case '(': return new Token(TokenType.LPAREN, "(", startLine, startColumn);
-			case ')': return new Token(TokenType.RPAREN, ")", startLine, startColumn);
-			case '[': return new Token(TokenType.LBRACKET, "[", startLine, startColumn);
-			case ']': return new Token(TokenType.RBRACKET, "]", startLine, startColumn);
-			case '{': return new Token(TokenType.LBRACE, "{", startLine, startColumn);
-			case '}': return new Token(TokenType.RBRACE, "}", startLine, startColumn);
-			case '=': return new Token(TokenType.ASSIGN, "=", startLine, startColumn);
-			case '<': return new Token(TokenType.LESS_THAN, "<", startLine, startColumn);
-			case '>': return new Token(TokenType.GREATER_THAN, ">", startLine, startColumn);
-			case ',': return new Token(TokenType.COMMA, ",", startLine, startColumn);
-			case ':': return new Token(TokenType.COLON, ":", startLine, startColumn);
-			case ';': return new Token(TokenType.SEMICOLON, ";", startLine, startColumn);
-			case '.': return new Token(TokenType.DOT, ".", startLine, startColumn);
-			case '\n': return new Token(TokenType.EOL, "\n", startLine, startColumn);
+			case '+': singleTok = new Token(TokenType.PLUS, "+", startLine, startColumn); break;
+			case '-': singleTok = new Token(TokenType.MINUS, "-", startLine, startColumn); break;
+			case '*': singleTok = new Token(TokenType.TIMES, "*", startLine, startColumn); break;
+			case '/': singleTok = new Token(TokenType.DIVIDE, "/", startLine, startColumn); break;
+			case '%': singleTok = new Token(TokenType.MOD, "%", startLine, startColumn); break;
+			case '^': singleTok = new Token(TokenType.CARET, "^", startLine, startColumn); break;
+			case '(': singleTok = new Token(TokenType.LPAREN, "(", startLine, startColumn); break;
+			case ')': singleTok = new Token(TokenType.RPAREN, ")", startLine, startColumn); break;
+			case '[': singleTok = new Token(TokenType.LBRACKET, "[", startLine, startColumn); break;
+			case ']': singleTok = new Token(TokenType.RBRACKET, "]", startLine, startColumn); break;
+			case '{': singleTok = new Token(TokenType.LBRACE, "{", startLine, startColumn); break;
+			case '}': singleTok = new Token(TokenType.RBRACE, "}", startLine, startColumn); break;
+			case '=': singleTok = new Token(TokenType.ASSIGN, "=", startLine, startColumn); break;
+			case '<': singleTok = new Token(TokenType.LESS_THAN, "<", startLine, startColumn); break;
+			case '>': singleTok = new Token(TokenType.GREATER_THAN, ">", startLine, startColumn); break;
+			case ',': singleTok = new Token(TokenType.COMMA, ",", startLine, startColumn); break;
+			case ':': singleTok = new Token(TokenType.COLON, ":", startLine, startColumn); break;
+			case ';': singleTok = new Token(TokenType.SEMICOLON, ";", startLine, startColumn); break;
+			case '.': singleTok = new Token(TokenType.DOT, ".", startLine, startColumn); break;
+			case '\n': singleTok = new Token(TokenType.EOL, "\n", startLine, startColumn); break;
 			default:
-				return new Token(TokenType.ERROR, StringUtils.Str(c), startLine, startColumn);
+				singleTok = new Token(TokenType.ERROR, StringUtils.Str(c), startLine, startColumn); break;
 		}
+		singleTok.AfterSpace = hadWhitespace;
+		return singleTok;
 	}
 
 	// Report an error

@@ -755,6 +755,7 @@ Transpiler.exitState = function(toNewState)
 	if self.state == State.METHOD then
 		self.localVars = []
 		self.inVmCase = 0
+		self.pushedGCScope = false
 	end if
 end function
 
@@ -1216,6 +1217,9 @@ Transpiler.updateStateMETHOD = function
 	end if
 
 	if line.full.startsWith("}") then
+		if self.pushedGCScope and not self.curClass.methodLines[-1].contains("return") then
+			self.curClass.methodLines.push "	GC_POP_SCOPE();"
+		end if
 		self.curClass.methodLines.push line.full
 		self.enterState State.CLASS, false
 		return

@@ -15,6 +15,11 @@ endif
 
 CXXFLAGS = -std=gnu++11 -Wall -Wextra -O3 -DNDEBUG -Icore -I$(GENDIR) $(GOTO_FLAG)
 CFLAGS = -std=c99 -Wall -Wextra -O3 -DNDEBUG -Icore $(GOTO_FLAG)
+
+# AddressSanitizer flags for debugging
+ASAN_CXXFLAGS = -std=gnu++11 -Wall -Wextra -O0 -g -fsanitize=address -Icore -I$(GENDIR) $(GOTO_FLAG)
+ASAN_CFLAGS = -std=c99 -Wall -Wextra -O0 -g -fsanitize=address -Icore $(GOTO_FLAG)
+ASAN_LDFLAGS = -fsanitize=address
 COREDIR = core
 GENDIR = ../generated
 BUILDDIR = ../build/cpp
@@ -44,9 +49,20 @@ TEST_DEBUG_BASIC = $(BUILDDIR)/test_debug_basic
 TEST_TRIVIAL = $(BUILDDIR)/test_trivial
 DEBUG_TRIVIAL = $(BUILDDIR)/debug_trivial
 
-.PHONY: all clean test_string_pool test_simple test_debug_basic test_trivial debug_trivial
+# ASAN objects (separate directory)
+ASAN_OBJDIR = $(BUILDDIR)/obj_asan
+ASAN_CORE_CPP_OBJECTS = $(CORE_CPP_SOURCES:$(COREDIR)/%.cpp=$(ASAN_OBJDIR)/core_%.o)
+ASAN_CORE_C_OBJECTS = $(CORE_C_SOURCES:$(COREDIR)/%.c=$(ASAN_OBJDIR)/core_%.o)
+ASAN_CORE_OBJECTS = $(ASAN_CORE_CPP_OBJECTS) $(ASAN_CORE_C_OBJECTS)
+ASAN_GEN_OBJECTS = $(GEN_SOURCES:$(GENDIR)/%.g.cpp=$(ASAN_OBJDIR)/gen_%.o)
+ASAN_OBJECTS = $(ASAN_CORE_OBJECTS) $(ASAN_GEN_OBJECTS)
+ASAN_TARGET = $(BUILDDIR)/miniscript2_asan
+
+.PHONY: all clean test_string_pool test_simple test_debug_basic test_trivial debug_trivial asan
 
 all: $(TARGET)
+
+asan: $(ASAN_TARGET)
 
 test_string_pool: $(TEST_STRING_POOL)
 test_simple: $(TEST_SIMPLE)
@@ -88,6 +104,25 @@ $(OBJDIR)/core_%.o: $(COREDIR)/%.c | $(OBJDIR)
 # Generated C++ object files
 $(OBJDIR)/gen_%.o: $(GENDIR)/%.g.cpp | $(OBJDIR)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+# ASAN target
+$(ASAN_TARGET): $(ASAN_OBJECTS) | $(BUILDDIR)
+	$(CXX) $(ASAN_LDFLAGS) $(ASAN_OBJECTS) -o $@
+
+# ASAN Core C++ object files
+$(ASAN_OBJDIR)/core_%.o: $(COREDIR)/%.cpp | $(ASAN_OBJDIR)
+	$(CXX) $(ASAN_CXXFLAGS) -c $< -o $@
+
+# ASAN Core C object files
+$(ASAN_OBJDIR)/core_%.o: $(COREDIR)/%.c | $(ASAN_OBJDIR)
+	$(CC) $(ASAN_CFLAGS) -c $< -o $@
+
+# ASAN Generated C++ object files
+$(ASAN_OBJDIR)/gen_%.o: $(GENDIR)/%.g.cpp | $(ASAN_OBJDIR)
+	$(CXX) $(ASAN_CXXFLAGS) -c $< -o $@
+
+$(ASAN_OBJDIR):
+	mkdir -p $(ASAN_OBJDIR)
 
 # Create directories
 $(BUILDDIR):

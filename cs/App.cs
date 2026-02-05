@@ -98,24 +98,37 @@ public struct App {
 
 	// Compile MiniScript source code to a list of functions
 	private static List<FuncDef> CompileSource(String source) {
-		// Parse the source
+		// Parse the source as a program (multiple statements)
 		Parser parser = new Parser();
-		ASTNode ast = parser.Parse(source);
+		parser.Init(source);
+		List<ASTNode> statements = parser.ParseProgram();
 
 		if (parser.HadError()) {
 			IOHelper.Print("Compilation failed with parse errors.");
 			return null;
 		}
 
-		if (debugMode) IOHelper.Print(StringUtils.Format("AST: {0}", ast.ToStr()));
+		if (statements.Count == 0) {
+			IOHelper.Print("No statements to compile.");
+			return null;
+		}
 
-		// Simplify the AST (constant folding)
-		ast = ast.Simplify();
+		if (debugMode) {
+			IOHelper.Print(StringUtils.Format("Parsed {0} statement(s):", statements.Count));
+			for (Int32 i = 0; i < statements.Count; i++) {
+				IOHelper.Print(StringUtils.Format("  [{0}] {1}", i, statements[i].ToStr()));
+			}
+		}
+
+		// Simplify each AST (constant folding)
+		for (Int32 i = 0; i < statements.Count; i++) {
+			statements[i] = statements[i].Simplify();
+		}
 
 		// Compile to bytecode
 		BytecodeEmitter emitter = new BytecodeEmitter();
 		CodeGenerator generator = new CodeGenerator(emitter);
-		FuncDef mainFunc = generator.CompileFunction(ast, "@main");
+		FuncDef mainFunc = generator.CompileProgram(statements, "@main");
 
 		if (debugMode) IOHelper.Print("Compilation complete.");
 
@@ -123,7 +136,7 @@ public struct App {
 		if (debugMode) {
 			AssemblyEmitter asmEmitter = new AssemblyEmitter();
 			CodeGenerator asmGenerator = new CodeGenerator(asmEmitter);
-			asmGenerator.CompileFunction(ast, "@main");
+			asmGenerator.CompileProgram(statements, "@main");
 
 			IOHelper.Print("\nGenerated assembly:");
 			IOHelper.Print(asmEmitter.GetAssembly());
@@ -268,30 +281,49 @@ public struct App {
 		// Skip empty tests
 		if (String.IsNullOrEmpty(source.Trim())) return true;
 
-		// Compile the source
+		// Parse as a program (multiple statements)
 		Parser parser = new Parser();
-		ASTNode ast = parser.Parse(source);
+		parser.Init(source);
+		List<ASTNode> statements = parser.ParseProgram();
 
 		if (parser.HadError()) {
 			IOHelper.Print(StringUtils.Format("FAIL (line {0}): Parse error in: {1}", lineNum, source));
 			return false;
 		}
 
-		// Simplify the AST
-		ast = ast.Simplify();
+		if (statements.Count == 0) {
+			// Empty program is OK if no expected output
+			if (expectedLines.Count == 0) return true;
+			IOHelper.Print(StringUtils.Format("FAIL (line {0}): No statements parsed from: {1}", lineNum, source));
+			return false;
+		}
+
+		// Simplify each AST
+		for (Int32 i = 0; i < statements.Count; i++) {
+			statements[i] = statements[i].Simplify();
+		}
 
 		// Compile to bytecode
 		BytecodeEmitter emitter = new BytecodeEmitter();
 		CodeGenerator generator = new CodeGenerator(emitter);
-		FuncDef mainFunc = generator.CompileFunction(ast, "@main");
+		FuncDef mainFunc = generator.CompileProgram(statements, "@main");
 
 		List<FuncDef> functions = new List<FuncDef>();
 		functions.Add(mainFunc);
 
-		// Run the program
+		// Set up print output capture
+		List<String> printOutput = new List<String>();
+		// CPP: static List<String> gPrintOutput;
+		// CPP: gPrintOutput = printOutput;  // Use global reference
+
+		// Run the program with print callback
 		VM vm = new VM();
+		//*** BEGIN CS_ONLY ***
+		vm.SetPrintCallback((String s) => { printOutput.Add(s); });
+		//*** END CS_ONLY ***
+		// CPP: VMStorage::sPrintCallback = [](const String& s) { gPrintOutput.Add(s); };
 		vm.Reset(functions);
-		Value result = vm.Run();
+		vm.Run();
 
 		// Check for runtime errors
 		if (!String.IsNullOrEmpty(vm.RuntimeError)) {
@@ -308,8 +340,19 @@ public struct App {
 		}
 		expected = expected.Trim();
 
-		// Compare result to expected
-		String actual = StringUtils.Format("{0}", result);
+		// Get actual output from print statements
+		String actual = "";
+		for (Int32 i = 0; i < printOutput.Count; i++) {
+			if (i > 0) actual += "\n";
+			actual += printOutput[i];
+		}
+		actual = actual.Trim();
+
+		// Reset the callback before returning
+		//*** BEGIN CS_ONLY ***
+		vm.SetPrintCallback(null);
+		//*** END CS_ONLY ***
+		// CPP: VMStorage::sPrintCallback = nullptr;
 
 		if (actual != expected) {
 			IOHelper.Print(StringUtils.Format("FAIL (line {0}): {1}", lineNum, source));

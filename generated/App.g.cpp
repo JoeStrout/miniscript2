@@ -97,24 +97,37 @@ void App::MainProgram(List<String> args) {
 	IOHelper::Print("All done!");
 }
 List<FuncDef> App::CompileSource(String source) {
-	// Parse the source
+	// Parse the source as a program (multiple statements)
 	Parser parser =  Parser::New();
-	ASTNode ast = parser.Parse(source);
+	parser.Init(source);
+	List<ASTNode> statements = parser.ParseProgram();
 
 	if (parser.HadError()) {
 		IOHelper::Print("Compilation failed with parse errors.");
 		return nullptr;
 	}
 
-	if (debugMode) IOHelper::Print(StringUtils::Format("AST: {0}", ast.ToStr()));
+	if (statements.Count() == 0) {
+		IOHelper::Print("No statements to compile.");
+		return nullptr;
+	}
 
-	// Simplify the AST (constant folding)
-	ast = ast.Simplify();
+	if (debugMode) {
+		IOHelper::Print(StringUtils::Format("Parsed {0} statement(s):", statements.Count()));
+		for (Int32 i = 0; i < statements.Count(); i++) {
+			IOHelper::Print(StringUtils::Format("  [{0}] {1}", i, statements[i].ToStr()));
+		}
+	}
+
+	// Simplify each AST (constant folding)
+	for (Int32 i = 0; i < statements.Count(); i++) {
+		statements[i] = statements[i].Simplify();
+	}
 
 	// Compile to bytecode
 	BytecodeEmitter emitter =  BytecodeEmitter::New();
 	CodeGenerator generator =  CodeGenerator::New(emitter);
-	FuncDef mainFunc = generator.CompileFunction(ast, "@main");
+	FuncDef mainFunc = generator.CompileProgram(statements, "@main");
 
 	if (debugMode) IOHelper::Print("Compilation complete.");
 
@@ -122,7 +135,7 @@ List<FuncDef> App::CompileSource(String source) {
 	if (debugMode) {
 		AssemblyEmitter asmEmitter =  AssemblyEmitter::New();
 		CodeGenerator asmGenerator =  CodeGenerator::New(asmEmitter);
-		asmGenerator.CompileFunction(ast, "@main");
+		asmGenerator.CompileProgram(statements, "@main");
 
 		IOHelper::Print("\nGenerated assembly:");
 		IOHelper::Print(asmEmitter.GetAssembly());
@@ -259,37 +272,51 @@ bool App::RunSingleTest(List<String> inputLines, List<String> expectedLines, Int
 	// Skip empty tests
 	if (String::IsNullOrEmpty(source.Trim())) return Boolean(true);
 
-	// Compile the source
+	// Parse as a program (multiple statements)
 	Parser parser =  Parser::New();
-	ASTNode ast = parser.Parse(source);
+	parser.Init(source);
+	List<ASTNode> statements = parser.ParseProgram();
 
 	if (parser.HadError()) {
 		IOHelper::Print(StringUtils::Format("FAIL (line {0}): Parse error in: {1}", lineNum, source));
 		return Boolean(false);
 	}
 
-	// Simplify the AST
-	ast = ast.Simplify();
+	if (statements.Count() == 0) {
+		// Empty program is OK if no expected output
+		if (expectedLines.Count() == 0) return Boolean(true);
+		IOHelper::Print(StringUtils::Format("FAIL (line {0}): No statements parsed from: {1}", lineNum, source));
+		return Boolean(false);
+	}
+
+	// Simplify each AST
+	for (Int32 i = 0; i < statements.Count(); i++) {
+		statements[i] = statements[i].Simplify();
+	}
 
 	// Compile to bytecode
 	BytecodeEmitter emitter =  BytecodeEmitter::New();
 	CodeGenerator generator =  CodeGenerator::New(emitter);
-	FuncDef mainFunc = generator.CompileFunction(ast, "@main");
+	FuncDef mainFunc = generator.CompileProgram(statements, "@main");
 
 	List<FuncDef> functions =  List<FuncDef>::New();
 	functions.Add(mainFunc);
 
-	// Run the program
+	// Set up print output capture
+	List<String> printOutput =  List<String>::New();
+	static List<String> gPrintOutput;
+	gPrintOutput = printOutput;  // Use global reference
+
+	// Run the program with print callback
 	VM vm =  VM::New();
+	VMStorage::sPrintCallback = [](const String& s) { gPrintOutput.Add(s); };
 	vm.Reset(functions);
-	GC_PUSH_SCOPE();
-	Value result = vm.Run(); GC_PROTECT(&result);
+	vm.Run();
 
 	// Check for runtime errors
 	if (!String::IsNullOrEmpty(vm.RuntimeError())) {
 		IOHelper::Print(StringUtils::Format("FAIL (line {0}): Runtime error: {1}", lineNum, vm.RuntimeError()));
 		IOHelper::Print(StringUtils::Format("  Source: {0}", source));
-		GC_POP_SCOPE();
 		return Boolean(false);
 	}
 
@@ -301,18 +328,24 @@ bool App::RunSingleTest(List<String> inputLines, List<String> expectedLines, Int
 	}
 	expected = expected.Trim();
 
-	// Compare result to expected
-	String actual = StringUtils::Format("{0}", result);
+	// Get actual output from print statements
+	String actual = "";
+	for (Int32 i = 0; i < printOutput.Count(); i++) {
+		if (i > 0) actual += "\n";
+		actual += printOutput[i];
+	}
+	actual = actual.Trim();
+
+	// Reset the callback before returning
+	VMStorage::sPrintCallback = nullptr;
 
 	if (actual != expected) {
 		IOHelper::Print(StringUtils::Format("FAIL (line {0}): {1}", lineNum, source));
 		IOHelper::Print(StringUtils::Format("  Expected: {0}", expected));
 		IOHelper::Print(StringUtils::Format("  Actual:   {0}", actual));
-		GC_POP_SCOPE();
 		return Boolean(false);
 	}
 
-	GC_POP_SCOPE();
 	return Boolean(true);
 }
 void App::RunProgram(List<FuncDef> functions) {
@@ -383,6 +416,7 @@ void App::RunProgram(List<FuncDef> functions) {
 		IOHelper::Print("\nVM execution complete. Result in r0:");
 		IOHelper::Print(StringUtils::Format("\u001b[1;93m{0}\u001b[0m", result)); // (bold bright yellow)
 	}
+	GC_POP_SCOPE();
 }
 
 

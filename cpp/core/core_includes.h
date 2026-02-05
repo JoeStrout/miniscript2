@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <vector>
 #include <memory>
+#include <functional>
 
 // C++11 compatibility: make_unique was added in C++14
 #if __cplusplus < 201402L

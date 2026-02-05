@@ -52,12 +52,15 @@ typedef struct GCMarkCallbackList {
     int capacity;
 } GCMarkCallbackList;
 
+// Maximum GC scope depth - if exceeded, there's likely a missing GC_POP_SCOPE()
+#define GC_MAX_SCOPE_DEPTH 64
+
 // GC state
 typedef struct GC {
     GCObject* all_objects;    // Linked list of all allocated objects
     GCRootSet root_set;       // Stack of root values
     GCMarkCallbackList mark_callbacks;  // Registered mark callbacks
-    GCScope scope_stack[64];  // Stack of scopes for RAII-style protection
+    GCScope scope_stack[GC_MAX_SCOPE_DEPTH];  // Stack of scopes for RAII-style protection
     int scope_count;          // Number of active scopes
     size_t bytes_allocated;   // Total allocated memory
     size_t gc_threshold;      // Trigger collection when exceeded
@@ -122,17 +125,33 @@ void gc_unprotect_value(void) {
 }
 
 void gc_push_scope(void) {
-	assert(gc.root_set.capacity > 0);	// if this fails, it means we forgot to call gc_init()
-    assert(gc.scope_count < 64);
+	if (gc.root_set.capacity == 0) {
+		fprintf(stderr, "\n*** GC ERROR: gc_push_scope() called before gc_init(). ***\n");
+		fprintf(stderr, "    Make sure gc_init() is called at program startup.\n\n");
+		abort();
+	}
+    if (gc.scope_count >= GC_MAX_SCOPE_DEPTH) {
+		fprintf(stderr, "\n*** GC ERROR: Scope stack overflow (depth %d, max %d). ***\n",
+				gc.scope_count, GC_MAX_SCOPE_DEPTH);
+		fprintf(stderr, "    This usually means a function has GC_PUSH_SCOPE() without\n");
+		fprintf(stderr, "    a matching GC_POP_SCOPE() before all return paths.\n");
+		fprintf(stderr, "    Check recently added or modified code for missing GC_POP_SCOPE().\n\n");
+		abort();
+	}
     gc.scope_stack[gc.scope_count].start_index = gc.root_set.count;
     gc.scope_count++;
 }
 
 void gc_pop_scope(void) {
-    assert(gc.scope_count > 0);
+    if (gc.scope_count <= 0) {
+		fprintf(stderr, "\n*** GC ERROR: Scope stack underflow (trying to pop when empty). ***\n");
+		fprintf(stderr, "    This usually means GC_POP_SCOPE() was called more times\n");
+		fprintf(stderr, "    than GC_PUSH_SCOPE(), or called without a matching push.\n\n");
+		abort();
+	}
     gc.scope_count--;
     int start = gc.scope_stack[gc.scope_count].start_index;
-    
+
     // Unprotect everything added in this scope - just reset count directly
     gc.root_set.count = start;
 }
@@ -356,9 +375,16 @@ GCStats gc_get_stats(void) {
         .gc_threshold = gc.gc_threshold,
         .collections_count = gc.collections_count,
         .root_count = gc.root_set.count,
+        .scope_depth = gc.scope_count,
+        .max_scope_depth = GC_MAX_SCOPE_DEPTH,
         .is_enabled = (gc.disable_count == 0)
     };
     return stats;
+}
+
+// Get current scope depth (useful for debugging scope leaks)
+int gc_get_scope_depth(void) {
+    return gc.scope_count;
 }
 
 // Accessor functions for debug output (used by gc_debug_output.c)

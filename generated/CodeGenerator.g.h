@@ -161,8 +161,11 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 	// Returns the register number holding the result
 	public: Int32 Compile(ASTNode ast);
 
-	// Compile a complete function from an expression
+	// Compile a complete function from a single expression/statement
 	public: FuncDef CompileFunction(ASTNode ast, String funcName);
+
+	// Compile a complete function from a list of statements (program)
+	public: FuncDef CompileProgram(List<ASTNode> statements, String funcName);
 
 	// --- Visit methods for each AST node type ---
 
@@ -227,8 +230,11 @@ struct CodeGenerator : public IASTVisitor {
 	// Returns the register number holding the result
 	public: Int32 Compile(ASTNode ast) { return get()->Compile(ast); }
 
-	// Compile a complete function from an expression
+	// Compile a complete function from a single expression/statement
 	public: FuncDef CompileFunction(ASTNode ast, String funcName) { return get()->CompileFunction(ast, funcName); }
+
+	// Compile a complete function from a list of statements (program)
+	public: FuncDef CompileProgram(List<ASTNode> statements, String funcName) { return get()->CompileProgram(statements, funcName); }
 
 	// --- Visit methods for each AST node type ---
 

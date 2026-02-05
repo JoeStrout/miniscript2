@@ -75,7 +75,7 @@ public class CodeGenerator : IASTVisitor {
 		return ast.Accept(this);
 	}
 
-	// Compile a complete function from an expression
+	// Compile a complete function from a single expression/statement
 	public FuncDef CompileFunction(ASTNode ast, String funcName) {
 		_regInUse.Clear();
 		_firstAvailable = 0;
@@ -87,6 +87,34 @@ public class CodeGenerator : IASTVisitor {
 		if (resultReg != 0) {
 			_emitter.EmitABC(Opcode.LOAD_rA_rB, 0, resultReg, 0, "move result to r0");
 		}
+		_emitter.Emit(Opcode.RETURN, null);
+
+		return _emitter.Finalize(funcName);
+	}
+
+	// Compile a complete function from a list of statements (program)
+	public FuncDef CompileProgram(List<ASTNode> statements, String funcName) {
+		_regInUse.Clear();
+		_firstAvailable = 0;
+		_maxRegUsed = -1;
+
+		Int32 resultReg = 0;
+
+		// Compile each statement sequentially
+		for (Int32 i = 0; i < statements.Count; i++) {
+			// Free all registers before each statement (except r0 for final result)
+			_regInUse.Clear();
+			_firstAvailable = 0;
+
+			resultReg = statements[i].Accept(this);
+
+			// Move result to r0 after each statement
+			// (the last one's result will be the function's return value)
+			if (resultReg != 0) {
+				_emitter.EmitABC(Opcode.LOAD_rA_rB, 0, resultReg, 0, "move result to r0");
+			}
+		}
+
 		_emitter.Emit(Opcode.RETURN, null);
 
 		return _emitter.Finalize(funcName);
@@ -235,10 +263,48 @@ public class CodeGenerator : IASTVisitor {
 	}
 
 	public Int32 Visit(CallNode node) {
-		// Function calls not yet implemented
-		Int32 reg = AllocReg();
-		_emitter.EmitAB(Opcode.LOAD_rA_iBC, reg, 0, $"TODO: call {node.Function}");
-		return reg;
+		// Generate code for function calls
+		// For intrinsic functions, we use CALLFN which expects:
+		// - Arguments loaded into consecutive registers starting at baseReg
+		// - Return value placed in baseReg after the call
+
+		// First, compile all arguments into consecutive registers
+		Int32 baseReg = AllocReg();  // This will hold first arg and return value
+		Int32 argCount = node.Arguments.Count;
+
+		// If we have arguments, compile them
+		if (argCount > 0) {
+			// Compile first argument into baseReg
+			Int32 firstArgReg = node.Arguments[0].Accept(this);
+			if (firstArgReg != baseReg) {
+				_emitter.EmitABC(Opcode.LOAD_rA_rB, baseReg, firstArgReg, 0, $"move arg 0 to r{baseReg}");
+				FreeReg(firstArgReg);
+			}
+
+			// Compile remaining arguments into consecutive registers
+			for (Int32 i = 1; i < argCount; i++) {
+				Int32 argReg = AllocReg();
+				Int32 compiledReg = node.Arguments[i].Accept(this);
+				if (compiledReg != argReg) {
+					_emitter.EmitABC(Opcode.LOAD_rA_rB, argReg, compiledReg, 0, $"move arg {i} to r{argReg}");
+					FreeReg(compiledReg);
+				}
+			}
+		}
+
+		// Emit the function call
+		// CALLFN_iA_kBC: A = base register, BC = constant index for function name
+		Int32 funcNameIdx = _emitter.AddConstant(make_string(node.Function));
+		_emitter.EmitAB(Opcode.CALLFN_iA_kBC, baseReg, funcNameIdx, $"call {node.Function}");
+
+		// Free any extra argument registers we allocated (keeping baseReg for return value)
+		// Note: The argument registers after baseReg are now free since the call has completed
+		for (Int32 i = 1; i < argCount; i++) {
+			FreeReg(baseReg + i);
+		}
+
+		// Return value is in baseReg
+		return baseReg;
 	}
 
 	public Int32 Visit(GroupNode node) {

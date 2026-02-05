@@ -15,6 +15,7 @@ Token::Token(TokenType type, String text, Int32 line, Int32 column) {
 	DoubleValue = 0;
 	Line = line;
 	Column = column;
+	AfterSpace = Boolean(false);
 }
 
 
@@ -40,14 +41,16 @@ Char Lexer::Advance() {
 	return c;
 }
 Token Lexer::NextToken() {
-	SkipWhitespace();
+	Boolean hadWhitespace = SkipWhitespace();
 
 	Int32 startLine = _line;
 	Int32 startColumn = _column;
 
 	// End of _input
 	if (_position >= _input.Length()) {
-		return Token(TokenType::END_OF_INPUT, "", startLine, startColumn);
+		Token eofTok = Token(TokenType::END_OF_INPUT, "", startLine, startColumn);
+		eofTok.AfterSpace = hadWhitespace;
+		return eofTok;
 	}
 
 	Char c = Peek();
@@ -67,6 +70,7 @@ Token Lexer::NextToken() {
 		}
 		String numStr = _input.Substring(start, _position - start);
 		Token tok = Token(TokenType::NUMBER, numStr, startLine, startColumn);
+		tok.AfterSpace = hadWhitespace;
 		if (numStr.Contains(".")) {
 			tok.DoubleValue = StringUtils::ParseDouble(numStr);
 		} else {
@@ -83,11 +87,19 @@ Token Lexer::NextToken() {
 			Advance();
 		}
 		String text = _input.Substring(start, _position - start);
+		Token tok;
 		// Check for keywords
-		if (text == "and") return Token(TokenType::AND, text, startLine, startColumn);
-		if (text == "or") return Token(TokenType::OR, text, startLine, startColumn);
-		if (text == "not") return Token(TokenType::NOT, text, startLine, startColumn);
-		return Token(TokenType::IDENTIFIER, text, startLine, startColumn);
+		if (text == "and") {
+			tok = Token(TokenType::AND, text, startLine, startColumn);
+		} else if (text == "or") {
+			tok = Token(TokenType::OR, text, startLine, startColumn);
+		} else if (text == "not") {
+			tok = Token(TokenType::NOT, text, startLine, startColumn);
+		} else {
+			tok = Token(TokenType::IDENTIFIER, text, startLine, startColumn);
+		}
+		tok.AfterSpace = hadWhitespace;
+		return tok;
 	}
 
 	// String literals
@@ -102,25 +114,36 @@ Token Lexer::NextToken() {
 		}
 		String text = _input.Substring(start, _position - start);
 		if (Peek() == '"') Advance(); // consume closing quote
-		return Token(TokenType::STRING, text, startLine, startColumn);
+		Token tok = Token(TokenType::STRING, text, startLine, startColumn);
+		tok.AfterSpace = hadWhitespace;
+		return tok;
 	}
 
 	// Multi-character operators (check before consuming)
+	Token multiTok;
 	if (c == '=' && _position + 1 < _input.Length() && _input[_position + 1] == '=') {
 		Advance(); Advance();
-		return Token(TokenType::EQUALS, "==", startLine, startColumn);
+		multiTok = Token(TokenType::EQUALS, "==", startLine, startColumn);
+		multiTok.AfterSpace = hadWhitespace;
+		return multiTok;
 	}
 	if (c == '!' && _position + 1 < _input.Length() && _input[_position + 1] == '=') {
 		Advance(); Advance();
-		return Token(TokenType::NOT_EQUAL, "!=", startLine, startColumn);
+		multiTok = Token(TokenType::NOT_EQUAL, "!=", startLine, startColumn);
+		multiTok.AfterSpace = hadWhitespace;
+		return multiTok;
 	}
 	if (c == '<' && _position + 1 < _input.Length() && _input[_position + 1] == '=') {
 		Advance(); Advance();
-		return Token(TokenType::LESS_EQUAL, "<=", startLine, startColumn);
+		multiTok = Token(TokenType::LESS_EQUAL, "<=", startLine, startColumn);
+		multiTok.AfterSpace = hadWhitespace;
+		return multiTok;
 	}
 	if (c == '>' && _position + 1 < _input.Length() && _input[_position + 1] == '=') {
 		Advance(); Advance();
-		return Token(TokenType::GREATER_EQUAL, ">=", startLine, startColumn);
+		multiTok = Token(TokenType::GREATER_EQUAL, ">=", startLine, startColumn);
+		multiTok.AfterSpace = hadWhitespace;
+		return multiTok;
 	}
 
 	// Comments: // to end of line
@@ -131,35 +154,40 @@ Token Lexer::NextToken() {
 			Advance();
 		}
 		String text = _input.Substring(start, _position - start);
-		return Token(TokenType::COMMENT, text, startLine, startColumn);
+		Token commentTok = Token(TokenType::COMMENT, text, startLine, startColumn);
+		commentTok.AfterSpace = hadWhitespace;
+		return commentTok;
 	}
 
 	// Single-character operators and punctuation
 	Advance();
+	Token singleTok;
 	switch (c) {
-		case '+': return Token(TokenType::PLUS, "+", startLine, startColumn);
-		case '-': return Token(TokenType::MINUS, "-", startLine, startColumn);
-		case '*': return Token(TokenType::TIMES, "*", startLine, startColumn);
-		case '/': return Token(TokenType::DIVIDE, "/", startLine, startColumn);
-		case '%': return Token(TokenType::MOD, "%", startLine, startColumn);
-		case '^': return Token(TokenType::CARET, "^", startLine, startColumn);
-		case '(': return Token(TokenType::LPAREN, "(", startLine, startColumn);
-		case ')': return Token(TokenType::RPAREN, ")", startLine, startColumn);
-		case '[': return Token(TokenType::LBRACKET, "[", startLine, startColumn);
-		case ']': return Token(TokenType::RBRACKET, "]", startLine, startColumn);
-		case '{': return Token(TokenType::LBRACE, "{", startLine, startColumn);
-		case '}': return Token(TokenType::RBRACE, "}", startLine, startColumn);
-		case '=': return Token(TokenType::ASSIGN, "=", startLine, startColumn);
-		case '<': return Token(TokenType::LESS_THAN, "<", startLine, startColumn);
-		case '>': return Token(TokenType::GREATER_THAN, ">", startLine, startColumn);
-		case ',': return Token(TokenType::COMMA, ",", startLine, startColumn);
-		case ':': return Token(TokenType::COLON, ":", startLine, startColumn);
-		case ';': return Token(TokenType::SEMICOLON, ";", startLine, startColumn);
-		case '.': return Token(TokenType::DOT, ".", startLine, startColumn);
-		case '\n': return Token(TokenType::EOL, "\n", startLine, startColumn);
+		case '+': singleTok = Token(TokenType::PLUS, "+", startLine, startColumn); break;
+		case '-': singleTok = Token(TokenType::MINUS, "-", startLine, startColumn); break;
+		case '*': singleTok = Token(TokenType::TIMES, "*", startLine, startColumn); break;
+		case '/': singleTok = Token(TokenType::DIVIDE, "/", startLine, startColumn); break;
+		case '%': singleTok = Token(TokenType::MOD, "%", startLine, startColumn); break;
+		case '^': singleTok = Token(TokenType::CARET, "^", startLine, startColumn); break;
+		case '(': singleTok = Token(TokenType::LPAREN, "(", startLine, startColumn); break;
+		case ')': singleTok = Token(TokenType::RPAREN, ")", startLine, startColumn); break;
+		case '[': singleTok = Token(TokenType::LBRACKET, "[", startLine, startColumn); break;
+		case ']': singleTok = Token(TokenType::RBRACKET, "]", startLine, startColumn); break;
+		case '{': singleTok = Token(TokenType::LBRACE, "{", startLine, startColumn); break;
+		case '}': singleTok = Token(TokenType::RBRACE, "}", startLine, startColumn); break;
+		case '=': singleTok = Token(TokenType::ASSIGN, "=", startLine, startColumn); break;
+		case '<': singleTok = Token(TokenType::LESS_THAN, "<", startLine, startColumn); break;
+		case '>': singleTok = Token(TokenType::GREATER_THAN, ">", startLine, startColumn); break;
+		case ',': singleTok = Token(TokenType::COMMA, ",", startLine, startColumn); break;
+		case ':': singleTok = Token(TokenType::COLON, ":", startLine, startColumn); break;
+		case ';': singleTok = Token(TokenType::SEMICOLON, ";", startLine, startColumn); break;
+		case '.': singleTok = Token(TokenType::DOT, ".", startLine, startColumn); break;
+		case '\n': singleTok = Token(TokenType::EOL, "\n", startLine, startColumn); break;
 		default:
-			return Token(TokenType::ERROR, StringUtils::Str(c), startLine, startColumn);
+			singleTok = Token(TokenType::ERROR, StringUtils::Str(c), startLine, startColumn); break;
 	}
+	singleTok.AfterSpace = hadWhitespace;
+	return singleTok;
 }
 void Lexer::Error(String message) {
 	IOHelper::Print(Interp("Lexer error at _line {}, _column {}: {}", _line, _column, message));

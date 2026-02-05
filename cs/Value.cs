@@ -725,11 +725,13 @@ public class ValueList {
 	public void Add(Value item) => _items.Add(item);
 	
 	public Value Get(int index) {
+		if (index < 0) index += _items.Count;
 		if (index < 0 || index >= _items.Count) return val_null;
 		return _items[index];
 	}
 	
 	public void Set(int index, Value value) {
+		if (index < 0) index += _items.Count;
 		if (index >= 0 && index < _items.Count)
 			_items[index] = value;
 	}

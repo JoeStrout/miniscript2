@@ -308,6 +308,55 @@ public:
 		return Keys(this);
 	}
 
+	// Iterator support - simple value iteration
+	class ValueIterator {
+	private:
+		const Dictionary<TKey, TValue>* dict;
+		int index;
+
+		void findNext() {
+			if (!dict->entries) return;
+			// Only iterate through active entries (0 to count-1)
+			while (index < dict->count && (*dict->entries)[index].next < -1) {
+				index++;
+			}
+		}
+
+	public:
+		ValueIterator(const Dictionary<TKey, TValue>* d, int idx) : dict(d), index(idx) {
+			findNext();
+		}
+
+		TValue operator*() const {
+			return (*dict->entries)[index].value;
+		}
+
+		ValueIterator& operator++() {
+			index++;
+			findNext();
+			return *this;
+		}
+
+		bool operator!=(const ValueIterator& other) const {
+			return index != other.index;
+		}
+	};
+
+	class Values {
+	private:
+		const Dictionary<TKey, TValue>* dict;
+	public:
+		Values(const Dictionary<TKey, TValue>* d) : dict(d) {}
+		ValueIterator begin() const { return ValueIterator(dict, 0); }
+		ValueIterator end() const {
+			return ValueIterator(dict, dict->count);
+		}
+	};
+
+	Values GetValues() const {
+		return Values(this);
+	}
+
 	// Compatibility methods (poolNum ignored with shared_ptr)
 	uint8_t getPoolNum() const { return 0; }
 	bool isValid() const { return true; }  // Always valid with shared_ptr

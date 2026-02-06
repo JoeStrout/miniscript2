@@ -13,12 +13,12 @@ else
     GOTO_FLAG = 
 endif
 
-CXXFLAGS = -std=gnu++11 -Wall -Wextra -O3 -DNDEBUG -Icore -I$(GENDIR) $(GOTO_FLAG)
-CFLAGS = -std=c99 -Wall -Wextra -O3 -DNDEBUG -Icore $(GOTO_FLAG)
+CXXFLAGS = -std=gnu++11 -Wall -Wextra -O3 -DNDEBUG -Icore -I$(GENDIR) $(GOTO_FLAG) -MMD -MP
+CFLAGS = -std=c99 -Wall -Wextra -O3 -DNDEBUG -Icore $(GOTO_FLAG) -MMD -MP
 
 # AddressSanitizer flags for debugging
-ASAN_CXXFLAGS = -std=gnu++11 -Wall -Wextra -O0 -g -fsanitize=address -Icore -I$(GENDIR) $(GOTO_FLAG)
-ASAN_CFLAGS = -std=c99 -Wall -Wextra -O0 -g -fsanitize=address -Icore $(GOTO_FLAG)
+ASAN_CXXFLAGS = -std=gnu++11 -Wall -Wextra -O0 -g -fsanitize=address -Icore -I$(GENDIR) $(GOTO_FLAG) -MMD -MP
+ASAN_CFLAGS = -std=c99 -Wall -Wextra -O0 -g -fsanitize=address -Icore $(GOTO_FLAG) -MMD -MP
 ASAN_LDFLAGS = -fsanitize=address
 COREDIR = core
 GENDIR = ../generated
@@ -140,3 +140,7 @@ info:
 	@echo "Generated sources: $(GEN_SOURCES)"
 	@echo "Objects: $(OBJECTS)"
 	@echo "Target: $(TARGET)"
+
+# Include auto-generated dependency files (the - silently ignores missing files)
+-include $(OBJECTS:.o=.d)
+-include $(ASAN_OBJECTS:.o=.d)

@@ -262,11 +262,7 @@ public readonly struct Value {
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value Divide(Value a, Value b) {
-		if (a.IsInt && b.IsInt) {
-			long r = (long)a.AsInt() / b.AsInt();
-			if ((uint)r == r) return FromInt((int)r);
-			return FromDouble((double)r);
-		}
+		// MiniScript division always returns a float/double
 		if ((a.IsInt || a.IsDouble) && (b.IsInt || b.IsDouble)) {
 			double da = a.IsInt ? a.AsInt() : a.AsDouble();
 			double db = b.IsInt ? b.AsInt() : b.AsDouble();

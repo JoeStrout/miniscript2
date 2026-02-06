@@ -148,6 +148,7 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 	private: List<Boolean> _regInUse; // Which registers are currently in use
 	private: Int32 _firstAvailable; // Lowest index that might be free
 	private: Int32 _maxRegUsed; // High water mark for register usage
+	private: Dictionary<String, Int32> _variableRegs; // variable name -> register
 
 	public: CodeGeneratorStorage(CodeEmitterBase emitter);
 
@@ -197,6 +198,7 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 }; // end of class CodeGeneratorStorage
 
 
+
 // Compiles AST nodes to bytecode
 struct CodeGenerator : public IASTVisitor {
 	protected: std::shared_ptr<CodeGeneratorStorage> storage;
@@ -215,6 +217,8 @@ struct CodeGenerator : public IASTVisitor {
 	private: void set__firstAvailable(Int32 _v); // Lowest index that might be free
 	private: Int32 _maxRegUsed(); // High water mark for register usage
 	private: void set__maxRegUsed(Int32 _v); // High water mark for register usage
+	private: Dictionary<String, Int32> _variableRegs(); // variable name -> register
+	private: void set__variableRegs(Dictionary<String, Int32> _v); // variable name -> register
 
 	public: static CodeGenerator New(CodeEmitterBase emitter) {
 		return CodeGenerator(std::make_shared<CodeGeneratorStorage>(emitter));
@@ -277,5 +281,7 @@ inline Int32 CodeGenerator::_firstAvailable() { return get()->_firstAvailable; }
 inline void CodeGenerator::set__firstAvailable(Int32 _v) { get()->_firstAvailable = _v; } // Lowest index that might be free
 inline Int32 CodeGenerator::_maxRegUsed() { return get()->_maxRegUsed; } // High water mark for register usage
 inline void CodeGenerator::set__maxRegUsed(Int32 _v) { get()->_maxRegUsed = _v; } // High water mark for register usage
+inline Dictionary<String, Int32> CodeGenerator::_variableRegs() { return get()->_variableRegs; } // variable name -> register
+inline void CodeGenerator::set__variableRegs(Dictionary<String, Int32> _v) { get()->_variableRegs = _v; } // variable name -> register
 
 } // end of namespace MiniScript

@@ -275,3 +275,13 @@ Ah.  Turns out to be a flaw in the way wrapper classes were generated in some ca
 Since we have code compiling & execution now, it's time to start on the integration test suite!  Rather than try to run the MiniScript 1.x TestSuite.txt, which would contain tons of stuff we don't support yet, I'm starting a new one.  I'll try to be more thorough and complete with it this time around, too.  This one is at tests/testSuite.txt, and it will be run automatically whenever miniscript2 is started with the -debug flag.
 
 Also today: adding support for the `and`, `or`, and `not` operators.
+
+## Feb 05, 2026
+
+Things are progressing really well.  I've added support for `print`, and both the test suite runner and the regular program runner now compile multi-line programs.  Now working on variable support.  ...Basic variable reads and writes are working now (using `LOADC`, which should call a function it is one, though we have no easy way to test that yet).
+
+Near-term ToDo list:
+- handle semicolons in addition to newlines for separating statements
+- fix how many digits are printed on a number like 10/3; currently it's way too many
+- handle protected reads like `@x` (should use `LOADV` instead of `LOADC`)
+

@@ -320,19 +320,7 @@ static inline Value value_mult(Value a, Value b) {
 }
 
 static inline Value value_div(Value a, Value b) {
-    // Handle integer / integer case
-    if (is_int(a) && is_int(b)) {
-        // Use int64_t to detect overflow
-        int64_t result = (int64_t)as_int(a) / (int64_t)as_int(b);
-        if (result >= INT32_MIN && result <= INT32_MAX) {
-            return make_int((int32_t)result);
-        } else {
-            // Overflow to double
-            return make_double((double)result);
-        }
-    }
-    
-    // Handle mixed integer/double or double/double cases
+    // Handle number/number case
     if (is_number(a) && is_number(b)) {
         double da = is_int(a) ? (double)as_int(a) : as_double(a);
         double db = is_int(b) ? (double)as_int(b) : as_double(b);

@@ -10,18 +10,21 @@ using static MiniScript.ValueHelpers;
 
 namespace MiniScript {
 
+
 // Compiles AST nodes to bytecode
 public class CodeGenerator : IASTVisitor {
 	private CodeEmitterBase _emitter;
 	private List<Boolean> _regInUse;    // Which registers are currently in use
 	private Int32 _firstAvailable;      // Lowest index that might be free
 	private Int32 _maxRegUsed;          // High water mark for register usage
+	private Dictionary<String, Int32> _variableRegs;  // variable name -> register
 
 	public CodeGenerator(CodeEmitterBase emitter) {
 		_emitter = emitter;
 		_regInUse = new List<Boolean>();
 		_firstAvailable = 0;
 		_maxRegUsed = -1;
+		_variableRegs = new Dictionary<String, Int32>();
 	}
 
 	// Allocate a register
@@ -80,6 +83,7 @@ public class CodeGenerator : IASTVisitor {
 		_regInUse.Clear();
 		_firstAvailable = 0;
 		_maxRegUsed = -1;
+		_variableRegs.Clear();
 
 		Int32 resultReg = ast.Accept(this);
 
@@ -97,14 +101,24 @@ public class CodeGenerator : IASTVisitor {
 		_regInUse.Clear();
 		_firstAvailable = 0;
 		_maxRegUsed = -1;
+		_variableRegs.Clear();
 
 		Int32 resultReg = 0;
 
 		// Compile each statement sequentially
 		for (Int32 i = 0; i < statements.Count; i++) {
-			// Free all registers before each statement (except r0 for final result)
+			// Free temporary registers before each statement, but keep variable registers
 			_regInUse.Clear();
 			_firstAvailable = 0;
+
+			// Mark variable registers as still in use
+			foreach (Int32 reg in _variableRegs.Values) { // CPP: for (Int32 reg : _variableRegs.GetValues()) {
+				while (_regInUse.Count <= reg) {
+					_regInUse.Add(false);
+				}
+				_regInUse[reg] = true;
+				if (reg >= _firstAvailable) _firstAvailable = reg + 1;
+			}
 
 			resultReg = statements[i].Accept(this);
 
@@ -145,20 +159,46 @@ public class CodeGenerator : IASTVisitor {
 	}
 
 	public Int32 Visit(IdentifierNode node) {
-		// For now, identifiers are not supported (requires variable scope)
-		// This is a placeholder that will be expanded later
-		Int32 reg = AllocReg();
-		// TODO: Look up variable in scope and load its value
-		_emitter.EmitAB(Opcode.LOAD_rA_iBC, reg, 0, $"TODO: load {node.Name}");
-		return reg;
+		Int32 resultReg = AllocReg();
+
+		Int32 varReg;
+		if (_variableRegs.TryGetValue(node.Name, out varReg)) {
+			// Variable found - emit LOADC (load-and-call for implicit function invocation)
+			Int32 nameIdx = _emitter.AddConstant(make_string(node.Name));
+			_emitter.EmitABC(Opcode.LOADC_rA_rB_kC, resultReg, varReg, nameIdx,
+				$"r{resultReg} = {node.Name}");
+		} else {
+			// Undefined variable - for now just load 0
+			// TODO: handle outer/globals lookup or report error
+			_emitter.EmitAB(Opcode.LOAD_rA_iBC, resultReg, 0, $"undefined: {node.Name}");
+		}
+
+		return resultReg;
 	}
 
 	public Int32 Visit(AssignmentNode node) {
-		// For now, assignment is not fully supported (requires variable scope)
-		// Compile the value expression and return its register
 		Int32 valueReg = node.Value.Accept(this);
-		// TODO: Store value in variable
-		return valueReg;
+
+		// Get or allocate register for this variable
+		Int32 varReg;
+		if (_variableRegs.TryGetValue(node.Variable, out varReg)) {
+			// Variable already has a register - reuse it
+		} else {
+			// Allocate new register for variable
+			varReg = AllocReg();
+			_variableRegs[node.Variable] = varReg;
+		}
+
+		// Emit ASSIGN: copy value and set name
+		Int32 nameIdx = _emitter.AddConstant(make_string(node.Variable));
+		_emitter.EmitABC(Opcode.ASSIGN_rA_rB_kC, varReg, valueReg, nameIdx,
+			$"{node.Variable} = {node.Value.ToStr()}");
+
+		// Note that we don't FreeReg(varReg) here, as we need this register to
+		// continue to serve as the storage for this variable for the life of
+		// the function.  (TODO: or until some lifetime analysis determines that
+		// the variable will never be read again.)
+		return varReg;
 	}
 
 	public Int32 Visit(UnaryOpNode node) {

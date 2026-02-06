@@ -149,7 +149,7 @@ public class CodeGenerator : IASTVisitor {
 
 		// Move result to r0 if not already there
 		if (resultReg != 0) {
-			_emitter.EmitABC(Opcode.LOAD_rA_rB, 0, resultReg, 0, "move result to r0");
+			_emitter.EmitABC(Opcode.LOAD_rA_rB, 0, resultReg, 0, "move Function result to r0");
 		}
 		_emitter.Emit(Opcode.RETURN, null);
 
@@ -163,13 +163,13 @@ public class CodeGenerator : IASTVisitor {
 		_maxRegUsed = -1;
 		_variableRegs.Clear();
 
-		Int32 resultReg = 0;
-
 		// Compile each statement sequentially
 		for (Int32 i = 0; i < statements.Count; i++) {
-			// Free temporary registers before each statement, but keep variable registers
+			// Free temporary registers before each statement, 
+			// but keep variable registers and our own (r0) result register
 			_regInUse.Clear();
-			_firstAvailable = 0;
+			_regInUse.Add(true);  // r0, reserved for our result
+			_firstAvailable = 1;
 
 			// Mark variable registers as still in use
 			foreach (Int32 reg in _variableRegs.Values) { // CPP: for (Int32 reg : _variableRegs.GetValues()) {
@@ -180,13 +180,14 @@ public class CodeGenerator : IASTVisitor {
 				if (reg >= _firstAvailable) _firstAvailable = reg + 1;
 			}
 
-			resultReg = statements[i].Accept(this);
+			CompileInto(statements[i], 0);
 
 			// Move result to r0 after each statement
 			// (the last one's result will be the function's return value)
-			if (resultReg != 0) {
-				_emitter.EmitABC(Opcode.LOAD_rA_rB, 0, resultReg, 0, "move result to r0");
-			}
+// Shouldn't be needed since we now use CompileInto above:
+//			if (resultReg != 0) {
+//				_emitter.EmitABC(Opcode.LOAD_rA_rB, 0, resultReg, 0, "move Program result to r0");
+//			}
 		}
 
 		_emitter.Emit(Opcode.RETURN, null);
@@ -218,15 +219,17 @@ public class CodeGenerator : IASTVisitor {
 		return reg;
 	}
 
-	public Int32 Visit(IdentifierNode node) {
+	public Int32 Visit(IdentifierNode node, bool addressOf) {
 		Int32 resultReg = GetTargetOrAlloc();
 
 		Int32 varReg;
 		if (_variableRegs.TryGetValue(node.Name, out varReg)) {
 			// Variable found - emit LOADC (load-and-call for implicit function invocation)
 			Int32 nameIdx = _emitter.AddConstant(make_string(node.Name));
-			_emitter.EmitABC(Opcode.LOADC_rA_rB_kC, resultReg, varReg, nameIdx,
-				$"r{resultReg} = {node.Name}");
+			Opcode op = addressOf ? Opcode.LOADV_rA_rB_kC : Opcode.LOADC_rA_rB_kC;
+			String a = addressOf ? "@" : "";
+			_emitter.EmitABC(op, resultReg, varReg, nameIdx,
+				$"r{resultReg} = {a}{node.Name}");
 		} else {
 			// Undefined variable - for now just load 0
 			// TODO: handle outer/globals lookup or report error
@@ -236,33 +239,56 @@ public class CodeGenerator : IASTVisitor {
 		return resultReg;
 	}
 
-	public Int32 Visit(AssignmentNode node) {
-		Int32 valueReg = node.Value.Accept(this);
+	public Int32 Visit(IdentifierNode node) {
+		return Visit(node, false);
+	}
 
+	public Int32 Visit(AssignmentNode node) {
+		// Note the desired target register, if any (but see notes below).
+		Int32 explicitTarget = _targetReg;
+		if (_targetReg > 0) {
+			IOHelper.Print($"ERROR: unexpected _targetReg {_targetReg} in Visit(AssignmentNOde)");
+		}
+		
 		// Get or allocate register for this variable
 		Int32 varReg;
 		if (_variableRegs.TryGetValue(node.Variable, out varReg)) {
-			// Variable already has a register - reuse it
+			// Variable already has a register - reuse it (and don't bother with naming)
 		} else {
-			// Allocate new register for variable
+			// Hmm.  Should we allocate a new register for this variable, or
+			// just claim the target register as our storage?  I'm going to alloc
+			// a new one for now, because I can't be sure the caller won't free
+			// the target register when done.  But we should probably return to
+			// this later and see if we can optimize it more.
 			varReg = AllocReg();
 			_variableRegs[node.Variable] = varReg;
+			Int32 nameIdx = _emitter.AddConstant(make_string(node.Variable));
+			_emitter.EmitAB(Opcode.NAME_rA_kBC, varReg, nameIdx, $"use r{varReg} for {node.Variable}");
 		}
-
-		// Emit ASSIGN: copy value and set name
-		Int32 nameIdx = _emitter.AddConstant(make_string(node.Variable));
-		_emitter.EmitABC(Opcode.ASSIGN_rA_rB_kC, varReg, valueReg, nameIdx,
-			$"{node.Variable} = {node.Value.ToStr()}");
+		CompileInto(node.Value, varReg);  // get RHS directly into the variable's register
 
 		// Note that we don't FreeReg(varReg) here, as we need this register to
 		// continue to serve as the storage for this variable for the life of
 		// the function.  (TODO: or until some lifetime analysis determines that
 		// the variable will never be read again.)
+
+		// BUT, if varReg is not the explicit target register, then we need to copy
+		// the value there as well.  Not sure why that would ever be the case (since
+		// assignment can't be used in an expression in MiniScript).  So:
 		return varReg;
 	}
 
 	public Int32 Visit(UnaryOpNode node) {
+		if (node.Op == Op.ADDRESS_OF) {
+			// Special case: just an identifier lookup without function call
+			IdentifierNode ident = node.Operand as IdentifierNode;
+			if (ident != null) return Visit(ident, true);
+			// On anything other than an identifier, @ has no effect.
+			return node.Operand.Accept(this);
+		}
+			
 		Int32 resultReg = GetTargetOrAlloc();  // Capture target before any recursive calls
+
 		Int32 operandReg = node.Operand.Accept(this);
 
 		if (node.Op == Op.MINUS) {
@@ -398,7 +424,7 @@ public class CodeGenerator : IASTVisitor {
 
 		// If an explicit target was requested and it's different, move result there
 		if (explicitTarget >= 0 && explicitTarget != baseReg) {
-			_emitter.EmitABC(Opcode.LOAD_rA_rB, explicitTarget, baseReg, 0, $"move result to r{explicitTarget}");
+			_emitter.EmitABC(Opcode.LOAD_rA_rB, explicitTarget, baseReg, 0, $"move Call result to r{explicitTarget}");
 			FreeReg(baseReg);
 			return explicitTarget;
 		}

@@ -8,17 +8,19 @@ namespace MiniScript {
 // Precedence levels (higher precedence binds more strongly)
 public enum Precedence : Int32 {
 	NONE = 0,
-	ASSIGNMENT = 1,
-	OR = 2,
-	AND = 3,
-	EQUALITY = 4,        // == !=
-	COMPARISON = 5,      // < > <= >=
-	SUM = 6,             // + -
-	PRODUCT = 7,         // * / %
-	POWER = 8,           // ^
-	UNARY = 9,           // - not
-	CALL = 10,           // () []
-	PRIMARY = 11
+	ASSIGNMENT,
+	OR,
+	AND,
+	NOT,
+	EQUALITY,        // == !=
+	COMPARISON,      // < > <= >=
+	SUM,             // + -
+	PRODUCT,         // * / %
+	UNARY_MINUS,     // -
+	POWER,           // ^
+	CALL,            // () []
+	ADDRESS_OF,      // @
+	PRIMARY
 }
 
 // Token types returned by the lexer
@@ -27,6 +29,7 @@ public enum TokenType : Int32 {
 	NUMBER,
 	STRING,
 	IDENTIFIER,
+	ADDRESS_OF,
 	PLUS,
 	MINUS,
 	TIMES,

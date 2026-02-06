@@ -49,8 +49,9 @@ public class Parser : IParser {
 		RegisterPrefix(TokenType.LBRACE, new MapParselet());
 
 		// Unary operators
-		RegisterPrefix(TokenType.MINUS, new UnaryOpParselet(Op.MINUS, Precedence.UNARY));
-		RegisterPrefix(TokenType.NOT, new UnaryOpParselet(Op.NOT, Precedence.UNARY));
+		RegisterPrefix(TokenType.MINUS, new UnaryOpParselet(Op.MINUS, Precedence.UNARY_MINUS));
+		RegisterPrefix(TokenType.NOT, new UnaryOpParselet(Op.NOT, Precedence.UNARY_MINUS));
+		RegisterPrefix(TokenType.ADDRESS_OF, new UnaryOpParselet(Op.ADDRESS_OF, Precedence.ADDRESS_OF));
 
 		// Binary operators
 		RegisterInfix(TokenType.PLUS, new BinaryOpParselet(Op.PLUS, Precedence.SUM));
@@ -151,6 +152,7 @@ public class Parser : IParser {
 			|| type == TokenType.LBRACKET
 			|| type == TokenType.LBRACE
 			|| type == TokenType.MINUS
+			|| type == TokenType.ADDRESS_OF
 			|| type == TokenType.NOT;
 	}
 
@@ -168,6 +170,7 @@ public class Parser : IParser {
 			|| type == TokenType.LBRACKET
 			|| type == TokenType.LBRACE
 			|| type == TokenType.MINUS
+			|| type == TokenType.ADDRESS_OF
 			|| type == TokenType.NOT;
 	}
 

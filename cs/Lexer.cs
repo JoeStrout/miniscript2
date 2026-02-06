@@ -243,8 +243,9 @@ public struct Lexer {
 			case '>': singleTok = new Token(TokenType.GREATER_THAN, ">", startLine, startColumn); break;
 			case ',': singleTok = new Token(TokenType.COMMA, ",", startLine, startColumn); break;
 			case ':': singleTok = new Token(TokenType.COLON, ":", startLine, startColumn); break;
-			case ';': singleTok = new Token(TokenType.EOL, ";", startLine, startColumn); break;
 			case '.': singleTok = new Token(TokenType.DOT, ".", startLine, startColumn); break;
+			case '@': singleTok = new Token(TokenType.ADDRESS_OF, "@", startLine, startColumn); break;
+			case ';': singleTok = new Token(TokenType.EOL, ";", startLine, startColumn); break;
 			case '\n': singleTok = new Token(TokenType.EOL, "\n", startLine, startColumn); break;
 			default:
 				singleTok = new Token(TokenType.ERROR, StringUtils.Str(c), startLine, startColumn); break;

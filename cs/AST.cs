@@ -19,6 +19,7 @@ public static class Op {
 	public const String DIVIDE = "DIVIDE";
 	public const String MOD = "MOD";
 	public const String POWER = "POWER";
+	public const String ADDRESS_OF = "ADDRESS_OF";
 	public const String EQUALS = "EQUALS";
 	public const String NOT_EQUAL = "NOT_EQUAL";
 	public const String LESS_THAN = "LESS_THAN";

@@ -288,3 +288,23 @@ Near-term ToDo list:
 ## Feb 06, 2026
 
 Handling semicolons by having the lexer return them as EOL, so to the parser, it's exactly the same as '\n'.
+
+Then I noticed today that the way we're compiling function calls is a bit wasteful; when I compile `print 42`, it currently generates:                                                              
+
+  Instructions (4):
+  0000:  0201002A | LOAD    r1, 42
+  0001:  01000100 | LOAD    r0, r1
+  0002:  3E000000 | CALLFN  0, k0
+  0003:  40000000 | RETURN
+                                                                                                                  
+We're loading 42 into r1, and then copying r1 into r0.   So, I'm adding a `CompileInto` helper method in CodeGenerator, which keeps track of what register we want the result of the node we're compiling to go into.  This should be helpful not only in the case of function calls, but probably other places where we want to compile something directly into a particular register (e.g. a variable).  After that optimization, `print 42` now produces:
+
+  Instructions (3):
+  0000:  0200002A | LOAD    r0, 42
+  0001:  3E000000 | CALLFN  0, k0
+  0002:  40000000 | RETURN
+
+Much better!
+
+I've also standardized the conversion of numbers to strings, using essentially the code from MiniScript 1.x.  So from yesterday's to-do list, that just leaves handling protected (non-calling) variable reads like `@x`.   ...And now that's done too.
+

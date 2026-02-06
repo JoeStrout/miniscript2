@@ -18,6 +18,7 @@ public class CodeGenerator : IASTVisitor {
 	private Int32 _firstAvailable;      // Lowest index that might be free
 	private Int32 _maxRegUsed;          // High water mark for register usage
 	private Dictionary<String, Int32> _variableRegs;  // variable name -> register
+	private Int32 _targetReg;           // Target register for next expression (-1 = allocate)
 
 	public CodeGenerator(CodeEmitterBase emitter) {
 		_emitter = emitter;
@@ -25,6 +26,7 @@ public class CodeGenerator : IASTVisitor {
 		_firstAvailable = 0;
 		_maxRegUsed = -1;
 		_variableRegs = new Dictionary<String, Int32>();
+		_targetReg = -1;
 	}
 
 	// Allocate a register
@@ -70,6 +72,64 @@ public class CodeGenerator : IASTVisitor {
 				_maxRegUsed = _maxRegUsed - 1;
 			}
 		}
+	}
+
+	// Allocate a block of consecutive registers
+	// Returns the first register of the block
+	private Int32 AllocConsecutiveRegs(Int32 count) {
+		if (count <= 0) return -1;
+		if (count == 1) return AllocReg();
+
+		// Find first position where 'count' consecutive registers are free
+		Int32 startReg = _firstAvailable;
+		while (true) {
+			// Check if registers startReg through startReg+count-1 are all free
+			Boolean allFree = true;
+			for (Int32 i = 0; i < count; i++) {
+				Int32 reg = startReg + i;
+				if (reg < _regInUse.Count && _regInUse[reg]) {
+					allFree = false;
+					startReg = reg + 1;  // Skip past this in-use register
+					break;
+				}
+			}
+			if (allFree) break;
+		}
+
+		// Allocate all registers in the block
+		for (Int32 i = 0; i < count; i++) {
+			Int32 reg = startReg + i;
+			// Expand the list if needed
+			while (_regInUse.Count <= reg) {
+				_regInUse.Add(false);
+			}
+			_regInUse[reg] = true;
+			_emitter.ReserveRegister(reg);
+			if (reg > _maxRegUsed) _maxRegUsed = reg;
+		}
+
+		// Update _firstAvailable
+		_firstAvailable = startReg + count;
+
+		return startReg;
+	}
+
+	// Compile an expression into a specific target register
+	// The target register should already be allocated by the caller
+	private Int32 CompileInto(ASTNode node, Int32 targetReg) {
+		_targetReg = targetReg;
+		Int32 result = node.Accept(this);
+		_targetReg = -1;
+		return result;
+	}
+
+	// Get target register if set, otherwise allocate a new one
+	// IMPORTANT: Call this at the START of each Visit method, before any recursive calls
+	private Int32 GetTargetOrAlloc() {
+		Int32 target = _targetReg;
+		_targetReg = -1;  // Clear immediately to avoid affecting nested calls
+		if (target >= 0) return target;
+		return AllocReg();
 	}
 
 	// Compile an expression, placing result in a newly allocated register
@@ -137,7 +197,7 @@ public class CodeGenerator : IASTVisitor {
 	// --- Visit methods for each AST node type ---
 
 	public Int32 Visit(NumberNode node) {
-		Int32 reg = AllocReg();
+		Int32 reg = GetTargetOrAlloc();
 		Double value = node.Value;
 
 		// Check if value fits in signed 16-bit immediate
@@ -152,14 +212,14 @@ public class CodeGenerator : IASTVisitor {
 	}
 
 	public Int32 Visit(StringNode node) {
-		Int32 reg = AllocReg();
+		Int32 reg = GetTargetOrAlloc();
 		Int32 constIdx = _emitter.AddConstant(make_string(node.Value));
 		_emitter.EmitAB(Opcode.LOAD_rA_kBC, reg, constIdx, $"r{reg} = \"{node.Value}\"");
 		return reg;
 	}
 
 	public Int32 Visit(IdentifierNode node) {
-		Int32 resultReg = AllocReg();
+		Int32 resultReg = GetTargetOrAlloc();
 
 		Int32 varReg;
 		if (_variableRegs.TryGetValue(node.Name, out varReg)) {
@@ -202,11 +262,11 @@ public class CodeGenerator : IASTVisitor {
 	}
 
 	public Int32 Visit(UnaryOpNode node) {
+		Int32 resultReg = GetTargetOrAlloc();  // Capture target before any recursive calls
 		Int32 operandReg = node.Operand.Accept(this);
 
 		if (node.Op == Op.MINUS) {
 			// Negate: result = 0 - operand
-			Int32 resultReg = AllocReg();
 			Int32 zeroReg = AllocReg();
 			_emitter.EmitAB(Opcode.LOAD_rA_iBC, zeroReg, 0, "r{zeroReg} = 0 (for negation)");
 			_emitter.EmitABC(Opcode.SUB_rA_rB_rC, resultReg, zeroReg, operandReg, $"r{resultReg} = -{node.Operand.ToStr()}");
@@ -215,19 +275,22 @@ public class CodeGenerator : IASTVisitor {
 			return resultReg;
 		} else if (node.Op == Op.NOT) {
 			// Fuzzy logic NOT: 1 - AbsClamp01(operand)
-			Int32 resultReg = AllocReg();
 			_emitter.EmitABC(Opcode.NOT_rA_rB, resultReg, operandReg, 0, $"not {node.Operand.ToStr()}");
 			FreeReg(operandReg);
 			return resultReg;
 		}
 
-		// Unknown unary operator - return operand unchanged
+		// Unknown unary operator - move operand to result if needed
 		// ToDo: report internal error
-		return operandReg;
+		if (operandReg != resultReg) {
+			_emitter.EmitABC(Opcode.LOAD_rA_rB, resultReg, operandReg, 0, "move to target");
+			FreeReg(operandReg);
+		}
+		return resultReg;
 	}
 
 	public Int32 Visit(BinaryOpNode node) {
-		Int32 resultReg = AllocReg();
+		Int32 resultReg = GetTargetOrAlloc();  // Capture target before any recursive calls
 		Int32 leftReg = node.Left.Accept(this);
 		Int32 rightReg = node.Right.Accept(this);
 
@@ -308,28 +371,19 @@ public class CodeGenerator : IASTVisitor {
 		// - Arguments loaded into consecutive registers starting at baseReg
 		// - Return value placed in baseReg after the call
 
-		// First, compile all arguments into consecutive registers
-		Int32 baseReg = AllocReg();  // This will hold first arg and return value
+		// Capture target register if one was specified (don't allocate yet)
+		Int32 explicitTarget = _targetReg;
+		_targetReg = -1;
+
 		Int32 argCount = node.Arguments.Count;
 
-		// If we have arguments, compile them
-		if (argCount > 0) {
-			// Compile first argument into baseReg
-			Int32 firstArgReg = node.Arguments[0].Accept(this);
-			if (firstArgReg != baseReg) {
-				_emitter.EmitABC(Opcode.LOAD_rA_rB, baseReg, firstArgReg, 0, $"move arg 0 to r{baseReg}");
-				FreeReg(firstArgReg);
-			}
+		// Allocate consecutive registers for arguments
+		// The first register (baseReg) will also hold the return value
+		Int32 baseReg = (argCount > 0) ? AllocConsecutiveRegs(argCount) : AllocReg();
 
-			// Compile remaining arguments into consecutive registers
-			for (Int32 i = 1; i < argCount; i++) {
-				Int32 argReg = AllocReg();
-				Int32 compiledReg = node.Arguments[i].Accept(this);
-				if (compiledReg != argReg) {
-					_emitter.EmitABC(Opcode.LOAD_rA_rB, argReg, compiledReg, 0, $"move arg {i} to r{argReg}");
-					FreeReg(compiledReg);
-				}
-			}
+		// Compile each argument directly into its target register
+		for (Int32 i = 0; i < argCount; i++) {
+			CompileInto(node.Arguments[i], baseReg + i);
 		}
 
 		// Emit the function call
@@ -337,13 +391,18 @@ public class CodeGenerator : IASTVisitor {
 		Int32 funcNameIdx = _emitter.AddConstant(make_string(node.Function));
 		_emitter.EmitAB(Opcode.CALLFN_iA_kBC, baseReg, funcNameIdx, $"call {node.Function}");
 
-		// Free any extra argument registers we allocated (keeping baseReg for return value)
-		// Note: The argument registers after baseReg are now free since the call has completed
+		// Free any extra argument registers (keeping baseReg for return value)
 		for (Int32 i = 1; i < argCount; i++) {
 			FreeReg(baseReg + i);
 		}
 
-		// Return value is in baseReg
+		// If an explicit target was requested and it's different, move result there
+		if (explicitTarget >= 0 && explicitTarget != baseReg) {
+			_emitter.EmitABC(Opcode.LOAD_rA_rB, explicitTarget, baseReg, 0, $"move result to r{explicitTarget}");
+			FreeReg(baseReg);
+			return explicitTarget;
+		}
+
 		return baseReg;
 	}
 
@@ -354,7 +413,7 @@ public class CodeGenerator : IASTVisitor {
 
 	public Int32 Visit(ListNode node) {
 		// Create a list with the given number of elements
-		Int32 listReg = AllocReg();
+		Int32 listReg = GetTargetOrAlloc();
 		Int32 count = node.Elements.Count;
 		_emitter.EmitAB(Opcode.LIST_rA_iBC, listReg, count, $"r{listReg} = new list[{count}]");
 
@@ -370,7 +429,7 @@ public class CodeGenerator : IASTVisitor {
 
 	public Int32 Visit(MapNode node) {
 		// Create a map
-		Int32 mapReg = AllocReg();
+		Int32 mapReg = GetTargetOrAlloc();
 		Int32 count = node.Keys.Count;
 		_emitter.EmitAB(Opcode.MAP_rA_iBC, mapReg, count, $"new map[{count}]");
 
@@ -387,7 +446,7 @@ public class CodeGenerator : IASTVisitor {
 	}
 
 	public Int32 Visit(IndexNode node) {
-		Int32 resultReg = AllocReg();
+		Int32 resultReg = GetTargetOrAlloc();  // Capture target before any recursive calls
 		Int32 targetReg = node.Target.Accept(this);
 		Int32 indexReg = node.Index.Accept(this);
 
@@ -401,7 +460,7 @@ public class CodeGenerator : IASTVisitor {
 
 	public Int32 Visit(MemberNode node) {
 		// Member access not yet fully implemented
-		Int32 resultReg = AllocReg();
+		Int32 resultReg = GetTargetOrAlloc();  // Capture target before any recursive calls
 		Int32 targetReg = node.Target.Accept(this);
 		// TODO: Implement member access
 		_emitter.EmitABC(Opcode.LOAD_rA_rB, resultReg, targetReg, 0, $"TODO: {node.Target.ToStr()}.{node.Member}");
@@ -411,7 +470,7 @@ public class CodeGenerator : IASTVisitor {
 
 	public Int32 Visit(MethodCallNode node) {
 		// Method calls not yet implemented
-		Int32 reg = AllocReg();
+		Int32 reg = GetTargetOrAlloc();
 		_emitter.EmitAB(Opcode.LOAD_rA_iBC, reg, 0, $"TODO: {node.Target.ToStr()}.{node.Method}()");
 		return reg;
 	}

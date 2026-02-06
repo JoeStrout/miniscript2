@@ -566,12 +566,11 @@ public static class UnitTests {
 		}); // CPP: }));
 
 		// Test unary minus
-		// r0 = 5, r1 = result, r2 = 0, SUB r1, r2, r0 (result = 0 - 5)
+		// r0 = result, r1 = 5, r2 = 0, SUB r0, r2, r1 (result = 0 - 5)
 		ok = ok && CheckCodeGen(parser, "-5", new List<String> {
-			"  LOAD_rA_iBC r0, 5",
+			"  LOAD_rA_iBC r1, 5",
 			"  LOAD_rA_iBC r2, 0",
-			"  SUB_rA_rB_rC r1, r2, r0",
-			"  LOAD_rA_rB r0, r1, r0",
+			"  SUB_rA_rB_rC r0, r2, r1",
 			"  RETURN"
 		}); // CPP: }));
 

@@ -13,6 +13,7 @@ CodeGeneratorStorage::CodeGeneratorStorage(CodeEmitterBase emitter) {
 	_firstAvailable = 0;
 	_maxRegUsed = -1;
 	_variableRegs =  Dictionary<String, Int32>::New();
+	_targetReg = -1;
 }
 Int32 CodeGeneratorStorage::AllocReg() {
 	// Scan from _firstAvailable to find first free register
@@ -54,6 +55,56 @@ void CodeGeneratorStorage::FreeReg(Int32 reg) {
 			_maxRegUsed = _maxRegUsed - 1;
 		}
 	}
+}
+Int32 CodeGeneratorStorage::AllocConsecutiveRegs(Int32 count) {
+	if (count <= 0) return -1;
+	if (count == 1) return AllocReg();
+
+	// Find first position where 'count' consecutive registers are free
+	Int32 startReg = _firstAvailable;
+	while (Boolean(true)) {
+		// Check if registers startReg through startReg+count-1 are all free
+		Boolean allFree = Boolean(true);
+		for (Int32 i = 0; i < count; i++) {
+			Int32 reg = startReg + i;
+			if (reg < _regInUse.Count() && _regInUse[reg]) {
+				allFree = Boolean(false);
+				startReg = reg + 1;  // Skip past this in-use register
+				break;
+			}
+		}
+		if (allFree) break;
+	}
+
+	// Allocate all registers in the block
+	for (Int32 i = 0; i < count; i++) {
+		Int32 reg = startReg + i;
+		// Expand the list if needed
+		while (_regInUse.Count() <= reg) {
+			_regInUse.Add(Boolean(false));
+		}
+		_regInUse[reg] = Boolean(true);
+		_emitter.ReserveRegister(reg);
+		if (reg > _maxRegUsed) _maxRegUsed = reg;
+	}
+
+	// Update _firstAvailable
+	_firstAvailable = startReg + count;
+
+	return startReg;
+}
+Int32 CodeGeneratorStorage::CompileInto(ASTNode node, Int32 targetReg) {
+	CodeGenerator _this(std::static_pointer_cast<CodeGeneratorStorage>(shared_from_this()));
+	_targetReg = targetReg;
+	Int32 result = node.Accept(_this);
+	_targetReg = -1;
+	return result;
+}
+Int32 CodeGeneratorStorage::GetTargetOrAlloc() {
+	Int32 target = _targetReg;
+	_targetReg = -1;  // Clear immediately to avoid affecting nested calls
+	if (target >= 0) return target;
+	return AllocReg();
 }
 Int32 CodeGeneratorStorage::Compile(ASTNode ast) {
 	CodeGenerator _this(std::static_pointer_cast<CodeGeneratorStorage>(shared_from_this()));
@@ -114,7 +165,7 @@ FuncDef CodeGeneratorStorage::CompileProgram(List<ASTNode> statements, String fu
 	return _emitter.Finalize(funcName);
 }
 Int32 CodeGeneratorStorage::Visit(NumberNode node) {
-	Int32 reg = AllocReg();
+	Int32 reg = GetTargetOrAlloc();
 	Double value = node.Value();
 
 	// Check if value fits in signed 16-bit immediate
@@ -128,13 +179,13 @@ Int32 CodeGeneratorStorage::Visit(NumberNode node) {
 	return reg;
 }
 Int32 CodeGeneratorStorage::Visit(StringNode node) {
-	Int32 reg = AllocReg();
+	Int32 reg = GetTargetOrAlloc();
 	Int32 constIdx = _emitter.AddConstant(make_string(node.Value()));
 	_emitter.EmitAB(Opcode::LOAD_rA_kBC, reg, constIdx, Interp("r{} = \"{}\"", reg, node.Value()));
 	return reg;
 }
 Int32 CodeGeneratorStorage::Visit(IdentifierNode node) {
-	Int32 resultReg = AllocReg();
+	Int32 resultReg = GetTargetOrAlloc();
 
 	Int32 varReg;
 	if (_variableRegs.TryGetValue(node.Name(), &varReg)) {
@@ -177,11 +228,11 @@ Int32 CodeGeneratorStorage::Visit(AssignmentNode node) {
 }
 Int32 CodeGeneratorStorage::Visit(UnaryOpNode node) {
 	CodeGenerator _this(std::static_pointer_cast<CodeGeneratorStorage>(shared_from_this()));
+	Int32 resultReg = GetTargetOrAlloc();  // Capture target before any recursive calls
 	Int32 operandReg = node.Operand().Accept(_this);
 
 	if (node.Op() == Op::MINUS) {
 		// Negate: result = 0 - operand
-		Int32 resultReg = AllocReg();
 		Int32 zeroReg = AllocReg();
 		_emitter.EmitAB(Opcode::LOAD_rA_iBC, zeroReg, 0, "r{zeroReg} = 0 (for negation)");
 		_emitter.EmitABC(Opcode::SUB_rA_rB_rC, resultReg, zeroReg, operandReg, Interp("r{} = -{}", resultReg, node.Operand().ToStr()));
@@ -190,19 +241,22 @@ Int32 CodeGeneratorStorage::Visit(UnaryOpNode node) {
 		return resultReg;
 	} else if (node.Op() == Op::NOT) {
 		// Fuzzy logic NOT: 1 - AbsClamp01(operand)
-		Int32 resultReg = AllocReg();
 		_emitter.EmitABC(Opcode::NOT_rA_rB, resultReg, operandReg, 0, Interp("not {}", node.Operand().ToStr()));
 		FreeReg(operandReg);
 		return resultReg;
 	}
 
-	// Unknown unary operator - return operand unchanged
+	// Unknown unary operator - move operand to result if needed
 	// ToDo: report internal error
-	return operandReg;
+	if (operandReg != resultReg) {
+		_emitter.EmitABC(Opcode::LOAD_rA_rB, resultReg, operandReg, 0, "move to target");
+		FreeReg(operandReg);
+	}
+	return resultReg;
 }
 Int32 CodeGeneratorStorage::Visit(BinaryOpNode node) {
 	CodeGenerator _this(std::static_pointer_cast<CodeGeneratorStorage>(shared_from_this()));
-	Int32 resultReg = AllocReg();
+	Int32 resultReg = GetTargetOrAlloc();  // Capture target before any recursive calls
 	Int32 leftReg = node.Left().Accept(_this);
 	Int32 rightReg = node.Right().Accept(_this);
 
@@ -277,34 +331,24 @@ Int32 CodeGeneratorStorage::Visit(BinaryOpNode node) {
 	return resultReg;
 }
 Int32 CodeGeneratorStorage::Visit(CallNode node) {
-	CodeGenerator _this(std::static_pointer_cast<CodeGeneratorStorage>(shared_from_this()));
 	// Generate code for function calls
 	// For intrinsic functions, we use CALLFN which expects:
 	// - Arguments loaded into consecutive registers starting at baseReg
 	// - Return value placed in baseReg after the call
 
-	// First, compile all arguments into consecutive registers
-	Int32 baseReg = AllocReg();  // This will hold first arg and return value
+	// Capture target register if one was specified (don't allocate yet)
+	Int32 explicitTarget = _targetReg;
+	_targetReg = -1;
+
 	Int32 argCount = node.Arguments().Count();
 
-	// If we have arguments, compile them
-	if (argCount > 0) {
-		// Compile first argument into baseReg
-		Int32 firstArgReg = node.Arguments()[0].Accept(_this);
-		if (firstArgReg != baseReg) {
-			_emitter.EmitABC(Opcode::LOAD_rA_rB, baseReg, firstArgReg, 0, Interp("move arg 0 to r{}", baseReg));
-			FreeReg(firstArgReg);
-		}
+	// Allocate consecutive registers for arguments
+	// The first register (baseReg) will also hold the return value
+	Int32 baseReg = (argCount > 0) ? AllocConsecutiveRegs(argCount) : AllocReg();
 
-		// Compile remaining arguments into consecutive registers
-		for (Int32 i = 1; i < argCount; i++) {
-			Int32 argReg = AllocReg();
-			Int32 compiledReg = node.Arguments()[i].Accept(_this);
-			if (compiledReg != argReg) {
-				_emitter.EmitABC(Opcode::LOAD_rA_rB, argReg, compiledReg, 0, Interp("move arg {} to r{}", i, argReg));
-				FreeReg(compiledReg);
-			}
-		}
+	// Compile each argument directly into its target register
+	for (Int32 i = 0; i < argCount; i++) {
+		CompileInto(node.Arguments()[i], baseReg + i);
 	}
 
 	// Emit the function call
@@ -312,13 +356,18 @@ Int32 CodeGeneratorStorage::Visit(CallNode node) {
 	Int32 funcNameIdx = _emitter.AddConstant(make_string(node.Function()));
 	_emitter.EmitAB(Opcode::CALLFN_iA_kBC, baseReg, funcNameIdx, Interp("call {}", node.Function()));
 
-	// Free any extra argument registers we allocated (keeping baseReg for return value)
-	// Note: The argument registers after baseReg are now free since the call has completed
+	// Free any extra argument registers (keeping baseReg for return value)
 	for (Int32 i = 1; i < argCount; i++) {
 		FreeReg(baseReg + i);
 	}
 
-	// Return value is in baseReg
+	// If an explicit target was requested and it's different, move result there
+	if (explicitTarget >= 0 && explicitTarget != baseReg) {
+		_emitter.EmitABC(Opcode::LOAD_rA_rB, explicitTarget, baseReg, 0, Interp("move result to r{}", explicitTarget));
+		FreeReg(baseReg);
+		return explicitTarget;
+	}
+
 	return baseReg;
 }
 Int32 CodeGeneratorStorage::Visit(GroupNode node) {
@@ -329,7 +378,7 @@ Int32 CodeGeneratorStorage::Visit(GroupNode node) {
 Int32 CodeGeneratorStorage::Visit(ListNode node) {
 	CodeGenerator _this(std::static_pointer_cast<CodeGeneratorStorage>(shared_from_this()));
 	// Create a list with the given number of elements
-	Int32 listReg = AllocReg();
+	Int32 listReg = GetTargetOrAlloc();
 	Int32 count = node.Elements().Count();
 	_emitter.EmitAB(Opcode::LIST_rA_iBC, listReg, count, Interp("r{} = new list[{}]", listReg, count));
 
@@ -345,7 +394,7 @@ Int32 CodeGeneratorStorage::Visit(ListNode node) {
 Int32 CodeGeneratorStorage::Visit(MapNode node) {
 	CodeGenerator _this(std::static_pointer_cast<CodeGeneratorStorage>(shared_from_this()));
 	// Create a map
-	Int32 mapReg = AllocReg();
+	Int32 mapReg = GetTargetOrAlloc();
 	Int32 count = node.Keys().Count();
 	_emitter.EmitAB(Opcode::MAP_rA_iBC, mapReg, count, Interp("new map[{}]", count));
 
@@ -362,7 +411,7 @@ Int32 CodeGeneratorStorage::Visit(MapNode node) {
 }
 Int32 CodeGeneratorStorage::Visit(IndexNode node) {
 	CodeGenerator _this(std::static_pointer_cast<CodeGeneratorStorage>(shared_from_this()));
-	Int32 resultReg = AllocReg();
+	Int32 resultReg = GetTargetOrAlloc();  // Capture target before any recursive calls
 	Int32 targetReg = node.Target().Accept(_this);
 	Int32 indexReg = node.Index().Accept(_this);
 
@@ -376,7 +425,7 @@ Int32 CodeGeneratorStorage::Visit(IndexNode node) {
 Int32 CodeGeneratorStorage::Visit(MemberNode node) {
 	CodeGenerator _this(std::static_pointer_cast<CodeGeneratorStorage>(shared_from_this()));
 	// Member access not yet fully implemented
-	Int32 resultReg = AllocReg();
+	Int32 resultReg = GetTargetOrAlloc();  // Capture target before any recursive calls
 	Int32 targetReg = node.Target().Accept(_this);
 	// TODO: Implement member access
 	_emitter.EmitABC(Opcode::LOAD_rA_rB, resultReg, targetReg, 0, Interp("TODO: {}.{}", node.Target().ToStr(), node.Member()));
@@ -385,7 +434,7 @@ Int32 CodeGeneratorStorage::Visit(MemberNode node) {
 }
 Int32 CodeGeneratorStorage::Visit(MethodCallNode node) {
 	// Method calls not yet implemented
-	Int32 reg = AllocReg();
+	Int32 reg = GetTargetOrAlloc();
 	_emitter.EmitAB(Opcode::LOAD_rA_iBC, reg, 0, Interp("TODO: {}.{}()", node.Target().ToStr(), node.Method()));
 	return reg;
 }

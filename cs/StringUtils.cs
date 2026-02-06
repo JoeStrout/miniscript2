@@ -6,6 +6,7 @@ using System.Runtime.CompilerServices;
 using static System.Runtime.CompilerServices.MethodImplOptions;
 // H: #include "CS_String.h"
 // H: #include "IOHelper.g.h"
+// H: #include "value.h"
 // H: #include "value_string.h"
 // H: #include "value_list.h"
 // H: #include "value_map.h"
@@ -172,7 +173,11 @@ public static class StringUtils {
 	inline static String makeString(Value v) {
 		if (is_null(v)) return String("null");
 		if (is_int(v)) return makeString(as_int(v));
-		if (is_double(v)) return makeString(as_double(v));
+		if (is_double(v)) {
+			// Use the proper MiniScript number formatting
+			Value strVal = to_string(v);
+			return String(as_cstring(strVal));
+		}
 		if (is_string(v)) {
 			const Char* str = as_cstring(v);
 			return str ? String(str) : String("<str?>");

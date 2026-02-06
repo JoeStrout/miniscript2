@@ -209,11 +209,21 @@ Value to_string(Value v) {
     if (is_double(v)) {
         double value = as_double(v);
         if (fmod(value, 1.0) == 0.0) {
+            // integer values as integers
             snprintf(buf, sizeof buf, "%.0f", value);
+            // Handle negative zero
+            if (strcmp(buf, "-0") == 0) buf[0] = '0', buf[1] = '\0';
             return make_string(buf);
         } else if (value > 1E10 || value < -1E10 || (value < 1E-6 && value > -1E-6)) {
             // very large/small numbers in exponential form
             snprintf(buf, sizeof buf, "%.6E", value);
+            // Clean up 3-digit exponents: E+00N -> E+0N, E-00N -> E-0N
+            // (Some platforms produce 3-digit exponents; we want 2-digit minimum)
+            char* e = strchr(buf, 'E');
+            if (e && (e[1] == '+' || e[1] == '-') && e[2] == '0' && e[3] == '0' && e[4] != '\0') {
+                // Found E±00N pattern, remove one leading zero from exponent
+                memmove(e + 3, e + 4, strlen(e + 4) + 1);
+            }
             return make_string(buf);
         } else {
             // all others in decimal form, with 1-6 digits past the decimal point

@@ -7,6 +7,7 @@
 
 #include "CS_String.h"
 #include "IOHelper.g.h"
+#include "value.h"
 #include "value_string.h"
 #include "value_list.h"
 #include "value_map.h"
@@ -137,7 +138,11 @@ class StringUtils {
 	inline static String makeString(Value v) {
 		if (is_null(v)) return String("null");
 		if (is_int(v)) return makeString(as_int(v));
-		if (is_double(v)) return makeString(as_double(v));
+		if (is_double(v)) {
+			// Use the proper MiniScript number formatting
+			Value strVal = to_string(v);
+			return String(as_cstring(strVal));
+		}
 		if (is_string(v)) {
 			const Char* str = as_cstring(v);
 			return str ? String(str) : String("<str?>");

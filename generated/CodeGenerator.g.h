@@ -149,6 +149,7 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 	private: Int32 _firstAvailable; // Lowest index that might be free
 	private: Int32 _maxRegUsed; // High water mark for register usage
 	private: Dictionary<String, Int32> _variableRegs; // variable name -> register
+	private: Int32 _targetReg; // Target register for next expression (-1 = allocate)
 
 	public: CodeGeneratorStorage(CodeEmitterBase emitter);
 
@@ -157,6 +158,18 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 
 	// Free a register so it can be reused
 	private: void FreeReg(Int32 reg);
+
+	// Allocate a block of consecutive registers
+	// Returns the first register of the block
+	private: Int32 AllocConsecutiveRegs(Int32 count);
+
+	// Compile an expression into a specific target register
+	// The target register should already be allocated by the caller
+	private: Int32 CompileInto(ASTNode node, Int32 targetReg);
+
+	// Get target register if set, otherwise allocate a new one
+	// IMPORTANT: Call this at the START of each Visit method, before any recursive calls
+	private: Int32 GetTargetOrAlloc();
 
 	// Compile an expression, placing result in a newly allocated register
 	// Returns the register number holding the result
@@ -219,6 +232,8 @@ struct CodeGenerator : public IASTVisitor {
 	private: void set__maxRegUsed(Int32 _v); // High water mark for register usage
 	private: Dictionary<String, Int32> _variableRegs(); // variable name -> register
 	private: void set__variableRegs(Dictionary<String, Int32> _v); // variable name -> register
+	private: Int32 _targetReg(); // Target register for next expression (-1 = allocate)
+	private: void set__targetReg(Int32 _v); // Target register for next expression (-1 = allocate)
 
 	public: static CodeGenerator New(CodeEmitterBase emitter) {
 		return CodeGenerator(std::make_shared<CodeGeneratorStorage>(emitter));
@@ -229,6 +244,18 @@ struct CodeGenerator : public IASTVisitor {
 
 	// Free a register so it can be reused
 	private: void FreeReg(Int32 reg) { return get()->FreeReg(reg); }
+
+	// Allocate a block of consecutive registers
+	// Returns the first register of the block
+	private: Int32 AllocConsecutiveRegs(Int32 count) { return get()->AllocConsecutiveRegs(count); }
+
+	// Compile an expression into a specific target register
+	// The target register should already be allocated by the caller
+	private: Int32 CompileInto(ASTNode node, Int32 targetReg) { return get()->CompileInto(node, targetReg); }
+
+	// Get target register if set, otherwise allocate a new one
+	// IMPORTANT: Call this at the START of each Visit method, before any recursive calls
+	private: Int32 GetTargetOrAlloc() { return get()->GetTargetOrAlloc(); }
 
 	// Compile an expression, placing result in a newly allocated register
 	// Returns the register number holding the result
@@ -283,5 +310,7 @@ inline Int32 CodeGenerator::_maxRegUsed() { return get()->_maxRegUsed; } // High
 inline void CodeGenerator::set__maxRegUsed(Int32 _v) { get()->_maxRegUsed = _v; } // High water mark for register usage
 inline Dictionary<String, Int32> CodeGenerator::_variableRegs() { return get()->_variableRegs; } // variable name -> register
 inline void CodeGenerator::set__variableRegs(Dictionary<String, Int32> _v) { get()->_variableRegs = _v; } // variable name -> register
+inline Int32 CodeGenerator::_targetReg() { return get()->_targetReg; } // Target register for next expression (-1 = allocate)
+inline void CodeGenerator::set__targetReg(Int32 _v) { get()->_targetReg = _v; } // Target register for next expression (-1 = allocate)
 
 } // end of namespace MiniScript

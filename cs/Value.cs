@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
@@ -138,7 +139,25 @@ public readonly struct Value {
 	public override string ToString()  {
 		if (IsNull) return "null";
 		if (IsInt) return AsInt().ToString();
-		if (IsDouble) return AsDouble().ToString();
+		if (IsDouble) {
+			double value = AsDouble();
+			if (value % 1.0 == 0.0) {
+				// integer values as integers
+				string result = value.ToString("0", CultureInfo.InvariantCulture);
+				if (result == "-0") result = "0";
+				return result;
+			} else if (value > 1E10 || value < -1E10 || (value < 1E-6 && value > -1E-6)) {
+				// very large/small numbers in exponential form
+				string s = value.ToString("E6", CultureInfo.InvariantCulture);
+				s = s.Replace("E-00", "E-0");
+				return s;
+			} else {
+				// all others in decimal form, with 1-6 digits past the decimal point
+				string result = value.ToString("0.0#####", CultureInfo.InvariantCulture);
+				if (result == "-0") result = "0";
+				return result;
+			}
+		}
 		if (IsString) {
 			if (IsTiny) {
 				Span<byte> b = stackalloc byte[5];

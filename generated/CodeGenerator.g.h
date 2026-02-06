@@ -85,8 +85,11 @@ struct MemberNode;
 class MemberNodeStorage;
 struct MethodCallNode;
 class MethodCallNodeStorage;
+struct WhileNode;
+class WhileNodeStorage;
 
 // DECLARATIONS
+
 
 
 
@@ -187,6 +190,8 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 
 	public: Int32 Visit(StringNode node);
 
+	private: Int32 VisitIdentifier(IdentifierNode node, bool addressOf);
+
 	public: Int32 Visit(IdentifierNode node);
 
 	public: Int32 Visit(AssignmentNode node);
@@ -208,6 +213,8 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 	public: Int32 Visit(MemberNode node);
 
 	public: Int32 Visit(MethodCallNode node);
+
+	public: Int32 Visit(WhileNode node);
 }; // end of class CodeGeneratorStorage
 
 
@@ -273,6 +280,8 @@ struct CodeGenerator : public IASTVisitor {
 
 	public: Int32 Visit(StringNode node) { return get()->Visit(node); }
 
+	private: Int32 VisitIdentifier(IdentifierNode node, bool addressOf) { return get()->VisitIdentifier(node, addressOf); }
+
 	public: Int32 Visit(IdentifierNode node) { return get()->Visit(node); }
 
 	public: Int32 Visit(AssignmentNode node) { return get()->Visit(node); }
@@ -294,6 +303,8 @@ struct CodeGenerator : public IASTVisitor {
 	public: Int32 Visit(MemberNode node) { return get()->Visit(node); }
 
 	public: Int32 Visit(MethodCallNode node) { return get()->Visit(node); }
+
+	public: Int32 Visit(WhileNode node) { return get()->Visit(node); }
 }; // end of struct CodeGenerator
 
 

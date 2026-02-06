@@ -95,6 +95,10 @@ Token Lexer::NextToken() {
 			tok = Token(TokenType::OR, text, startLine, startColumn);
 		} else if (text == "not") {
 			tok = Token(TokenType::NOT, text, startLine, startColumn);
+		} else if (text == "while") {
+			tok = Token(TokenType::WHILE, text, startLine, startColumn);
+		} else if (text == "end") {
+			tok = Token(TokenType::END, text, startLine, startColumn);
 		} else {
 			tok = Token(TokenType::IDENTIFIER, text, startLine, startColumn);
 		}
@@ -180,8 +184,9 @@ Token Lexer::NextToken() {
 		case '>': singleTok = Token(TokenType::GREATER_THAN, ">", startLine, startColumn); break;
 		case ',': singleTok = Token(TokenType::COMMA, ",", startLine, startColumn); break;
 		case ':': singleTok = Token(TokenType::COLON, ":", startLine, startColumn); break;
-		case ';': singleTok = Token(TokenType::EOL, ";", startLine, startColumn); break;
 		case '.': singleTok = Token(TokenType::DOT, ".", startLine, startColumn); break;
+		case '@': singleTok = Token(TokenType::ADDRESS_OF, "@", startLine, startColumn); break;
+		case ';': singleTok = Token(TokenType::EOL, ";", startLine, startColumn); break;
 		case '\n': singleTok = Token(TokenType::EOL, "\n", startLine, startColumn); break;
 		default:
 			singleTok = Token(TokenType::ERROR, StringUtils::Str(c), startLine, startColumn); break;

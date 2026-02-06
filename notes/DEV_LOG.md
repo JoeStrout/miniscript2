@@ -283,7 +283,7 @@ Things are progressing really well.  I've added support for `print`, and both th
 Near-term ToDo list:
 - handle semicolons in addition to newlines for separating statements
 - fix how many digits are printed on a number like 10/3; currently it's way too many
-- handle protected reads like `@x` (should use `LOADV` instead of `LOADC`)
+- handle Address-Of reads like `@x` (should use `LOADV` instead of `LOADC`)
 
 ## Feb 06, 2026
 
@@ -306,5 +306,7 @@ We're loading 42 into r1, and then copying r1 into r0.   So, I'm adding a `Compi
 
 Much better!
 
-I've also standardized the conversion of numbers to strings, using essentially the code from MiniScript 1.x.  So from yesterday's to-do list, that just leaves handling protected (non-calling) variable reads like `@x`.   ...And now that's done too.
+I've also standardized the conversion of numbers to strings, using essentially the code from MiniScript 1.x.  So from yesterday's to-do list, that just leaves handling AddressOf (non-calling) variable reads like `@x`.   ...And now that's done too.
+
+So, since we have a little more time today, I'm going to implement `while` loops (our first flow control!) next.   ...And done!
 

@@ -46,6 +46,7 @@ public interface IASTVisitor {
 	Int32 Visit(IndexNode node);
 	Int32 Visit(MemberNode node);
 	Int32 Visit(MethodCallNode node);
+	Int32 Visit(WhileNode node);
 }
 
 // Base class for all AST nodes.
@@ -468,6 +469,39 @@ public class MethodCallNode : ASTNode {
 			simplifiedArgs.Add(Arguments[i].Simplify());
 		}
 		return new MethodCallNode(Target.Simplify(), Method, simplifiedArgs);
+	}
+
+	public override Int32 Accept(IASTVisitor visitor) {
+		return visitor.Visit(this);
+	}
+}
+
+// While loop node (e.g., while x < 10 ... end while)
+public class WhileNode : ASTNode {
+	public ASTNode Condition;           // the loop condition
+	public List<ASTNode> Body;          // statements in the loop body
+
+	public WhileNode(ASTNode condition, List<ASTNode> body) {
+		Condition = condition;
+		Body = body;
+	}
+
+	public override String ToStr() {
+		String result = "while " + Condition.ToStr() + "\n";
+		for (Int32 i = 0; i < Body.Count; i++) {
+			result = result + "  " + Body[i].ToStr() + "\n";
+		}
+		result = result + "end while";
+		return result;
+	}
+
+	public override ASTNode Simplify() {
+		ASTNode simplifiedCondition = Condition.Simplify();
+		List<ASTNode> simplifiedBody = new List<ASTNode>();
+		for (Int32 i = 0; i < Body.Count; i++) {
+			simplifiedBody.Add(Body[i].Simplify());
+		}
+		return new WhileNode(simplifiedCondition, simplifiedBody);
 	}
 
 	public override Int32 Accept(IASTVisitor visitor) {

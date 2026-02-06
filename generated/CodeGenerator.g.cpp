@@ -119,28 +119,27 @@ FuncDef CodeGeneratorStorage::CompileFunction(ASTNode ast, String funcName) {
 
 	Int32 resultReg = ast.Accept(_this);
 
-	// Move result to r0 if not already there
-	if (resultReg != 0) {
-		_emitter.EmitABC(Opcode::LOAD_rA_rB, 0, resultReg, 0, "move result to r0");
+	// Move result to r0 if not already there (and if there is a result)
+	if (resultReg > 0) {
+		_emitter.EmitABC(Opcode::LOAD_rA_rB, 0, resultReg, 0, "move Function result to r0");
 	}
 	_emitter.Emit(Opcode::RETURN, nullptr);
 
 	return _emitter.Finalize(funcName);
 }
 FuncDef CodeGeneratorStorage::CompileProgram(List<ASTNode> statements, String funcName) {
-	CodeGenerator _this(std::static_pointer_cast<CodeGeneratorStorage>(shared_from_this()));
 	_regInUse.Clear();
 	_firstAvailable = 0;
 	_maxRegUsed = -1;
 	_variableRegs.Clear();
 
-	Int32 resultReg = 0;
-
 	// Compile each statement sequentially
 	for (Int32 i = 0; i < statements.Count(); i++) {
-		// Free temporary registers before each statement, but keep variable registers
+		// Free temporary registers before each statement, 
+		// but keep variable registers and our own (r0) result register
 		_regInUse.Clear();
-		_firstAvailable = 0;
+		_regInUse.Add(Boolean(true));  // r0, reserved for our result
+		_firstAvailable = 1;
 
 		// Mark variable registers as still in use
 		for (Int32 reg : _variableRegs.GetValues()) {
@@ -151,13 +150,14 @@ FuncDef CodeGeneratorStorage::CompileProgram(List<ASTNode> statements, String fu
 			if (reg >= _firstAvailable) _firstAvailable = reg + 1;
 		}
 
-		resultReg = statements[i].Accept(_this);
+		CompileInto(statements[i], 0);
 
 		// Move result to r0 after each statement
 		// (the last one's result will be the function's return value)
-		if (resultReg != 0) {
-			_emitter.EmitABC(Opcode::LOAD_rA_rB, 0, resultReg, 0, "move result to r0");
-		}
+// Shouldn't be needed since we now use CompileInto above:
+//			if (resultReg != 0) {
+//				_emitter.EmitABC(Opcode.LOAD_rA_rB, 0, resultReg, 0, "move Program result to r0");
+//			}
 	}
 
 	_emitter.Emit(Opcode::RETURN, nullptr);
@@ -184,15 +184,17 @@ Int32 CodeGeneratorStorage::Visit(StringNode node) {
 	_emitter.EmitAB(Opcode::LOAD_rA_kBC, reg, constIdx, Interp("r{} = \"{}\"", reg, node.Value()));
 	return reg;
 }
-Int32 CodeGeneratorStorage::Visit(IdentifierNode node) {
+Int32 CodeGeneratorStorage::VisitIdentifier(IdentifierNode node, bool addressOf) {
 	Int32 resultReg = GetTargetOrAlloc();
 
 	Int32 varReg;
 	if (_variableRegs.TryGetValue(node.Name(), &varReg)) {
 		// Variable found - emit LOADC (load-and-call for implicit function invocation)
 		Int32 nameIdx = _emitter.AddConstant(make_string(node.Name()));
-		_emitter.EmitABC(Opcode::LOADC_rA_rB_kC, resultReg, varReg, nameIdx,
-			Interp("r{} = {}", resultReg, node.Name()));
+		Opcode op = addressOf ? Opcode::LOADV_rA_rB_kC : Opcode::LOADC_rA_rB_kC;
+		String a = addressOf ? "@" : "";
+		_emitter.EmitABC(op, resultReg, varReg, nameIdx,
+			Interp("r{} = {}{}", resultReg, a, node.Name()));
 	} else {
 		// Undefined variable - for now just load 0
 		// TODO: handle outer/globals lookup or report error
@@ -201,34 +203,55 @@ Int32 CodeGeneratorStorage::Visit(IdentifierNode node) {
 
 	return resultReg;
 }
+Int32 CodeGeneratorStorage::Visit(IdentifierNode node) {
+	return VisitIdentifier(node, Boolean(false));
+}
 Int32 CodeGeneratorStorage::Visit(AssignmentNode node) {
-	CodeGenerator _this(std::static_pointer_cast<CodeGeneratorStorage>(shared_from_this()));
-	Int32 valueReg = node.Value().Accept(_this);
-
+	// Note the desired target register, if any (but see notes below).
+	Int32 explicitTarget = _targetReg;
+	if (_targetReg > 0) {
+		IOHelper::Print(Interp("ERROR: unexpected _targetReg {} in Visit(AssignmentNOde)", _targetReg));
+	}
+	
 	// Get or allocate register for this variable
 	Int32 varReg;
 	if (_variableRegs.TryGetValue(node.Variable(), &varReg)) {
-		// Variable already has a register - reuse it
+		// Variable already has a register - reuse it (and don't bother with naming)
 	} else {
-		// Allocate new register for variable
+		// Hmm.  Should we allocate a new register for this variable, or
+		// just claim the target register as our storage?  I'm going to alloc
+		// a new one for now, because I can't be sure the caller won't free
+		// the target register when done.  But we should probably return to
+		// this later and see if we can optimize it more.
 		varReg = AllocReg();
 		_variableRegs[node.Variable()] = varReg;
+		Int32 nameIdx = _emitter.AddConstant(make_string(node.Variable()));
+		_emitter.EmitAB(Opcode::NAME_rA_kBC, varReg, nameIdx, Interp("use r{} for {}", varReg, node.Variable()));
 	}
-
-	// Emit ASSIGN: copy value and set name
-	Int32 nameIdx = _emitter.AddConstant(make_string(node.Variable()));
-	_emitter.EmitABC(Opcode::ASSIGN_rA_rB_kC, varReg, valueReg, nameIdx,
-		Interp("{} = {}", node.Variable(), node.Value().ToStr()));
+	CompileInto(node.Value(), varReg);  // get RHS directly into the variable's register
 
 	// Note that we don't FreeReg(varReg) here, as we need this register to
 	// continue to serve as the storage for this variable for the life of
 	// the function.  (TODO: or until some lifetime analysis determines that
 	// the variable will never be read again.)
+
+	// BUT, if varReg is not the explicit target register, then we need to copy
+	// the value there as well.  Not sure why that would ever be the case (since
+	// assignment can't be used in an expression in MiniScript).  So:
 	return varReg;
 }
 Int32 CodeGeneratorStorage::Visit(UnaryOpNode node) {
 	CodeGenerator _this(std::static_pointer_cast<CodeGeneratorStorage>(shared_from_this()));
+	if (node.Op() == Op::ADDRESS_OF) {
+		// Special case: just an identifier lookup without function call
+		IdentifierNode ident = As<IdentifierNode, IdentifierNodeStorage>(node.Operand());
+		if (!IsNull(ident)) return VisitIdentifier(ident, Boolean(true));
+		// On anything other than an identifier, @ has no effect.
+		return node.Operand().Accept(_this);
+	}
+		
 	Int32 resultReg = GetTargetOrAlloc();  // Capture target before any recursive calls
+
 	Int32 operandReg = node.Operand().Accept(_this);
 
 	if (node.Op() == Op::MINUS) {
@@ -363,7 +386,7 @@ Int32 CodeGeneratorStorage::Visit(CallNode node) {
 
 	// If an explicit target was requested and it's different, move result there
 	if (explicitTarget >= 0 && explicitTarget != baseReg) {
-		_emitter.EmitABC(Opcode::LOAD_rA_rB, explicitTarget, baseReg, 0, Interp("move result to r{}", explicitTarget));
+		_emitter.EmitABC(Opcode::LOAD_rA_rB, explicitTarget, baseReg, 0, Interp("move Call result to r{}", explicitTarget));
 		FreeReg(baseReg);
 		return explicitTarget;
 	}
@@ -437,6 +460,58 @@ Int32 CodeGeneratorStorage::Visit(MethodCallNode node) {
 	Int32 reg = GetTargetOrAlloc();
 	_emitter.EmitAB(Opcode::LOAD_rA_iBC, reg, 0, Interp("TODO: {}.{}()", node.Target().ToStr(), node.Method()));
 	return reg;
+}
+Int32 CodeGeneratorStorage::Visit(WhileNode node) {
+	CodeGenerator _this(std::static_pointer_cast<CodeGeneratorStorage>(shared_from_this()));
+	// While loop generates:
+	//   loopStart:
+	//       [evaluate condition]
+	//       BRFALSE condReg, afterLoop
+	//       [body statements]
+	//       JUMP loopStart
+	//   afterLoop:
+
+	Int32 loopStart = _emitter.CreateLabel();
+	Int32 afterLoop = _emitter.CreateLabel();
+
+	// Place loopStart label
+	_emitter.PlaceLabel(loopStart);
+
+	// Evaluate condition
+	Int32 condReg = node.Condition().Accept(_this);
+
+	// Branch to afterLoop if condition is false
+	_emitter.EmitBranch(Opcode::BRFALSE_rA_iBC, condReg, afterLoop, "exit loop if false");
+	FreeReg(condReg);
+
+	// Compile body statements
+	for (Int32 i = 0; i < node.Body().Count(); i++) {
+		// Free temporary registers before each statement
+		// (but keep variable registers)
+
+		// Mark variable registers as still in use, clear others except r0
+		_regInUse.Clear();
+		_regInUse.Add(Boolean(true));  // r0
+		_firstAvailable = 1;
+		for (Int32 reg : _variableRegs.GetValues()) {
+			while (_regInUse.Count() <= reg) {
+				_regInUse.Add(Boolean(false));
+			}
+			_regInUse[reg] = Boolean(true);
+			if (reg >= _firstAvailable) _firstAvailable = reg + 1;
+		}
+
+		node.Body()[i].Accept(_this);
+	}
+
+	// Jump back to loopStart
+	_emitter.EmitJump(Opcode::JUMP_iABC, loopStart, "loop back");
+
+	// Place afterLoop label
+	_emitter.PlaceLabel(afterLoop);
+
+	// While loops don't produce a value
+	return -1;
 }
 
 

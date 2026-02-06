@@ -86,6 +86,8 @@ struct MemberNode;
 class MemberNodeStorage;
 struct MethodCallNode;
 class MethodCallNodeStorage;
+struct WhileNode;
+class WhileNodeStorage;
 
 // DECLARATIONS
 
@@ -105,7 +107,9 @@ struct LabelRef {
 	public: Int32 LabelId; // label being referenced
 	public: Opcode Op; // opcode (for re-encoding)
 	public: Int32 A; // A operand (for re-encoding)
+	public: Boolean IsABC; // true for 24-bit offset (JUMP), false for 16-bit (BRFALSE/BRTRUE)
 }; // end of struct LabelRef
+
 
 
 
@@ -177,6 +181,7 @@ struct CodeEmitterBase {
 	public: Int32 CreateLabel();
 	public: void PlaceLabel(Int32 labelId);
 	public: void EmitJump(Opcode op, Int32 labelId, String comment);
+	public: void EmitBranch(Opcode op, Int32 reg, Int32 labelId, String comment);
 	public: void ReserveRegister(Int32 registerNumber);
 	public: FuncDef Finalize(String name);
 }; // end of struct CodeEmitterBase
@@ -195,6 +200,7 @@ class CodeEmitterBaseStorage : public std::enable_shared_from_this<CodeEmitterBa
 	public: virtual Int32 CreateLabel() = 0;
 	public: virtual void PlaceLabel(Int32 labelId) = 0;
 	public: virtual void EmitJump(Opcode op, Int32 labelId, String comment) = 0;
+	public: virtual void EmitBranch(Opcode op, Int32 reg, Int32 labelId, String comment) = 0;
 	public: virtual void ReserveRegister(Int32 registerNumber) = 0;
 	public: virtual FuncDef Finalize(String name) = 0;
 	// Emit instructions with varying operand patterns
@@ -238,6 +244,8 @@ class BytecodeEmitterStorage : public CodeEmitterBaseStorage {
 
 	public: void EmitJump(Opcode op, Int32 labelId, String comment);
 
+	public: void EmitBranch(Opcode op, Int32 reg, Int32 labelId, String comment);
+
 	public: void ReserveRegister(Int32 registerNumber);
 
 	public: FuncDef Finalize(String name);
@@ -270,6 +278,8 @@ class AssemblyEmitterStorage : public CodeEmitterBaseStorage {
 	public: void PlaceLabel(Int32 labelId);
 
 	public: void EmitJump(Opcode op, Int32 labelId, String comment);
+
+	public: void EmitBranch(Opcode op, Int32 reg, Int32 labelId, String comment);
 
 	public: void ReserveRegister(Int32 registerNumber);
 
@@ -326,6 +336,8 @@ struct BytecodeEmitter : public CodeEmitterBase {
 
 	public: void EmitJump(Opcode op, Int32 labelId, String comment) { return get()->EmitJump(op, labelId, comment); }
 
+	public: void EmitBranch(Opcode op, Int32 reg, Int32 labelId, String comment) { return get()->EmitBranch(op, reg, labelId, comment); }
+
 	public: void ReserveRegister(Int32 registerNumber) { return get()->ReserveRegister(registerNumber); }
 
 	public: FuncDef Finalize(String name) { return get()->Finalize(name); }
@@ -372,6 +384,8 @@ struct AssemblyEmitter : public CodeEmitterBase {
 
 	public: void EmitJump(Opcode op, Int32 labelId, String comment) { return get()->EmitJump(op, labelId, comment); }
 
+	public: void EmitBranch(Opcode op, Int32 reg, Int32 labelId, String comment) { return get()->EmitBranch(op, reg, labelId, comment); }
+
 	public: void ReserveRegister(Int32 registerNumber) { return get()->ReserveRegister(registerNumber); }
 
 	public: FuncDef Finalize(String name) { return get()->Finalize(name); }
@@ -396,6 +410,7 @@ inline Int32 CodeEmitterBase::AddConstant(Value value) { return get()->AddConsta
 inline Int32 CodeEmitterBase::CreateLabel() { return get()->CreateLabel(); }
 inline void CodeEmitterBase::PlaceLabel(Int32 labelId) { return get()->PlaceLabel(labelId); }
 inline void CodeEmitterBase::EmitJump(Opcode op, Int32 labelId, String comment) { return get()->EmitJump(op, labelId, comment); }
+inline void CodeEmitterBase::EmitBranch(Opcode op, Int32 reg, Int32 labelId, String comment) { return get()->EmitBranch(op, reg, labelId, comment); }
 inline void CodeEmitterBase::ReserveRegister(Int32 registerNumber) { return get()->ReserveRegister(registerNumber); }
 inline FuncDef CodeEmitterBase::Finalize(String name) { return get()->Finalize(name); }
 

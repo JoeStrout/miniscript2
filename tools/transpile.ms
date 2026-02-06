@@ -450,7 +450,7 @@ Transpiler.transformStatement = function(trimmedLine)
 	// non-identifier string.
 	tokens = roughTokenize(trimmedLine)
 	
-	deepDebug = false; //trimmedLine.contains("_prefixParselets")
+	deepDebug = false; //trimmedLine.contains("node.Operand")
 	ddprint = function(s); if deepDebug then print "====> " + s; end function
 	summarize = function(obj)
 		if obj == null then return "<null>"
@@ -1232,6 +1232,7 @@ Transpiler.updateStateMETHOD = function
 	if self.match("≤type:w≥ ≤name:w≥ = ≤expr≥ as ≤type2:w≥;") then
 		if self.m.type == "var" then self.m.type = self.m.type2
 		self.localVars.push VariableInfo.Make(self.m.name, self.m.type, Scope.LOCAL)
+		self.m.expr = self.transformStatement(self.m.expr)
 		self.curClass.methodLines.push line.indentation +
 		  self.fill("≤type≥ ≤name≥ = As<≤type2≥, ≤type2≥Storage>(≤expr≥);")
 		return

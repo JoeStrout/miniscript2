@@ -83,6 +83,8 @@ struct MemberNode;
 class MemberNodeStorage;
 struct MethodCallNode;
 class MethodCallNodeStorage;
+struct WhileNode;
+class WhileNodeStorage;
 
 // DECLARATIONS
 
@@ -96,17 +98,19 @@ class MethodCallNodeStorage;
 // Precedence levels (higher precedence binds more strongly)
 enum class Precedence : Int32 {
 	NONE = 0,
-	ASSIGNMENT = 1,
-	OR = 2,
-	AND = 3,
-	EQUALITY = 4,        // == !=
-	COMPARISON = 5,      // < > <= >=
-	SUM = 6,             // + -
-	PRODUCT = 7,         // * / %
-	POWER = 8,           // ^
-	UNARY = 9,           // - not
-	CALL = 10,           // () []
-	PRIMARY = 11
+	ASSIGNMENT,
+	OR,
+	AND,
+	NOT,
+	EQUALITY,        // == !=
+	COMPARISON,      // < > <= >=
+	SUM,             // + -
+	PRODUCT,         // * / %
+	UNARY_MINUS,     // -
+	POWER,           // ^
+	CALL,            // () []
+	ADDRESS_OF,      // @
+	PRIMARY
 }; // end of enum Precedence
 
 
@@ -116,6 +120,7 @@ enum class TokenType : Int32 {
 	NUMBER,
 	STRING,
 	IDENTIFIER,
+	ADDRESS_OF,
 	PLUS,
 	MINUS,
 	TIMES,
@@ -141,10 +146,13 @@ enum class TokenType : Int32 {
 	NOT,
 	AND,
 	OR,
+	WHILE,
+	END,
 	EOL,
 	COMMENT,
 	ERROR
 }; // end of enum TokenType
+
 
 
 

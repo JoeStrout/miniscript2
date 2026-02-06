@@ -147,8 +147,8 @@ public class CodeGenerator : IASTVisitor {
 
 		Int32 resultReg = ast.Accept(this);
 
-		// Move result to r0 if not already there
-		if (resultReg != 0) {
+		// Move result to r0 if not already there (and if there is a result)
+		if (resultReg > 0) {
 			_emitter.EmitABC(Opcode.LOAD_rA_rB, 0, resultReg, 0, "move Function result to r0");
 		}
 		_emitter.Emit(Opcode.RETURN, null);
@@ -219,7 +219,7 @@ public class CodeGenerator : IASTVisitor {
 		return reg;
 	}
 
-	public Int32 Visit(IdentifierNode node, bool addressOf) {
+	private Int32 VisitIdentifier(IdentifierNode node, bool addressOf) {
 		Int32 resultReg = GetTargetOrAlloc();
 
 		Int32 varReg;
@@ -240,7 +240,7 @@ public class CodeGenerator : IASTVisitor {
 	}
 
 	public Int32 Visit(IdentifierNode node) {
-		return Visit(node, false);
+		return VisitIdentifier(node, false);
 	}
 
 	public Int32 Visit(AssignmentNode node) {
@@ -281,8 +281,8 @@ public class CodeGenerator : IASTVisitor {
 	public Int32 Visit(UnaryOpNode node) {
 		if (node.Op == Op.ADDRESS_OF) {
 			// Special case: just an identifier lookup without function call
-			IdentifierNode ident = node.Operand as IdentifierNode;
-			if (ident != null) return Visit(ident, true);
+			var ident = node.Operand as IdentifierNode;
+			if (ident != null) return VisitIdentifier(ident, true);
 			// On anything other than an identifier, @ has no effect.
 			return node.Operand.Accept(this);
 		}
@@ -499,6 +499,58 @@ public class CodeGenerator : IASTVisitor {
 		Int32 reg = GetTargetOrAlloc();
 		_emitter.EmitAB(Opcode.LOAD_rA_iBC, reg, 0, $"TODO: {node.Target.ToStr()}.{node.Method}()");
 		return reg;
+	}
+
+	public Int32 Visit(WhileNode node) {
+		// While loop generates:
+		//   loopStart:
+		//       [evaluate condition]
+		//       BRFALSE condReg, afterLoop
+		//       [body statements]
+		//       JUMP loopStart
+		//   afterLoop:
+
+		Int32 loopStart = _emitter.CreateLabel();
+		Int32 afterLoop = _emitter.CreateLabel();
+
+		// Place loopStart label
+		_emitter.PlaceLabel(loopStart);
+
+		// Evaluate condition
+		Int32 condReg = node.Condition.Accept(this);
+
+		// Branch to afterLoop if condition is false
+		_emitter.EmitBranch(Opcode.BRFALSE_rA_iBC, condReg, afterLoop, "exit loop if false");
+		FreeReg(condReg);
+
+		// Compile body statements
+		for (Int32 i = 0; i < node.Body.Count; i++) {
+			// Free temporary registers before each statement
+			// (but keep variable registers)
+
+			// Mark variable registers as still in use, clear others except r0
+			_regInUse.Clear();
+			_regInUse.Add(true);  // r0
+			_firstAvailable = 1;
+			foreach (Int32 reg in _variableRegs.Values) { // CPP: for (Int32 reg : _variableRegs.GetValues()) {
+				while (_regInUse.Count <= reg) {
+					_regInUse.Add(false);
+				}
+				_regInUse[reg] = true;
+				if (reg >= _firstAvailable) _firstAvailable = reg + 1;
+			}
+
+			node.Body[i].Accept(this);
+		}
+
+		// Jump back to loopStart
+		_emitter.EmitJump(Opcode.JUMP_iABC, loopStart, "loop back");
+
+		// Place afterLoop label
+		_emitter.PlaceLabel(afterLoop);
+
+		// While loops don't produce a value
+		return -1;
 	}
 }
 

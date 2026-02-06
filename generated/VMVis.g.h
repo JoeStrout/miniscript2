@@ -83,6 +83,8 @@ struct MemberNode;
 class MemberNodeStorage;
 struct MethodCallNode;
 class MethodCallNodeStorage;
+struct WhileNode;
+class WhileNodeStorage;
 
 // DECLARATIONS
 
@@ -141,6 +143,7 @@ struct VMVis {
 
 	public: void UpdateDisplay();
 }; // end of struct VMVis
+
 
 
 

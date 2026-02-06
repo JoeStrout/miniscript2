@@ -25,8 +25,9 @@ void ParserStorage::RegisterParselets() {
 	RegisterPrefix(TokenType::LBRACE,  MapParselet::New());
 
 	// Unary operators
-	RegisterPrefix(TokenType::MINUS,  UnaryOpParselet::New(Op::MINUS, Precedence::UNARY));
-	RegisterPrefix(TokenType::NOT,  UnaryOpParselet::New(Op::NOT, Precedence::UNARY));
+	RegisterPrefix(TokenType::MINUS,  UnaryOpParselet::New(Op::MINUS, Precedence::UNARY_MINUS));
+	RegisterPrefix(TokenType::NOT,  UnaryOpParselet::New(Op::NOT, Precedence::UNARY_MINUS));
+	RegisterPrefix(TokenType::ADDRESS_OF,  UnaryOpParselet::New(Op::ADDRESS_OF, Precedence::ADDRESS_OF));
 
 	// Binary operators
 	RegisterInfix(TokenType::PLUS,  BinaryOpParselet::New(Op::PLUS, Precedence::SUM));
@@ -109,6 +110,7 @@ Boolean ParserStorage::CanStartExpression(TokenType type) {
 		|| type == TokenType::LBRACKET
 		|| type == TokenType::LBRACE
 		|| type == TokenType::MINUS
+		|| type == TokenType::ADDRESS_OF
 		|| type == TokenType::NOT;
 }
 Boolean ParserStorage::CanStartCallArgument(TokenType type) {
@@ -119,6 +121,7 @@ Boolean ParserStorage::CanStartCallArgument(TokenType type) {
 		|| type == TokenType::LBRACKET
 		|| type == TokenType::LBRACE
 		|| type == TokenType::MINUS
+		|| type == TokenType::ADDRESS_OF
 		|| type == TokenType::NOT;
 }
 ASTNode ParserStorage::ParseExpression(Precedence minPrecedence) {
@@ -214,6 +217,62 @@ ASTNode ParserStorage::ParseSimpleStatement() {
 	// Not an identifier - parse as expression statement
 	return ParseExpression();
 }
+ASTNode ParserStorage::ParseWhileStatement() {
+	// WHILE token already consumed
+	ASTNode condition = ParseExpression();
+
+	// Expect EOL after condition
+	if (_current.Type != TokenType::EOL && _current.Type != TokenType::END_OF_INPUT) {
+		ReportError(Interp("Expected end of line after while condition, got: {}", _current.Text));
+	}
+
+	// Parse body statements until "end while"
+	List<ASTNode> body =  List<ASTNode>::New();
+	while (Boolean(true)) {
+		// Skip blank lines
+		while (_current.Type == TokenType::EOL) {
+			Advance();
+		}
+
+		// Check for end of input (error - unclosed while)
+		if (_current.Type == TokenType::END_OF_INPUT) {
+			ReportError("Unexpected end of input - expected 'end while'");
+			break;
+		}
+
+		// Check for "end while"
+		if (_current.Type == TokenType::END) {
+			Advance();  // consume END
+			if (_current.Type == TokenType::WHILE) {
+				Advance();  // consume WHILE
+				break;  // done with while loop
+			} else {
+				// "end" followed by something other than "while"
+				// For now, report error (later we might support other end types)
+				ReportError(Interp("Expected 'while' after 'end', got: {}", _current.Text));
+				break;
+			}
+		}
+
+		// Parse a body statement
+		ASTNode stmt = ParseStatement();
+		if (!IsNull(stmt)) {
+			body.Add(stmt);
+		}
+
+		// Expect EOL after statement (but ParseStatement may have consumed it for block statements)
+		if (_current.Type != TokenType::EOL && _current.Type != TokenType::END_OF_INPUT
+			&& _current.Type != TokenType::END) {
+			ReportError(Interp("Expected end of line, got: {}", _current.Text));
+			// Try to recover by skipping to next line
+			while (_current.Type != TokenType::EOL && _current.Type != TokenType::END_OF_INPUT) {
+				Advance();
+			}
+		}
+	}
+
+	return  WhileNode::New(condition, body);
+}
 ASTNode ParserStorage::ParseStatement() {
 	// Skip leading blank lines
 	while (_current.Type == TokenType::EOL) {
@@ -222,6 +281,12 @@ ASTNode ParserStorage::ParseStatement() {
 
 	if (_current.Type == TokenType::END_OF_INPUT) {
 		return nullptr;
+	}
+
+	// Check for block statements
+	if (_current.Type == TokenType::WHILE) {
+		Advance();  // consume WHILE
+		return ParseWhileStatement();
 	}
 
 	return ParseSimpleStatement();
@@ -236,12 +301,13 @@ List<ASTNode> ParserStorage::ParseProgram() {
 		}
 		if (_current.Type == TokenType::END_OF_INPUT) break;
 
-		ASTNode stmt = ParseSimpleStatement();
+		ASTNode stmt = ParseStatement();
 		if (!IsNull(stmt)) {
 			statements.Add(stmt);
 		}
 
 		// Expect EOL or EOF after statement
+		// (block statements like while handle their own EOL consumption)
 		if (_current.Type != TokenType::EOL && _current.Type != TokenType::END_OF_INPUT) {
 			ReportError(Interp("Expected end of line, got: {}", _current.Text));
 			// Try to recover by skipping to next line

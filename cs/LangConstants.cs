@@ -55,6 +55,8 @@ public enum TokenType : Int32 {
 	NOT,
 	AND,
 	OR,
+	WHILE,
+	END,
 	EOL,
 	COMMENT,
 	ERROR

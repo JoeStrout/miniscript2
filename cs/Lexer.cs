@@ -158,6 +158,10 @@ public struct Lexer {
 				tok = new Token(TokenType.OR, text, startLine, startColumn);
 			} else if (text == "not") {
 				tok = new Token(TokenType.NOT, text, startLine, startColumn);
+			} else if (text == "while") {
+				tok = new Token(TokenType.WHILE, text, startLine, startColumn);
+			} else if (text == "end") {
+				tok = new Token(TokenType.END, text, startLine, startColumn);
 			} else {
 				tok = new Token(TokenType.IDENTIFIER, text, startLine, startColumn);
 			}

@@ -276,8 +276,65 @@ public class Parser : IParser {
 		return ParseExpression();
 	}
 
-	// Parse a statement (grammar: statement : simpleStatement eol)
-	// For now, we only handle simpleStatement (no block statements yet)
+	// Parse a while statement: while <condition> <EOL> <body> end while
+	private ASTNode ParseWhileStatement() {
+		// WHILE token already consumed
+		ASTNode condition = ParseExpression();
+
+		// Expect EOL after condition
+		if (_current.Type != TokenType.EOL && _current.Type != TokenType.END_OF_INPUT) {
+			ReportError($"Expected end of line after while condition, got: {_current.Text}");
+		}
+
+		// Parse body statements until "end while"
+		List<ASTNode> body = new List<ASTNode>();
+		while (true) {
+			// Skip blank lines
+			while (_current.Type == TokenType.EOL) {
+				Advance();
+			}
+
+			// Check for end of input (error - unclosed while)
+			if (_current.Type == TokenType.END_OF_INPUT) {
+				ReportError("Unexpected end of input - expected 'end while'");
+				break;
+			}
+
+			// Check for "end while"
+			if (_current.Type == TokenType.END) {
+				Advance();  // consume END
+				if (_current.Type == TokenType.WHILE) {
+					Advance();  // consume WHILE
+					break;  // done with while loop
+				} else {
+					// "end" followed by something other than "while"
+					// For now, report error (later we might support other end types)
+					ReportError($"Expected 'while' after 'end', got: {_current.Text}");
+					break;
+				}
+			}
+
+			// Parse a body statement
+			ASTNode stmt = ParseStatement();
+			if (stmt != null) {
+				body.Add(stmt);
+			}
+
+			// Expect EOL after statement (but ParseStatement may have consumed it for block statements)
+			if (_current.Type != TokenType.EOL && _current.Type != TokenType.END_OF_INPUT
+				&& _current.Type != TokenType.END) {
+				ReportError($"Expected end of line, got: {_current.Text}");
+				// Try to recover by skipping to next line
+				while (_current.Type != TokenType.EOL && _current.Type != TokenType.END_OF_INPUT) {
+					Advance();
+				}
+			}
+		}
+
+		return new WhileNode(condition, body);
+	}
+
+	// Parse a statement (handles both simple statements and block statements)
 	public ASTNode ParseStatement() {
 		// Skip leading blank lines
 		while (_current.Type == TokenType.EOL) {
@@ -286,6 +343,12 @@ public class Parser : IParser {
 
 		if (_current.Type == TokenType.END_OF_INPUT) {
 			return null;
+		}
+
+		// Check for block statements
+		if (_current.Type == TokenType.WHILE) {
+			Advance();  // consume WHILE
+			return ParseWhileStatement();
 		}
 
 		return ParseSimpleStatement();
@@ -303,12 +366,13 @@ public class Parser : IParser {
 			}
 			if (_current.Type == TokenType.END_OF_INPUT) break;
 
-			ASTNode stmt = ParseSimpleStatement();
+			ASTNode stmt = ParseStatement();
 			if (stmt != null) {
 				statements.Add(stmt);
 			}
 
 			// Expect EOL or EOF after statement
+			// (block statements like while handle their own EOL consumption)
 			if (_current.Type != TokenType.EOL && _current.Type != TokenType.END_OF_INPUT) {
 				ReportError($"Expected end of line, got: {_current.Text}");
 				// Try to recover by skipping to next line

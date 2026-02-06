@@ -27,6 +27,7 @@ public abstract class CodeEmitterBase {
 	public abstract Int32 CreateLabel();
 	public abstract void PlaceLabel(Int32 labelId);
 	public abstract void EmitJump(Opcode op, Int32 labelId, String comment);
+	public abstract void EmitBranch(Opcode op, Int32 reg, Int32 labelId, String comment);
 
 	// Track register usage
 	public abstract void ReserveRegister(Int32 registerNumber);
@@ -41,6 +42,7 @@ public struct LabelRef {
 	public Int32 LabelId;      // label being referenced
 	public Opcode Op;          // opcode (for re-encoding)
 	public Int32 A;            // A operand (for re-encoding)
+	public Boolean IsABC;      // true for 24-bit offset (JUMP), false for 16-bit (BRFALSE/BRTRUE)
 }
 
 
@@ -113,6 +115,19 @@ public class BytecodeEmitter : CodeEmitterBase {
 		labelRef.LabelId = labelId;
 		labelRef.Op = op;
 		labelRef.A = 0;
+		labelRef.IsABC = true;  // 24-bit offset for JUMP_iABC
+		_labelRefs.Add(labelRef);
+		_code.Add(BytecodeUtil.INS(op));  // placeholder
+	}
+
+	public override void EmitBranch(Opcode op, Int32 reg, Int32 labelId, String comment) {
+		// Emit placeholder instruction for conditional branch, record for later patching
+		LabelRef labelRef;
+		labelRef.CodeIndex = _code.Count;
+		labelRef.LabelId = labelId;
+		labelRef.Op = op;
+		labelRef.A = reg;
+		labelRef.IsABC = false;  // 16-bit offset for BRFALSE_rA_iBC, BRTRUE_rA_iBC
 		_labelRefs.Add(labelRef);
 		_code.Add(BytecodeUtil.INS(op));  // placeholder
 	}
@@ -134,8 +149,18 @@ public class BytecodeEmitter : CodeEmitterBase {
 			Int32 currentAddr = labelRef.CodeIndex;
 			Int32 offset = targetAddr - currentAddr - 1;  // relative offset
 
-			// Re-encode with the correct offset
-			_code[labelRef.CodeIndex] = BytecodeUtil.INS_AB(labelRef.Op, (Byte)labelRef.A, (Int16)offset);
+			// Re-encode with the correct offset based on instruction type
+			if (labelRef.IsABC) {
+				// 24-bit offset for JUMP_iABC
+				// Encode offset in lower 24 bits (A, B, C fields combined)
+				Byte a = (Byte)((offset >> 16) & 0xFF);
+				Byte b = (Byte)((offset >> 8) & 0xFF);
+				Byte c = (Byte)(offset & 0xFF);
+				_code[labelRef.CodeIndex] = BytecodeUtil.INS_ABC(labelRef.Op, a, b, c);
+			} else {
+				// 8-bit register + 16-bit offset for BRFALSE_rA_iBC, BRTRUE_rA_iBC
+				_code[labelRef.CodeIndex] = BytecodeUtil.INS_AB(labelRef.Op, (Byte)labelRef.A, (Int16)offset);
+			}
 		}
 
 		FuncDef func = new FuncDef();
@@ -235,6 +260,12 @@ public class AssemblyEmitter : CodeEmitterBase {
 
 	public override void EmitJump(Opcode op, Int32 labelId, String comment) {
 		String line = $"  {BytecodeUtil.ToMnemonic(op)} {_labelNames[labelId]}";
+		if (comment != null) line += $"  ; {comment}";
+		_lines.Add(line);
+	}
+
+	public override void EmitBranch(Opcode op, Int32 reg, Int32 labelId, String comment) {
+		String line = $"  {BytecodeUtil.ToMnemonic(op)} r{reg}, {_labelNames[labelId]}";
 		if (comment != null) line += $"  ; {comment}";
 		_lines.Add(line);
 	}

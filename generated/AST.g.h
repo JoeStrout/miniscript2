@@ -84,6 +84,8 @@ struct MemberNode;
 class MemberNodeStorage;
 struct MethodCallNode;
 class MethodCallNodeStorage;
+struct WhileNode;
+class WhileNodeStorage;
 
 // DECLARATIONS
 
@@ -131,6 +133,7 @@ class Op {
 	public: static const String DIVIDE;
 	public: static const String MOD;
 	public: static const String POWER;
+	public: static const String ADDRESS_OF;
 	public: static const String EQUALS;
 	public: static const String NOT_EQUAL;
 	public: static const String LESS_THAN;
@@ -160,7 +163,9 @@ class IASTVisitor {
 	virtual Int32 Visit(IndexNode node) = 0;
 	virtual Int32 Visit(MemberNode node) = 0;
 	virtual Int32 Visit(MethodCallNode node) = 0;
+	virtual Int32 Visit(WhileNode node) = 0;
 }; // end of interface IASTVisitor
+
 
 
 
@@ -402,6 +407,20 @@ class MethodCallNodeStorage : public ASTNodeStorage {
 
 	public: Int32 Accept(IASTVisitor& visitor);
 }; // end of class MethodCallNodeStorage
+
+class WhileNodeStorage : public ASTNodeStorage {
+	friend struct WhileNode;
+	public: ASTNode Condition; // the loop condition
+	public: List<ASTNode> Body; // statements in the loop body
+
+	public: WhileNodeStorage(ASTNode condition, List<ASTNode> body);
+
+	public: String ToStr();
+
+	public: ASTNode Simplify();
+
+	public: Int32 Accept(IASTVisitor& visitor);
+}; // end of class WhileNodeStorage
 
 
 // Number literal node (e.g., 42, 3.14)
@@ -724,6 +743,30 @@ struct MethodCallNode : public ASTNode {
 }; // end of struct MethodCallNode
 
 
+// While loop node (e.g., while x < 10 ... end while)
+struct WhileNode : public ASTNode {
+	WhileNode(std::shared_ptr<WhileNodeStorage> stor);
+	WhileNode() : ASTNode() {}
+	WhileNode(std::nullptr_t) : ASTNode(nullptr) {}
+	private: WhileNodeStorage* get() const;
+
+	public: ASTNode Condition(); // the loop condition
+	public: void set_Condition(ASTNode _v); // the loop condition
+	public: List<ASTNode> Body(); // statements in the loop body
+	public: void set_Body(List<ASTNode> _v); // statements in the loop body
+
+	public: static WhileNode New(ASTNode condition, List<ASTNode> body) {
+		return WhileNode(std::make_shared<WhileNodeStorage>(condition, body));
+	}
+
+	public: String ToStr() { return get()->ToStr(); }
+
+	public: ASTNode Simplify() { return get()->Simplify(); }
+
+	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
+}; // end of struct WhileNode
+
+
 // INLINE METHODS
 
 inline ASTNodeStorage* ASTNode::get() const { return static_cast<ASTNodeStorage*>(storage.get()); }
@@ -815,5 +858,12 @@ inline String MethodCallNode::Method() { return get()->Method; } // the method n
 inline void MethodCallNode::set_Method(String _v) { get()->Method = _v; } // the method name
 inline List<ASTNode> MethodCallNode::Arguments() { return get()->Arguments; } // list of argument expressions
 inline void MethodCallNode::set_Arguments(List<ASTNode> _v) { get()->Arguments = _v; } // list of argument expressions
+
+inline WhileNode::WhileNode(std::shared_ptr<WhileNodeStorage> stor) : ASTNode(stor) {}
+inline WhileNodeStorage* WhileNode::get() const { return static_cast<WhileNodeStorage*>(storage.get()); }
+inline ASTNode WhileNode::Condition() { return get()->Condition; } // the loop condition
+inline void WhileNode::set_Condition(ASTNode _v) { get()->Condition = _v; } // the loop condition
+inline List<ASTNode> WhileNode::Body() { return get()->Body; } // statements in the loop body
+inline void WhileNode::set_Body(List<ASTNode> _v) { get()->Body = _v; } // statements in the loop body
 
 } // end of namespace MiniScript

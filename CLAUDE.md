@@ -73,10 +73,11 @@ tools/build.sh cpp off  # Force switch-based
 
 ## Development Notes
 
-- **Always edit C# files** in `cs/` directory, never generated C++ directly
-- **Transpile after C# changes:** `tools/build.sh transpile`
-- **Memory management:** Use GC_PROTECT for runtime Values, shared_ptr for host app data
-- **Coding standards:** See [CS_CODING_STANDARDS.md](notes/CS_CODING_STANDARDS.md)
+- **Always edit C# files** in `cs/` directory, never generated C++ directly, unless trying to pin down some C++-only crash; then you may hack the generated C++ code to gain understanding.
+- **Memory management:** Use GC_PROTECT for runtime Values, shared_ptr for host app data.
+- **Coding standards:** See [CS_CODING_STANDARDS.md](notes/CS_CODING_STANDARDS.md).
+
+In general, do not use the transpiler unless instructed otherwise, as it is token-expensive and is more the user's purview.  Do most edits in the C# code only, and notify the user when it's ready for transpilation and testing on the C++ side.  If you are instructed to transpile and test, use `tools/build.sh transpile` followed by - **Transpile after C# changes:** `tools/build.sh cpp`.
 
 ## Communication Style
 

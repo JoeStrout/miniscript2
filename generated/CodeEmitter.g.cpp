@@ -61,6 +61,18 @@ void BytecodeEmitterStorage::EmitJump(Opcode op, Int32 labelId, String comment) 
 	labelRef.LabelId = labelId;
 	labelRef.Op = op;
 	labelRef.A = 0;
+	labelRef.IsABC = Boolean(true);  // 24-bit offset for JUMP_iABC
+	_labelRefs.Add(labelRef);
+	_code.Add(BytecodeUtil::INS(op));  // placeholder
+}
+void BytecodeEmitterStorage::EmitBranch(Opcode op, Int32 reg, Int32 labelId, String comment) {
+	// Emit placeholder instruction for conditional branch, record for later patching
+	LabelRef labelRef;
+	labelRef.CodeIndex = _code.Count();
+	labelRef.LabelId = labelId;
+	labelRef.Op = op;
+	labelRef.A = reg;
+	labelRef.IsABC = Boolean(false);  // 16-bit offset for BRFALSE_rA_iBC, BRTRUE_rA_iBC
 	_labelRefs.Add(labelRef);
 	_code.Add(BytecodeUtil::INS(op));  // placeholder
 }
@@ -80,8 +92,18 @@ FuncDef BytecodeEmitterStorage::Finalize(String name) {
 		Int32 currentAddr = labelRef.CodeIndex;
 		Int32 offset = targetAddr - currentAddr - 1;  // relative offset
 
-		// Re-encode with the correct offset
-		_code[labelRef.CodeIndex] = BytecodeUtil::INS_AB(labelRef.Op, (Byte)labelRef.A, (Int16)offset);
+		// Re-encode with the correct offset based on instruction type
+		if (labelRef.IsABC) {
+			// 24-bit offset for JUMP_iABC
+			// Encode offset in lower 24 bits (A, B, C fields combined)
+			Byte a = (Byte)((offset >> 16) & 0xFF);
+			Byte b = (Byte)((offset >> 8) & 0xFF);
+			Byte c = (Byte)(offset & 0xFF);
+			_code[labelRef.CodeIndex] = BytecodeUtil::INS_ABC(labelRef.Op, a, b, c);
+		} else {
+			// 8-bit register + 16-bit offset for BRFALSE_rA_iBC, BRTRUE_rA_iBC
+			_code[labelRef.CodeIndex] = BytecodeUtil::INS_AB(labelRef.Op, (Byte)labelRef.A, (Int16)offset);
+		}
 	}
 
 	FuncDef func =  FuncDef::New();
@@ -164,6 +186,11 @@ void AssemblyEmitterStorage::PlaceLabel(Int32 labelId) {
 }
 void AssemblyEmitterStorage::EmitJump(Opcode op, Int32 labelId, String comment) {
 	String line = Interp("  {} {}", BytecodeUtil::ToMnemonic(op), _labelNames[labelId]);
+	if (!IsNull(comment)) line += Interp("  ; {}", comment);
+	_lines.Add(line);
+}
+void AssemblyEmitterStorage::EmitBranch(Opcode op, Int32 reg, Int32 labelId, String comment) {
+	String line = Interp("  {} r{}, {}", BytecodeUtil::ToMnemonic(op), reg, _labelNames[labelId]);
 	if (!IsNull(comment)) line += Interp("  ; {}", comment);
 	_lines.Add(line);
 }

@@ -66,7 +66,7 @@ void App::MainProgram(List<String> args) {
 		IOHelper::Print("Running integration tests...");
 		if (!RunIntegrationTests("tests/testSuite.txt")) {
 			IOHelper::Print("Some integration tests failed.");
-			return;
+//				return;
 		}
 		IOHelper::Print("Integration tests complete.");
 	}

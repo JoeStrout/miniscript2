@@ -93,8 +93,11 @@ struct MemberNode;
 class MemberNodeStorage;
 struct MethodCallNode;
 class MethodCallNodeStorage;
+struct WhileNode;
+class WhileNodeStorage;
 
 // DECLARATIONS
+
 
 
 
@@ -217,8 +220,10 @@ class ParserStorage : public std::enable_shared_from_this<ParserStorage>, public
 	// Handles: callStatement, assignmentStatement, expressionStatement
 	private: ASTNode ParseSimpleStatement();
 
-	// Parse a statement (grammar: statement : simpleStatement eol)
-	// For now, we only handle simpleStatement (no block statements yet)
+	// Parse a while statement: while <condition> <EOL> <body> end while
+	private: ASTNode ParseWhileStatement();
+
+	// Parse a statement (handles both simple statements and block statements)
 	public: ASTNode ParseStatement();
 
 	// Parse a program (grammar: program : (eol | statement)* EOF)
@@ -324,8 +329,10 @@ struct Parser : public IParser {
 	// Handles: callStatement, assignmentStatement, expressionStatement
 	private: ASTNode ParseSimpleStatement() { return get()->ParseSimpleStatement(); }
 
-	// Parse a statement (grammar: statement : simpleStatement eol)
-	// For now, we only handle simpleStatement (no block statements yet)
+	// Parse a while statement: while <condition> <EOL> <body> end while
+	private: ASTNode ParseWhileStatement() { return get()->ParseWhileStatement(); }
+
+	// Parse a statement (handles both simple statements and block statements)
 	public: ASTNode ParseStatement() { return get()->ParseStatement(); }
 
 	// Parse a program (grammar: program : (eol | statement)* EOF)

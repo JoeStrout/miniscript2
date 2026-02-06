@@ -15,6 +15,7 @@ const String Op::TIMES = "TIMES";
 const String Op::DIVIDE = "DIVIDE";
 const String Op::MOD = "MOD";
 const String Op::POWER = "POWER";
+const String Op::ADDRESS_OF = "ADDRESS_OF";
 const String Op::EQUALS = "EQUALS";
 const String Op::NOT_EQUAL = "NOT_EQUAL";
 const String Op::LESS_THAN = "LESS_THAN";
@@ -349,6 +350,32 @@ ASTNode MethodCallNodeStorage::Simplify() {
 }
 Int32 MethodCallNodeStorage::Accept(IASTVisitor& visitor) {
 	MethodCallNode _this(std::static_pointer_cast<MethodCallNodeStorage>(shared_from_this()));
+	return visitor.Visit(_this);
+}
+
+
+WhileNodeStorage::WhileNodeStorage(ASTNode condition, List<ASTNode> body) {
+	Condition = condition;
+	Body = body;
+}
+String WhileNodeStorage::ToStr() {
+	String result = "while " + Condition.ToStr() + "\n";
+	for (Int32 i = 0; i < Body.Count(); i++) {
+		result = result + "  " + Body[i].ToStr() + "\n";
+	}
+	result = result + "end while";
+	return result;
+}
+ASTNode WhileNodeStorage::Simplify() {
+	ASTNode simplifiedCondition = Condition.Simplify();
+	List<ASTNode> simplifiedBody =  List<ASTNode>::New();
+	for (Int32 i = 0; i < Body.Count(); i++) {
+		simplifiedBody.Add(Body[i].Simplify());
+	}
+	return  WhileNode::New(simplifiedCondition, simplifiedBody);
+}
+Int32 WhileNodeStorage::Accept(IASTVisitor& visitor) {
+	WhileNode _this(std::static_pointer_cast<WhileNodeStorage>(shared_from_this()));
 	return visitor.Visit(_this);
 }
 

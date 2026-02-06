@@ -86,6 +86,8 @@ struct MemberNode;
 class MemberNodeStorage;
 struct MethodCallNode;
 class MethodCallNodeStorage;
+struct WhileNode;
+class WhileNodeStorage;
 
 // DECLARATIONS
 
@@ -117,6 +119,7 @@ class IParser {
 	virtual void ReportError(String message) = 0;
 	virtual Boolean CanStartExpression(TokenType type) = 0;
 }; // end of interface IParser
+
 
 
 

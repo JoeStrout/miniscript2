@@ -48,7 +48,6 @@ public enum TokenType : Int32 {
 	GREATER_EQUAL,
 	COMMA,
 	COLON,
-	SEMICOLON,
 	DOT,
 	NOT,
 	AND,

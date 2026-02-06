@@ -180,7 +180,7 @@ Token Lexer::NextToken() {
 		case '>': singleTok = Token(TokenType::GREATER_THAN, ">", startLine, startColumn); break;
 		case ',': singleTok = Token(TokenType::COMMA, ",", startLine, startColumn); break;
 		case ':': singleTok = Token(TokenType::COLON, ":", startLine, startColumn); break;
-		case ';': singleTok = Token(TokenType::SEMICOLON, ";", startLine, startColumn); break;
+		case ';': singleTok = Token(TokenType::EOL, ";", startLine, startColumn); break;
 		case '.': singleTok = Token(TokenType::DOT, ".", startLine, startColumn); break;
 		case '\n': singleTok = Token(TokenType::EOL, "\n", startLine, startColumn); break;
 		default:

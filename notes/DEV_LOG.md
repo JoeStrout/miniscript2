@@ -285,3 +285,6 @@ Near-term ToDo list:
 - fix how many digits are printed on a number like 10/3; currently it's way too many
 - handle protected reads like `@x` (should use `LOADV` instead of `LOADC`)
 
+## Feb 06, 2026
+
+Handling semicolons by having the lexer return them as EOL, so to the parser, it's exactly the same as '\n'.

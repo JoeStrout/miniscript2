@@ -113,14 +113,14 @@ public struct App {
 			return null;
 		}
 
-		if (debugMode) {
-			IOHelper.Print(StringUtils.Format("Parsed {0} statement(s):", statements.Count));
-			for (Int32 i = 0; i < statements.Count; i++) {
-				IOHelper.Print(StringUtils.Format("  [{0}] {1}", i, statements[i].ToStr()));
-			}
-		}
+		// if (debugMode) {
+		// 	IOHelper.Print(StringUtils.Format("Parsed {0} statement(s):", statements.Count));
+		// 	for (Int32 i = 0; i < statements.Count; i++) {
+		// 		IOHelper.Print(StringUtils.Format("  [{0}] {1}", i, statements[i].ToStr()));
+		// 	}
+		// }
 
-		// Simplify each AST (constant folding)
+		// Simplify each AST (e.g. constant folding)
 		for (Int32 i = 0; i < statements.Count; i++) {
 			statements[i] = statements[i].Simplify();
 		}

@@ -10,6 +10,29 @@
 ==== flagging a test failure if they do not match.
 ====
 ================================================================================
+==== SECTION 0: BASIC STATEMENT/COMMENT PARSING
+================================================================================
+print 42
+--------------------------------
+42
+================================
+// Here is a comment all on its own line.
+print 123  // and here is a comment after a statement
+// Followed by another full-line comment.
+--------------------------------
+123
+================================
+// several statements separated by semicolons:
+print 1; print 2; print 3
+print 4 // however; a semicolon in a comment; does nothing
+print 5
+--------------------------------
+1
+2
+3
+4
+5
+================================================================================
 ==== SECTION 1: NUMERIC ARITHMETIC
 ================================================================================
 ==== Basic integer operations

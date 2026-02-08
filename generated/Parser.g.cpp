@@ -113,17 +113,6 @@ Boolean ParserStorage::CanStartExpression(TokenType type) {
 		|| type == TokenType::ADDRESS_OF
 		|| type == TokenType::NOT;
 }
-Boolean ParserStorage::CanStartCallArgument(TokenType type) {
-	return type == TokenType::NUMBER
-		|| type == TokenType::STRING
-		|| type == TokenType::IDENTIFIER
-		|| type == TokenType::LPAREN
-		|| type == TokenType::LBRACKET
-		|| type == TokenType::LBRACE
-		|| type == TokenType::MINUS
-		|| type == TokenType::ADDRESS_OF
-		|| type == TokenType::NOT;
-}
 ASTNode ParserStorage::ParseExpression(Precedence minPrecedence) {
 	Parser _this(std::static_pointer_cast<ParserStorage>(shared_from_this()));
 	Token token = _current;
@@ -195,7 +184,7 @@ ASTNode ParserStorage::ParseSimpleStatement() {
 		// (but NOT '(' which would be handled as func(args) by expression parsing).
 		// IMPORTANT: Whitespace is required between identifier and argument to
 		// distinguish "print [1,2,3]" (call) from "list[0]" (index expression).
-		if (_current.AfterSpace && CanStartCallArgument(_current.Type)) {
+		if (_current.AfterSpace && CanStartExpression(_current.Type)) {
 			// This is a call statement like "print 42" or "print x, y"
 			List<ASTNode> args =  List<ASTNode>::New();
 			args.Add(ParseExpression());
@@ -217,152 +206,56 @@ ASTNode ParserStorage::ParseSimpleStatement() {
 	// Not an identifier - parse as expression statement
 	return ParseExpression();
 }
-ASTNode ParserStorage::ParseIfBlock() {
-	ASTNode condition = ParseExpression();
+Boolean ParserStorage::IsBlockTerminator(TokenType t1, TokenType t2) {
+	return _current.Type == TokenType::END_OF_INPUT
+		|| _current.Type == t1
+		|| _current.Type == t2;
+}
+List<ASTNode> ParserStorage::ParseBlock(TokenType terminator1, TokenType terminator2) {
+	List<ASTNode> body =  List<ASTNode>::New();
 
-	// Expect THEN after condition
-	if (_current.Type != TokenType::THEN) {
-		ReportError(Interp("Expected 'then' after if condition, got: {}", _current.Text));
-	} else {
-		Advance();  // consume THEN
-	}
-
-	// Expect EOL after THEN for block form
-	if (_current.Type != TokenType::EOL && _current.Type != TokenType::END_OF_INPUT) {
-		ReportError(Interp("Expected end of line after 'then', got: {}", _current.Text));
-	}
-
-	// Parse "then" body statements until "else if", "else", or "end if"
-	List<ASTNode> thenBody =  List<ASTNode>::New();
 	while (Boolean(true)) {
 		// Skip blank lines
 		while (_current.Type == TokenType::EOL) {
 			Advance();
 		}
 
-		// Check for end of input (error - unclosed if)
-		if (_current.Type == TokenType::END_OF_INPUT) {
-			ReportError("Unexpected end of input - expected 'end if'");
+		// Check for terminator or end of input
+		if (IsBlockTerminator(terminator1, terminator2)) {
 			break;
 		}
 
-		// Check for "else if", "else", or "end if"
-		if (_current.Type == TokenType::ELSE) {
-			break;  // handle else/else-if below
-		}
-		if (_current.Type == TokenType::END) {
-			break;  // handle "end if" below
-		}
-
-		// Parse a body statement
+		// Parse a statement
 		ASTNode stmt = ParseStatement();
 		if (!IsNull(stmt)) {
-			thenBody.Add(stmt);
+			body.Add(stmt);
 		}
 
 		// Expect EOL after statement
-		if (_current.Type != TokenType::EOL && _current.Type != TokenType::END_OF_INPUT
-			&& _current.Type != TokenType::ELSE && _current.Type != TokenType::END) {
+		if (_current.Type != TokenType::EOL && !IsBlockTerminator(terminator1, terminator2)) {
 			ReportError(Interp("Expected end of line, got: {}", _current.Text));
+			// Try to recover by skipping to next line
 			while (_current.Type != TokenType::EOL && _current.Type != TokenType::END_OF_INPUT) {
 				Advance();
 			}
 		}
 	}
 
-	// Handle else-if and else clauses
-	List<ASTNode> elseBody =  List<ASTNode>::New();
-
-	if (_current.Type == TokenType::ELSE) {
-		Advance();  // consume ELSE
-
-		// Check if this is "else if" (chained condition)
-		if (_current.Type == TokenType::IF) {
-			Advance();  // consume IF
-			// Parse the rest as a nested if block
-			ASTNode elseIfNode = ParseIfBlock();
-			elseBody.Add(elseIfNode);
-		} else {
-			// Plain "else" - expect EOL then body
-			if (_current.Type != TokenType::EOL && _current.Type != TokenType::END_OF_INPUT) {
-				ReportError(Interp("Expected end of line after 'else', got: {}", _current.Text));
-			}
-
-			// Parse else body statements until "end if"
-			while (Boolean(true)) {
-				// Skip blank lines
-				while (_current.Type == TokenType::EOL) {
-					Advance();
-				}
-
-				if (_current.Type == TokenType::END_OF_INPUT) {
-					ReportError("Unexpected end of input - expected 'end if'");
-					break;
-				}
-
-				if (_current.Type == TokenType::END) {
-					break;  // handle "end if" below
-				}
-
-				ASTNode stmt = ParseStatement();
-				if (!IsNull(stmt)) {
-					elseBody.Add(stmt);
-				}
-
-				if (_current.Type != TokenType::EOL && _current.Type != TokenType::END_OF_INPUT
-					&& _current.Type != TokenType::END) {
-					ReportError(Interp("Expected end of line, got: {}", _current.Text));
-					while (_current.Type != TokenType::EOL && _current.Type != TokenType::END_OF_INPUT) {
-						Advance();
-					}
-				}
-			}
-		}
-	}
-
-	// Consume "end if" (only if not an else-if chain, which handles its own end)
-	if (_current.Type == TokenType::END) {
-		Advance();  // consume END
-		if (_current.Type == TokenType::IF) {
-			Advance();  // consume IF
-		} else {
-			ReportError(Interp("Expected 'if' after 'end', got: {}", _current.Text));
-		}
-	}
-
-	return  IfNode::New(condition, thenBody, elseBody);
+	return body;
 }
-ASTNode ParserStorage::ParseSingleLineIf() {
-	ASTNode condition = ParseExpression();
-
-	// Expect THEN after condition
-	if (_current.Type != TokenType::THEN) {
-		ReportError(Interp("Expected 'then' after if condition, got: {}", _current.Text));
-	} else {
-		Advance();  // consume THEN
+void ParserStorage::RequireEndKeyword(TokenType keyword, String keywordName) {
+	if (_current.Type != TokenType::END) {
+		ReportError(Interp("Expected 'end {}'", keywordName));
+		return;
 	}
-
-	// Parse the "then" simple statement
-	List<ASTNode> thenBody =  List<ASTNode>::New();
-	ASTNode thenStmt = ParseSimpleStatement();
-	if (!IsNull(thenStmt)) {
-		thenBody.Add(thenStmt);
+	Advance();  // consume END
+	if (_current.Type != keyword) {
+		ReportError(Interp("Expected '{}' after 'end', got: {}", keywordName, _current.Text));
+		return;
 	}
-
-	// Check for optional "else" clause
-	List<ASTNode> elseBody =  List<ASTNode>::New();
-	if (_current.Type == TokenType::ELSE) {
-		Advance();  // consume ELSE
-		ASTNode elseStmt = ParseSimpleStatement();
-		if (!IsNull(elseStmt)) {
-			elseBody.Add(elseStmt);
-		}
-	}
-
-	return  IfNode::New(condition, thenBody, elseBody);
+	Advance();  // consume keyword
 }
 ASTNode ParserStorage::ParseIfStatement() {
-	// Parse the condition
 	ASTNode condition = ParseExpression();
 
 	// Expect THEN
@@ -374,122 +267,58 @@ ASTNode ParserStorage::ParseIfStatement() {
 
 	// Check if block or single-line form
 	if (_current.Type == TokenType::EOL || _current.Type == TokenType::END_OF_INPUT) {
-		// Block form - parse body until end if
-		return ParseIfBlockBody(condition);
+		// Block form
+		List<ASTNode> thenBody = ParseBlock(TokenType::ELSE, TokenType::END);
+		List<ASTNode> elseBody = ParseElseClause();
+		if (_current.Type == TokenType::END) {
+			RequireEndKeyword(TokenType::IF, "if");
+		}
+		return  IfNode::New(condition, thenBody, elseBody);
 	} else {
-		// Single-line form - parse statement(s) on same line
+		// Single-line form
 		return ParseSingleLineIfBody(condition);
 	}
 }
-ASTNode ParserStorage::ParseIfBlockBody(ASTNode condition) {
-	// Parse "then" body statements until "else if", "else", or "end if"
-	List<ASTNode> thenBody =  List<ASTNode>::New();
-	while (Boolean(true)) {
-		// Skip blank lines
-		while (_current.Type == TokenType::EOL) {
-			Advance();
-		}
-
-		if (_current.Type == TokenType::END_OF_INPUT) {
-			ReportError("Unexpected end of input - expected 'end if'");
-			break;
-		}
-
-		// Check for "else" or "end"
-		if (_current.Type == TokenType::ELSE || _current.Type == TokenType::END) {
-			break;
-		}
-
-		// Parse a body statement
-		ASTNode stmt = ParseStatement();
-		if (!IsNull(stmt)) {
-			thenBody.Add(stmt);
-		}
-
-		// Expect EOL after statement
-		if (_current.Type != TokenType::EOL && _current.Type != TokenType::END_OF_INPUT
-			&& _current.Type != TokenType::ELSE && _current.Type != TokenType::END) {
-			ReportError(Interp("Expected end of line, got: {}", _current.Text));
-			while (_current.Type != TokenType::EOL && _current.Type != TokenType::END_OF_INPUT) {
-				Advance();
-			}
-		}
-	}
-
-	// Handle else-if and else clauses
+List<ASTNode> ParserStorage::ParseElseClause() {
 	List<ASTNode> elseBody =  List<ASTNode>::New();
 
-	if (_current.Type == TokenType::ELSE) {
-		Advance();  // consume ELSE
+	if (_current.Type != TokenType::ELSE) {
+		return elseBody;
+	}
+	Advance();  // consume ELSE
 
-		// Check if this is "else if" (chained condition)
-		if (_current.Type == TokenType::IF) {
-			Advance();  // consume IF
-			// Parse the else-if as a nested if statement
-			ASTNode elseIfNode = ParseIfStatement();
-			elseBody.Add(elseIfNode);
-		} else {
-			// Plain "else" - expect EOL then body
-			if (_current.Type != TokenType::EOL && _current.Type != TokenType::END_OF_INPUT) {
-				ReportError(Interp("Expected end of line after 'else', got: {}", _current.Text));
-			}
-
-			// Parse else body statements until "end if"
-			while (Boolean(true)) {
-				while (_current.Type == TokenType::EOL) {
-					Advance();
-				}
-
-				if (_current.Type == TokenType::END_OF_INPUT) {
-					ReportError("Unexpected end of input - expected 'end if'");
-					break;
-				}
-
-				if (_current.Type == TokenType::END) {
-					break;
-				}
-
-				ASTNode stmt = ParseStatement();
-				if (!IsNull(stmt)) {
-					elseBody.Add(stmt);
-				}
-
-				if (_current.Type != TokenType::EOL && _current.Type != TokenType::END_OF_INPUT
-					&& _current.Type != TokenType::END) {
-					ReportError(Interp("Expected end of line, got: {}", _current.Text));
-					while (_current.Type != TokenType::EOL && _current.Type != TokenType::END_OF_INPUT) {
-						Advance();
-					}
-				}
-			}
+	if (_current.Type == TokenType::IF) {
+		// else if - parse as nested if (which handles its own "end if")
+		Advance();  // consume IF
+		elseBody.Add(ParseIfStatement());
+	} else {
+		// plain else - expect EOL then body
+		if (_current.Type != TokenType::EOL && _current.Type != TokenType::END_OF_INPUT) {
+			ReportError(Interp("Expected end of line after 'else', got: {}", _current.Text));
 		}
+		elseBody = ParseBlock(TokenType::END, TokenType::END);  // only END terminates
 	}
 
-	// Consume "end if" (only for outermost block, not else-if chains)
-	if (_current.Type == TokenType::END) {
-		Advance();  // consume END
-		if (_current.Type == TokenType::IF) {
-			Advance();  // consume IF
-		} else {
-			ReportError(Interp("Expected 'if' after 'end', got: {}", _current.Text));
-		}
+	return elseBody;
+}
+ASTNode ParserStorage::ParseSingleLineStatement() {
+	if (_current.Type == TokenType::IF) {
+		Advance();  // consume IF
+		return ParseIfStatement();
 	}
-
-	return  IfNode::New(condition, thenBody, elseBody);
+	return ParseSimpleStatement();
 }
 ASTNode ParserStorage::ParseSingleLineIfBody(ASTNode condition) {
-	// Parse the "then" simple statement
 	List<ASTNode> thenBody =  List<ASTNode>::New();
-	ASTNode thenStmt = ParseSimpleStatement();
+	ASTNode thenStmt = ParseSingleLineStatement();
 	if (!IsNull(thenStmt)) {
 		thenBody.Add(thenStmt);
 	}
 
-	// Check for optional "else" clause
 	List<ASTNode> elseBody =  List<ASTNode>::New();
 	if (_current.Type == TokenType::ELSE) {
 		Advance();  // consume ELSE
-		ASTNode elseStmt = ParseSimpleStatement();
+		ASTNode elseStmt = ParseSingleLineStatement();
 		if (!IsNull(elseStmt)) {
 			elseBody.Add(elseStmt);
 		}
@@ -498,7 +327,6 @@ ASTNode ParserStorage::ParseSingleLineIfBody(ASTNode condition) {
 	return  IfNode::New(condition, thenBody, elseBody);
 }
 ASTNode ParserStorage::ParseWhileStatement() {
-	// WHILE token already consumed
 	ASTNode condition = ParseExpression();
 
 	// Expect EOL after condition
@@ -506,50 +334,8 @@ ASTNode ParserStorage::ParseWhileStatement() {
 		ReportError(Interp("Expected end of line after while condition, got: {}", _current.Text));
 	}
 
-	// Parse body statements until "end while"
-	List<ASTNode> body =  List<ASTNode>::New();
-	while (Boolean(true)) {
-		// Skip blank lines
-		while (_current.Type == TokenType::EOL) {
-			Advance();
-		}
-
-		// Check for end of input (error - unclosed while)
-		if (_current.Type == TokenType::END_OF_INPUT) {
-			ReportError("Unexpected end of input - expected 'end while'");
-			break;
-		}
-
-		// Check for "end while"
-		if (_current.Type == TokenType::END) {
-			Advance();  // consume END
-			if (_current.Type == TokenType::WHILE) {
-				Advance();  // consume WHILE
-				break;  // done with while loop
-			} else {
-				// "end" followed by something other than "while"
-				// For now, report error (later we might support other end types)
-				ReportError(Interp("Expected 'while' after 'end', got: {}", _current.Text));
-				break;
-			}
-		}
-
-		// Parse a body statement
-		ASTNode stmt = ParseStatement();
-		if (!IsNull(stmt)) {
-			body.Add(stmt);
-		}
-
-		// Expect EOL after statement (but ParseStatement may have consumed it for block statements)
-		if (_current.Type != TokenType::EOL && _current.Type != TokenType::END_OF_INPUT
-			&& _current.Type != TokenType::END) {
-			ReportError(Interp("Expected end of line, got: {}", _current.Text));
-			// Try to recover by skipping to next line
-			while (_current.Type != TokenType::EOL && _current.Type != TokenType::END_OF_INPUT) {
-				Advance();
-			}
-		}
-	}
+	List<ASTNode> body = ParseBlock(TokenType::END, TokenType::END);
+	RequireEndKeyword(TokenType::WHILE, "while");
 
 	return  WhileNode::New(condition, body);
 }

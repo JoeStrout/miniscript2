@@ -197,16 +197,8 @@ class ParserStorage : public std::enable_shared_from_this<ParserStorage>, public
 	// Get the precedence of the infix parselet for the current token
 	private: Precedence GetPrecedence();
 
-	// Check if a token type can start an expression (used as prefix)
+	// Check if a token type can start an expression
 	public: Boolean CanStartExpression(TokenType type);
-
-	// Check if a token type can start an argument in a no-parens call statement.
-	// Note: The parser uses Token.AfterSpace to distinguish between:
-	//   "print [1,2,3]" (call with list arg - has whitespace before '[')
-	//   "list[0]" (index expression - no whitespace before '[')
-	//   "print (2+3)*4" (call with grouped expr - has whitespace before '(')
-	//   "func(args)" (call syntax via CallParselet - NO whitespace before '(')
-	private: Boolean CanStartCallArgument(TokenType type);
 
 	// Parse an expression with the given minimum precedence (Pratt parser core)
 	public: ASTNode ParseExpression(Precedence minPrecedence);
@@ -223,25 +215,33 @@ class ParserStorage : public std::enable_shared_from_this<ParserStorage>, public
 	// Handles: callStatement, assignmentStatement, expressionStatement
 	private: ASTNode ParseSimpleStatement();
 
-	// Parse an if statement (block form): if <condition> then <EOL> <body> [else if...]* [else...] end if
-	// IF token already consumed
-	private: ASTNode ParseIfBlock();
+	// Check if current token is a block terminator
+	private: Boolean IsBlockTerminator(TokenType t1, TokenType t2);
 
-	// Parse a single-line if statement: if <condition> then <simpleStatement> [else <simpleStatement>]
-	// IF token already consumed
-	private: ASTNode ParseSingleLineIf();
+	// Parse a block of statements until we hit a terminator token.
+	// Used for block bodies in while, if, for, function, etc.
+	// Terminators are not consumed.
+	private: List<ASTNode> ParseBlock(TokenType terminator1, TokenType terminator2);
 
-	// Parse an if statement - determines if block or single-line form
-	// IF token already consumed
+	// Require "end <keyword>" and consume it, reporting error if not found
+	private: void RequireEndKeyword(TokenType keyword, String keywordName);
+
+	// Parse an if statement: IF already consumed
+	// Handles both block form and single-line form
 	private: ASTNode ParseIfStatement();
 
-	// Parse the body of a block if statement (after "if condition then\n")
-	private: ASTNode ParseIfBlockBody(ASTNode condition);
+	// Parse else/else-if clause for block if statements
+	// Returns the else body (which may contain a nested IfNode for else-if)
+	private: List<ASTNode> ParseElseClause();
 
-	// Parse the body of a single-line if statement (after "if condition then ")
+	// Parse a statement that can appear in single-line if context
+	// This includes simple statements AND nested if statements
+	private: ASTNode ParseSingleLineStatement();
+
+	// Parse single-line if body (after "if condition then ")
 	private: ASTNode ParseSingleLineIfBody(ASTNode condition);
 
-	// Parse a while statement: while <condition> <EOL> <body> end while
+	// Parse a while statement: WHILE already consumed
 	private: ASTNode ParseWhileStatement();
 
 	// Parse a statement (handles both simple statements and block statements)
@@ -324,16 +324,8 @@ struct Parser : public IParser {
 	// Get the precedence of the infix parselet for the current token
 	private: Precedence GetPrecedence() { return get()->GetPrecedence(); }
 
-	// Check if a token type can start an expression (used as prefix)
+	// Check if a token type can start an expression
 	public: Boolean CanStartExpression(TokenType type) { return get()->CanStartExpression(type); }
-
-	// Check if a token type can start an argument in a no-parens call statement.
-	// Note: The parser uses Token.AfterSpace to distinguish between:
-	//   "print [1,2,3]" (call with list arg - has whitespace before '[')
-	//   "list[0]" (index expression - no whitespace before '[')
-	//   "print (2+3)*4" (call with grouped expr - has whitespace before '(')
-	//   "func(args)" (call syntax via CallParselet - NO whitespace before '(')
-	private: Boolean CanStartCallArgument(TokenType type) { return get()->CanStartCallArgument(type); }
 
 	// Parse an expression with the given minimum precedence (Pratt parser core)
 	public: ASTNode ParseExpression(Precedence minPrecedence) { return get()->ParseExpression(minPrecedence); }
@@ -350,25 +342,33 @@ struct Parser : public IParser {
 	// Handles: callStatement, assignmentStatement, expressionStatement
 	private: ASTNode ParseSimpleStatement() { return get()->ParseSimpleStatement(); }
 
-	// Parse an if statement (block form): if <condition> then <EOL> <body> [else if...]* [else...] end if
-	// IF token already consumed
-	private: ASTNode ParseIfBlock() { return get()->ParseIfBlock(); }
+	// Check if current token is a block terminator
+	private: Boolean IsBlockTerminator(TokenType t1, TokenType t2) { return get()->IsBlockTerminator(t1, t2); }
 
-	// Parse a single-line if statement: if <condition> then <simpleStatement> [else <simpleStatement>]
-	// IF token already consumed
-	private: ASTNode ParseSingleLineIf() { return get()->ParseSingleLineIf(); }
+	// Parse a block of statements until we hit a terminator token.
+	// Used for block bodies in while, if, for, function, etc.
+	// Terminators are not consumed.
+	private: List<ASTNode> ParseBlock(TokenType terminator1, TokenType terminator2) { return get()->ParseBlock(terminator1, terminator2); }
 
-	// Parse an if statement - determines if block or single-line form
-	// IF token already consumed
+	// Require "end <keyword>" and consume it, reporting error if not found
+	private: void RequireEndKeyword(TokenType keyword, String keywordName) { return get()->RequireEndKeyword(keyword, keywordName); }
+
+	// Parse an if statement: IF already consumed
+	// Handles both block form and single-line form
 	private: ASTNode ParseIfStatement() { return get()->ParseIfStatement(); }
 
-	// Parse the body of a block if statement (after "if condition then\n")
-	private: ASTNode ParseIfBlockBody(ASTNode condition) { return get()->ParseIfBlockBody(condition); }
+	// Parse else/else-if clause for block if statements
+	// Returns the else body (which may contain a nested IfNode for else-if)
+	private: List<ASTNode> ParseElseClause() { return get()->ParseElseClause(); }
 
-	// Parse the body of a single-line if statement (after "if condition then ")
+	// Parse a statement that can appear in single-line if context
+	// This includes simple statements AND nested if statements
+	private: ASTNode ParseSingleLineStatement() { return get()->ParseSingleLineStatement(); }
+
+	// Parse single-line if body (after "if condition then ")
 	private: ASTNode ParseSingleLineIfBody(ASTNode condition) { return get()->ParseSingleLineIfBody(condition); }
 
-	// Parse a while statement: while <condition> <EOL> <body> end while
+	// Parse a while statement: WHILE already consumed
 	private: ASTNode ParseWhileStatement() { return get()->ParseWhileStatement(); }
 
 	// Parse a statement (handles both simple statements and block statements)

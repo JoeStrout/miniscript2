@@ -156,6 +156,12 @@ ASTNode ParserStorage::ParseExpressionFrom(ASTNode left) {
 	return left;
 }
 ASTNode ParserStorage::ParseSimpleStatement() {
+	// Check for break statement
+	if (_current.Type == TokenType::BREAK) {
+		Advance();  // consume BREAK
+		return  BreakNode::New();
+	}
+
 	// Grammar for relevant rules:
 	//   callStatement : expression '(' argList ')' | expression argList
 	//   assignmentStatement : lvalue '=' expression

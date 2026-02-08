@@ -166,6 +166,8 @@ public struct Lexer {
 				tok = new Token(TokenType.THEN, text, startLine, startColumn);
 			} else if (text == "else") {
 				tok = new Token(TokenType.ELSE, text, startLine, startColumn);
+			} else if (text == "break") {
+				tok = new Token(TokenType.BREAK, text, startLine, startColumn);
 			} else if (text == "end") {
 				tok = new Token(TokenType.END, text, startLine, startColumn);
 			} else {

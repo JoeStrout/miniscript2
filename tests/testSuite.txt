@@ -1063,6 +1063,73 @@ x = 0
 if not x then print "x is falsy"
 --------------------------------
 x is falsy
+================================================================================
+==== SECTION 11: BREAK STATEMENT
+================================================================================
+==== Basic break
+================================
+i = 0
+while i < 10
+	print i
+	if i == 3 then break
+	i = i + 1
+end while
+print "done"
+--------------------------------
+0
+1
+2
+3
+done
+================================
+==== Break at start of loop
+================================
+i = 0
+while i < 5
+	if i == 0 then break
+	print "should not print"
+	i = i + 1
+end while
+print "exited"
+--------------------------------
+exited
+================================
+==== Break in nested loops (only exits innermost)
+================================
+i = 0
+while i < 3
+	j = 0
+	while j < 5
+		if j == 2 then break
+		print i * 10 + j
+		j = j + 1
+	end while
+	i = i + 1
+end while
+--------------------------------
+0
+1
+10
+11
+20
+21
+================================
+==== Break with block if
+================================
+i = 0
+while i < 10
+	if i > 2 then
+		print "breaking"
+		break
+	end if
+	print i
+	i = i + 1
+end while
+--------------------------------
+0
+1
+2
+breaking
 ================================
 ==== END OF TESTS
 ================================================================================

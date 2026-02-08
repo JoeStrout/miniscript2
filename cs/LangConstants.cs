@@ -59,6 +59,7 @@ public enum TokenType : Int32 {
 	IF,
 	THEN,
 	ELSE,
+	BREAK,
 	END,
 	EOL,
 	COMMENT,

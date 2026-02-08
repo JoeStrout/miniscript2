@@ -88,6 +88,8 @@ struct WhileNode;
 class WhileNodeStorage;
 struct IfNode;
 class IfNodeStorage;
+struct BreakNode;
+class BreakNodeStorage;
 
 // DECLARATIONS
 
@@ -167,7 +169,9 @@ class IASTVisitor {
 	virtual Int32 Visit(MethodCallNode node) = 0;
 	virtual Int32 Visit(WhileNode node) = 0;
 	virtual Int32 Visit(IfNode node) = 0;
+	virtual Int32 Visit(BreakNode node) = 0;
 }; // end of interface IASTVisitor
+
 
 
 
@@ -440,6 +444,17 @@ class IfNodeStorage : public ASTNodeStorage {
 
 	public: Int32 Accept(IASTVisitor& visitor);
 }; // end of class IfNodeStorage
+
+class BreakNodeStorage : public ASTNodeStorage {
+	friend struct BreakNode;
+	public: BreakNodeStorage();
+
+	public: String ToStr();
+
+	public: ASTNode Simplify();
+
+	public: Int32 Accept(IASTVisitor& visitor);
+}; // end of class BreakNodeStorage
 
 
 // Number literal node (e.g., 42, 3.14)
@@ -814,6 +829,25 @@ struct IfNode : public ASTNode {
 }; // end of struct IfNode
 
 
+// Break statement node - exits the innermost loop
+struct BreakNode : public ASTNode {
+	BreakNode(std::shared_ptr<BreakNodeStorage> stor);
+	BreakNode() : ASTNode() {}
+	BreakNode(std::nullptr_t) : ASTNode(nullptr) {}
+	private: BreakNodeStorage* get() const;
+
+	public: static BreakNode New() {
+		return BreakNode(std::make_shared<BreakNodeStorage>());
+	}
+
+	public: String ToStr() { return get()->ToStr(); }
+
+	public: ASTNode Simplify() { return get()->Simplify(); }
+
+	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
+}; // end of struct BreakNode
+
+
 // INLINE METHODS
 
 inline ASTNodeStorage* ASTNode::get() const { return static_cast<ASTNodeStorage*>(storage.get()); }
@@ -921,5 +955,8 @@ inline List<ASTNode> IfNode::ThenBody() { return get()->ThenBody; } // statement
 inline void IfNode::set_ThenBody(List<ASTNode> _v) { get()->ThenBody = _v; } // statements if condition is true
 inline List<ASTNode> IfNode::ElseBody() { return get()->ElseBody; } // statements if condition is false (may contain IfNode for else-if)
 inline void IfNode::set_ElseBody(List<ASTNode> _v) { get()->ElseBody = _v; } // statements if condition is false (may contain IfNode for else-if)
+
+inline BreakNode::BreakNode(std::shared_ptr<BreakNodeStorage> stor) : ASTNode(stor) {}
+inline BreakNodeStorage* BreakNode::get() const { return static_cast<BreakNodeStorage*>(storage.get()); }
 
 } // end of namespace MiniScript

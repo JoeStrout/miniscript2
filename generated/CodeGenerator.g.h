@@ -89,8 +89,11 @@ struct WhileNode;
 class WhileNodeStorage;
 struct IfNode;
 class IfNodeStorage;
+struct BreakNode;
+class BreakNodeStorage;
 
 // DECLARATIONS
+
 
 
 
@@ -156,6 +159,7 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 	private: Int32 _maxRegUsed; // High water mark for register usage
 	private: Dictionary<String, Int32> _variableRegs; // variable name -> register
 	private: Int32 _targetReg; // Target register for next expression (-1 = allocate)
+	private: List<Int32> _loopExitLabels; // Stack of loop exit labels for break
 
 	public: CodeGeneratorStorage(CodeEmitterBase emitter);
 
@@ -180,6 +184,14 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 	// Compile an expression, placing result in a newly allocated register
 	// Returns the register number holding the result
 	public: Int32 Compile(ASTNode ast);
+
+	// Reset temporary registers before compiling a new statement.
+	// Keeps r0 and all variable registers; frees everything else.
+	private: void ResetTempRegisters();
+
+	// Compile a list of statements (a block body).
+	// Resets temporary registers before each statement.
+	private: void CompileBody(List<ASTNode> body);
 
 	// Compile a complete function from a single expression/statement
 	public: FuncDef CompileFunction(ASTNode ast, String funcName);
@@ -220,6 +232,8 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 	public: Int32 Visit(WhileNode node);
 
 	public: Int32 Visit(IfNode node);
+
+	public: Int32 Visit(BreakNode node);
 }; // end of class CodeGeneratorStorage
 
 
@@ -246,6 +260,8 @@ struct CodeGenerator : public IASTVisitor {
 	private: void set__variableRegs(Dictionary<String, Int32> _v); // variable name -> register
 	private: Int32 _targetReg(); // Target register for next expression (-1 = allocate)
 	private: void set__targetReg(Int32 _v); // Target register for next expression (-1 = allocate)
+	private: List<Int32> _loopExitLabels(); // Stack of loop exit labels for break
+	private: void set__loopExitLabels(List<Int32> _v); // Stack of loop exit labels for break
 
 	public: static CodeGenerator New(CodeEmitterBase emitter) {
 		return CodeGenerator(std::make_shared<CodeGeneratorStorage>(emitter));
@@ -272,6 +288,14 @@ struct CodeGenerator : public IASTVisitor {
 	// Compile an expression, placing result in a newly allocated register
 	// Returns the register number holding the result
 	public: Int32 Compile(ASTNode ast) { return get()->Compile(ast); }
+
+	// Reset temporary registers before compiling a new statement.
+	// Keeps r0 and all variable registers; frees everything else.
+	private: void ResetTempRegisters() { return get()->ResetTempRegisters(); }
+
+	// Compile a list of statements (a block body).
+	// Resets temporary registers before each statement.
+	private: void CompileBody(List<ASTNode> body) { return get()->CompileBody(body); }
 
 	// Compile a complete function from a single expression/statement
 	public: FuncDef CompileFunction(ASTNode ast, String funcName) { return get()->CompileFunction(ast, funcName); }
@@ -312,6 +336,8 @@ struct CodeGenerator : public IASTVisitor {
 	public: Int32 Visit(WhileNode node) { return get()->Visit(node); }
 
 	public: Int32 Visit(IfNode node) { return get()->Visit(node); }
+
+	public: Int32 Visit(BreakNode node) { return get()->Visit(node); }
 }; // end of struct CodeGenerator
 
 
@@ -330,5 +356,7 @@ inline Dictionary<String, Int32> CodeGenerator::_variableRegs() { return get()->
 inline void CodeGenerator::set__variableRegs(Dictionary<String, Int32> _v) { get()->_variableRegs = _v; } // variable name -> register
 inline Int32 CodeGenerator::_targetReg() { return get()->_targetReg; } // Target register for next expression (-1 = allocate)
 inline void CodeGenerator::set__targetReg(Int32 _v) { get()->_targetReg = _v; } // Target register for next expression (-1 = allocate)
+inline List<Int32> CodeGenerator::_loopExitLabels() { return get()->_loopExitLabels; } // Stack of loop exit labels for break
+inline void CodeGenerator::set__loopExitLabels(List<Int32> _v) { get()->_loopExitLabels = _v; } // Stack of loop exit labels for break
 
 } // end of namespace MiniScript

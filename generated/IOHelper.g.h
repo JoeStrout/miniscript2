@@ -87,6 +87,8 @@ struct WhileNode;
 class WhileNodeStorage;
 struct IfNode;
 class IfNodeStorage;
+struct BreakNode;
+class BreakNodeStorage;
 
 // DECLARATIONS
 
@@ -132,6 +134,7 @@ class IOHelper {
 	public: static List<String> ReadFile(String filePath);
 	
 }; // end of struct IOHelper
+
 
 
 

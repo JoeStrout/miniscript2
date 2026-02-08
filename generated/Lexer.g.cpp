@@ -103,6 +103,8 @@ Token Lexer::NextToken() {
 			tok = Token(TokenType::THEN, text, startLine, startColumn);
 		} else if (text == "else") {
 			tok = Token(TokenType::ELSE, text, startLine, startColumn);
+		} else if (text == "break") {
+			tok = Token(TokenType::BREAK, text, startLine, startColumn);
 		} else if (text == "end") {
 			tok = Token(TokenType::END, text, startLine, startColumn);
 		} else {

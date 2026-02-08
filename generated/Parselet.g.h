@@ -90,6 +90,8 @@ struct WhileNode;
 class WhileNodeStorage;
 struct IfNode;
 class IfNodeStorage;
+struct BreakNode;
+class BreakNodeStorage;
 
 // DECLARATIONS
 
@@ -121,6 +123,7 @@ class IParser {
 	virtual void ReportError(String message) = 0;
 	virtual Boolean CanStartExpression(TokenType type) = 0;
 }; // end of interface IParser
+
 
 
 

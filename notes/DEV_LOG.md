@@ -310,3 +310,8 @@ I've also standardized the conversion of numbers to strings, using essentially t
 
 So, since we have a little more time today, I'm going to implement `while` loops (our first flow control!) next.   ...And done!
 
+
+## Feb 07, 2026
+
+Today I'm just adding more parsing of various control structures: `if`, `break`, `for`, etc.  I also found some repetitive code that was a good candidate for DRYing out.
+

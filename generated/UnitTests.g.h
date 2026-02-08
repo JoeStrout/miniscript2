@@ -87,6 +87,8 @@ struct WhileNode;
 class WhileNodeStorage;
 struct IfNode;
 class IfNodeStorage;
+struct BreakNode;
+class BreakNodeStorage;
 
 // DECLARATIONS
 
@@ -142,6 +144,7 @@ class UnitTests {
 
 	public: static Boolean RunAll();
 }; // end of struct UnitTests
+
 
 
 

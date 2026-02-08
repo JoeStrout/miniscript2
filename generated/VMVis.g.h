@@ -87,6 +87,8 @@ struct WhileNode;
 class WhileNodeStorage;
 struct IfNode;
 class IfNodeStorage;
+struct BreakNode;
+class BreakNodeStorage;
 
 // DECLARATIONS
 
@@ -145,6 +147,7 @@ struct VMVis {
 
 	public: void UpdateDisplay();
 }; // end of struct VMVis
+
 
 
 

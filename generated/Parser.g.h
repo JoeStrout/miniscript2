@@ -97,8 +97,11 @@ struct WhileNode;
 class WhileNodeStorage;
 struct IfNode;
 class IfNodeStorage;
+struct BreakNode;
+class BreakNodeStorage;
 
 // DECLARATIONS
+
 
 
 
@@ -212,7 +215,7 @@ class ParserStorage : public std::enable_shared_from_this<ParserStorage>, public
 	private: ASTNode ParseExpressionFrom(ASTNode left);
 
 	// Parse a simple statement (grammar: simpleStatement)
-	// Handles: callStatement, assignmentStatement, expressionStatement
+	// Handles: callStatement, assignmentStatement, breakStatement, expressionStatement
 	private: ASTNode ParseSimpleStatement();
 
 	// Check if current token is a block terminator
@@ -236,6 +239,8 @@ class ParserStorage : public std::enable_shared_from_this<ParserStorage>, public
 
 	// Parse a statement that can appear in single-line if context
 	// This includes simple statements AND nested if statements
+	// (but not, for example, for/while loops, which are invalid 
+	// in the context of a single-line `if`).
 	private: ASTNode ParseSingleLineStatement();
 
 	// Parse single-line if body (after "if condition then ")
@@ -339,7 +344,7 @@ struct Parser : public IParser {
 	private: ASTNode ParseExpressionFrom(ASTNode left) { return get()->ParseExpressionFrom(left); }
 
 	// Parse a simple statement (grammar: simpleStatement)
-	// Handles: callStatement, assignmentStatement, expressionStatement
+	// Handles: callStatement, assignmentStatement, breakStatement, expressionStatement
 	private: ASTNode ParseSimpleStatement() { return get()->ParseSimpleStatement(); }
 
 	// Check if current token is a block terminator
@@ -363,6 +368,8 @@ struct Parser : public IParser {
 
 	// Parse a statement that can appear in single-line if context
 	// This includes simple statements AND nested if statements
+	// (but not, for example, for/while loops, which are invalid 
+	// in the context of a single-line `if`).
 	private: ASTNode ParseSingleLineStatement() { return get()->ParseSingleLineStatement(); }
 
 	// Parse single-line if body (after "if condition then ")

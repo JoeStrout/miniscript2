@@ -14,6 +14,7 @@ CodeGeneratorStorage::CodeGeneratorStorage(CodeEmitterBase emitter) {
 	_maxRegUsed = -1;
 	_variableRegs =  Dictionary<String, Int32>::New();
 	_targetReg = -1;
+	_loopExitLabels =  List<Int32>::New();
 }
 Int32 CodeGeneratorStorage::AllocReg() {
 	// Scan from _firstAvailable to find first free register
@@ -110,6 +111,25 @@ Int32 CodeGeneratorStorage::Compile(ASTNode ast) {
 	CodeGenerator _this(std::static_pointer_cast<CodeGeneratorStorage>(shared_from_this()));
 	return ast.Accept(_this);
 }
+void CodeGeneratorStorage::ResetTempRegisters() {
+	_regInUse.Clear();
+	_regInUse.Add(Boolean(true));  // r0
+	_firstAvailable = 1;
+	for (Int32 reg : _variableRegs.GetValues()) {
+		while (_regInUse.Count() <= reg) {
+			_regInUse.Add(Boolean(false));
+		}
+		_regInUse[reg] = Boolean(true);
+		if (reg >= _firstAvailable) _firstAvailable = reg + 1;
+	}
+}
+void CodeGeneratorStorage::CompileBody(List<ASTNode> body) {
+	CodeGenerator _this(std::static_pointer_cast<CodeGeneratorStorage>(shared_from_this()));
+	for (Int32 i = 0; i < body.Count(); i++) {
+		ResetTempRegisters();
+		body[i].Accept(_this);
+	}
+}
 FuncDef CodeGeneratorStorage::CompileFunction(ASTNode ast, String funcName) {
 	CodeGenerator _this(std::static_pointer_cast<CodeGeneratorStorage>(shared_from_this()));
 	_regInUse.Clear();
@@ -133,31 +153,10 @@ FuncDef CodeGeneratorStorage::CompileProgram(List<ASTNode> statements, String fu
 	_maxRegUsed = -1;
 	_variableRegs.Clear();
 
-	// Compile each statement sequentially
+	// Compile each statement, putting result into r0
 	for (Int32 i = 0; i < statements.Count(); i++) {
-		// Free temporary registers before each statement, 
-		// but keep variable registers and our own (r0) result register
-		_regInUse.Clear();
-		_regInUse.Add(Boolean(true));  // r0, reserved for our result
-		_firstAvailable = 1;
-
-		// Mark variable registers as still in use
-		for (Int32 reg : _variableRegs.GetValues()) {
-			while (_regInUse.Count() <= reg) {
-				_regInUse.Add(Boolean(false));
-			}
-			_regInUse[reg] = Boolean(true);
-			if (reg >= _firstAvailable) _firstAvailable = reg + 1;
-		}
-
+		ResetTempRegisters();
 		CompileInto(statements[i], 0);
-
-		// Move result to r0 after each statement
-		// (the last one's result will be the function's return value)
-// Shouldn't be needed since we now use CompileInto above:
-//			if (resultReg != 0) {
-//				_emitter.EmitABC(Opcode.LOAD_rA_rB, 0, resultReg, 0, "move Program result to r0");
-//			}
 	}
 
 	_emitter.Emit(Opcode::RETURN, nullptr);
@@ -474,6 +473,9 @@ Int32 CodeGeneratorStorage::Visit(WhileNode node) {
 	Int32 loopStart = _emitter.CreateLabel();
 	Int32 afterLoop = _emitter.CreateLabel();
 
+	// Push exit label for break statements
+	_loopExitLabels.Add(afterLoop);
+
 	// Place loopStart label
 	_emitter.PlaceLabel(loopStart);
 
@@ -485,30 +487,16 @@ Int32 CodeGeneratorStorage::Visit(WhileNode node) {
 	FreeReg(condReg);
 
 	// Compile body statements
-	for (Int32 i = 0; i < node.Body().Count(); i++) {
-		// Free temporary registers before each statement
-		// (but keep variable registers)
-
-		// Mark variable registers as still in use, clear others except r0
-		_regInUse.Clear();
-		_regInUse.Add(Boolean(true));  // r0
-		_firstAvailable = 1;
-		for (Int32 reg : _variableRegs.GetValues()) {
-			while (_regInUse.Count() <= reg) {
-				_regInUse.Add(Boolean(false));
-			}
-			_regInUse[reg] = Boolean(true);
-			if (reg >= _firstAvailable) _firstAvailable = reg + 1;
-		}
-
-		node.Body()[i].Accept(_this);
-	}
+	CompileBody(node.Body());
 
 	// Jump back to loopStart
 	_emitter.EmitJump(Opcode::JUMP_iABC, loopStart, "loop back");
 
 	// Place afterLoop label
 	_emitter.PlaceLabel(afterLoop);
+
+	// Pop exit label
+	_loopExitLabels.RemoveAt(_loopExitLabels.Count() - 1);
 
 	// While loops don't produce a value
 	return -1;
@@ -535,21 +523,7 @@ Int32 CodeGeneratorStorage::Visit(IfNode node) {
 	FreeReg(condReg);
 
 	// Compile "then" body
-	for (Int32 i = 0; i < node.ThenBody().Count(); i++) {
-		// Reset temporary registers before each statement (keep variables)
-		_regInUse.Clear();
-		_regInUse.Add(Boolean(true));  // r0
-		_firstAvailable = 1;
-		for (Int32 reg : _variableRegs.GetValues()) {
-			while (_regInUse.Count() <= reg) {
-				_regInUse.Add(Boolean(false));
-			}
-			_regInUse[reg] = Boolean(true);
-			if (reg >= _firstAvailable) _firstAvailable = reg + 1;
-		}
-
-		node.ThenBody()[i].Accept(_this);
-	}
+	CompileBody(node.ThenBody());
 
 	// Jump over else body (if there is one)
 	if (node.ElseBody().Count() > 0) {
@@ -559,27 +533,25 @@ Int32 CodeGeneratorStorage::Visit(IfNode node) {
 		_emitter.PlaceLabel(elseLabel);
 
 		// Compile "else" body
-		for (Int32 i = 0; i < node.ElseBody().Count(); i++) {
-			// Reset temporary registers before each statement
-			_regInUse.Clear();
-			_regInUse.Add(Boolean(true));  // r0
-			_firstAvailable = 1;
-			for (Int32 reg : _variableRegs.GetValues()) {
-				while (_regInUse.Count() <= reg) {
-					_regInUse.Add(Boolean(false));
-				}
-				_regInUse[reg] = Boolean(true);
-				if (reg >= _firstAvailable) _firstAvailable = reg + 1;
-			}
-
-			node.ElseBody()[i].Accept(_this);
-		}
+		CompileBody(node.ElseBody());
 	}
 
 	// Place afterIf label
 	_emitter.PlaceLabel(afterIf);
 
 	// If statements don't produce a value
+	return -1;
+}
+Int32 CodeGeneratorStorage::Visit(BreakNode node) {
+	// Break jumps to the innermost loop's exit label
+	if (_loopExitLabels.Count() == 0) {
+		// Error: break outside of loop
+		// For now, just emit a NOOP; could report error
+		_emitter.Emit(Opcode::NOOP, "break outside loop (error)");
+	} else {
+		Int32 exitLabel = _loopExitLabels[_loopExitLabels.Count() - 1];
+		_emitter.EmitJump(Opcode::JUMP_iABC, exitLabel, "break");
+	}
 	return -1;
 }
 

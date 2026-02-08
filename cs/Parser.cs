@@ -205,8 +205,14 @@ public class Parser : IParser {
 	}
 
 	// Parse a simple statement (grammar: simpleStatement)
-	// Handles: callStatement, assignmentStatement, expressionStatement
+	// Handles: callStatement, assignmentStatement, breakStatement, expressionStatement
 	private ASTNode ParseSimpleStatement() {
+		// Check for break statement
+		if (_current.Type == TokenType.BREAK) {
+			Advance();  // consume BREAK
+			return new BreakNode();
+		}
+
 		// Grammar for relevant rules:
 		//   callStatement : expression '(' argList ')' | expression argList
 		//   assignmentStatement : lvalue '=' expression

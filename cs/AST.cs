@@ -48,6 +48,7 @@ public interface IASTVisitor {
 	Int32 Visit(MethodCallNode node);
 	Int32 Visit(WhileNode node);
 	Int32 Visit(IfNode node);
+	Int32 Visit(BreakNode node);
 }
 
 // Base class for all AST nodes.
@@ -550,6 +551,24 @@ public class IfNode : ASTNode {
 			simplifiedElseBody.Add(ElseBody[i].Simplify());
 		}
 		return new IfNode(simplifiedCondition, simplifiedThenBody, simplifiedElseBody);
+	}
+
+	public override Int32 Accept(IASTVisitor visitor) {
+		return visitor.Visit(this);
+	}
+}
+
+// Break statement node - exits the innermost loop
+public class BreakNode : ASTNode {
+	public BreakNode() {
+	}
+
+	public override String ToStr() {
+		return "break";
+	}
+
+	public override ASTNode Simplify() {
+		return this;
 	}
 
 	public override Int32 Accept(IASTVisitor visitor) {

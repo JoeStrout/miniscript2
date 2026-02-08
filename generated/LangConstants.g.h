@@ -87,6 +87,8 @@ struct WhileNode;
 class WhileNodeStorage;
 struct IfNode;
 class IfNodeStorage;
+struct BreakNode;
+class BreakNodeStorage;
 
 // DECLARATIONS
 
@@ -152,11 +154,13 @@ enum class TokenType : Int32 {
 	IF,
 	THEN,
 	ELSE,
+	BREAK,
 	END,
 	EOL,
 	COMMENT,
 	ERROR
 }; // end of enum TokenType
+
 
 
 

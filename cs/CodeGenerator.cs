@@ -19,6 +19,7 @@ public class CodeGenerator : IASTVisitor {
 	private Int32 _maxRegUsed;          // High water mark for register usage
 	private Dictionary<String, Int32> _variableRegs;  // variable name -> register
 	private Int32 _targetReg;           // Target register for next expression (-1 = allocate)
+	private List<Int32> _loopExitLabels;  // Stack of loop exit labels for break
 
 	public CodeGenerator(CodeEmitterBase emitter) {
 		_emitter = emitter;
@@ -27,6 +28,7 @@ public class CodeGenerator : IASTVisitor {
 		_maxRegUsed = -1;
 		_variableRegs = new Dictionary<String, Int32>();
 		_targetReg = -1;
+		_loopExitLabels = new List<Int32>();
 	}
 
 	// Allocate a register
@@ -138,6 +140,30 @@ public class CodeGenerator : IASTVisitor {
 		return ast.Accept(this);
 	}
 
+	// Reset temporary registers before compiling a new statement.
+	// Keeps r0 and all variable registers; frees everything else.
+	private void ResetTempRegisters() {
+		_regInUse.Clear();
+		_regInUse.Add(true);  // r0
+		_firstAvailable = 1;
+		foreach (Int32 reg in _variableRegs.Values) { // CPP: for (Int32 reg : _variableRegs.GetValues()) {
+			while (_regInUse.Count <= reg) {
+				_regInUse.Add(false);
+			}
+			_regInUse[reg] = true;
+			if (reg >= _firstAvailable) _firstAvailable = reg + 1;
+		}
+	}
+
+	// Compile a list of statements (a block body).
+	// Resets temporary registers before each statement.
+	private void CompileBody(List<ASTNode> body) {
+		for (Int32 i = 0; i < body.Count; i++) {
+			ResetTempRegisters();
+			body[i].Accept(this);
+		}
+	}
+
 	// Compile a complete function from a single expression/statement
 	public FuncDef CompileFunction(ASTNode ast, String funcName) {
 		_regInUse.Clear();
@@ -163,31 +189,10 @@ public class CodeGenerator : IASTVisitor {
 		_maxRegUsed = -1;
 		_variableRegs.Clear();
 
-		// Compile each statement sequentially
+		// Compile each statement, putting result into r0
 		for (Int32 i = 0; i < statements.Count; i++) {
-			// Free temporary registers before each statement, 
-			// but keep variable registers and our own (r0) result register
-			_regInUse.Clear();
-			_regInUse.Add(true);  // r0, reserved for our result
-			_firstAvailable = 1;
-
-			// Mark variable registers as still in use
-			foreach (Int32 reg in _variableRegs.Values) { // CPP: for (Int32 reg : _variableRegs.GetValues()) {
-				while (_regInUse.Count <= reg) {
-					_regInUse.Add(false);
-				}
-				_regInUse[reg] = true;
-				if (reg >= _firstAvailable) _firstAvailable = reg + 1;
-			}
-
+			ResetTempRegisters();
 			CompileInto(statements[i], 0);
-
-			// Move result to r0 after each statement
-			// (the last one's result will be the function's return value)
-// Shouldn't be needed since we now use CompileInto above:
-//			if (resultReg != 0) {
-//				_emitter.EmitABC(Opcode.LOAD_rA_rB, 0, resultReg, 0, "move Program result to r0");
-//			}
 		}
 
 		_emitter.Emit(Opcode.RETURN, null);
@@ -513,6 +518,9 @@ public class CodeGenerator : IASTVisitor {
 		Int32 loopStart = _emitter.CreateLabel();
 		Int32 afterLoop = _emitter.CreateLabel();
 
+		// Push exit label for break statements
+		_loopExitLabels.Add(afterLoop);
+
 		// Place loopStart label
 		_emitter.PlaceLabel(loopStart);
 
@@ -524,30 +532,16 @@ public class CodeGenerator : IASTVisitor {
 		FreeReg(condReg);
 
 		// Compile body statements
-		for (Int32 i = 0; i < node.Body.Count; i++) {
-			// Free temporary registers before each statement
-			// (but keep variable registers)
-
-			// Mark variable registers as still in use, clear others except r0
-			_regInUse.Clear();
-			_regInUse.Add(true);  // r0
-			_firstAvailable = 1;
-			foreach (Int32 reg in _variableRegs.Values) { // CPP: for (Int32 reg : _variableRegs.GetValues()) {
-				while (_regInUse.Count <= reg) {
-					_regInUse.Add(false);
-				}
-				_regInUse[reg] = true;
-				if (reg >= _firstAvailable) _firstAvailable = reg + 1;
-			}
-
-			node.Body[i].Accept(this);
-		}
+		CompileBody(node.Body);
 
 		// Jump back to loopStart
 		_emitter.EmitJump(Opcode.JUMP_iABC, loopStart, "loop back");
 
 		// Place afterLoop label
 		_emitter.PlaceLabel(afterLoop);
+
+		// Pop exit label
+		_loopExitLabels.RemoveAt(_loopExitLabels.Count - 1);
 
 		// While loops don't produce a value
 		return -1;
@@ -574,21 +568,7 @@ public class CodeGenerator : IASTVisitor {
 		FreeReg(condReg);
 
 		// Compile "then" body
-		for (Int32 i = 0; i < node.ThenBody.Count; i++) {
-			// Reset temporary registers before each statement (keep variables)
-			_regInUse.Clear();
-			_regInUse.Add(true);  // r0
-			_firstAvailable = 1;
-			foreach (Int32 reg in _variableRegs.Values) { // CPP: for (Int32 reg : _variableRegs.GetValues()) {
-				while (_regInUse.Count <= reg) {
-					_regInUse.Add(false);
-				}
-				_regInUse[reg] = true;
-				if (reg >= _firstAvailable) _firstAvailable = reg + 1;
-			}
-
-			node.ThenBody[i].Accept(this);
-		}
+		CompileBody(node.ThenBody);
 
 		// Jump over else body (if there is one)
 		if (node.ElseBody.Count > 0) {
@@ -598,27 +578,26 @@ public class CodeGenerator : IASTVisitor {
 			_emitter.PlaceLabel(elseLabel);
 
 			// Compile "else" body
-			for (Int32 i = 0; i < node.ElseBody.Count; i++) {
-				// Reset temporary registers before each statement
-				_regInUse.Clear();
-				_regInUse.Add(true);  // r0
-				_firstAvailable = 1;
-				foreach (Int32 reg in _variableRegs.Values) { // CPP: for (Int32 reg : _variableRegs.GetValues()) {
-					while (_regInUse.Count <= reg) {
-						_regInUse.Add(false);
-					}
-					_regInUse[reg] = true;
-					if (reg >= _firstAvailable) _firstAvailable = reg + 1;
-				}
-
-				node.ElseBody[i].Accept(this);
-			}
+			CompileBody(node.ElseBody);
 		}
 
 		// Place afterIf label
 		_emitter.PlaceLabel(afterIf);
 
 		// If statements don't produce a value
+		return -1;
+	}
+
+	public Int32 Visit(BreakNode node) {
+		// Break jumps to the innermost loop's exit label
+		if (_loopExitLabels.Count == 0) {
+			// Error: break outside of loop
+			// For now, just emit a NOOP; could report error
+			_emitter.Emit(Opcode.NOOP, "break outside loop (error)");
+		} else {
+			Int32 exitLabel = _loopExitLabels[_loopExitLabels.Count - 1];
+			_emitter.EmitJump(Opcode.JUMP_iABC, exitLabel, "break");
+		}
 		return -1;
 	}
 }

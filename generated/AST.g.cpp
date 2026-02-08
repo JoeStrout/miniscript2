@@ -417,4 +417,19 @@ Int32 IfNodeStorage::Accept(IASTVisitor& visitor) {
 }
 
 
+BreakNodeStorage::BreakNodeStorage() {
+}
+String BreakNodeStorage::ToStr() {
+	return "break";
+}
+ASTNode BreakNodeStorage::Simplify() {
+	BreakNode _this(std::static_pointer_cast<BreakNodeStorage>(shared_from_this()));
+	return _this;
+}
+Int32 BreakNodeStorage::Accept(IASTVisitor& visitor) {
+	BreakNode _this(std::static_pointer_cast<BreakNodeStorage>(shared_from_this()));
+	return visitor.Visit(_this);
+}
+
+
 } // end of namespace MiniScript

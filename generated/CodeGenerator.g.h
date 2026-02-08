@@ -87,8 +87,11 @@ struct MethodCallNode;
 class MethodCallNodeStorage;
 struct WhileNode;
 class WhileNodeStorage;
+struct IfNode;
+class IfNodeStorage;
 
 // DECLARATIONS
+
 
 
 
@@ -215,6 +218,8 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 	public: Int32 Visit(MethodCallNode node);
 
 	public: Int32 Visit(WhileNode node);
+
+	public: Int32 Visit(IfNode node);
 }; // end of class CodeGeneratorStorage
 
 
@@ -305,6 +310,8 @@ struct CodeGenerator : public IASTVisitor {
 	public: Int32 Visit(MethodCallNode node) { return get()->Visit(node); }
 
 	public: Int32 Visit(WhileNode node) { return get()->Visit(node); }
+
+	public: Int32 Visit(IfNode node) { return get()->Visit(node); }
 }; // end of struct CodeGenerator
 
 

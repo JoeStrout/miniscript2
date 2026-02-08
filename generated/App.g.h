@@ -84,8 +84,11 @@ struct MethodCallNode;
 class MethodCallNodeStorage;
 struct WhileNode;
 class WhileNodeStorage;
+struct IfNode;
+class IfNodeStorage;
 
 // DECLARATIONS
+
 
 
 

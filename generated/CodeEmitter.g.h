@@ -88,6 +88,8 @@ struct MethodCallNode;
 class MethodCallNodeStorage;
 struct WhileNode;
 class WhileNodeStorage;
+struct IfNode;
+class IfNodeStorage;
 
 // DECLARATIONS
 
@@ -109,6 +111,7 @@ struct LabelRef {
 	public: Int32 A; // A operand (for re-encoding)
 	public: Boolean IsABC; // true for 24-bit offset (JUMP), false for 16-bit (BRFALSE/BRTRUE)
 }; // end of struct LabelRef
+
 
 
 

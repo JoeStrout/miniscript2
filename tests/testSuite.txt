@@ -819,6 +819,251 @@ end while
 22
 23
 ================================
+================================================================================
+==== SECTION 10: IF STATEMENTS
+================================================================================
+==== Single-line if (no else)
+================================
+x = 5
+if x > 3 then print "big"
+--------------------------------
+big
+================================
+x = 1
+if x > 3 then print "big"
+print "done"
+--------------------------------
+done
+================================
+==== Single-line if with else
+================================
+x = 5
+if x > 10 then print "very big" else print "not so big"
+--------------------------------
+not so big
+================================
+x = 20
+if x > 10 then print "very big" else print "not so big"
+--------------------------------
+very big
+================================
+x = 15
+if x > 10 then if x < 20 then print "mid" else print "not mid"
+--------------------------------
+mid
+================================
+==== Block if (no else)
+================================
+x = 5
+if x == 5 then
+	print "x is five"
+end if
+--------------------------------
+x is five
+================================
+x = 3
+if x == 5 then
+	print "x is five"
+end if
+print "done"
+--------------------------------
+done
+================================
+==== Block if with else
+================================
+x = -3
+if x < 0 then
+	print "negative"
+else
+	print "non-negative"
+end if
+--------------------------------
+negative
+================================
+x = 7
+if x < 0 then
+	print "negative"
+else
+	print "non-negative"
+end if
+--------------------------------
+non-negative
+================================
+==== Block if/else if/else chains
+================================
+x = -5
+if x < 0 then
+	print "negative"
+else if x == 0 then
+	print "zero"
+else
+	print "positive"
+end if
+--------------------------------
+negative
+================================
+x = 0
+if x < 0 then
+	print "negative"
+else if x == 0 then
+	print "zero"
+else
+	print "positive"
+end if
+--------------------------------
+zero
+================================
+x = 10
+if x < 0 then
+	print "negative"
+else if x == 0 then
+	print "zero"
+else
+	print "positive"
+end if
+--------------------------------
+positive
+================================
+==== Multiple else if branches
+================================
+score = 85
+if score >= 90 then
+	print "A"
+else if score >= 80 then
+	print "B"
+else if score >= 70 then
+	print "C"
+else if score >= 60 then
+	print "D"
+else
+	print "F"
+end if
+--------------------------------
+B
+================================
+score = 55
+if score >= 90 then
+	print "A"
+else if score >= 80 then
+	print "B"
+else if score >= 70 then
+	print "C"
+else if score >= 60 then
+	print "D"
+else
+	print "F"
+end if
+--------------------------------
+F
+================================
+==== Nested if statements
+================================
+a = 3
+b = 7
+if a > 0 then
+	if b > 5 then
+		print "a>0 and b>5"
+	else
+		print "a>0 and b<=5"
+	end if
+end if
+--------------------------------
+a>0 and b>5
+================================
+a = 3
+b = 2
+if a > 0 then
+	if b > 5 then
+		print "a>0 and b>5"
+	else
+		print "a>0 and b<=5"
+	end if
+end if
+--------------------------------
+a>0 and b<=5
+================================
+==== If inside while loop
+================================
+i = 0
+while i < 5
+	if i == 2 then print "two"
+	i = i + 1
+end while
+--------------------------------
+two
+================================
+i = 1
+while i <= 3
+	if i == 1 then
+		print "one"
+	else if i == 2 then
+		print "two"
+	else
+		print "other"
+	end if
+	i = i + 1
+end while
+--------------------------------
+one
+two
+other
+================================
+==== While inside if statement
+================================
+x = 1
+if x > 0 then
+	i = 0
+	while i < 3
+		print i
+		i = i + 1
+	end while
+end if
+--------------------------------
+0
+1
+2
+================================
+==== Truthiness/falsiness tests
+================================
+x = 0
+if x then print "truthy" else print "falsy"
+--------------------------------
+falsy
+================================
+x = 1
+if x then print "truthy" else print "falsy"
+--------------------------------
+truthy
+================================
+x = -1
+if x then print "truthy" else print "falsy"
+--------------------------------
+truthy
+================================
+x = 0.5
+if x then print "truthy" else print "falsy"
+--------------------------------
+truthy
+================================
+==== Logical operators in conditions
+================================
+x = 5
+y = 10
+if x > 0 and y > 0 then print "both positive"
+--------------------------------
+both positive
+================================
+x = -1
+y = 5
+if x > 0 or y > 0 then print "at least one positive"
+--------------------------------
+at least one positive
+================================
+x = 0
+if not x then print "x is falsy"
+--------------------------------
+x is falsy
+================================
 ==== END OF TESTS
 ================================================================================
 

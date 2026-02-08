@@ -85,6 +85,8 @@ struct MethodCallNode;
 class MethodCallNodeStorage;
 struct WhileNode;
 class WhileNodeStorage;
+struct IfNode;
+class IfNodeStorage;
 
 // DECLARATIONS
 
@@ -147,11 +149,15 @@ enum class TokenType : Int32 {
 	AND,
 	OR,
 	WHILE,
+	IF,
+	THEN,
+	ELSE,
 	END,
 	EOL,
 	COMMENT,
 	ERROR
 }; // end of enum TokenType
+
 
 
 

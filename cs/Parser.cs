@@ -276,6 +276,309 @@ public class Parser : IParser {
 		return ParseExpression();
 	}
 
+	// Parse an if statement (block form): if <condition> then <EOL> <body> [else if...]* [else...] end if
+	// IF token already consumed
+	private ASTNode ParseIfBlock() {
+		ASTNode condition = ParseExpression();
+
+		// Expect THEN after condition
+		if (_current.Type != TokenType.THEN) {
+			ReportError($"Expected 'then' after if condition, got: {_current.Text}");
+		} else {
+			Advance();  // consume THEN
+		}
+
+		// Expect EOL after THEN for block form
+		if (_current.Type != TokenType.EOL && _current.Type != TokenType.END_OF_INPUT) {
+			ReportError($"Expected end of line after 'then', got: {_current.Text}");
+		}
+
+		// Parse "then" body statements until "else if", "else", or "end if"
+		List<ASTNode> thenBody = new List<ASTNode>();
+		while (true) {
+			// Skip blank lines
+			while (_current.Type == TokenType.EOL) {
+				Advance();
+			}
+
+			// Check for end of input (error - unclosed if)
+			if (_current.Type == TokenType.END_OF_INPUT) {
+				ReportError("Unexpected end of input - expected 'end if'");
+				break;
+			}
+
+			// Check for "else if", "else", or "end if"
+			if (_current.Type == TokenType.ELSE) {
+				break;  // handle else/else-if below
+			}
+			if (_current.Type == TokenType.END) {
+				break;  // handle "end if" below
+			}
+
+			// Parse a body statement
+			ASTNode stmt = ParseStatement();
+			if (stmt != null) {
+				thenBody.Add(stmt);
+			}
+
+			// Expect EOL after statement
+			if (_current.Type != TokenType.EOL && _current.Type != TokenType.END_OF_INPUT
+				&& _current.Type != TokenType.ELSE && _current.Type != TokenType.END) {
+				ReportError($"Expected end of line, got: {_current.Text}");
+				while (_current.Type != TokenType.EOL && _current.Type != TokenType.END_OF_INPUT) {
+					Advance();
+				}
+			}
+		}
+
+		// Handle else-if and else clauses
+		List<ASTNode> elseBody = new List<ASTNode>();
+
+		if (_current.Type == TokenType.ELSE) {
+			Advance();  // consume ELSE
+
+			// Check if this is "else if" (chained condition)
+			if (_current.Type == TokenType.IF) {
+				Advance();  // consume IF
+				// Parse the rest as a nested if block
+				ASTNode elseIfNode = ParseIfBlock();
+				elseBody.Add(elseIfNode);
+			} else {
+				// Plain "else" - expect EOL then body
+				if (_current.Type != TokenType.EOL && _current.Type != TokenType.END_OF_INPUT) {
+					ReportError($"Expected end of line after 'else', got: {_current.Text}");
+				}
+
+				// Parse else body statements until "end if"
+				while (true) {
+					// Skip blank lines
+					while (_current.Type == TokenType.EOL) {
+						Advance();
+					}
+
+					if (_current.Type == TokenType.END_OF_INPUT) {
+						ReportError("Unexpected end of input - expected 'end if'");
+						break;
+					}
+
+					if (_current.Type == TokenType.END) {
+						break;  // handle "end if" below
+					}
+
+					ASTNode stmt = ParseStatement();
+					if (stmt != null) {
+						elseBody.Add(stmt);
+					}
+
+					if (_current.Type != TokenType.EOL && _current.Type != TokenType.END_OF_INPUT
+						&& _current.Type != TokenType.END) {
+						ReportError($"Expected end of line, got: {_current.Text}");
+						while (_current.Type != TokenType.EOL && _current.Type != TokenType.END_OF_INPUT) {
+							Advance();
+						}
+					}
+				}
+			}
+		}
+
+		// Consume "end if" (only if not an else-if chain, which handles its own end)
+		if (_current.Type == TokenType.END) {
+			Advance();  // consume END
+			if (_current.Type == TokenType.IF) {
+				Advance();  // consume IF
+			} else {
+				ReportError($"Expected 'if' after 'end', got: {_current.Text}");
+			}
+		}
+
+		return new IfNode(condition, thenBody, elseBody);
+	}
+
+	// Parse a single-line if statement: if <condition> then <simpleStatement> [else <simpleStatement>]
+	// IF token already consumed
+	private ASTNode ParseSingleLineIf() {
+		ASTNode condition = ParseExpression();
+
+		// Expect THEN after condition
+		if (_current.Type != TokenType.THEN) {
+			ReportError($"Expected 'then' after if condition, got: {_current.Text}");
+		} else {
+			Advance();  // consume THEN
+		}
+
+		// Parse the "then" simple statement
+		List<ASTNode> thenBody = new List<ASTNode>();
+		ASTNode thenStmt = ParseSimpleStatement();
+		if (thenStmt != null) {
+			thenBody.Add(thenStmt);
+		}
+
+		// Check for optional "else" clause
+		List<ASTNode> elseBody = new List<ASTNode>();
+		if (_current.Type == TokenType.ELSE) {
+			Advance();  // consume ELSE
+			ASTNode elseStmt = ParseSimpleStatement();
+			if (elseStmt != null) {
+				elseBody.Add(elseStmt);
+			}
+		}
+
+		return new IfNode(condition, thenBody, elseBody);
+	}
+
+	// Parse an if statement - determines if block or single-line form
+	// IF token already consumed
+	private ASTNode ParseIfStatement() {
+		// Parse the condition
+		ASTNode condition = ParseExpression();
+
+		// Expect THEN
+		if (_current.Type != TokenType.THEN) {
+			ReportError($"Expected 'then' after if condition, got: {_current.Text}");
+			return new IfNode(condition, new List<ASTNode>(), new List<ASTNode>());
+		}
+		Advance();  // consume THEN
+
+		// Check if block or single-line form
+		if (_current.Type == TokenType.EOL || _current.Type == TokenType.END_OF_INPUT) {
+			// Block form - parse body until end if
+			return ParseIfBlockBody(condition);
+		} else {
+			// Single-line form - parse statement(s) on same line
+			return ParseSingleLineIfBody(condition);
+		}
+	}
+
+	// Parse the body of a block if statement (after "if condition then\n")
+	private ASTNode ParseIfBlockBody(ASTNode condition) {
+		// Parse "then" body statements until "else if", "else", or "end if"
+		List<ASTNode> thenBody = new List<ASTNode>();
+		while (true) {
+			// Skip blank lines
+			while (_current.Type == TokenType.EOL) {
+				Advance();
+			}
+
+			if (_current.Type == TokenType.END_OF_INPUT) {
+				ReportError("Unexpected end of input - expected 'end if'");
+				break;
+			}
+
+			// Check for "else" or "end"
+			if (_current.Type == TokenType.ELSE || _current.Type == TokenType.END) {
+				break;
+			}
+
+			// Parse a body statement
+			ASTNode stmt = ParseStatement();
+			if (stmt != null) {
+				thenBody.Add(stmt);
+			}
+
+			// Expect EOL after statement
+			if (_current.Type != TokenType.EOL && _current.Type != TokenType.END_OF_INPUT
+				&& _current.Type != TokenType.ELSE && _current.Type != TokenType.END) {
+				ReportError($"Expected end of line, got: {_current.Text}");
+				while (_current.Type != TokenType.EOL && _current.Type != TokenType.END_OF_INPUT) {
+					Advance();
+				}
+			}
+		}
+
+		// Handle else-if and else clauses
+		List<ASTNode> elseBody = new List<ASTNode>();
+
+		if (_current.Type == TokenType.ELSE) {
+			Advance();  // consume ELSE
+
+			// Check if this is "else if" (chained condition)
+			if (_current.Type == TokenType.IF) {
+				Advance();  // consume IF
+				// Parse the else-if as a nested if statement
+				ASTNode elseIfNode = ParseIfStatement();
+				elseBody.Add(elseIfNode);
+			} else {
+				// Plain "else" - expect EOL then body
+				if (_current.Type != TokenType.EOL && _current.Type != TokenType.END_OF_INPUT) {
+					ReportError($"Expected end of line after 'else', got: {_current.Text}");
+				}
+
+				// Parse else body statements until "end if"
+				while (true) {
+					while (_current.Type == TokenType.EOL) {
+						Advance();
+					}
+
+					if (_current.Type == TokenType.END_OF_INPUT) {
+						ReportError("Unexpected end of input - expected 'end if'");
+						break;
+					}
+
+					if (_current.Type == TokenType.END) {
+						break;
+					}
+
+					ASTNode stmt = ParseStatement();
+					if (stmt != null) {
+						elseBody.Add(stmt);
+					}
+
+					if (_current.Type != TokenType.EOL && _current.Type != TokenType.END_OF_INPUT
+						&& _current.Type != TokenType.END) {
+						ReportError($"Expected end of line, got: {_current.Text}");
+						while (_current.Type != TokenType.EOL && _current.Type != TokenType.END_OF_INPUT) {
+							Advance();
+						}
+					}
+				}
+			}
+		}
+
+		// Consume "end if" (only for outermost block, not else-if chains)
+		if (_current.Type == TokenType.END) {
+			Advance();  // consume END
+			if (_current.Type == TokenType.IF) {
+				Advance();  // consume IF
+			} else {
+				ReportError($"Expected 'if' after 'end', got: {_current.Text}");
+			}
+		}
+
+		return new IfNode(condition, thenBody, elseBody);
+	}
+
+	// Parse a statement that can appear in single-line if context
+	// This includes simple statements AND nested if statements
+	private ASTNode ParseSingleLineStatement() {
+		if (_current.Type == TokenType.IF) {
+			Advance();  // consume IF
+			return ParseIfStatement();
+		}
+		return ParseSimpleStatement();
+	}
+
+	// Parse the body of a single-line if statement (after "if condition then ")
+	private ASTNode ParseSingleLineIfBody(ASTNode condition) {
+		// Parse the "then" statement (may be simple or another if)
+		List<ASTNode> thenBody = new List<ASTNode>();
+		ASTNode thenStmt = ParseSingleLineStatement();
+		if (thenStmt != null) {
+			thenBody.Add(thenStmt);
+		}
+
+		// Check for optional "else" clause
+		List<ASTNode> elseBody = new List<ASTNode>();
+		if (_current.Type == TokenType.ELSE) {
+			Advance();  // consume ELSE
+			ASTNode elseStmt = ParseSingleLineStatement();
+			if (elseStmt != null) {
+				elseBody.Add(elseStmt);
+			}
+		}
+
+		return new IfNode(condition, thenBody, elseBody);
+	}
+
 	// Parse a while statement: while <condition> <EOL> <body> end while
 	private ASTNode ParseWhileStatement() {
 		// WHILE token already consumed
@@ -349,6 +652,11 @@ public class Parser : IParser {
 		if (_current.Type == TokenType.WHILE) {
 			Advance();  // consume WHILE
 			return ParseWhileStatement();
+		}
+
+		if (_current.Type == TokenType.IF) {
+			Advance();  // consume IF
+			return ParseIfStatement();
 		}
 
 		return ParseSimpleStatement();

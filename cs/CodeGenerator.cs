@@ -552,6 +552,75 @@ public class CodeGenerator : IASTVisitor {
 		// While loops don't produce a value
 		return -1;
 	}
+
+	public Int32 Visit(IfNode node) {
+		// If statement generates:
+		//       [evaluate condition]
+		//       BRFALSE condReg, elseLabel (or afterIf if no else)
+		//       [then body]
+		//       JUMP afterIf
+		//   elseLabel:
+		//       [else body]
+		//   afterIf:
+
+		Int32 afterIf = _emitter.CreateLabel();
+		Int32 elseLabel = (node.ElseBody.Count > 0) ? _emitter.CreateLabel() : afterIf;
+
+		// Evaluate condition
+		Int32 condReg = node.Condition.Accept(this);
+
+		// Branch to else (or afterIf) if condition is false
+		_emitter.EmitBranch(Opcode.BRFALSE_rA_iBC, condReg, elseLabel, "if condition false, jump to else");
+		FreeReg(condReg);
+
+		// Compile "then" body
+		for (Int32 i = 0; i < node.ThenBody.Count; i++) {
+			// Reset temporary registers before each statement (keep variables)
+			_regInUse.Clear();
+			_regInUse.Add(true);  // r0
+			_firstAvailable = 1;
+			foreach (Int32 reg in _variableRegs.Values) { // CPP: for (Int32 reg : _variableRegs.GetValues()) {
+				while (_regInUse.Count <= reg) {
+					_regInUse.Add(false);
+				}
+				_regInUse[reg] = true;
+				if (reg >= _firstAvailable) _firstAvailable = reg + 1;
+			}
+
+			node.ThenBody[i].Accept(this);
+		}
+
+		// Jump over else body (if there is one)
+		if (node.ElseBody.Count > 0) {
+			_emitter.EmitJump(Opcode.JUMP_iABC, afterIf, "jump past else");
+
+			// Place else label
+			_emitter.PlaceLabel(elseLabel);
+
+			// Compile "else" body
+			for (Int32 i = 0; i < node.ElseBody.Count; i++) {
+				// Reset temporary registers before each statement
+				_regInUse.Clear();
+				_regInUse.Add(true);  // r0
+				_firstAvailable = 1;
+				foreach (Int32 reg in _variableRegs.Values) { // CPP: for (Int32 reg : _variableRegs.GetValues()) {
+					while (_regInUse.Count <= reg) {
+						_regInUse.Add(false);
+					}
+					_regInUse[reg] = true;
+					if (reg >= _firstAvailable) _firstAvailable = reg + 1;
+				}
+
+				node.ElseBody[i].Accept(this);
+			}
+		}
+
+		// Place afterIf label
+		_emitter.PlaceLabel(afterIf);
+
+		// If statements don't produce a value
+		return -1;
+	}
 }
 
 }

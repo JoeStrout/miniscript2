@@ -97,6 +97,12 @@ Token Lexer::NextToken() {
 			tok = Token(TokenType::NOT, text, startLine, startColumn);
 		} else if (text == "while") {
 			tok = Token(TokenType::WHILE, text, startLine, startColumn);
+		} else if (text == "if") {
+			tok = Token(TokenType::IF, text, startLine, startColumn);
+		} else if (text == "then") {
+			tok = Token(TokenType::THEN, text, startLine, startColumn);
+		} else if (text == "else") {
+			tok = Token(TokenType::ELSE, text, startLine, startColumn);
 		} else if (text == "end") {
 			tok = Token(TokenType::END, text, startLine, startColumn);
 		} else {

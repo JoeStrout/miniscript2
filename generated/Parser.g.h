@@ -95,8 +95,11 @@ struct MethodCallNode;
 class MethodCallNodeStorage;
 struct WhileNode;
 class WhileNodeStorage;
+struct IfNode;
+class IfNodeStorage;
 
 // DECLARATIONS
+
 
 
 
@@ -220,6 +223,24 @@ class ParserStorage : public std::enable_shared_from_this<ParserStorage>, public
 	// Handles: callStatement, assignmentStatement, expressionStatement
 	private: ASTNode ParseSimpleStatement();
 
+	// Parse an if statement (block form): if <condition> then <EOL> <body> [else if...]* [else...] end if
+	// IF token already consumed
+	private: ASTNode ParseIfBlock();
+
+	// Parse a single-line if statement: if <condition> then <simpleStatement> [else <simpleStatement>]
+	// IF token already consumed
+	private: ASTNode ParseSingleLineIf();
+
+	// Parse an if statement - determines if block or single-line form
+	// IF token already consumed
+	private: ASTNode ParseIfStatement();
+
+	// Parse the body of a block if statement (after "if condition then\n")
+	private: ASTNode ParseIfBlockBody(ASTNode condition);
+
+	// Parse the body of a single-line if statement (after "if condition then ")
+	private: ASTNode ParseSingleLineIfBody(ASTNode condition);
+
 	// Parse a while statement: while <condition> <EOL> <body> end while
 	private: ASTNode ParseWhileStatement();
 
@@ -328,6 +349,24 @@ struct Parser : public IParser {
 	// Parse a simple statement (grammar: simpleStatement)
 	// Handles: callStatement, assignmentStatement, expressionStatement
 	private: ASTNode ParseSimpleStatement() { return get()->ParseSimpleStatement(); }
+
+	// Parse an if statement (block form): if <condition> then <EOL> <body> [else if...]* [else...] end if
+	// IF token already consumed
+	private: ASTNode ParseIfBlock() { return get()->ParseIfBlock(); }
+
+	// Parse a single-line if statement: if <condition> then <simpleStatement> [else <simpleStatement>]
+	// IF token already consumed
+	private: ASTNode ParseSingleLineIf() { return get()->ParseSingleLineIf(); }
+
+	// Parse an if statement - determines if block or single-line form
+	// IF token already consumed
+	private: ASTNode ParseIfStatement() { return get()->ParseIfStatement(); }
+
+	// Parse the body of a block if statement (after "if condition then\n")
+	private: ASTNode ParseIfBlockBody(ASTNode condition) { return get()->ParseIfBlockBody(condition); }
+
+	// Parse the body of a single-line if statement (after "if condition then ")
+	private: ASTNode ParseSingleLineIfBody(ASTNode condition) { return get()->ParseSingleLineIfBody(condition); }
 
 	// Parse a while statement: while <condition> <EOL> <body> end while
 	private: ASTNode ParseWhileStatement() { return get()->ParseWhileStatement(); }

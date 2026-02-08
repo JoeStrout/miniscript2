@@ -86,6 +86,8 @@ struct MethodCallNode;
 class MethodCallNodeStorage;
 struct WhileNode;
 class WhileNodeStorage;
+struct IfNode;
+class IfNodeStorage;
 
 // DECLARATIONS
 
@@ -164,7 +166,9 @@ class IASTVisitor {
 	virtual Int32 Visit(MemberNode node) = 0;
 	virtual Int32 Visit(MethodCallNode node) = 0;
 	virtual Int32 Visit(WhileNode node) = 0;
+	virtual Int32 Visit(IfNode node) = 0;
 }; // end of interface IASTVisitor
+
 
 
 
@@ -421,6 +425,21 @@ class WhileNodeStorage : public ASTNodeStorage {
 
 	public: Int32 Accept(IASTVisitor& visitor);
 }; // end of class WhileNodeStorage
+
+class IfNodeStorage : public ASTNodeStorage {
+	friend struct IfNode;
+	public: ASTNode Condition; // the test expression
+	public: List<ASTNode> ThenBody; // statements if condition is true
+	public: List<ASTNode> ElseBody; // statements if condition is false (may contain IfNode for else-if)
+
+	public: IfNodeStorage(ASTNode condition, List<ASTNode> thenBody, List<ASTNode> elseBody);
+
+	public: String ToStr();
+
+	public: ASTNode Simplify();
+
+	public: Int32 Accept(IASTVisitor& visitor);
+}; // end of class IfNodeStorage
 
 
 // Number literal node (e.g., 42, 3.14)
@@ -767,6 +786,34 @@ struct WhileNode : public ASTNode {
 }; // end of struct WhileNode
 
 
+// If statement node (e.g., if x > 0 then ... else ... end if)
+// Handles both block and single-line forms; else-if chains are represented
+// by an IfNode in the ElseBody.
+struct IfNode : public ASTNode {
+	IfNode(std::shared_ptr<IfNodeStorage> stor);
+	IfNode() : ASTNode() {}
+	IfNode(std::nullptr_t) : ASTNode(nullptr) {}
+	private: IfNodeStorage* get() const;
+
+	public: ASTNode Condition(); // the test expression
+	public: void set_Condition(ASTNode _v); // the test expression
+	public: List<ASTNode> ThenBody(); // statements if condition is true
+	public: void set_ThenBody(List<ASTNode> _v); // statements if condition is true
+	public: List<ASTNode> ElseBody(); // statements if condition is false (may contain IfNode for else-if)
+	public: void set_ElseBody(List<ASTNode> _v); // statements if condition is false (may contain IfNode for else-if)
+
+	public: static IfNode New(ASTNode condition, List<ASTNode> thenBody, List<ASTNode> elseBody) {
+		return IfNode(std::make_shared<IfNodeStorage>(condition, thenBody, elseBody));
+	}
+
+	public: String ToStr() { return get()->ToStr(); }
+
+	public: ASTNode Simplify() { return get()->Simplify(); }
+
+	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
+}; // end of struct IfNode
+
+
 // INLINE METHODS
 
 inline ASTNodeStorage* ASTNode::get() const { return static_cast<ASTNodeStorage*>(storage.get()); }
@@ -865,5 +912,14 @@ inline ASTNode WhileNode::Condition() { return get()->Condition; } // the loop c
 inline void WhileNode::set_Condition(ASTNode _v) { get()->Condition = _v; } // the loop condition
 inline List<ASTNode> WhileNode::Body() { return get()->Body; } // statements in the loop body
 inline void WhileNode::set_Body(List<ASTNode> _v) { get()->Body = _v; } // statements in the loop body
+
+inline IfNode::IfNode(std::shared_ptr<IfNodeStorage> stor) : ASTNode(stor) {}
+inline IfNodeStorage* IfNode::get() const { return static_cast<IfNodeStorage*>(storage.get()); }
+inline ASTNode IfNode::Condition() { return get()->Condition; } // the test expression
+inline void IfNode::set_Condition(ASTNode _v) { get()->Condition = _v; } // the test expression
+inline List<ASTNode> IfNode::ThenBody() { return get()->ThenBody; } // statements if condition is true
+inline void IfNode::set_ThenBody(List<ASTNode> _v) { get()->ThenBody = _v; } // statements if condition is true
+inline List<ASTNode> IfNode::ElseBody() { return get()->ElseBody; } // statements if condition is false (may contain IfNode for else-if)
+inline void IfNode::set_ElseBody(List<ASTNode> _v) { get()->ElseBody = _v; } // statements if condition is false (may contain IfNode for else-if)
 
 } // end of namespace MiniScript

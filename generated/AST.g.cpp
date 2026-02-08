@@ -380,4 +380,41 @@ Int32 WhileNodeStorage::Accept(IASTVisitor& visitor) {
 }
 
 
+IfNodeStorage::IfNodeStorage(ASTNode condition, List<ASTNode> thenBody, List<ASTNode> elseBody) {
+	Condition = condition;
+	ThenBody = thenBody;
+	ElseBody = elseBody;
+}
+String IfNodeStorage::ToStr() {
+	String result = "if " + Condition.ToStr() + " then\n";
+	for (Int32 i = 0; i < ThenBody.Count(); i++) {
+		result = result + "  " + ThenBody[i].ToStr() + "\n";
+	}
+	if (ElseBody.Count() > 0) {
+		result = result + "else\n";
+		for (Int32 i = 0; i < ElseBody.Count(); i++) {
+			result = result + "  " + ElseBody[i].ToStr() + "\n";
+		}
+	}
+	result = result + "end if";
+	return result;
+}
+ASTNode IfNodeStorage::Simplify() {
+	ASTNode simplifiedCondition = Condition.Simplify();
+	List<ASTNode> simplifiedThenBody =  List<ASTNode>::New();
+	for (Int32 i = 0; i < ThenBody.Count(); i++) {
+		simplifiedThenBody.Add(ThenBody[i].Simplify());
+	}
+	List<ASTNode> simplifiedElseBody =  List<ASTNode>::New();
+	for (Int32 i = 0; i < ElseBody.Count(); i++) {
+		simplifiedElseBody.Add(ElseBody[i].Simplify());
+	}
+	return  IfNode::New(simplifiedCondition, simplifiedThenBody, simplifiedElseBody);
+}
+Int32 IfNodeStorage::Accept(IASTVisitor& visitor) {
+	IfNode _this(std::static_pointer_cast<IfNodeStorage>(shared_from_this()));
+	return visitor.Visit(_this);
+}
+
+
 } // end of namespace MiniScript

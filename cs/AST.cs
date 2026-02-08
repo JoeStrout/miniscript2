@@ -47,6 +47,7 @@ public interface IASTVisitor {
 	Int32 Visit(MemberNode node);
 	Int32 Visit(MethodCallNode node);
 	Int32 Visit(WhileNode node);
+	Int32 Visit(IfNode node);
 }
 
 // Base class for all AST nodes.
@@ -502,6 +503,53 @@ public class WhileNode : ASTNode {
 			simplifiedBody.Add(Body[i].Simplify());
 		}
 		return new WhileNode(simplifiedCondition, simplifiedBody);
+	}
+
+	public override Int32 Accept(IASTVisitor visitor) {
+		return visitor.Visit(this);
+	}
+}
+
+// If statement node (e.g., if x > 0 then ... else ... end if)
+// Handles both block and single-line forms; else-if chains are represented
+// by an IfNode in the ElseBody.
+public class IfNode : ASTNode {
+	public ASTNode Condition;           // the test expression
+	public List<ASTNode> ThenBody;      // statements if condition is true
+	public List<ASTNode> ElseBody;      // statements if condition is false (may contain IfNode for else-if)
+
+	public IfNode(ASTNode condition, List<ASTNode> thenBody, List<ASTNode> elseBody) {
+		Condition = condition;
+		ThenBody = thenBody;
+		ElseBody = elseBody;
+	}
+
+	public override String ToStr() {
+		String result = "if " + Condition.ToStr() + " then\n";
+		for (Int32 i = 0; i < ThenBody.Count; i++) {
+			result = result + "  " + ThenBody[i].ToStr() + "\n";
+		}
+		if (ElseBody.Count > 0) {
+			result = result + "else\n";
+			for (Int32 i = 0; i < ElseBody.Count; i++) {
+				result = result + "  " + ElseBody[i].ToStr() + "\n";
+			}
+		}
+		result = result + "end if";
+		return result;
+	}
+
+	public override ASTNode Simplify() {
+		ASTNode simplifiedCondition = Condition.Simplify();
+		List<ASTNode> simplifiedThenBody = new List<ASTNode>();
+		for (Int32 i = 0; i < ThenBody.Count; i++) {
+			simplifiedThenBody.Add(ThenBody[i].Simplify());
+		}
+		List<ASTNode> simplifiedElseBody = new List<ASTNode>();
+		for (Int32 i = 0; i < ElseBody.Count; i++) {
+			simplifiedElseBody.Add(ElseBody[i].Simplify());
+		}
+		return new IfNode(simplifiedCondition, simplifiedThenBody, simplifiedElseBody);
 	}
 
 	public override Int32 Accept(IASTVisitor visitor) {

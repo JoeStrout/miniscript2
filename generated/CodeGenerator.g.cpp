@@ -513,6 +513,75 @@ Int32 CodeGeneratorStorage::Visit(WhileNode node) {
 	// While loops don't produce a value
 	return -1;
 }
+Int32 CodeGeneratorStorage::Visit(IfNode node) {
+	CodeGenerator _this(std::static_pointer_cast<CodeGeneratorStorage>(shared_from_this()));
+	// If statement generates:
+	//       [evaluate condition]
+	//       BRFALSE condReg, elseLabel (or afterIf if no else)
+	//       [then body]
+	//       JUMP afterIf
+	//   elseLabel:
+	//       [else body]
+	//   afterIf:
+
+	Int32 afterIf = _emitter.CreateLabel();
+	Int32 elseLabel = (node.ElseBody().Count() > 0) ? _emitter.CreateLabel() : afterIf;
+
+	// Evaluate condition
+	Int32 condReg = node.Condition().Accept(_this);
+
+	// Branch to else (or afterIf) if condition is false
+	_emitter.EmitBranch(Opcode::BRFALSE_rA_iBC, condReg, elseLabel, "if condition false, jump to else");
+	FreeReg(condReg);
+
+	// Compile "then" body
+	for (Int32 i = 0; i < node.ThenBody().Count(); i++) {
+		// Reset temporary registers before each statement (keep variables)
+		_regInUse.Clear();
+		_regInUse.Add(Boolean(true));  // r0
+		_firstAvailable = 1;
+		for (Int32 reg : _variableRegs.GetValues()) {
+			while (_regInUse.Count() <= reg) {
+				_regInUse.Add(Boolean(false));
+			}
+			_regInUse[reg] = Boolean(true);
+			if (reg >= _firstAvailable) _firstAvailable = reg + 1;
+		}
+
+		node.ThenBody()[i].Accept(_this);
+	}
+
+	// Jump over else body (if there is one)
+	if (node.ElseBody().Count() > 0) {
+		_emitter.EmitJump(Opcode::JUMP_iABC, afterIf, "jump past else");
+
+		// Place else label
+		_emitter.PlaceLabel(elseLabel);
+
+		// Compile "else" body
+		for (Int32 i = 0; i < node.ElseBody().Count(); i++) {
+			// Reset temporary registers before each statement
+			_regInUse.Clear();
+			_regInUse.Add(Boolean(true));  // r0
+			_firstAvailable = 1;
+			for (Int32 reg : _variableRegs.GetValues()) {
+				while (_regInUse.Count() <= reg) {
+					_regInUse.Add(Boolean(false));
+				}
+				_regInUse[reg] = Boolean(true);
+				if (reg >= _firstAvailable) _firstAvailable = reg + 1;
+			}
+
+			node.ElseBody()[i].Accept(_this);
+		}
+	}
+
+	// Place afterIf label
+	_emitter.PlaceLabel(afterIf);
+
+	// If statements don't produce a value
+	return -1;
+}
 
 
 } // end of namespace MiniScript

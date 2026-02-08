@@ -48,7 +48,9 @@ public interface IASTVisitor {
 	Int32 Visit(MethodCallNode node);
 	Int32 Visit(WhileNode node);
 	Int32 Visit(IfNode node);
+	Int32 Visit(ForNode node);
 	Int32 Visit(BreakNode node);
+	Int32 Visit(ContinueNode node);
 }
 
 // Base class for all AST nodes.
@@ -558,6 +560,41 @@ public class IfNode : ASTNode {
 	}
 }
 
+// For loop node (e.g., for i in [1,2,3] ... end for)
+public class ForNode : ASTNode {
+	public String Variable;             // the loop variable name
+	public ASTNode Iterable;            // the expression to iterate over
+	public List<ASTNode> Body;          // statements in the loop body
+
+	public ForNode(String variable, ASTNode iterable, List<ASTNode> body) {
+		Variable = variable;
+		Iterable = iterable;
+		Body = body;
+	}
+
+	public override String ToStr() {
+		String result = "for " + Variable + " in " + Iterable.ToStr() + "\n";
+		for (Int32 i = 0; i < Body.Count; i++) {
+			result = result + "  " + Body[i].ToStr() + "\n";
+		}
+		result = result + "end for";
+		return result;
+	}
+
+	public override ASTNode Simplify() {
+		ASTNode simplifiedIterable = Iterable.Simplify();
+		List<ASTNode> simplifiedBody = new List<ASTNode>();
+		for (Int32 i = 0; i < Body.Count; i++) {
+			simplifiedBody.Add(Body[i].Simplify());
+		}
+		return new ForNode(Variable, simplifiedIterable, simplifiedBody);
+	}
+
+	public override Int32 Accept(IASTVisitor visitor) {
+		return visitor.Visit(this);
+	}
+}
+
 // Break statement node - exits the innermost loop
 public class BreakNode : ASTNode {
 	public BreakNode() {
@@ -565,6 +602,24 @@ public class BreakNode : ASTNode {
 
 	public override String ToStr() {
 		return "break";
+	}
+
+	public override ASTNode Simplify() {
+		return this;
+	}
+
+	public override Int32 Accept(IASTVisitor visitor) {
+		return visitor.Visit(this);
+	}
+}
+
+// Continue statement node - skips to next iteration of innermost loop
+public class ContinueNode : ASTNode {
+	public ContinueNode() {
+	}
+
+	public override String ToStr() {
+		return "continue";
 	}
 
 	public override ASTNode Simplify() {

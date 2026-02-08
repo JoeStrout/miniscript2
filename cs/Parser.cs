@@ -205,12 +205,18 @@ public class Parser : IParser {
 	}
 
 	// Parse a simple statement (grammar: simpleStatement)
-	// Handles: callStatement, assignmentStatement, breakStatement, expressionStatement
+	// Handles: callStatement, assignmentStatement, breakStatement, continueStatement, expressionStatement
 	private ASTNode ParseSimpleStatement() {
 		// Check for break statement
 		if (_current.Type == TokenType.BREAK) {
 			Advance();  // consume BREAK
 			return new BreakNode();
+		}
+
+		// Check for continue statement
+		if (_current.Type == TokenType.CONTINUE) {
+			Advance();  // consume CONTINUE
+			return new ContinueNode();
 		}
 
 		// Grammar for relevant rules:
@@ -420,6 +426,38 @@ public class Parser : IParser {
 		return new WhileNode(condition, body);
 	}
 
+	// Parse a for statement: FOR already consumed
+	// Syntax: for <identifier> in <expression> <EOL> <body> end for
+	private ASTNode ParseForStatement() {
+		// Expect identifier (loop variable)
+		if (_current.Type != TokenType.IDENTIFIER) {
+			ReportError($"Expected identifier after 'for', got: {_current.Text}");
+			return new ForNode("_", new NumberNode(0), new List<ASTNode>());
+		}
+		String varName = _current.Text;
+		Advance();  // consume identifier
+
+		// Expect IN
+		if (_current.Type != TokenType.IN) {
+			ReportError($"Expected 'in' after loop variable, got: {_current.Text}");
+		} else {
+			Advance();  // consume IN
+		}
+
+		// Parse iterable expression
+		ASTNode iterable = ParseExpression();
+
+		// Expect EOL after expression
+		if (_current.Type != TokenType.EOL && _current.Type != TokenType.END_OF_INPUT) {
+			ReportError($"Expected end of line after for expression, got: {_current.Text}");
+		}
+
+		List<ASTNode> body = ParseBlock(TokenType.END, TokenType.END);
+		RequireEndKeyword(TokenType.FOR, "for");
+
+		return new ForNode(varName, iterable, body);
+	}
+
 	// Parse a statement (handles both simple statements and block statements)
 	public ASTNode ParseStatement() {
 		// Skip leading blank lines
@@ -435,6 +473,11 @@ public class Parser : IParser {
 		if (_current.Type == TokenType.WHILE) {
 			Advance();  // consume WHILE
 			return ParseWhileStatement();
+		}
+
+		if (_current.Type == TokenType.FOR) {
+			Advance();  // consume FOR
+			return ParseForStatement();
 		}
 
 		if (_current.Type == TokenType.IF) {

@@ -8,7 +8,6 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 using static MiniScript.ValueHelpers;
-using static MiniScript.StringOperations;
 
 namespace MiniScript {
 
@@ -223,10 +222,10 @@ public readonly struct Value {
 		}
 		// Handle string concatenation
 		if (a.IsString) {
-			if (b.IsString) return StringOperations.StringConcat(a, b);
-			if (b.IsInt || b.IsDouble) return StringOperations.StringConcat(a, ValueHelpers.make_string(b.ToString()));
+			if (b.IsString) return ValueHelpers.string_concat(a, b);
+			if (b.IsInt || b.IsDouble) return ValueHelpers.string_concat(a, ValueHelpers.make_string(b.ToString()));
 		} else if(b.IsString) {
-			if (a.IsInt || a.IsDouble) return StringOperations.StringConcat(ValueHelpers.make_string(a.ToString()), b);
+			if (a.IsInt || a.IsDouble) return ValueHelpers.string_concat(ValueHelpers.make_string(a.ToString()), b);
 		}
 		// string concat, list append, etc. can be added here.
 		return Null();
@@ -255,7 +254,7 @@ public readonly struct Value {
 			// Build repeated string
 			Value result = a;
 			for (int i = 1; i < count; i++) {
-				result = StringOperations.StringConcat(result, a);
+				result = ValueHelpers.string_concat(result, a);
 			}
 			return result;
 		} else if (is_string(a) && is_double(b)) {
@@ -269,10 +268,10 @@ public readonly struct Value {
 
 			Value result = val_empty_string;
 			for (int i = 0; i < repeats; i++) {
-				result = StringConcat(result, a);
+				result = ValueHelpers.string_concat(result, a);
 			}
-			extraChars = (int)(StringLength(a) * (factor - repeats));
-			if (extraChars > 0) result = StringConcat(result, StringSubstring(a, 0, extraChars));
+			extraChars = (int)(ValueHelpers.string_length(a) * (factor - repeats));
+			if (extraChars > 0) result = ValueHelpers.string_concat(result, ValueHelpers.string_substring(a, 0, extraChars));
 			return result;
 		}
 		// string concat, list append, etc. can be added here.
@@ -336,7 +335,7 @@ public readonly struct Value {
 		}
 		// Handle string comparison
 		if (a.IsString && b.IsString) {
-			return StringOperations.StringCompare(a, b) < 0;
+			return ValueHelpers.string_compare(a, b) < 0;
 		}
 		return false;
 	}
@@ -350,7 +349,7 @@ public readonly struct Value {
 		}
 		// Handle string comparison
 		if (a.IsString && b.IsString) {
-			return StringOperations.StringCompare(a, b) <= 0;
+			return ValueHelpers.string_compare(a, b) <= 0;
 		}
 		return false;
 	}
@@ -610,7 +609,7 @@ public static class ValueHelpers {
 	public static bool is_truthy(Value v) => (!is_null(v) &&
 			((is_int(v) && as_int(v) != 0) ||
 			(is_double(v) && as_double(v) != 0.0) ||
-			(is_string(v) && StringOperations.StringLength(v) != 0)
+			(is_string(v) && ValueHelpers.string_length(v) != 0)
 			));
 	
 	
@@ -707,6 +706,93 @@ public static class ValueHelpers {
 		VarMap varmap = new VarMap(registers, names, baseIdx, baseIdx + count - 1);
 		return Value.FromMap(varmap);
 	}
+
+	// String helper
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static string GetStringValue(Value val) {
+		if (val.IsTiny) return val.ToString();
+		if (val.IsHeapString) return HandlePool.Get(val.Handle()) as string ?? "";
+		return "";
+	}
+
+	// String operations (matching value_string.h)
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static int string_length(Value v) {
+		if (!v.IsString) return 0;
+		return GetStringValue(v).Length;
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static int string_indexOf(Value haystack, Value needle, int start_pos) {
+		if (!haystack.IsString || !needle.IsString) return -1;
+		string h = GetStringValue(haystack);
+		string n = GetStringValue(needle);
+		return h.IndexOf(n, start_pos);
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static Value string_substring(Value str, int startIndex, int len) {
+		string s = GetStringValue(str);
+		return make_string(s.Substring(startIndex, len));
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static Value string_concat(Value a, Value b) {
+		if (!a.IsString || !b.IsString) return val_null;
+		string sa = GetStringValue(a);
+		string sb = GetStringValue(b);
+		return make_string(sa + sb);
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static int string_compare(Value a, Value b) {
+		if (!a.IsString || !b.IsString) return 0;
+		string sa = GetStringValue(a);
+		string sb = GetStringValue(b);
+		return string.Compare(sa, sb, StringComparison.Ordinal);
+	}
+
+	public static Value string_split(Value str, Value delimiter) {
+		if (!str.IsString || !delimiter.IsString) return val_null;
+
+		string s = GetStringValue(str);
+		string delim = GetStringValue(delimiter);
+
+		string[] parts;
+		if (delim == "") {
+			// Split into characters
+			parts = new string[s.Length];
+			for (int i = 0; i < s.Length; i++) {
+				parts[i] = s[i].ToString();
+			}
+		} else {
+			parts = s.Split(new string[] { delim }, StringSplitOptions.None);
+		}
+
+		Value list = make_list(parts.Length);
+		foreach (string part in parts) {
+			list_push(list, make_string(part));
+		}
+
+		return list;
+	}
+
+	public static Value string_replace(Value str, Value from, Value to) {
+		if (!str.IsString || !from.IsString || !to.IsString) return val_null;
+
+		string s = GetStringValue(str);
+		string fromStr = GetStringValue(from);
+		string toStr = GetStringValue(to);
+
+		if (fromStr == "") {
+			return str; // Can't replace empty string
+		}
+		if (!s.Contains(fromStr)) {
+			return str; // Return original if no match
+		}
+		string result = s.Replace(fromStr, toStr);
+		return make_string(result);
+	}
 }
 
 // A minimal, fast handle table. Stores actual C# objects referenced by Value.
@@ -799,99 +885,4 @@ public class ValueMap {
 	public virtual IEnumerable<KeyValuePair<Value, Value>> Items => _items;
 }
 
-// String operations
-public static class StringOperations {
-	public static Value StringSplit(Value str, Value delimiter) {
-		if (!str.IsString || !delimiter.IsString) return val_null;
-		
-		string s = GetStringValue(str);
-		string delim = GetStringValue(delimiter);
-		
-		string[] parts;
-		if (delim == "") {
-			// Split into characters
-			parts = new string[s.Length];
-			for (int i = 0; i < s.Length; i++) {
-				parts[i] = s[i].ToString();
-			}
-		} else {
-			parts = s.Split(new string[] { delim }, StringSplitOptions.None);
-		}
-		
-		Value list = ValueHelpers.make_list(parts.Length);
-		foreach (string part in parts) {
-			ValueHelpers.list_push(list, Value.FromString(part)); // Include all parts, even empty ones
-		}
-		
-		return list;
-	}
-	
-	public static Value StringReplace(Value str, Value from, Value to) {
-		if (!str.IsString || !from.IsString || !to.IsString) return val_null;
-		
-		string s = GetStringValue(str);
-		string fromStr = GetStringValue(from);
-		string toStr = GetStringValue(to);
-		
-		if (fromStr == "") {
-			return str; // Can't replace empty string
-		}
-		if (!s.Contains(fromStr)) {
-			return str; // Return original if no match
-		}
-		string result = s.Replace(fromStr, toStr);
-		return Value.FromString(result);
-	}
-	
-	public static Value StringIndexOf(Value str, Value needle) {
-		if (!str.IsString || !needle.IsString) return Value.FromInt(-1);
-		
-		string s = GetStringValue(str);
-		string needleStr = GetStringValue(needle);
-		
-		int index = s.IndexOf(needleStr);
-		return Value.FromInt(index);
-	}
-	
-	public static Value StringConcat(Value str1, Value str2) {
-		if (!str1.IsString || !str2.IsString) return val_null;
-		
-		string s1 = GetStringValue(str1);
-		string s2 = GetStringValue(str2);
-		
-		return Value.FromString(s1 + s2);
-	}
-	
-	public static int StringLength(Value str) {
-		if (!str.IsString) return 0;
-		
-		return GetStringValue(str).Length;
-	}
-	
-	public static bool StringEquals(Value str1, Value str2) {
-		return Value.Equal(str1, str2);
-	}
-
-	public static int StringCompare(Value str1, Value str2) {
-		if (!str1.IsString || !str2.IsString) return 0;
-		
-		string sa = str1.IsTiny ? str1.ToString() : HandlePool.Get(str1.Handle()) as string;
-		string sb = str2.IsTiny ? str2.ToString() : HandlePool.Get(str2.Handle()) as string;
-		
-		if (sa == null || sb == null) return 0;
-		return string.Compare(sa, sb, StringComparison.Ordinal);
-	}
-
-	public static Value StringSubstring(Value str, int index, int length){
-		string a = GetStringValue(str);
-		return make_string(a.Substring(index, length));
-	}
-	
-	public static string GetStringValue(Value val) {
-		if (val.IsTiny) return val.ToString();
-		if (val.IsHeapString) return HandlePool.Get(val.Handle()) as string ?? "";
-		return "";
-	}
-}
-	
 }

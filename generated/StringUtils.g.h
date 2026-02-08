@@ -94,8 +94,12 @@ struct WhileNode;
 class WhileNodeStorage;
 struct IfNode;
 class IfNodeStorage;
+struct ForNode;
+class ForNodeStorage;
 struct BreakNode;
 class BreakNodeStorage;
+struct ContinueNode;
+class ContinueNodeStorage;
 
 // DECLARATIONS
 
@@ -231,6 +235,8 @@ class StringUtils {
 	// Convert a Value to its representation (quoted string for strings, plain for others)
 	// This is used when displaying values in source code form.
 }; // end of struct StringUtils
+
+
 
 
 

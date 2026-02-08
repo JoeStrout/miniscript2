@@ -89,10 +89,16 @@ struct WhileNode;
 class WhileNodeStorage;
 struct IfNode;
 class IfNodeStorage;
+struct ForNode;
+class ForNodeStorage;
 struct BreakNode;
 class BreakNodeStorage;
+struct ContinueNode;
+class ContinueNodeStorage;
 
 // DECLARATIONS
+
+
 
 
 
@@ -160,6 +166,7 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 	private: Dictionary<String, Int32> _variableRegs; // variable name -> register
 	private: Int32 _targetReg; // Target register for next expression (-1 = allocate)
 	private: List<Int32> _loopExitLabels; // Stack of loop exit labels for break
+	private: List<Int32> _loopContinueLabels; // Stack of loop continue labels for continue
 
 	public: CodeGeneratorStorage(CodeEmitterBase emitter);
 
@@ -233,7 +240,11 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 
 	public: Int32 Visit(IfNode node);
 
+	public: Int32 Visit(ForNode node);
+
 	public: Int32 Visit(BreakNode node);
+
+	public: Int32 Visit(ContinueNode node);
 }; // end of class CodeGeneratorStorage
 
 
@@ -262,6 +273,8 @@ struct CodeGenerator : public IASTVisitor {
 	private: void set__targetReg(Int32 _v); // Target register for next expression (-1 = allocate)
 	private: List<Int32> _loopExitLabels(); // Stack of loop exit labels for break
 	private: void set__loopExitLabels(List<Int32> _v); // Stack of loop exit labels for break
+	private: List<Int32> _loopContinueLabels(); // Stack of loop continue labels for continue
+	private: void set__loopContinueLabels(List<Int32> _v); // Stack of loop continue labels for continue
 
 	public: static CodeGenerator New(CodeEmitterBase emitter) {
 		return CodeGenerator(std::make_shared<CodeGeneratorStorage>(emitter));
@@ -337,7 +350,11 @@ struct CodeGenerator : public IASTVisitor {
 
 	public: Int32 Visit(IfNode node) { return get()->Visit(node); }
 
+	public: Int32 Visit(ForNode node) { return get()->Visit(node); }
+
 	public: Int32 Visit(BreakNode node) { return get()->Visit(node); }
+
+	public: Int32 Visit(ContinueNode node) { return get()->Visit(node); }
 }; // end of struct CodeGenerator
 
 
@@ -358,5 +375,7 @@ inline Int32 CodeGenerator::_targetReg() { return get()->_targetReg; } // Target
 inline void CodeGenerator::set__targetReg(Int32 _v) { get()->_targetReg = _v; } // Target register for next expression (-1 = allocate)
 inline List<Int32> CodeGenerator::_loopExitLabels() { return get()->_loopExitLabels; } // Stack of loop exit labels for break
 inline void CodeGenerator::set__loopExitLabels(List<Int32> _v) { get()->_loopExitLabels = _v; } // Stack of loop exit labels for break
+inline List<Int32> CodeGenerator::_loopContinueLabels() { return get()->_loopContinueLabels; } // Stack of loop continue labels for continue
+inline void CodeGenerator::set__loopContinueLabels(List<Int32> _v) { get()->_loopContinueLabels = _v; } // Stack of loop continue labels for continue
 
 } // end of namespace MiniScript

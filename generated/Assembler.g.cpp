@@ -930,6 +930,15 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 			instruction = BytecodeUtil::INS_AB(Opcode::IFNE_rA_iBC, reg1, immediate);
 		}
 
+	} else if (mnemonic == "NEXT") {
+		if (parts.Count() != 3) { Error("Syntax error: NEXT requires 2 register operands");  {
+			GC_POP_SCOPE();
+			return 0; }
+		}
+		Byte reg1 = ParseRegister(parts[1]);
+		Byte reg2 = ParseRegister(parts[2]);
+		instruction = BytecodeUtil::INS_ABC(Opcode::NEXT_rA_rB, reg1, reg2, 0);
+
 	} else if (mnemonic == "ARGBLK") {
 		if (parts.Count() != 2) { Error("Syntax error: ARGBLK requires exactly 1 operand");  {
 			GC_POP_SCOPE();

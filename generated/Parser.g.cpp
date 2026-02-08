@@ -162,6 +162,12 @@ ASTNode ParserStorage::ParseSimpleStatement() {
 		return  BreakNode::New();
 	}
 
+	// Check for continue statement
+	if (_current.Type == TokenType::CONTINUE) {
+		Advance();  // consume CONTINUE
+		return  ContinueNode::New();
+	}
+
 	// Grammar for relevant rules:
 	//   callStatement : expression '(' argList ')' | expression argList
 	//   assignmentStatement : lvalue '=' expression
@@ -345,6 +351,35 @@ ASTNode ParserStorage::ParseWhileStatement() {
 
 	return  WhileNode::New(condition, body);
 }
+ASTNode ParserStorage::ParseForStatement() {
+	// Expect identifier (loop variable)
+	if (_current.Type != TokenType::IDENTIFIER) {
+		ReportError(Interp("Expected identifier after 'for', got: {}", _current.Text));
+		return  ForNode::New("_",  NumberNode::New(0),  List<ASTNode>::New());
+	}
+	String varName = _current.Text;
+	Advance();  // consume identifier
+
+	// Expect IN
+	if (_current.Type != TokenType::IN) {
+		ReportError(Interp("Expected 'in' after loop variable, got: {}", _current.Text));
+	} else {
+		Advance();  // consume IN
+	}
+
+	// Parse iterable expression
+	ASTNode iterable = ParseExpression();
+
+	// Expect EOL after expression
+	if (_current.Type != TokenType::EOL && _current.Type != TokenType::END_OF_INPUT) {
+		ReportError(Interp("Expected end of line after for expression, got: {}", _current.Text));
+	}
+
+	List<ASTNode> body = ParseBlock(TokenType::END, TokenType::END);
+	RequireEndKeyword(TokenType::FOR, "for");
+
+	return  ForNode::New(varName, iterable, body);
+}
 ASTNode ParserStorage::ParseStatement() {
 	// Skip leading blank lines
 	while (_current.Type == TokenType::EOL) {
@@ -359,6 +394,11 @@ ASTNode ParserStorage::ParseStatement() {
 	if (_current.Type == TokenType::WHILE) {
 		Advance();  // consume WHILE
 		return ParseWhileStatement();
+	}
+
+	if (_current.Type == TokenType::FOR) {
+		Advance();  // consume FOR
+		return ParseForStatement();
 	}
 
 	if (_current.Type == TokenType::IF) {

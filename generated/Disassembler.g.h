@@ -85,8 +85,12 @@ struct WhileNode;
 class WhileNodeStorage;
 struct IfNode;
 class IfNodeStorage;
+struct ForNode;
+class ForNodeStorage;
 struct BreakNode;
 class BreakNodeStorage;
+struct ContinueNode;
+class ContinueNodeStorage;
 
 // DECLARATIONS
 
@@ -108,6 +112,8 @@ class Disassembler {
 	public: static List<String> Disassemble(List<FuncDef> functions, Boolean detailed=true);
 
 }; // end of struct Disassembler
+
+
 
 
 

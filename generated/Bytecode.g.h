@@ -84,8 +84,12 @@ struct WhileNode;
 class WhileNodeStorage;
 struct IfNode;
 class IfNodeStorage;
+struct ForNode;
+class ForNodeStorage;
 struct BreakNode;
 class BreakNodeStorage;
+struct ContinueNode;
+class ContinueNodeStorage;
 
 // DECLARATIONS
 
@@ -191,6 +195,7 @@ enum class Opcode : Byte {
 	IFEQ_rA_iBC,
 	IFNE_rA_rB,
 	IFNE_rA_iBC,
+	NEXT_rA_rB,
 	ARGBLK_iABC,
 	ARG_rA,
 	ARG_iABC,
@@ -247,6 +252,8 @@ class BytecodeUtil {
 	
 	public: static Opcode FromMnemonic(String s);
 }; // end of struct BytecodeUtil
+
+
 
 
 

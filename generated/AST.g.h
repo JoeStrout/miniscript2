@@ -88,8 +88,12 @@ struct WhileNode;
 class WhileNodeStorage;
 struct IfNode;
 class IfNodeStorage;
+struct ForNode;
+class ForNodeStorage;
 struct BreakNode;
 class BreakNodeStorage;
+struct ContinueNode;
+class ContinueNodeStorage;
 
 // DECLARATIONS
 
@@ -169,8 +173,12 @@ class IASTVisitor {
 	virtual Int32 Visit(MethodCallNode node) = 0;
 	virtual Int32 Visit(WhileNode node) = 0;
 	virtual Int32 Visit(IfNode node) = 0;
+	virtual Int32 Visit(ForNode node) = 0;
 	virtual Int32 Visit(BreakNode node) = 0;
+	virtual Int32 Visit(ContinueNode node) = 0;
 }; // end of interface IASTVisitor
+
+
 
 
 
@@ -445,6 +453,21 @@ class IfNodeStorage : public ASTNodeStorage {
 	public: Int32 Accept(IASTVisitor& visitor);
 }; // end of class IfNodeStorage
 
+class ForNodeStorage : public ASTNodeStorage {
+	friend struct ForNode;
+	public: String Variable; // the loop variable name
+	public: ASTNode Iterable; // the expression to iterate over
+	public: List<ASTNode> Body; // statements in the loop body
+
+	public: ForNodeStorage(String variable, ASTNode iterable, List<ASTNode> body);
+
+	public: String ToStr();
+
+	public: ASTNode Simplify();
+
+	public: Int32 Accept(IASTVisitor& visitor);
+}; // end of class ForNodeStorage
+
 class BreakNodeStorage : public ASTNodeStorage {
 	friend struct BreakNode;
 	public: BreakNodeStorage();
@@ -455,6 +478,17 @@ class BreakNodeStorage : public ASTNodeStorage {
 
 	public: Int32 Accept(IASTVisitor& visitor);
 }; // end of class BreakNodeStorage
+
+class ContinueNodeStorage : public ASTNodeStorage {
+	friend struct ContinueNode;
+	public: ContinueNodeStorage();
+
+	public: String ToStr();
+
+	public: ASTNode Simplify();
+
+	public: Int32 Accept(IASTVisitor& visitor);
+}; // end of class ContinueNodeStorage
 
 
 // Number literal node (e.g., 42, 3.14)
@@ -829,6 +863,32 @@ struct IfNode : public ASTNode {
 }; // end of struct IfNode
 
 
+// For loop node (e.g., for i in [1,2,3] ... end for)
+struct ForNode : public ASTNode {
+	ForNode(std::shared_ptr<ForNodeStorage> stor);
+	ForNode() : ASTNode() {}
+	ForNode(std::nullptr_t) : ASTNode(nullptr) {}
+	private: ForNodeStorage* get() const;
+
+	public: String Variable(); // the loop variable name
+	public: void set_Variable(String _v); // the loop variable name
+	public: ASTNode Iterable(); // the expression to iterate over
+	public: void set_Iterable(ASTNode _v); // the expression to iterate over
+	public: List<ASTNode> Body(); // statements in the loop body
+	public: void set_Body(List<ASTNode> _v); // statements in the loop body
+
+	public: static ForNode New(String variable, ASTNode iterable, List<ASTNode> body) {
+		return ForNode(std::make_shared<ForNodeStorage>(variable, iterable, body));
+	}
+
+	public: String ToStr() { return get()->ToStr(); }
+
+	public: ASTNode Simplify() { return get()->Simplify(); }
+
+	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
+}; // end of struct ForNode
+
+
 // Break statement node - exits the innermost loop
 struct BreakNode : public ASTNode {
 	BreakNode(std::shared_ptr<BreakNodeStorage> stor);
@@ -846,6 +906,25 @@ struct BreakNode : public ASTNode {
 
 	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct BreakNode
+
+
+// Continue statement node - skips to next iteration of innermost loop
+struct ContinueNode : public ASTNode {
+	ContinueNode(std::shared_ptr<ContinueNodeStorage> stor);
+	ContinueNode() : ASTNode() {}
+	ContinueNode(std::nullptr_t) : ASTNode(nullptr) {}
+	private: ContinueNodeStorage* get() const;
+
+	public: static ContinueNode New() {
+		return ContinueNode(std::make_shared<ContinueNodeStorage>());
+	}
+
+	public: String ToStr() { return get()->ToStr(); }
+
+	public: ASTNode Simplify() { return get()->Simplify(); }
+
+	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
+}; // end of struct ContinueNode
 
 
 // INLINE METHODS
@@ -956,7 +1035,19 @@ inline void IfNode::set_ThenBody(List<ASTNode> _v) { get()->ThenBody = _v; } // 
 inline List<ASTNode> IfNode::ElseBody() { return get()->ElseBody; } // statements if condition is false (may contain IfNode for else-if)
 inline void IfNode::set_ElseBody(List<ASTNode> _v) { get()->ElseBody = _v; } // statements if condition is false (may contain IfNode for else-if)
 
+inline ForNode::ForNode(std::shared_ptr<ForNodeStorage> stor) : ASTNode(stor) {}
+inline ForNodeStorage* ForNode::get() const { return static_cast<ForNodeStorage*>(storage.get()); }
+inline String ForNode::Variable() { return get()->Variable; } // the loop variable name
+inline void ForNode::set_Variable(String _v) { get()->Variable = _v; } // the loop variable name
+inline ASTNode ForNode::Iterable() { return get()->Iterable; } // the expression to iterate over
+inline void ForNode::set_Iterable(ASTNode _v) { get()->Iterable = _v; } // the expression to iterate over
+inline List<ASTNode> ForNode::Body() { return get()->Body; } // statements in the loop body
+inline void ForNode::set_Body(List<ASTNode> _v) { get()->Body = _v; } // statements in the loop body
+
 inline BreakNode::BreakNode(std::shared_ptr<BreakNodeStorage> stor) : ASTNode(stor) {}
 inline BreakNodeStorage* BreakNode::get() const { return static_cast<BreakNodeStorage*>(storage.get()); }
+
+inline ContinueNode::ContinueNode(std::shared_ptr<ContinueNodeStorage> stor) : ASTNode(stor) {}
+inline ContinueNodeStorage* ContinueNode::get() const { return static_cast<ContinueNodeStorage*>(storage.get()); }
 
 } // end of namespace MiniScript

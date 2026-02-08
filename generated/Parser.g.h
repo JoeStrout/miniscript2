@@ -97,10 +97,16 @@ struct WhileNode;
 class WhileNodeStorage;
 struct IfNode;
 class IfNodeStorage;
+struct ForNode;
+class ForNodeStorage;
 struct BreakNode;
 class BreakNodeStorage;
+struct ContinueNode;
+class ContinueNodeStorage;
 
 // DECLARATIONS
+
+
 
 
 
@@ -215,7 +221,7 @@ class ParserStorage : public std::enable_shared_from_this<ParserStorage>, public
 	private: ASTNode ParseExpressionFrom(ASTNode left);
 
 	// Parse a simple statement (grammar: simpleStatement)
-	// Handles: callStatement, assignmentStatement, breakStatement, expressionStatement
+	// Handles: callStatement, assignmentStatement, breakStatement, continueStatement, expressionStatement
 	private: ASTNode ParseSimpleStatement();
 
 	// Check if current token is a block terminator
@@ -248,6 +254,10 @@ class ParserStorage : public std::enable_shared_from_this<ParserStorage>, public
 
 	// Parse a while statement: WHILE already consumed
 	private: ASTNode ParseWhileStatement();
+
+	// Parse a for statement: FOR already consumed
+	// Syntax: for <identifier> in <expression> <EOL> <body> end for
+	private: ASTNode ParseForStatement();
 
 	// Parse a statement (handles both simple statements and block statements)
 	public: ASTNode ParseStatement();
@@ -344,7 +354,7 @@ struct Parser : public IParser {
 	private: ASTNode ParseExpressionFrom(ASTNode left) { return get()->ParseExpressionFrom(left); }
 
 	// Parse a simple statement (grammar: simpleStatement)
-	// Handles: callStatement, assignmentStatement, breakStatement, expressionStatement
+	// Handles: callStatement, assignmentStatement, breakStatement, continueStatement, expressionStatement
 	private: ASTNode ParseSimpleStatement() { return get()->ParseSimpleStatement(); }
 
 	// Check if current token is a block terminator
@@ -377,6 +387,10 @@ struct Parser : public IParser {
 
 	// Parse a while statement: WHILE already consumed
 	private: ASTNode ParseWhileStatement() { return get()->ParseWhileStatement(); }
+
+	// Parse a for statement: FOR already consumed
+	// Syntax: for <identifier> in <expression> <EOL> <body> end for
+	private: ASTNode ParseForStatement() { return get()->ParseForStatement(); }
 
 	// Parse a statement (handles both simple statements and block statements)
 	public: ASTNode ParseStatement() { return get()->ParseStatement(); }

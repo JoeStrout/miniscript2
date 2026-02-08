@@ -19,7 +19,8 @@ public class CodeGenerator : IASTVisitor {
 	private Int32 _maxRegUsed;          // High water mark for register usage
 	private Dictionary<String, Int32> _variableRegs;  // variable name -> register
 	private Int32 _targetReg;           // Target register for next expression (-1 = allocate)
-	private List<Int32> _loopExitLabels;  // Stack of loop exit labels for break
+	private List<Int32> _loopExitLabels;      // Stack of loop exit labels for break
+	private List<Int32> _loopContinueLabels;  // Stack of loop continue labels for continue
 
 	public CodeGenerator(CodeEmitterBase emitter) {
 		_emitter = emitter;
@@ -29,6 +30,7 @@ public class CodeGenerator : IASTVisitor {
 		_variableRegs = new Dictionary<String, Int32>();
 		_targetReg = -1;
 		_loopExitLabels = new List<Int32>();
+		_loopContinueLabels = new List<Int32>();
 	}
 
 	// Allocate a register
@@ -518,8 +520,9 @@ public class CodeGenerator : IASTVisitor {
 		Int32 loopStart = _emitter.CreateLabel();
 		Int32 afterLoop = _emitter.CreateLabel();
 
-		// Push exit label for break statements
+		// Push labels for break and continue statements
 		_loopExitLabels.Add(afterLoop);
+		_loopContinueLabels.Add(loopStart);
 
 		// Place loopStart label
 		_emitter.PlaceLabel(loopStart);
@@ -540,8 +543,9 @@ public class CodeGenerator : IASTVisitor {
 		// Place afterLoop label
 		_emitter.PlaceLabel(afterLoop);
 
-		// Pop exit label
+		// Pop labels
 		_loopExitLabels.RemoveAt(_loopExitLabels.Count - 1);
+		_loopContinueLabels.RemoveAt(_loopContinueLabels.Count - 1);
 
 		// While loops don't produce a value
 		return -1;
@@ -588,6 +592,74 @@ public class CodeGenerator : IASTVisitor {
 		return -1;
 	}
 
+	public Int32 Visit(ForNode node) {
+		// For loop generates (using NEXT opcode for performance):
+		//   [evaluate iterable into listReg]
+		//   indexReg = -1  (NEXT increments before checking)
+		// loopStart:
+		//   NEXT indexReg, listReg  (indexReg++; if indexReg >= len(listReg) skip next)
+		//   JUMP afterLoop          (skipped unless we've reached the end)
+		//   varReg = listReg[indexReg]
+		//   [body statements]
+		//   JUMP loopStart
+		// afterLoop:
+
+		Int32 loopStart = _emitter.CreateLabel();
+		Int32 afterLoop = _emitter.CreateLabel();
+
+		// Push labels for break and continue statements
+		_loopExitLabels.Add(afterLoop);
+		_loopContinueLabels.Add(loopStart);
+
+		// Evaluate iterable expression
+		Int32 listReg = node.Iterable.Accept(this);
+
+		// Allocate hidden index register (starts at -1; NEXT will increment to 0)
+		Int32 indexReg = AllocReg();
+		_emitter.EmitAB(Opcode.LOAD_rA_iBC, indexReg, -1, "for loop index = -1");
+
+		// Get or create register for loop variable
+		Int32 varReg;
+		if (_variableRegs.TryGetValue(node.Variable, out varReg)) {
+			// Variable already exists
+		} else {
+			varReg = AllocReg();
+			_variableRegs[node.Variable] = varReg;
+			Int32 nameIdx = _emitter.AddConstant(make_string(node.Variable));
+			_emitter.EmitAB(Opcode.NAME_rA_kBC, varReg, nameIdx, $"use r{varReg} for {node.Variable}");
+		}
+
+		// Place loopStart label
+		_emitter.PlaceLabel(loopStart);
+
+		// NEXT: increment index, skip next if done
+		_emitter.EmitABC(Opcode.NEXT_rA_rB, indexReg, listReg, 0, "index++; skip next if done");
+		_emitter.EmitJump(Opcode.JUMP_iABC, afterLoop, "exit loop");
+
+		// Get current element: varReg = listReg[indexReg]
+		_emitter.EmitABC(Opcode.INDEX_rA_rB_rC, varReg, listReg, indexReg, $"{node.Variable} = list[index]");
+
+		// Compile body statements
+		CompileBody(node.Body);
+
+		// Jump back to loopStart
+		_emitter.EmitJump(Opcode.JUMP_iABC, loopStart, "loop back");
+
+		// Place afterLoop label
+		_emitter.PlaceLabel(afterLoop);
+
+		// Pop labels
+		_loopExitLabels.RemoveAt(_loopExitLabels.Count - 1);
+		_loopContinueLabels.RemoveAt(_loopContinueLabels.Count - 1);
+
+		// Free temporary registers (but keep variable register)
+		FreeReg(indexReg);
+		FreeReg(listReg);
+
+		// For loops don't produce a value
+		return -1;
+	}
+
 	public Int32 Visit(BreakNode node) {
 		// Break jumps to the innermost loop's exit label
 		if (_loopExitLabels.Count == 0) {
@@ -597,6 +669,19 @@ public class CodeGenerator : IASTVisitor {
 		} else {
 			Int32 exitLabel = _loopExitLabels[_loopExitLabels.Count - 1];
 			_emitter.EmitJump(Opcode.JUMP_iABC, exitLabel, "break");
+		}
+		return -1;
+	}
+
+	public Int32 Visit(ContinueNode node) {
+		// Continue jumps to the innermost loop's continue label (loop start)
+		if (_loopContinueLabels.Count == 0) {
+			// Error: continue outside of loop
+			// For now, just emit a NOOP; could report error
+			_emitter.Emit(Opcode.NOOP, "continue outside loop (error)");
+		} else {
+			Int32 continueLabel = _loopContinueLabels[_loopContinueLabels.Count - 1];
+			_emitter.EmitJump(Opcode.JUMP_iABC, continueLabel, "continue");
 		}
 		return -1;
 	}

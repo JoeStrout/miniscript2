@@ -417,6 +417,33 @@ Int32 IfNodeStorage::Accept(IASTVisitor& visitor) {
 }
 
 
+ForNodeStorage::ForNodeStorage(String variable, ASTNode iterable, List<ASTNode> body) {
+	Variable = variable;
+	Iterable = iterable;
+	Body = body;
+}
+String ForNodeStorage::ToStr() {
+	String result = "for " + Variable + " in " + Iterable.ToStr() + "\n";
+	for (Int32 i = 0; i < Body.Count(); i++) {
+		result = result + "  " + Body[i].ToStr() + "\n";
+	}
+	result = result + "end for";
+	return result;
+}
+ASTNode ForNodeStorage::Simplify() {
+	ASTNode simplifiedIterable = Iterable.Simplify();
+	List<ASTNode> simplifiedBody =  List<ASTNode>::New();
+	for (Int32 i = 0; i < Body.Count(); i++) {
+		simplifiedBody.Add(Body[i].Simplify());
+	}
+	return  ForNode::New(Variable, simplifiedIterable, simplifiedBody);
+}
+Int32 ForNodeStorage::Accept(IASTVisitor& visitor) {
+	ForNode _this(std::static_pointer_cast<ForNodeStorage>(shared_from_this()));
+	return visitor.Visit(_this);
+}
+
+
 BreakNodeStorage::BreakNodeStorage() {
 }
 String BreakNodeStorage::ToStr() {
@@ -428,6 +455,21 @@ ASTNode BreakNodeStorage::Simplify() {
 }
 Int32 BreakNodeStorage::Accept(IASTVisitor& visitor) {
 	BreakNode _this(std::static_pointer_cast<BreakNodeStorage>(shared_from_this()));
+	return visitor.Visit(_this);
+}
+
+
+ContinueNodeStorage::ContinueNodeStorage() {
+}
+String ContinueNodeStorage::ToStr() {
+	return "continue";
+}
+ASTNode ContinueNodeStorage::Simplify() {
+	ContinueNode _this(std::static_pointer_cast<ContinueNodeStorage>(shared_from_this()));
+	return _this;
+}
+Int32 ContinueNodeStorage::Accept(IASTVisitor& visitor) {
+	ContinueNode _this(std::static_pointer_cast<ContinueNodeStorage>(shared_from_this()));
 	return visitor.Visit(_this);
 }
 

@@ -551,7 +551,7 @@ Value VMStorage::Run(UInt32 maxCycles) {
 			}
 
 			VM_CASE(INDEX_rA_rB_rC) {
-				// R[A] = R[B][R[C]] (supports both lists and maps)
+				// R[A] = R[B][R[C]] (supports lists, maps, and strings)
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				Byte c = BytecodeUtil::Cu(instruction);
@@ -566,6 +566,9 @@ Value VMStorage::Run(UInt32 maxCycles) {
 						RaiseRuntimeError(StringUtils::Format("Key Not Found: '{0}' not found in map", indexVal));
 					}
 					localStack[a] = result;
+				} else if (is_string(container)) {
+					Int32 idx = as_int(indexVal);
+					localStack[a] = string_substring(container, idx, 1);
 				} else {
 					RaiseRuntimeError(StringUtils::Format("Can't index into {0}", container));
 					localStack[a] = make_null();
@@ -957,6 +960,31 @@ Value VMStorage::Run(UInt32 maxCycles) {
 				VM_NEXT();
 			}
 
+			VM_CASE(NEXT_rA_rB) {
+				// R[A] += 1; if R[A] < len(R[B]) then skip next instruction
+				// Used for for-loops: NEXT followed by JUMP to end. Skip the JUMP
+				// while there are more elements; execute JUMP when done.
+				Byte a = BytecodeUtil::Au(instruction);
+				Byte b = BytecodeUtil::Bu(instruction);
+				Int32 index = as_int(localStack[a]) + 1;
+				localStack[a] = make_int(index);
+				container = localStack[b];
+				Int32 len;
+				if (is_list(container)) {
+					len = list_count(container);
+				} else if (is_map(container)) {
+					len = map_count(container);
+				} else if (is_string(container)) {
+					len = string_length(container);
+				} else {
+					len = 0; // Empty/null collection
+				}
+				if (index < len) {
+					pc++; // Skip next instruction (the JUMP to end of loop)
+				}
+				VM_NEXT();
+			}
+
 			VM_CASE(ARGBLK_iABC) {
 				// Begin argument block with specified count
 				// ABC: number of ARG instructions that follow
@@ -1237,6 +1265,7 @@ Value VMStorage::LookupVariable(Value varName) {
 const Value VMStorage::FuncNamePrint = make_string("print");
 const Value VMStorage::FuncNameInput = make_string("input");
 const Value VMStorage::FuncNameVal = make_string("val");
+const Value VMStorage::FuncNameLen = make_string("len");
 const Value VMStorage::FuncNameRemove = make_string("remove");
 void VMStorage::DoIntrinsic(Value funcName, Int32 baseReg) {
 	// Run the named intrinsic, with its parameters and return value

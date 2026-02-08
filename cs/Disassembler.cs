@@ -70,6 +70,7 @@ public static class Disassembler {
 			case Opcode.IFEQ_rA_iBC:   return "IFEQ";
 			case Opcode.IFNE_rA_rB:
 			case Opcode.IFNE_rA_iBC:   return "IFNE";
+			case Opcode.NEXT_rA_rB:    return "NEXT";
 			case Opcode.ARGBLK_iABC:   return "ARGBLK";
 			case Opcode.ARG_rA:
 			case Opcode.ARG_iABC:      return "ARG";
@@ -119,6 +120,7 @@ public static class Disassembler {
 			case Opcode.IFLE_rA_rB:
 			case Opcode.IFEQ_rA_rB:
 			case Opcode.IFNE_rA_rB:
+			case Opcode.NEXT_rA_rB:
 				return StringUtils.Format("{0} r{1}, r{2}",
 					mnemonic,
 					(Int32)BytecodeUtil.Au(instruction),

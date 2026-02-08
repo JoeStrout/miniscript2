@@ -97,6 +97,10 @@ Token Lexer::NextToken() {
 			tok = Token(TokenType::NOT, text, startLine, startColumn);
 		} else if (text == "while") {
 			tok = Token(TokenType::WHILE, text, startLine, startColumn);
+		} else if (text == "for") {
+			tok = Token(TokenType::FOR, text, startLine, startColumn);
+		} else if (text == "in") {
+			tok = Token(TokenType::IN, text, startLine, startColumn);
 		} else if (text == "if") {
 			tok = Token(TokenType::IF, text, startLine, startColumn);
 		} else if (text == "then") {
@@ -105,6 +109,8 @@ Token Lexer::NextToken() {
 			tok = Token(TokenType::ELSE, text, startLine, startColumn);
 		} else if (text == "break") {
 			tok = Token(TokenType::BREAK, text, startLine, startColumn);
+		} else if (text == "continue") {
+			tok = Token(TokenType::CONTINUE, text, startLine, startColumn);
 		} else if (text == "end") {
 			tok = Token(TokenType::END, text, startLine, startColumn);
 		} else {

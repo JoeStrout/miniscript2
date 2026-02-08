@@ -130,6 +130,7 @@ String BytecodeUtil::ToMnemonic(Opcode opcode) {
 		case Opcode::IFEQ_rA_iBC:    return "IFEQ_rA_iBC";
 		case Opcode::IFNE_rA_rB:     return "IFLT_rA_rB";
 		case Opcode::IFNE_rA_iBC:    return "IFLT_rA_iBC";
+		case Opcode::NEXT_rA_rB:     return "NEXT_rA_rB";
 		case Opcode::ARGBLK_iABC:  return "ARGBLK_iABC";
 		case Opcode::ARG_rA:         return "ARG_rA";
 		case Opcode::ARG_iABC:       return "ARG_iABC";
@@ -200,6 +201,7 @@ Opcode BytecodeUtil::FromMnemonic(String s) {
 	if (s == "IFEQ_rA_iBC")     return Opcode::IFEQ_rA_iBC;
 	if (s == "IFNE_rA_rB")      return Opcode::IFNE_rA_rB;
 	if (s == "IFNE_rA_iBC")     return Opcode::IFNE_rA_iBC;
+	if (s == "NEXT_rA_rB")      return Opcode::NEXT_rA_rB;
 	if (s == "ARGBLK_iABC")     return Opcode::ARGBLK_iABC;
 	if (s == "ARG_rA")          return Opcode::ARG_rA;
 	if (s == "ARG_iABC")        return Opcode::ARG_iABC;

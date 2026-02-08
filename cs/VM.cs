@@ -619,7 +619,7 @@ public class VM {
 				}
 
 				case Opcode.INDEX_rA_rB_rC: {
-					// R[A] = R[B][R[C]] (supports both lists and maps)
+					// R[A] = R[B][R[C]] (supports lists, maps, and strings)
 					Byte a = BytecodeUtil.Au(instruction);
 					Byte b = BytecodeUtil.Bu(instruction);
 					Byte c = BytecodeUtil.Cu(instruction);
@@ -634,6 +634,9 @@ public class VM {
 							RaiseRuntimeError(StringUtils.Format("Key Not Found: '{0}' not found in map", indexVal));
 						}
 						localStack[a] = result;
+					} else if (is_string(container)) {
+						Int32 idx = as_int(indexVal);
+						localStack[a] = string_substring(container, idx, 1);
 					} else {
 						RaiseRuntimeError(StringUtils.Format("Can't index into {0}", container));
 						localStack[a] = make_null();
@@ -1025,6 +1028,31 @@ public class VM {
 					break;
 				}
 
+				case Opcode.NEXT_rA_rB: {
+					// R[A] += 1; if R[A] < len(R[B]) then skip next instruction
+					// Used for for-loops: NEXT followed by JUMP to end. Skip the JUMP
+					// while there are more elements; execute JUMP when done.
+					Byte a = BytecodeUtil.Au(instruction);
+					Byte b = BytecodeUtil.Bu(instruction);
+					Int32 index = as_int(localStack[a]) + 1;
+					localStack[a] = make_int(index);
+					container = localStack[b];
+					Int32 len;
+					if (is_list(container)) {
+						len = list_count(container);
+					} else if (is_map(container)) {
+						len = map_count(container);
+					} else if (is_string(container)) {
+						len = string_length(container);
+					} else {
+						len = 0; // Empty/null collection
+					}
+					if (index < len) {
+						pc++; // Skip next instruction (the JUMP to end of loop)
+					}
+					break;
+				}
+
 				case Opcode.ARGBLK_iABC: {
 					// Begin argument block with specified count
 					// ABC: number of ARG instructions that follow
@@ -1300,6 +1328,7 @@ public class VM {
 	private static readonly Value FuncNamePrint = make_string("print");
 	private static readonly Value FuncNameInput = make_string("input");
 	private static readonly Value FuncNameVal = make_string("val");
+	private static readonly Value FuncNameLen = make_string("len");
 	private static readonly Value FuncNameRemove = make_string("remove");
 	
 	private void DoIntrinsic(Value funcName, Int32 baseReg) {

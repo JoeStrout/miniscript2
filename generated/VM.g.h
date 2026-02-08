@@ -88,8 +88,12 @@ struct WhileNode;
 class WhileNodeStorage;
 struct IfNode;
 class IfNodeStorage;
+struct ForNode;
+class ForNodeStorage;
 struct BreakNode;
 class BreakNodeStorage;
+struct ContinueNode;
+class ContinueNodeStorage;
 
 // DECLARATIONS
 
@@ -111,6 +115,8 @@ struct CallInfo {
 
 	public: Value GetLocalVarMap(List<Value> registers, List<Value> names, int baseIdx, int regCount);
 }; // end of struct CallInfo
+
+
 
 
 
@@ -249,6 +255,7 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	private: static const Value FuncNamePrint;
 	private: static const Value FuncNameInput;
 	private: static const Value FuncNameVal;
+	private: static const Value FuncNameLen;
 	private: static const Value FuncNameRemove;
 	
 	
@@ -355,6 +362,7 @@ struct VM {
 	private: Value FuncNamePrint();
 	private: Value FuncNameInput();
 	private: Value FuncNameVal();
+	private: Value FuncNameLen();
 	private: Value FuncNameRemove();
 	
 	
@@ -392,6 +400,7 @@ inline void VM::set_RuntimeError(String _v) { get()->RuntimeError = _v; }
 inline Value VM::FuncNamePrint() { return get()->FuncNamePrint; }
 inline Value VM::FuncNameInput() { return get()->FuncNameInput; }
 inline Value VM::FuncNameVal() { return get()->FuncNameVal; }
+inline Value VM::FuncNameLen() { return get()->FuncNameLen; }
 inline Value VM::FuncNameRemove() { return get()->FuncNameRemove; }
 
 } // end of namespace MiniScript

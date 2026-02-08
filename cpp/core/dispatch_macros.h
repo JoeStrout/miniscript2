@@ -82,6 +82,7 @@
 	X(IFEQ_rA_iBC) \
 	X(IFNE_rA_rB) \
 	X(IFNE_rA_iBC) \
+	X(NEXT_rA_rB) \
 	X(ARGBLK_iABC) \
 	X(ARG_rA) \
 	X(ARG_iABC) \

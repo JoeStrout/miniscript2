@@ -112,6 +112,10 @@ Token Lexer::NextToken() {
 			tok = Token(TokenType::BREAK, text, startLine, startColumn);
 		} else if (text == "continue") {
 			tok = Token(TokenType::CONTINUE, text, startLine, startColumn);
+		} else if (text == "function") {
+			tok = Token(TokenType::FUNCTION, text, startLine, startColumn);
+		} else if (text == "return") {
+			tok = Token(TokenType::RETURN, text, startLine, startColumn);
 		} else if (text == "end") {
 			tok = Token(TokenType::END, text, startLine, startColumn);
 		} else {

@@ -100,6 +100,10 @@ struct BreakNode;
 class BreakNodeStorage;
 struct ContinueNode;
 class ContinueNodeStorage;
+struct FunctionNode;
+class FunctionNodeStorage;
+struct ReturnNode;
+class ReturnNodeStorage;
 
 // DECLARATIONS
 
@@ -235,6 +239,8 @@ class StringUtils {
 	// Convert a Value to its representation (quoted string for strings, plain for others)
 	// This is used when displaying values in source code form.
 }; // end of struct StringUtils
+
+
 
 
 

@@ -96,6 +96,10 @@ struct BreakNode;
 class BreakNodeStorage;
 struct ContinueNode;
 class ContinueNodeStorage;
+struct FunctionNode;
+class FunctionNodeStorage;
+struct ReturnNode;
+class ReturnNodeStorage;
 
 // DECLARATIONS
 
@@ -169,8 +173,11 @@ struct LabelRef {
 
 
 
+
+
 // Abstract base class for emitting code (bytecode or assembly text)
 struct CodeEmitterBase {
+	friend class CodeEmitterBaseStorage;
 	protected: std::shared_ptr<CodeEmitterBaseStorage> storage;
   public:
 	CodeEmitterBase(std::shared_ptr<CodeEmitterBaseStorage> stor) : storage(stor) {}
@@ -309,6 +316,7 @@ class AssemblyEmitterStorage : public CodeEmitterBaseStorage {
 
 // Emits directly to bytecode (production use)
 struct BytecodeEmitter : public CodeEmitterBase {
+	friend class BytecodeEmitterStorage;
 	BytecodeEmitter(std::shared_ptr<BytecodeEmitterStorage> stor);
 	BytecodeEmitter() : CodeEmitterBase() {}
 	BytecodeEmitter(std::nullptr_t) : CodeEmitterBase(nullptr) {}
@@ -359,6 +367,7 @@ struct BytecodeEmitter : public CodeEmitterBase {
 
 // Emits assembly text (for debugging and testing)
 struct AssemblyEmitter : public CodeEmitterBase {
+	friend class AssemblyEmitterStorage;
 	AssemblyEmitter(std::shared_ptr<AssemblyEmitterStorage> stor);
 	AssemblyEmitter() : CodeEmitterBase() {}
 	AssemblyEmitter(std::nullptr_t) : CodeEmitterBase(nullptr) {}

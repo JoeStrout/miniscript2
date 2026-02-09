@@ -94,6 +94,10 @@ struct BreakNode;
 class BreakNodeStorage;
 struct ContinueNode;
 class ContinueNodeStorage;
+struct FunctionNode;
+class FunctionNodeStorage;
+struct ReturnNode;
+class ReturnNodeStorage;
 
 // DECLARATIONS
 
@@ -177,7 +181,11 @@ class IASTVisitor {
 	virtual Int32 Visit(ForNode node) = 0;
 	virtual Int32 Visit(BreakNode node) = 0;
 	virtual Int32 Visit(ContinueNode node) = 0;
+	virtual Int32 Visit(FunctionNode node) = 0;
+	virtual Int32 Visit(ReturnNode node) = 0;
 }; // end of interface IASTVisitor
+
+
 
 
 
@@ -205,6 +213,7 @@ class IASTVisitor {
 // Base class for all AST nodes.
 // When transpiled to C++, these become shared_ptr-wrapped classes.
 struct ASTNode {
+	friend class ASTNodeStorage;
 	protected: std::shared_ptr<ASTNodeStorage> storage;
   public:
 	ASTNode(std::shared_ptr<ASTNodeStorage> stor) : storage(stor) {}
@@ -491,9 +500,37 @@ class ContinueNodeStorage : public ASTNodeStorage {
 	public: Int32 Accept(IASTVisitor& visitor);
 }; // end of class ContinueNodeStorage
 
+class FunctionNodeStorage : public ASTNodeStorage {
+	friend struct FunctionNode;
+	public: List<String> ParamNames; // parameter names
+	public: List<ASTNode> Body; // statements in the function body
+
+	public: FunctionNodeStorage(List<String> paramNames, List<ASTNode> body);
+
+	public: String ToStr();
+
+	public: ASTNode Simplify();
+
+	public: Int32 Accept(IASTVisitor& visitor);
+}; // end of class FunctionNodeStorage
+
+class ReturnNodeStorage : public ASTNodeStorage {
+	friend struct ReturnNode;
+	public: ASTNode Value; // expression to return (null for bare return)
+
+	public: ReturnNodeStorage(ASTNode value);
+
+	public: String ToStr();
+
+	public: ASTNode Simplify();
+
+	public: Int32 Accept(IASTVisitor& visitor);
+}; // end of class ReturnNodeStorage
+
 
 // Number literal node (e.g., 42, 3.14)
 struct NumberNode : public ASTNode {
+	friend class NumberNodeStorage;
 	NumberNode(std::shared_ptr<NumberNodeStorage> stor);
 	NumberNode() : ASTNode() {}
 	NumberNode(std::nullptr_t) : ASTNode(nullptr) {}
@@ -516,6 +553,7 @@ struct NumberNode : public ASTNode {
 
 // String literal node (e.g., "hello")
 struct StringNode : public ASTNode {
+	friend class StringNodeStorage;
 	StringNode(std::shared_ptr<StringNodeStorage> stor);
 	StringNode() : ASTNode() {}
 	StringNode(std::nullptr_t) : ASTNode(nullptr) {}
@@ -538,6 +576,7 @@ struct StringNode : public ASTNode {
 
 // Identifier node (e.g., variable name like "x" or "foo")
 struct IdentifierNode : public ASTNode {
+	friend class IdentifierNodeStorage;
 	IdentifierNode(std::shared_ptr<IdentifierNodeStorage> stor);
 	IdentifierNode() : ASTNode() {}
 	IdentifierNode(std::nullptr_t) : ASTNode(nullptr) {}
@@ -560,6 +599,7 @@ struct IdentifierNode : public ASTNode {
 
 // Assignment node (e.g., x = 42, foo = bar + 1)
 struct AssignmentNode : public ASTNode {
+	friend class AssignmentNodeStorage;
 	AssignmentNode(std::shared_ptr<AssignmentNodeStorage> stor);
 	AssignmentNode() : ASTNode() {}
 	AssignmentNode(std::nullptr_t) : ASTNode(nullptr) {}
@@ -584,6 +624,7 @@ struct AssignmentNode : public ASTNode {
 
 // Unary operator node (e.g., -x, not flag)
 struct UnaryOpNode : public ASTNode {
+	friend class UnaryOpNodeStorage;
 	UnaryOpNode(std::shared_ptr<UnaryOpNodeStorage> stor);
 	UnaryOpNode() : ASTNode() {}
 	UnaryOpNode(std::nullptr_t) : ASTNode(nullptr) {}
@@ -608,6 +649,7 @@ struct UnaryOpNode : public ASTNode {
 
 // Binary operator node (e.g., x + y, a * b)
 struct BinaryOpNode : public ASTNode {
+	friend class BinaryOpNodeStorage;
 	BinaryOpNode(std::shared_ptr<BinaryOpNodeStorage> stor);
 	BinaryOpNode() : ASTNode() {}
 	BinaryOpNode(std::nullptr_t) : ASTNode(nullptr) {}
@@ -634,6 +676,7 @@ struct BinaryOpNode : public ASTNode {
 
 // Function call node (e.g., sqrt(x), max(a, b))
 struct CallNode : public ASTNode {
+	friend class CallNodeStorage;
 	CallNode(std::shared_ptr<CallNodeStorage> stor);
 	CallNode() : ASTNode() {}
 	CallNode(std::nullptr_t) : ASTNode(nullptr) {}
@@ -663,6 +706,7 @@ struct CallNode : public ASTNode {
 // Grouping node (e.g., parenthesized expression like "(x + y)")
 // Useful for preserving structure for pretty-printing or code generation.
 struct GroupNode : public ASTNode {
+	friend class GroupNodeStorage;
 	GroupNode(std::shared_ptr<GroupNodeStorage> stor);
 	GroupNode() : ASTNode() {}
 	GroupNode(std::nullptr_t) : ASTNode(nullptr) {}
@@ -685,6 +729,7 @@ struct GroupNode : public ASTNode {
 
 // List literal node (e.g., [1, 2, 3])
 struct ListNode : public ASTNode {
+	friend class ListNodeStorage;
 	ListNode(std::shared_ptr<ListNodeStorage> stor);
 	ListNode() : ASTNode() {}
 	ListNode(std::nullptr_t) : ASTNode(nullptr) {}
@@ -711,6 +756,7 @@ struct ListNode : public ASTNode {
 
 // Map literal node (e.g., {"a": 1, "b": 2})
 struct MapNode : public ASTNode {
+	friend class MapNodeStorage;
 	MapNode(std::shared_ptr<MapNodeStorage> stor);
 	MapNode() : ASTNode() {}
 	MapNode(std::nullptr_t) : ASTNode(nullptr) {}
@@ -739,6 +785,7 @@ struct MapNode : public ASTNode {
 
 // Index access node (e.g., list[0], map["key"])
 struct IndexNode : public ASTNode {
+	friend class IndexNodeStorage;
 	IndexNode(std::shared_ptr<IndexNodeStorage> stor);
 	IndexNode() : ASTNode() {}
 	IndexNode(std::nullptr_t) : ASTNode(nullptr) {}
@@ -763,6 +810,7 @@ struct IndexNode : public ASTNode {
 
 // Member access node (e.g., obj.field)
 struct MemberNode : public ASTNode {
+	friend class MemberNodeStorage;
 	MemberNode(std::shared_ptr<MemberNodeStorage> stor);
 	MemberNode() : ASTNode() {}
 	MemberNode(std::nullptr_t) : ASTNode(nullptr) {}
@@ -788,6 +836,7 @@ struct MemberNode : public ASTNode {
 // Method call node (e.g., obj.method(x, y))
 // This is distinct from CallNode which handles simple function calls.
 struct MethodCallNode : public ASTNode {
+	friend class MethodCallNodeStorage;
 	MethodCallNode(std::shared_ptr<MethodCallNodeStorage> stor);
 	MethodCallNode() : ASTNode() {}
 	MethodCallNode(std::nullptr_t) : ASTNode(nullptr) {}
@@ -814,6 +863,7 @@ struct MethodCallNode : public ASTNode {
 
 // While loop node (e.g., while x < 10 ... end while)
 struct WhileNode : public ASTNode {
+	friend class WhileNodeStorage;
 	WhileNode(std::shared_ptr<WhileNodeStorage> stor);
 	WhileNode() : ASTNode() {}
 	WhileNode(std::nullptr_t) : ASTNode(nullptr) {}
@@ -840,6 +890,7 @@ struct WhileNode : public ASTNode {
 // Handles both block and single-line forms; else-if chains are represented
 // by an IfNode in the ElseBody.
 struct IfNode : public ASTNode {
+	friend class IfNodeStorage;
 	IfNode(std::shared_ptr<IfNodeStorage> stor);
 	IfNode() : ASTNode() {}
 	IfNode(std::nullptr_t) : ASTNode(nullptr) {}
@@ -866,6 +917,7 @@ struct IfNode : public ASTNode {
 
 // For loop node (e.g., for i in [1,2,3] ... end for)
 struct ForNode : public ASTNode {
+	friend class ForNodeStorage;
 	ForNode(std::shared_ptr<ForNodeStorage> stor);
 	ForNode() : ASTNode() {}
 	ForNode(std::nullptr_t) : ASTNode(nullptr) {}
@@ -892,6 +944,7 @@ struct ForNode : public ASTNode {
 
 // Break statement node - exits the innermost loop
 struct BreakNode : public ASTNode {
+	friend class BreakNodeStorage;
 	BreakNode(std::shared_ptr<BreakNodeStorage> stor);
 	BreakNode() : ASTNode() {}
 	BreakNode(std::nullptr_t) : ASTNode(nullptr) {}
@@ -911,6 +964,7 @@ struct BreakNode : public ASTNode {
 
 // Continue statement node - skips to next iteration of innermost loop
 struct ContinueNode : public ASTNode {
+	friend class ContinueNodeStorage;
 	ContinueNode(std::shared_ptr<ContinueNodeStorage> stor);
 	ContinueNode() : ASTNode() {}
 	ContinueNode(std::nullptr_t) : ASTNode(nullptr) {}
@@ -926,6 +980,54 @@ struct ContinueNode : public ASTNode {
 
 	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct ContinueNode
+
+
+// Function definition expression (e.g., function(x, y) ... end function)
+struct FunctionNode : public ASTNode {
+	friend class FunctionNodeStorage;
+	FunctionNode(std::shared_ptr<FunctionNodeStorage> stor);
+	FunctionNode() : ASTNode() {}
+	FunctionNode(std::nullptr_t) : ASTNode(nullptr) {}
+	private: FunctionNodeStorage* get() const;
+
+	public: List<String> ParamNames(); // parameter names
+	public: void set_ParamNames(List<String> _v); // parameter names
+	public: List<ASTNode> Body(); // statements in the function body
+	public: void set_Body(List<ASTNode> _v); // statements in the function body
+
+	public: static FunctionNode New(List<String> paramNames, List<ASTNode> body) {
+		return FunctionNode(std::make_shared<FunctionNodeStorage>(paramNames, body));
+	}
+
+	public: String ToStr() { return get()->ToStr(); }
+
+	public: ASTNode Simplify() { return get()->Simplify(); }
+
+	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
+}; // end of struct FunctionNode
+
+
+// Return statement node (e.g., return x + 1)
+struct ReturnNode : public ASTNode {
+	friend class ReturnNodeStorage;
+	ReturnNode(std::shared_ptr<ReturnNodeStorage> stor);
+	ReturnNode() : ASTNode() {}
+	ReturnNode(std::nullptr_t) : ASTNode(nullptr) {}
+	private: ReturnNodeStorage* get() const;
+
+	public: ASTNode Value(); // expression to return (null for bare return)
+	public: void set_Value(ASTNode _v); // expression to return (null for bare return)
+
+	public: static ReturnNode New(ASTNode value) {
+		return ReturnNode(std::make_shared<ReturnNodeStorage>(value));
+	}
+
+	public: String ToStr() { return get()->ToStr(); }
+
+	public: ASTNode Simplify() { return get()->Simplify(); }
+
+	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
+}; // end of struct ReturnNode
 
 
 // INLINE METHODS
@@ -1050,5 +1152,17 @@ inline BreakNodeStorage* BreakNode::get() const { return static_cast<BreakNodeSt
 
 inline ContinueNode::ContinueNode(std::shared_ptr<ContinueNodeStorage> stor) : ASTNode(stor) {}
 inline ContinueNodeStorage* ContinueNode::get() const { return static_cast<ContinueNodeStorage*>(storage.get()); }
+
+inline FunctionNode::FunctionNode(std::shared_ptr<FunctionNodeStorage> stor) : ASTNode(stor) {}
+inline FunctionNodeStorage* FunctionNode::get() const { return static_cast<FunctionNodeStorage*>(storage.get()); }
+inline List<String> FunctionNode::ParamNames() { return get()->ParamNames; } // parameter names
+inline void FunctionNode::set_ParamNames(List<String> _v) { get()->ParamNames = _v; } // parameter names
+inline List<ASTNode> FunctionNode::Body() { return get()->Body; } // statements in the function body
+inline void FunctionNode::set_Body(List<ASTNode> _v) { get()->Body = _v; } // statements in the function body
+
+inline ReturnNode::ReturnNode(std::shared_ptr<ReturnNodeStorage> stor) : ASTNode(stor) {}
+inline ReturnNodeStorage* ReturnNode::get() const { return static_cast<ReturnNodeStorage*>(storage.get()); }
+inline ASTNode ReturnNode::Value() { return get()->Value; } // expression to return (null for bare return)
+inline void ReturnNode::set_Value(ASTNode _v) { get()->Value = _v; } // expression to return (null for bare return)
 
 } // end of namespace MiniScript

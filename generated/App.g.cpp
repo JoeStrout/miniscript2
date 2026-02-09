@@ -124,7 +124,7 @@ List<FuncDef> App::CompileSource(String source, ErrorPool errors, Boolean verbos
 	BytecodeEmitter emitter =  BytecodeEmitter::New();
 	CodeGenerator generator =  CodeGenerator::New(emitter);
 	generator.set_Errors(errors);
-	FuncDef mainFunc = generator.CompileProgram(statements, "@main");
+	generator.CompileProgram(statements, "@main");
 
 	if (generator.Errors().HasError()) return nullptr;
 
@@ -140,9 +140,7 @@ List<FuncDef> App::CompileSource(String source, ErrorPool errors, Boolean verbos
 		IOHelper::Print(asmEmitter.GetAssembly());
 	}
 
-	List<FuncDef> functions =  List<FuncDef>::New();
-	functions.Add(mainFunc);
-	return functions;
+	return generator.GetFunctions();
 }
 List<FuncDef> App::CompileSourceFile(String filePath, ErrorPool errors) {
 	if (debugMode) IOHelper::Print(StringUtils::Format("Reading source file: {0}", filePath));

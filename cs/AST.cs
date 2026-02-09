@@ -51,6 +51,8 @@ public interface IASTVisitor {
 	Int32 Visit(ForNode node);
 	Int32 Visit(BreakNode node);
 	Int32 Visit(ContinueNode node);
+	Int32 Visit(FunctionNode node);
+	Int32 Visit(ReturnNode node);
 }
 
 // Base class for all AST nodes.
@@ -623,6 +625,66 @@ public class ContinueNode : ASTNode {
 	}
 
 	public override ASTNode Simplify() {
+		return this;
+	}
+
+	public override Int32 Accept(IASTVisitor visitor) {
+		return visitor.Visit(this);
+	}
+}
+
+// Function definition expression (e.g., function(x, y) ... end function)
+public class FunctionNode : ASTNode {
+	public List<String> ParamNames;     // parameter names
+	public List<ASTNode> Body;          // statements in the function body
+
+	public FunctionNode(List<String> paramNames, List<ASTNode> body) {
+		ParamNames = paramNames;
+		Body = body;
+	}
+
+	public override String ToStr() {
+		String result = "function(";
+		for (Int32 i = 0; i < ParamNames.Count; i++) {
+			if (i > 0) result = result + ", ";
+			result = result + ParamNames[i];
+		}
+		result = result + ")\n";
+		for (Int32 i = 0; i < Body.Count; i++) {
+			result = result + "  " + Body[i].ToStr() + "\n";
+		}
+		result = result + "end function";
+		return result;
+	}
+
+	public override ASTNode Simplify() {
+		List<ASTNode> simplifiedBody = new List<ASTNode>();
+		for (Int32 i = 0; i < Body.Count; i++) {
+			simplifiedBody.Add(Body[i].Simplify());
+		}
+		return new FunctionNode(ParamNames, simplifiedBody);
+	}
+
+	public override Int32 Accept(IASTVisitor visitor) {
+		return visitor.Visit(this);
+	}
+}
+
+// Return statement node (e.g., return x + 1)
+public class ReturnNode : ASTNode {
+	public ASTNode Value;   // expression to return (null for bare return)
+
+	public ReturnNode(ASTNode value) {
+		Value = value;
+	}
+
+	public override String ToStr() {
+		if (Value != null) return "return " + Value.ToStr();
+		return "return";
+	}
+
+	public override ASTNode Simplify() {
+		if (Value != null) return new ReturnNode(Value.Simplify());
 		return this;
 	}
 

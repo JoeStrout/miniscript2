@@ -112,12 +112,18 @@ Boolean ParserStorage::CanStartExpression(TokenType type) {
 		|| type == TokenType::LBRACE
 		|| type == TokenType::MINUS
 		|| type == TokenType::ADDRESS_OF
-		|| type == TokenType::NOT;
+		|| type == TokenType::NOT
+		|| type == TokenType::FUNCTION;
 }
 ASTNode ParserStorage::ParseExpression(Precedence minPrecedence) {
 	Parser _this(std::static_pointer_cast<ParserStorage>(shared_from_this()));
 	Token token = _current;
 	Advance();
+
+	// Special case: function expression (spans multiple lines)
+	if (token.Type == TokenType::FUNCTION) {
+		return ParseFunctionExpression();
+	}
 
 	// Look up the prefix parselet for this token
 	PrefixParselet prefix = nullptr;
@@ -167,6 +173,18 @@ ASTNode ParserStorage::ParseSimpleStatement() {
 	if (_current.Type == TokenType::CONTINUE) {
 		Advance();  // consume CONTINUE
 		return  ContinueNode::New();
+	}
+
+	// Check for return statement
+	if (_current.Type == TokenType::RETURN) {
+		Advance();  // consume RETURN
+		// Parse optional return value (if something that can start an expression follows)
+		ASTNode returnValue = nullptr;
+		if (_current.Type != TokenType::EOL && _current.Type != TokenType::END_OF_INPUT
+			&& _current.Type != TokenType::ELSE && CanStartExpression(_current.Type)) {
+			returnValue = ParseExpression();
+		}
+		return  ReturnNode::New(returnValue);
 	}
 
 	// Grammar for relevant rules:
@@ -381,6 +399,33 @@ ASTNode ParserStorage::ParseForStatement() {
 
 	return  ForNode::New(varName, iterable, body);
 }
+ASTNode ParserStorage::ParseFunctionExpression() {
+	// Parse parameter list (parentheses optional for no-param functions)
+	List<String> paramNames =  List<String>::New();
+	if (_current.Type == TokenType::LPAREN) {
+		Advance();  // consume '('
+		if (_current.Type != TokenType::RPAREN) {
+			do {
+				Token paramToken = Expect(TokenType::IDENTIFIER, "Expected parameter name");
+				if (paramToken.Type != TokenType::ERROR) {
+					paramNames.Add(paramToken.Text);
+				}
+			} while (Match(TokenType::COMMA));
+		}
+		Expect(TokenType::RPAREN, "Expected ')' after parameters");
+	}
+
+	// Expect EOL after parameter list
+	if (_current.Type != TokenType::EOL && _current.Type != TokenType::END_OF_INPUT) {
+		ReportError(Interp("Expected end of line after function parameters, got: {}", _current.Text));
+	}
+
+	// Parse body until "end function"
+	List<ASTNode> body = ParseBlock(TokenType::END, TokenType::END);
+	RequireEndKeyword(TokenType::FUNCTION, "function");
+
+	return  FunctionNode::New(paramNames, body);
+}
 ASTNode ParserStorage::ParseStatement() {
 	// Skip leading blank lines
 	while (_current.Type == TokenType::EOL) {
@@ -470,6 +515,8 @@ String ParserStorage::TokenDescription(Token tok) {
 	if (tok.Type == TokenType::END) return "Keyword(end)";
 	if (tok.Type == TokenType::BREAK) return "Keyword(break)";
 	if (tok.Type == TokenType::CONTINUE) return "Keyword(continue)";
+	if (tok.Type == TokenType::FUNCTION) return "Keyword(function)";
+	if (tok.Type == TokenType::RETURN) return "Keyword(return)";
 	if (tok.Type == TokenType::AND) return "Keyword(and)";
 	if (tok.Type == TokenType::OR) return "Keyword(or)";
 	if (tok.Type == TokenType::NOT) return "Keyword(not)";

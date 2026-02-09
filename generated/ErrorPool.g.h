@@ -93,6 +93,10 @@ struct BreakNode;
 class BreakNodeStorage;
 struct ContinueNode;
 class ContinueNodeStorage;
+struct FunctionNode;
+class FunctionNodeStorage;
+struct ReturnNode;
+class ReturnNodeStorage;
 
 // DECLARATIONS
 
@@ -121,6 +125,8 @@ struct ErrorPool {
 
 	public: void Clear();
 }; // end of struct ErrorPool
+
+
 
 
 

@@ -63,6 +63,8 @@ public enum TokenType : Int32 {
 	ELSE,
 	BREAK,
 	CONTINUE,
+	FUNCTION,
+	RETURN,
 	END,
 	EOL,
 	COMMENT,

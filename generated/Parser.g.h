@@ -104,8 +104,14 @@ struct BreakNode;
 class BreakNodeStorage;
 struct ContinueNode;
 class ContinueNodeStorage;
+struct FunctionNode;
+class FunctionNodeStorage;
+struct ReturnNode;
+class ReturnNodeStorage;
 
 // DECLARATIONS
+
+
 
 
 
@@ -245,8 +251,8 @@ class ParserStorage : public std::enable_shared_from_this<ParserStorage>, public
 	private: List<ASTNode> ParseElseClause();
 
 	// Parse a statement that can appear in single-line if context
-	// This includes simple statements AND nested if statements
-	// (but not, for example, for/while loops, which are invalid 
+	// This includes simple statements, nested if statements, and return
+	// (but not, for example, for/while loops, which are invalid
 	// in the context of a single-line `if`).
 	private: ASTNode ParseSingleLineStatement();
 
@@ -259,6 +265,11 @@ class ParserStorage : public std::enable_shared_from_this<ParserStorage>, public
 	// Parse a for statement: FOR already consumed
 	// Syntax: for <identifier> in <expression> <EOL> <body> end for
 	private: ASTNode ParseForStatement();
+
+	// Parse a function expression: FUNCTION already consumed
+	// Syntax: function(param1, param2, ...) <body> end function
+	// The parentheses are optional for no-parameter functions.
+	private: ASTNode ParseFunctionExpression();
 
 	// Parse a statement (handles both simple statements and block statements)
 	public: ASTNode ParseStatement();
@@ -291,6 +302,7 @@ class ParserStorage : public std::enable_shared_from_this<ParserStorage>, public
 // Parser: the main parsing engine.
 // Uses a Pratt parser algorithm with parselets to handle operator precedence.
 struct Parser : public IParser {
+	friend class ParserStorage;
 	protected: std::shared_ptr<ParserStorage> storage;
   public:
 	Parser(std::shared_ptr<ParserStorage> stor) : storage(stor) {}
@@ -382,8 +394,8 @@ struct Parser : public IParser {
 	private: List<ASTNode> ParseElseClause() { return get()->ParseElseClause(); }
 
 	// Parse a statement that can appear in single-line if context
-	// This includes simple statements AND nested if statements
-	// (but not, for example, for/while loops, which are invalid 
+	// This includes simple statements, nested if statements, and return
+	// (but not, for example, for/while loops, which are invalid
 	// in the context of a single-line `if`).
 	private: ASTNode ParseSingleLineStatement() { return get()->ParseSingleLineStatement(); }
 
@@ -396,6 +408,11 @@ struct Parser : public IParser {
 	// Parse a for statement: FOR already consumed
 	// Syntax: for <identifier> in <expression> <EOL> <body> end for
 	private: ASTNode ParseForStatement() { return get()->ParseForStatement(); }
+
+	// Parse a function expression: FUNCTION already consumed
+	// Syntax: function(param1, param2, ...) <body> end function
+	// The parentheses are optional for no-parameter functions.
+	private: ASTNode ParseFunctionExpression() { return get()->ParseFunctionExpression(); }
 
 	// Parse a statement (handles both simple statements and block statements)
 	public: ASTNode ParseStatement() { return get()->ParseStatement(); }

@@ -93,6 +93,10 @@ struct BreakNode;
 class BreakNodeStorage;
 struct ContinueNode;
 class ContinueNodeStorage;
+struct FunctionNode;
+class FunctionNodeStorage;
+struct ReturnNode;
+class ReturnNodeStorage;
 
 // DECLARATIONS
 
@@ -152,6 +156,8 @@ struct VMVis {
 
 	public: void UpdateDisplay();
 }; // end of struct VMVis
+
+
 
 
 

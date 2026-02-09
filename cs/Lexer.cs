@@ -177,6 +177,10 @@ public struct Lexer {
 				tok = new Token(TokenType.BREAK, text, startLine, startColumn);
 			} else if (text == "continue") {
 				tok = new Token(TokenType.CONTINUE, text, startLine, startColumn);
+			} else if (text == "function") {
+				tok = new Token(TokenType.FUNCTION, text, startLine, startColumn);
+			} else if (text == "return") {
+				tok = new Token(TokenType.RETURN, text, startLine, startColumn);
 			} else if (text == "end") {
 				tok = new Token(TokenType.END, text, startLine, startColumn);
 			} else {

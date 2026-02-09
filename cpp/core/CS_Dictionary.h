@@ -1,6 +1,9 @@
 // This is our Dictionary template used with transpiled C# --> C++ code.
 // It matches the API and behavior of System.Collections.Generic.Dictionary
 // as well as possible.  Memory management is done via std::shared_ptr and std::vector.
+//
+// Dictionary is a lightweight handle (shared_ptr to DictionaryStorage), so
+// copies share the same underlying data — matching C# reference semantics.
 
 #pragma once
 #include <memory>
@@ -41,96 +44,105 @@ inline int Hash(T value) {
 
 // Hash(const String&) is defined in CS_String.h to avoid circular dependencies
 
-// Dictionary - hash table using std::shared_ptr and std::vector
+// Shared storage for Dictionary — holds all mutable state so that
+// copied Dictionary handles see the same data (C# reference semantics).
 template<typename TKey, typename TValue>
-class Dictionary {
-private:
-	std::shared_ptr<std::vector<int>> buckets;
-	std::shared_ptr<std::vector<DictEntry<TKey, TValue>>> entries;
+class DictionaryStorage {
+	friend class Dictionary<TKey, TValue>;
+  public:
+	DictionaryStorage() : count(0) {}
+  private:
+	std::vector<int> buckets;
+	std::vector<DictEntry<TKey, TValue>> entries;
 	int count;
-
-	void ensureData() {
-		if (!buckets || !entries) {
-			createStorage(4);
-		}
-	}
 
 	void createStorage(int initialCapacity) {
 		if (initialCapacity < 4) initialCapacity = 4;
-		buckets = std::make_shared<std::vector<int>>(initialCapacity, -1);
-		entries = std::make_shared<std::vector<DictEntry<TKey, TValue>>>(initialCapacity);
+		buckets.assign(initialCapacity, -1);
+		entries.resize(initialCapacity);
 		count = 0;
 	}
 
 	void resize() {
-		if (!buckets || !entries) return;
-
-		int oldCapacity = static_cast<int>(buckets->size());
+		int oldCapacity = static_cast<int>(buckets.size());
 		int newCapacity = oldCapacity * 2;
 		if (newCapacity < 4) newCapacity = 4;
 
-		// Create new buckets and entries
-		auto newBuckets = std::make_shared<std::vector<int>>(newCapacity, -1);
-		auto newEntries = std::make_shared<std::vector<DictEntry<TKey, TValue>>>(newCapacity);
+		std::vector<int> newBuckets(newCapacity, -1);
+		std::vector<DictEntry<TKey, TValue>> newEntries(newCapacity);
 
 		// Rehash all active entries by following bucket chains
 		int newIndex = 0;
 		for (int bucket = 0; bucket < oldCapacity; bucket++) {
-			for (int i = (*buckets)[bucket]; i >= 0; i = (*entries)[i].next) {
-				int newBucket = (*entries)[i].hashCode % newCapacity;
-				(*newEntries)[newIndex].key = (*entries)[i].key;
-				(*newEntries)[newIndex].value = (*entries)[i].value;
-				(*newEntries)[newIndex].hashCode = (*entries)[i].hashCode;
-				(*newEntries)[newIndex].next = (*newBuckets)[newBucket];
-				(*newBuckets)[newBucket] = newIndex;
+			for (int i = buckets[bucket]; i >= 0; i = entries[i].next) {
+				int newBucket = entries[i].hashCode % newCapacity;
+				newEntries[newIndex].key = entries[i].key;
+				newEntries[newIndex].value = entries[i].value;
+				newEntries[newIndex].hashCode = entries[i].hashCode;
+				newEntries[newIndex].next = newBuckets[newBucket];
+				newBuckets[newBucket] = newIndex;
 				newIndex++;
 			}
 		}
 
-		// Use new storage
-		buckets = newBuckets;
-		entries = newEntries;
+		buckets = std::move(newBuckets);
+		entries = std::move(newEntries);
 		count = newIndex;
 	}
 
 	int findEntry(const TKey& key) const {
-		if (!buckets || !entries) return -1;
+		if (buckets.empty()) return -1;
 
 		int hashCode = Hash(key);
-		int capacity = static_cast<int>(buckets->size());
+		int capacity = static_cast<int>(buckets.size());
 		int bucket = hashCode % capacity;
 
-		for (int i = (*buckets)[bucket]; i >= 0; i = (*entries)[i].next) {
-			if ((*entries)[i].hashCode == hashCode && (*entries)[i].key == key) {
+		for (int i = buckets[bucket]; i >= 0; i = entries[i].next) {
+			if (entries[i].hashCode == hashCode && entries[i].key == key) {
 				return i;
 			}
 		}
 		return -1;
 	}
+};
+
+// Dictionary - lightweight handle wrapping a shared DictionaryStorage
+template<typename TKey, typename TValue>
+class Dictionary {
+private:
+	std::shared_ptr<DictionaryStorage<TKey, TValue>> data;
+
+	void ensureData() {
+		if (!data) {
+			data = std::make_shared<DictionaryStorage<TKey, TValue>>();
+			data->createStorage(4);
+		} else if (data->buckets.empty()) {
+			data->createStorage(4);
+		}
+	}
 
 public:
 	// Constructor
-	Dictionary() : count(0) {}
+	Dictionary() {}
 
-    // Factory method - allocates (matches C# "new List<T>()")
+    // Factory method - allocates (matches C# "new Dictionary<K,V>()")
     static Dictionary<TKey, TValue> New() {
         Dictionary<TKey, TValue> result;
-        result.createStorage(4);
+        result.data = std::make_shared<DictionaryStorage<TKey, TValue>>();
+        result.data->createStorage(4);
         return result;
     }
 
-	// Copy constructor and assignment
+	// Copy constructor and assignment — shares the same storage
 	Dictionary(const Dictionary<TKey, TValue>& other) = default;
 	Dictionary<TKey, TValue>& operator=(const Dictionary<TKey, TValue>& other) = default;
 
 	// nullptr constructor - creates null/unallocated dictionary
-	Dictionary(std::nullptr_t) : count(0) {}
+	Dictionary(std::nullptr_t) {}
 
 	// nullptr assignment - resets to null/unallocated state
 	Dictionary<TKey, TValue>& operator=(std::nullptr_t) {
-		buckets = nullptr;
-		entries = nullptr;
-		count = 0;
+		data = nullptr;
 		return *this;
 	}
 
@@ -139,12 +151,12 @@ public:
 
     // Check if dictionary is null (unallocated)
     friend bool IsNull(const Dictionary<TKey, TValue>& dict) {
-        return dict.buckets == nullptr || dict.entries == nullptr;
+        return dict.data == nullptr;
     }
 
 	// Properties
 	int Count() const {
-		return count;
+		return data ? data->count : 0;
 	}
 
 	bool Empty() const { return Count() == 0; }
@@ -154,56 +166,61 @@ public:
 		ensureData();
 
 		int hashCode = Hash(key);
-		int capacity = static_cast<int>(buckets->size());
+		int capacity = static_cast<int>(data->buckets.size());
 		int bucket = hashCode % capacity;
 
 		// Check if key already exists
-		for (int i = (*buckets)[bucket]; i >= 0; i = (*entries)[i].next) {
-			if ((*entries)[i].hashCode == hashCode && (*entries)[i].key == key) {
+		for (int i = data->buckets[bucket]; i >= 0; i = data->entries[i].next) {
+			if (data->entries[i].hashCode == hashCode && data->entries[i].key == key) {
 				// Update existing
-				(*entries)[i].value = value;
+				data->entries[i].value = value;
 				return;
 			}
 		}
 
 		// Add new entry - resize if needed (use threshold = 3/4 of capacity)
-		if (count * 4 >= capacity * 3) {
-			resize();
-			capacity = static_cast<int>(buckets->size());
+		if (data->count * 4 >= capacity * 3) {
+			data->resize();
+			capacity = static_cast<int>(data->buckets.size());
 			bucket = hashCode % capacity;
 		}
 
-		int index = count;
-		(*entries)[index].key = key;
-		(*entries)[index].value = value;
-		(*entries)[index].hashCode = hashCode;
-		(*entries)[index].next = (*buckets)[bucket];
-		(*buckets)[bucket] = index;
-		count++;
+		int index = data->count;
+		data->entries[index].key = key;
+		data->entries[index].value = value;
+		data->entries[index].hashCode = hashCode;
+		data->entries[index].next = data->buckets[bucket];
+		data->buckets[bucket] = index;
+		data->count++;
 	}
 
 	// Indexer - get value by key (returns default if not found)
 	TValue& operator[](const TKey& key) {
-		int index = findEntry(key);
+		ensureData();
+		int index = data->findEntry(key);
 		if (index >= 0) {
-			return (*entries)[index].value;
+			return data->entries[index].value;
 		}
 		// Key not found - add with default value, then look it up
 		// again and return a reference to the value in the map
 		// so that it can be assigned to.
 		static TValue defaultValue = TValue();
 		Add(key, defaultValue);
-		index = findEntry(key);
+		index = data->findEntry(key);
 		if (index >= 0) {
-			return (*entries)[index].value;
+			return data->entries[index].value;
 		}
 		return defaultValue;
 	}
 
 	const TValue& operator[](const TKey& key) const {
-		int index = findEntry(key);
+		if (!data) {
+			static TValue defaultValue = TValue();
+			return defaultValue;
+		}
+		int index = data->findEntry(key);
 		if (index >= 0) {
-			return (*entries)[index].value;
+			return data->entries[index].value;
 		}
 		static TValue defaultValue = TValue();
 		return defaultValue;
@@ -211,14 +228,15 @@ public:
 
 	// ContainsKey
 	bool ContainsKey(const TKey& key) const {
-		return findEntry(key) >= 0;
+		return data && data->findEntry(key) >= 0;
 	}
 
 	// TryGetValue - C# style
 	bool TryGetValue(const TKey& key, TValue* value) const {
-		int index = findEntry(key);
+		if (!data) return false;
+		int index = data->findEntry(key);
 		if (index >= 0) {
-			*value = (*entries)[index].value;
+			*value = data->entries[index].value;
 			return true;
 		}
 		return false;
@@ -226,22 +244,22 @@ public:
 
 	// Remove
 	bool Remove(const TKey& key) {
-		if (!buckets || !entries) return false;
+		if (!data) return false;
 
 		int hashCode = Hash(key);
-		int capacity = static_cast<int>(buckets->size());
+		int capacity = static_cast<int>(data->buckets.size());
 		int bucket = hashCode % capacity;
 
 		int last = -1;
-		for (int i = (*buckets)[bucket]; i >= 0; last = i, i = (*entries)[i].next) {
-			if ((*entries)[i].hashCode == hashCode && (*entries)[i].key == key) {
+		for (int i = data->buckets[bucket]; i >= 0; last = i, i = data->entries[i].next) {
+			if (data->entries[i].hashCode == hashCode && data->entries[i].key == key) {
 				if (last < 0) {
-					(*buckets)[bucket] = (*entries)[i].next;
+					data->buckets[bucket] = data->entries[i].next;
 				} else {
-					(*entries)[last].next = (*entries)[i].next;
+					data->entries[last].next = data->entries[i].next;
 				}
-				(*entries)[i].next = -2;  // Mark as removed
-				count--;
+				data->entries[i].next = -2;  // Mark as removed
+				data->count--;
 				return true;
 			}
 		}
@@ -250,36 +268,35 @@ public:
 
 	// Clear
 	void Clear() {
-		if (!buckets || !entries) return;
+		if (!data) return;
 
-		int capacity = static_cast<int>(buckets->size());
+		int capacity = static_cast<int>(data->buckets.size());
 		for (int i = 0; i < capacity; i++) {
-			(*buckets)[i] = -1;
+			data->buckets[i] = -1;
 		}
-		count = 0;
+		data->count = 0;
 	}
 
 	// Iterator support - simple key iteration
 	class KeyIterator {
 	private:
-		const Dictionary<TKey, TValue>* dict;
+		const DictionaryStorage<TKey, TValue>* storage;
 		int index;
 
 		void findNext() {
-			if (!dict->entries) return;
-			// Only iterate through active entries (0 to count-1)
-			while (index < dict->count && (*dict->entries)[index].next < -1) {
+			if (!storage) return;
+			while (index < storage->count && storage->entries[index].next < -1) {
 				index++;
 			}
 		}
 
 	public:
-		KeyIterator(const Dictionary<TKey, TValue>* d, int idx) : dict(d), index(idx) {
+		KeyIterator(const DictionaryStorage<TKey, TValue>* s, int idx) : storage(s), index(idx) {
 			findNext();
 		}
 
 		TKey operator*() const {
-			return (*dict->entries)[index].key;
+			return storage->entries[index].key;
 		}
 
 		KeyIterator& operator++() {
@@ -295,40 +312,39 @@ public:
 
 	class Keys {
 	private:
-		const Dictionary<TKey, TValue>* dict;
+		const DictionaryStorage<TKey, TValue>* storage;
 	public:
-		Keys(const Dictionary<TKey, TValue>* d) : dict(d) {}
-		KeyIterator begin() const { return KeyIterator(dict, 0); }
+		Keys(const DictionaryStorage<TKey, TValue>* s) : storage(s) {}
+		KeyIterator begin() const { return KeyIterator(storage, 0); }
 		KeyIterator end() const {
-			return KeyIterator(dict, dict->count);
+			return KeyIterator(storage, storage ? storage->count : 0);
 		}
 	};
 
 	Keys GetKeys() const {
-		return Keys(this);
+		return Keys(data.get());
 	}
 
 	// Iterator support - simple value iteration
 	class ValueIterator {
 	private:
-		const Dictionary<TKey, TValue>* dict;
+		const DictionaryStorage<TKey, TValue>* storage;
 		int index;
 
 		void findNext() {
-			if (!dict->entries) return;
-			// Only iterate through active entries (0 to count-1)
-			while (index < dict->count && (*dict->entries)[index].next < -1) {
+			if (!storage) return;
+			while (index < storage->count && storage->entries[index].next < -1) {
 				index++;
 			}
 		}
 
 	public:
-		ValueIterator(const Dictionary<TKey, TValue>* d, int idx) : dict(d), index(idx) {
+		ValueIterator(const DictionaryStorage<TKey, TValue>* s, int idx) : storage(s), index(idx) {
 			findNext();
 		}
 
 		TValue operator*() const {
-			return (*dict->entries)[index].value;
+			return storage->entries[index].value;
 		}
 
 		ValueIterator& operator++() {
@@ -344,17 +360,17 @@ public:
 
 	class Values {
 	private:
-		const Dictionary<TKey, TValue>* dict;
+		const DictionaryStorage<TKey, TValue>* storage;
 	public:
-		Values(const Dictionary<TKey, TValue>* d) : dict(d) {}
-		ValueIterator begin() const { return ValueIterator(dict, 0); }
+		Values(const DictionaryStorage<TKey, TValue>* s) : storage(s) {}
+		ValueIterator begin() const { return ValueIterator(storage, 0); }
 		ValueIterator end() const {
-			return ValueIterator(dict, dict->count);
+			return ValueIterator(storage, storage ? storage->count : 0);
 		}
 	};
 
 	Values GetValues() const {
-		return Values(this);
+		return Values(data.get());
 	}
 
 	// Compatibility methods (poolNum ignored with shared_ptr)

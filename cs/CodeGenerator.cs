@@ -22,6 +22,7 @@ public class CodeGenerator : IASTVisitor {
 	private Int32 _targetReg;           // Target register for next expression (-1 = allocate)
 	private List<Int32> _loopExitLabels;      // Stack of loop exit labels for break
 	private List<Int32> _loopContinueLabels;  // Stack of loop continue labels for continue
+	private List<FuncDef> _functions;          // All compiled functions (shared across inner generators)
 	public ErrorPool Errors;
 
 	public CodeGenerator(CodeEmitterBase emitter) {
@@ -33,6 +34,12 @@ public class CodeGenerator : IASTVisitor {
 		_targetReg = -1;
 		_loopExitLabels = new List<Int32>();
 		_loopContinueLabels = new List<Int32>();
+		_functions = new List<FuncDef>();
+	}
+
+	// Get all compiled functions (index 0 = @main, 1+ = inner functions)
+	public List<FuncDef> GetFunctions() {
+		return _functions;
 	}
 
 	// Allocate a register
@@ -193,6 +200,10 @@ public class CodeGenerator : IASTVisitor {
 		_maxRegUsed = -1;
 		_variableRegs.Clear();
 
+		// Reserve index 0 for @main
+		_functions.Clear();
+		_functions.Add(null);
+
 		// Compile each statement, putting result into r0
 		for (Int32 i = 0; i < statements.Count; i++) {
 			ResetTempRegisters();
@@ -201,7 +212,9 @@ public class CodeGenerator : IASTVisitor {
 
 		_emitter.Emit(Opcode.RETURN, null);
 
-		return _emitter.Finalize(funcName);
+		FuncDef mainFunc = _emitter.Finalize(funcName);
+		_functions[0] = mainFunc;
+		return mainFunc;
 	}
 
 	// --- Visit methods for each AST node type ---
@@ -401,16 +414,22 @@ public class CodeGenerator : IASTVisitor {
 	}
 
 	public Int32 Visit(CallNode node) {
-		// Generate code for function calls
-		// For intrinsic functions, we use CALLFN which expects:
-		// - Arguments loaded into consecutive registers starting at baseReg
-		// - Return value placed in baseReg after the call
-
 		// Capture target register if one was specified (don't allocate yet)
 		Int32 explicitTarget = _targetReg;
 		_targetReg = -1;
 
 		Int32 argCount = node.Arguments.Count;
+
+		// Check if the function is a known variable (user-defined function)
+		Int32 funcVarReg;
+		if (_variableRegs.TryGetValue(node.Function, out funcVarReg)) {
+			// User-defined function call: ARGBLK + ARGs + CALL_rA_rB_rC
+			return CompileUserCall(node, funcVarReg, explicitTarget);
+		}
+
+		// Intrinsic function call: CALLFN
+		// Arguments loaded into consecutive registers starting at baseReg
+		// Return value placed in baseReg after the call
 
 		// Allocate consecutive registers for arguments
 		// The first register (baseReg) will also hold the return value
@@ -439,6 +458,43 @@ public class CodeGenerator : IASTVisitor {
 		}
 
 		return baseReg;
+	}
+
+	// Compile a call to a user-defined function (funcref in a register)
+	private Int32 CompileUserCall(CallNode node, Int32 funcVarReg, Int32 explicitTarget) {
+		Int32 argCount = node.Arguments.Count;
+
+		// Compile arguments into temporary registers
+		List<Int32> argRegs = new List<Int32>();
+		for (Int32 i = 0; i < argCount; i++) {
+			argRegs.Add(node.Arguments[i].Accept(this));
+		}
+
+		// Emit ARGBLK (24-bit arg count)
+		_emitter.EmitABC(Opcode.ARGBLK_iABC, 0, 0, argCount, $"argblock {argCount}");
+
+		// Emit ARG for each argument
+		for (Int32 i = 0; i < argCount; i++) {
+			_emitter.EmitA(Opcode.ARG_rA, argRegs[i], $"arg {i}");
+		}
+
+		// Determine base register for callee frame (past all our used registers)
+		Int32 calleeBase = _maxRegUsed + 1;
+		_emitter.ReserveRegister(calleeBase);
+
+		// Determine result register
+		Int32 resultReg = (explicitTarget >= 0) ? explicitTarget : AllocReg();
+
+		// Emit CALL: result in rA, callee frame at rB, funcref in rC
+		_emitter.EmitABC(Opcode.CALL_rA_rB_rC, resultReg, calleeBase, funcVarReg,
+			$"call {node.Function}, result to r{resultReg}");
+
+		// Free argument registers
+		for (Int32 i = 0; i < argCount; i++) {
+			FreeReg(argRegs[i]);
+		}
+
+		return resultReg;
 	}
 
 	public Int32 Visit(GroupNode node) {
@@ -683,6 +739,64 @@ public class CodeGenerator : IASTVisitor {
 			Int32 continueLabel = _loopContinueLabels[_loopContinueLabels.Count - 1];
 			_emitter.EmitJump(Opcode.JUMP_iABC, continueLabel, "continue");
 		}
+		return -1;
+	}
+
+	public Int32 Visit(FunctionNode node) {
+		Int32 resultReg = GetTargetOrAlloc();
+
+		// Reserve an index for this function in the shared list
+		Int32 funcIndex = _functions.Count;
+		_functions.Add(null);  // placeholder
+
+		// Create a new CodeGenerator for the inner function
+		BytecodeEmitter innerEmitter = new BytecodeEmitter();
+		CodeGenerator innerGen = new CodeGenerator(innerEmitter);
+		innerGen._functions = _functions;  // share the function list
+		innerGen.Errors = Errors;
+
+		// Reserve r0 for return value, then set up param registers (r1, r2, ...)
+		innerGen.AllocReg();  // r0 reserved for return value
+		for (Int32 i = 0; i < node.ParamNames.Count; i++) {
+			Int32 paramReg = innerGen.AllocReg();  // r1, r2, ...
+			String name = node.ParamNames[i];
+			innerGen._variableRegs[name] = paramReg;
+			Int32 nameIdx = innerEmitter.AddConstant(make_string(name));
+			innerEmitter.EmitAB(Opcode.NAME_rA_kBC, paramReg, nameIdx, $"param {name}");
+		}
+
+		// Compile the function body
+		innerGen.CompileBody(node.Body);
+
+		// Emit implicit RETURN at end of body
+		innerEmitter.Emit(Opcode.RETURN, null);
+
+		// Finalize the inner function
+		String funcName = StringUtils.Format("@f{0}", funcIndex);
+		FuncDef funcDef = innerEmitter.Finalize(funcName);
+
+		// Set parameter info on the FuncDef
+		for (Int32 i = 0; i < node.ParamNames.Count; i++) {
+			funcDef.ParamNames.Add(make_string(node.ParamNames[i]));
+			funcDef.ParamDefaults.Add(make_null());
+		}
+
+		// Store in the shared functions list
+		_functions[funcIndex] = funcDef;
+
+		// In the outer function, emit FUNCREF to create a reference
+		_emitter.EmitAB(Opcode.FUNCREF_iA_iBC, resultReg, funcIndex,
+			$"r{resultReg} = funcref {funcName}");
+
+		return resultReg;
+	}
+
+	public Int32 Visit(ReturnNode node) {
+		// Compile return value into r0, then emit RETURN
+		if (node.Value != null) {
+			CompileInto(node.Value, 0);
+		}
+		_emitter.Emit(Opcode.RETURN, null);
 		return -1;
 	}
 }

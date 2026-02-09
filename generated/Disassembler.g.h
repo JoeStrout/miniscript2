@@ -91,6 +91,10 @@ struct BreakNode;
 class BreakNodeStorage;
 struct ContinueNode;
 class ContinueNodeStorage;
+struct FunctionNode;
+class FunctionNodeStorage;
+struct ReturnNode;
+class ReturnNodeStorage;
 
 // DECLARATIONS
 
@@ -112,6 +116,8 @@ class Disassembler {
 	public: static List<String> Disassemble(List<FuncDef> functions, Boolean detailed=true);
 
 }; // end of struct Disassembler
+
+
 
 
 

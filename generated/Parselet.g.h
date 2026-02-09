@@ -96,6 +96,10 @@ struct BreakNode;
 class BreakNodeStorage;
 struct ContinueNode;
 class ContinueNodeStorage;
+struct FunctionNode;
+class FunctionNodeStorage;
+struct ReturnNode;
+class ReturnNodeStorage;
 
 // DECLARATIONS
 
@@ -174,8 +178,11 @@ class IParser {
 
 
 
+
+
 // Base class for all parselets
 struct Parselet {
+	friend class ParseletStorage;
 	protected: std::shared_ptr<ParseletStorage> storage;
   public:
 	Parselet(std::shared_ptr<ParseletStorage> stor) : storage(stor) {}
@@ -200,6 +207,7 @@ template<typename WrapperType, typename StorageType> WrapperType As(Parselet ins
 // PrefixParselet: abstract base for parselets that handle tokens
 // starting an expression (numbers, identifiers, unary operators).
 struct PrefixParselet : public Parselet {
+	friend class PrefixParseletStorage;
 	PrefixParselet(std::shared_ptr<PrefixParseletStorage> stor);
 	PrefixParselet() : Parselet() {}
 	PrefixParselet(std::nullptr_t) : Parselet(nullptr) {}
@@ -213,6 +221,7 @@ template<typename WrapperType, typename StorageType> WrapperType As(PrefixParsel
 
 // InfixParselet: abstract base for parselets that handle infix operators.
 struct InfixParselet : public Parselet {
+	friend class InfixParseletStorage;
 	InfixParselet(std::shared_ptr<InfixParseletStorage> stor);
 	InfixParselet() : Parselet() {}
 	InfixParselet(std::nullptr_t) : Parselet(nullptr) {}
@@ -320,6 +329,7 @@ class MemberParseletStorage : public InfixParseletStorage {
 
 // NumberParselet: handles number literals.
 struct NumberParselet : public PrefixParselet {
+	friend class NumberParseletStorage;
 	NumberParselet(std::shared_ptr<NumberParseletStorage> stor);
 	NumberParselet() : PrefixParselet() {}
 	NumberParselet(std::nullptr_t) : PrefixParselet(nullptr) {}
@@ -334,6 +344,7 @@ struct NumberParselet : public PrefixParselet {
 
 // StringParselet: handles string literals.
 struct StringParselet : public PrefixParselet {
+	friend class StringParseletStorage;
 	StringParselet(std::shared_ptr<StringParseletStorage> stor);
 	StringParselet() : PrefixParselet() {}
 	StringParselet(std::nullptr_t) : PrefixParselet(nullptr) {}
@@ -351,6 +362,7 @@ struct StringParselet : public PrefixParselet {
 // - Variable assignments (when followed by '=')
 // - Function calls (when followed by '(')
 struct IdentifierParselet : public PrefixParselet {
+	friend class IdentifierParseletStorage;
 	IdentifierParselet(std::shared_ptr<IdentifierParseletStorage> stor);
 	IdentifierParselet() : PrefixParselet() {}
 	IdentifierParselet(std::nullptr_t) : PrefixParselet(nullptr) {}
@@ -365,6 +377,7 @@ struct IdentifierParselet : public PrefixParselet {
 
 // UnaryOpParselet: handles prefix unary operators like '-' and 'not'.
 struct UnaryOpParselet : public PrefixParselet {
+	friend class UnaryOpParseletStorage;
 	UnaryOpParselet(std::shared_ptr<UnaryOpParseletStorage> stor);
 	UnaryOpParselet() : PrefixParselet() {}
 	UnaryOpParselet(std::nullptr_t) : PrefixParselet(nullptr) {}
@@ -383,6 +396,7 @@ struct UnaryOpParselet : public PrefixParselet {
 
 // GroupParselet: handles parenthesized expressions like '(2 + 3)'.
 struct GroupParselet : public PrefixParselet {
+	friend class GroupParseletStorage;
 	GroupParselet(std::shared_ptr<GroupParseletStorage> stor);
 	GroupParselet() : PrefixParselet() {}
 	GroupParselet(std::nullptr_t) : PrefixParselet(nullptr) {}
@@ -397,6 +411,7 @@ struct GroupParselet : public PrefixParselet {
 
 // ListParselet: handles list literals like '[1, 2, 3]'.
 struct ListParselet : public PrefixParselet {
+	friend class ListParseletStorage;
 	ListParselet(std::shared_ptr<ListParseletStorage> stor);
 	ListParselet() : PrefixParselet() {}
 	ListParselet(std::nullptr_t) : PrefixParselet(nullptr) {}
@@ -411,6 +426,7 @@ struct ListParselet : public PrefixParselet {
 
 // MapParselet: handles map literals like '{"a": 1}'.
 struct MapParselet : public PrefixParselet {
+	friend class MapParseletStorage;
 	MapParselet(std::shared_ptr<MapParseletStorage> stor);
 	MapParselet() : PrefixParselet() {}
 	MapParselet(std::nullptr_t) : PrefixParselet(nullptr) {}
@@ -425,6 +441,7 @@ struct MapParselet : public PrefixParselet {
 
 // BinaryOpParselet: handles binary operators like '+', '-', '*', etc.
 struct BinaryOpParselet : public InfixParselet {
+	friend class BinaryOpParseletStorage;
 	BinaryOpParselet(std::shared_ptr<BinaryOpParseletStorage> stor);
 	BinaryOpParselet() : InfixParselet() {}
 	BinaryOpParselet(std::nullptr_t) : InfixParselet(nullptr) {}
@@ -449,6 +466,7 @@ struct BinaryOpParselet : public InfixParselet {
 
 // CallParselet: handles function calls like 'foo(x, y)' and method calls like 'obj.method(x)'.
 struct CallParselet : public InfixParselet {
+	friend class CallParseletStorage;
 	CallParselet(std::shared_ptr<CallParseletStorage> stor);
 	CallParselet() : InfixParselet() {}
 	CallParselet(std::nullptr_t) : InfixParselet(nullptr) {}
@@ -464,6 +482,7 @@ struct CallParselet : public InfixParselet {
 
 // IndexParselet: handles index access like 'list[0]' or 'map["key"]'.
 struct IndexParselet : public InfixParselet {
+	friend class IndexParseletStorage;
 	IndexParselet(std::shared_ptr<IndexParseletStorage> stor);
 	IndexParselet() : InfixParselet() {}
 	IndexParselet(std::nullptr_t) : InfixParselet(nullptr) {}
@@ -479,6 +498,7 @@ struct IndexParselet : public InfixParselet {
 
 // MemberParselet: handles member access like 'obj.field'.
 struct MemberParselet : public InfixParselet {
+	friend class MemberParseletStorage;
 	MemberParselet(std::shared_ptr<MemberParseletStorage> stor);
 	MemberParselet() : InfixParselet() {}
 	MemberParselet(std::nullptr_t) : InfixParselet(nullptr) {}

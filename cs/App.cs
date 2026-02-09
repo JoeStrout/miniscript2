@@ -127,7 +127,7 @@ public struct App {
 		BytecodeEmitter emitter = new BytecodeEmitter();
 		CodeGenerator generator = new CodeGenerator(emitter);
 		generator.Errors = errors;
-		FuncDef mainFunc = generator.CompileProgram(statements, "@main");
+		generator.CompileProgram(statements, "@main");
 
 		if (generator.Errors.HasError()) return null;
 
@@ -143,9 +143,7 @@ public struct App {
 			IOHelper.Print(asmEmitter.GetAssembly());
 		}
 
-		List<FuncDef> functions = new List<FuncDef>();
-		functions.Add(mainFunc);
-		return functions;
+		return generator.GetFunctions();
 	}
 
 	private static List<FuncDef> CompileSourceFile(String filePath, ErrorPool errors) {

@@ -95,6 +95,10 @@ struct BreakNode;
 class BreakNodeStorage;
 struct ContinueNode;
 class ContinueNodeStorage;
+struct FunctionNode;
+class FunctionNodeStorage;
+struct ReturnNode;
+class ReturnNodeStorage;
 
 // DECLARATIONS
 
@@ -116,6 +120,8 @@ struct CallInfo {
 
 	public: Value GetLocalVarMap(List<Value> registers, List<Value> names, int baseIdx, int regCount);
 }; // end of struct CallInfo
+
+
 
 
 
@@ -268,6 +274,7 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 
 // VM state
 struct VM {
+	friend class VMStorage;
 	protected: std::shared_ptr<VMStorage> storage;
   public:
 	VM(std::shared_ptr<VMStorage> stor) : storage(stor) {}

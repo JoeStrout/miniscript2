@@ -154,13 +154,19 @@ public class Parser : IParser {
 			|| type == TokenType.LBRACE
 			|| type == TokenType.MINUS
 			|| type == TokenType.ADDRESS_OF
-			|| type == TokenType.NOT;
+			|| type == TokenType.NOT
+			|| type == TokenType.FUNCTION;
 	}
 
 	// Parse an expression with the given minimum precedence (Pratt parser core)
 	public ASTNode ParseExpression(Precedence minPrecedence) {
 		Token token = _current;
 		Advance();
+
+		// Special case: function expression (spans multiple lines)
+		if (token.Type == TokenType.FUNCTION) {
+			return ParseFunctionExpression();
+		}
 
 		// Look up the prefix parselet for this token
 		PrefixParselet prefix = null;
@@ -218,6 +224,18 @@ public class Parser : IParser {
 		if (_current.Type == TokenType.CONTINUE) {
 			Advance();  // consume CONTINUE
 			return new ContinueNode();
+		}
+
+		// Check for return statement
+		if (_current.Type == TokenType.RETURN) {
+			Advance();  // consume RETURN
+			// Parse optional return value (if something that can start an expression follows)
+			ASTNode returnValue = null;
+			if (_current.Type != TokenType.EOL && _current.Type != TokenType.END_OF_INPUT
+				&& _current.Type != TokenType.ELSE && CanStartExpression(_current.Type)) {
+				returnValue = ParseExpression();
+			}
+			return new ReturnNode(returnValue);
 		}
 
 		// Grammar for relevant rules:
@@ -381,8 +399,8 @@ public class Parser : IParser {
 	}
 
 	// Parse a statement that can appear in single-line if context
-	// This includes simple statements AND nested if statements
-	// (but not, for example, for/while loops, which are invalid 
+	// This includes simple statements, nested if statements, and return
+	// (but not, for example, for/while loops, which are invalid
 	// in the context of a single-line `if`).
 	private ASTNode ParseSingleLineStatement() {
 		if (_current.Type == TokenType.IF) {
@@ -457,6 +475,37 @@ public class Parser : IParser {
 		RequireEndKeyword(TokenType.FOR, "for");
 
 		return new ForNode(varName, iterable, body);
+	}
+
+	// Parse a function expression: FUNCTION already consumed
+	// Syntax: function(param1, param2, ...) <body> end function
+	// The parentheses are optional for no-parameter functions.
+	private ASTNode ParseFunctionExpression() {
+		// Parse parameter list (parentheses optional for no-param functions)
+		List<String> paramNames = new List<String>();
+		if (_current.Type == TokenType.LPAREN) {
+			Advance();  // consume '('
+			if (_current.Type != TokenType.RPAREN) {
+				do {
+					Token paramToken = Expect(TokenType.IDENTIFIER, "Expected parameter name");
+					if (paramToken.Type != TokenType.ERROR) {
+						paramNames.Add(paramToken.Text);
+					}
+				} while (Match(TokenType.COMMA));
+			}
+			Expect(TokenType.RPAREN, "Expected ')' after parameters");
+		}
+
+		// Expect EOL after parameter list
+		if (_current.Type != TokenType.EOL && _current.Type != TokenType.END_OF_INPUT) {
+			ReportError($"Expected end of line after function parameters, got: {_current.Text}");
+		}
+
+		// Parse body until "end function"
+		List<ASTNode> body = ParseBlock(TokenType.END, TokenType.END);
+		RequireEndKeyword(TokenType.FUNCTION, "function");
+
+		return new FunctionNode(paramNames, body);
 	}
 
 	// Parse a statement (handles both simple statements and block statements)
@@ -557,6 +606,8 @@ public class Parser : IParser {
 		if (tok.Type == TokenType.END) return "Keyword(end)";
 		if (tok.Type == TokenType.BREAK) return "Keyword(break)";
 		if (tok.Type == TokenType.CONTINUE) return "Keyword(continue)";
+		if (tok.Type == TokenType.FUNCTION) return "Keyword(function)";
+		if (tok.Type == TokenType.RETURN) return "Keyword(return)";
 		if (tok.Type == TokenType.AND) return "Keyword(and)";
 		if (tok.Type == TokenType.OR) return "Keyword(or)";
 		if (tok.Type == TokenType.NOT) return "Keyword(not)";

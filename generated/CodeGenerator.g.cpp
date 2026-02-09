@@ -16,6 +16,10 @@ CodeGeneratorStorage::CodeGeneratorStorage(CodeEmitterBase emitter) {
 	_targetReg = -1;
 	_loopExitLabels =  List<Int32>::New();
 	_loopContinueLabels =  List<Int32>::New();
+	_functions =  List<FuncDef>::New();
+}
+List<FuncDef> CodeGeneratorStorage::GetFunctions() {
+	return _functions;
 }
 Int32 CodeGeneratorStorage::AllocReg() {
 	// Scan from _firstAvailable to find first free register
@@ -154,6 +158,10 @@ FuncDef CodeGeneratorStorage::CompileProgram(List<ASTNode> statements, String fu
 	_maxRegUsed = -1;
 	_variableRegs.Clear();
 
+	// Reserve index 0 for @main
+	_functions.Clear();
+	_functions.Add(nullptr);
+
 	// Compile each statement, putting result into r0
 	for (Int32 i = 0; i < statements.Count(); i++) {
 		ResetTempRegisters();
@@ -162,7 +170,9 @@ FuncDef CodeGeneratorStorage::CompileProgram(List<ASTNode> statements, String fu
 
 	_emitter.Emit(Opcode::RETURN, nullptr);
 
-	return _emitter.Finalize(funcName);
+	FuncDef mainFunc = _emitter.Finalize(funcName);
+	_functions[0] = mainFunc;
+	return mainFunc;
 }
 Int32 CodeGeneratorStorage::Visit(NumberNode node) {
 	Int32 reg = GetTargetOrAlloc();
@@ -354,16 +364,22 @@ Int32 CodeGeneratorStorage::Visit(BinaryOpNode node) {
 	return resultReg;
 }
 Int32 CodeGeneratorStorage::Visit(CallNode node) {
-	// Generate code for function calls
-	// For intrinsic functions, we use CALLFN which expects:
-	// - Arguments loaded into consecutive registers starting at baseReg
-	// - Return value placed in baseReg after the call
-
 	// Capture target register if one was specified (don't allocate yet)
 	Int32 explicitTarget = _targetReg;
 	_targetReg = -1;
 
 	Int32 argCount = node.Arguments().Count();
+
+	// Check if the function is a known variable (user-defined function)
+	Int32 funcVarReg;
+	if (_variableRegs.TryGetValue(node.Function(), &funcVarReg)) {
+		// User-defined function call: ARGBLK + ARGs + CALL_rA_rB_rC
+		return CompileUserCall(node, funcVarReg, explicitTarget);
+	}
+
+	// Intrinsic function call: CALLFN
+	// Arguments loaded into consecutive registers starting at baseReg
+	// Return value placed in baseReg after the call
 
 	// Allocate consecutive registers for arguments
 	// The first register (baseReg) will also hold the return value
@@ -392,6 +408,42 @@ Int32 CodeGeneratorStorage::Visit(CallNode node) {
 	}
 
 	return baseReg;
+}
+Int32 CodeGeneratorStorage::CompileUserCall(CallNode node, Int32 funcVarReg, Int32 explicitTarget) {
+	CodeGenerator _this(std::static_pointer_cast<CodeGeneratorStorage>(shared_from_this()));
+	Int32 argCount = node.Arguments().Count();
+
+	// Compile arguments into temporary registers
+	List<Int32> argRegs =  List<Int32>::New();
+	for (Int32 i = 0; i < argCount; i++) {
+		argRegs.Add(node.Arguments()[i].Accept(_this));
+	}
+
+	// Emit ARGBLK (24-bit arg count)
+	_emitter.EmitABC(Opcode::ARGBLK_iABC, 0, 0, argCount, Interp("argblock {}", argCount));
+
+	// Emit ARG for each argument
+	for (Int32 i = 0; i < argCount; i++) {
+		_emitter.EmitA(Opcode::ARG_rA, argRegs[i], Interp("arg {}", i));
+	}
+
+	// Determine base register for callee frame (past all our used registers)
+	Int32 calleeBase = _maxRegUsed + 1;
+	_emitter.ReserveRegister(calleeBase);
+
+	// Determine result register
+	Int32 resultReg = (explicitTarget >= 0) ? explicitTarget : AllocReg();
+
+	// Emit CALL: result in rA, callee frame at rB, funcref in rC
+	_emitter.EmitABC(Opcode::CALL_rA_rB_rC, resultReg, calleeBase, funcVarReg,
+		Interp("call {}, result to r{}", node.Function(), resultReg));
+
+	// Free argument registers
+	for (Int32 i = 0; i < argCount; i++) {
+		FreeReg(argRegs[i]);
+	}
+
+	return resultReg;
 }
 Int32 CodeGeneratorStorage::Visit(GroupNode node) {
 	CodeGenerator _this(std::static_pointer_cast<CodeGeneratorStorage>(shared_from_this()));
@@ -633,6 +685,62 @@ Int32 CodeGeneratorStorage::Visit(ContinueNode node) {
 		Int32 continueLabel = _loopContinueLabels[_loopContinueLabels.Count() - 1];
 		_emitter.EmitJump(Opcode::JUMP_iABC, continueLabel, "continue");
 	}
+	return -1;
+}
+Int32 CodeGeneratorStorage::Visit(FunctionNode node) {
+	Int32 resultReg = GetTargetOrAlloc();
+
+	// Reserve an index for this function in the shared list
+	Int32 funcIndex = _functions.Count();
+	_functions.Add(nullptr);  // placeholder
+
+	// Create a new CodeGenerator for the inner function
+	BytecodeEmitter innerEmitter =  BytecodeEmitter::New();
+	CodeGenerator innerGen =  CodeGenerator::New(innerEmitter);
+	innerGen.set__functions(_functions);  // share the function list
+	innerGen.set_Errors(Errors);
+
+	// Reserve r0 for return value, then set up param registers (r1, r2, ...)
+	innerGen.AllocReg();  // r0 reserved for return value
+	for (Int32 i = 0; i < node.ParamNames().Count(); i++) {
+		Int32 paramReg = innerGen.AllocReg();  // r1, r2, ...
+		String name = node.ParamNames()[i];
+		innerGen._variableRegs()[name] = paramReg;
+		Int32 nameIdx = innerEmitter.AddConstant(make_string(name));
+		innerEmitter.EmitAB(Opcode::NAME_rA_kBC, paramReg, nameIdx, Interp("param {}", name));
+	}
+
+	// Compile the function body
+	innerGen.CompileBody(node.Body());
+
+	// Emit implicit RETURN at end of body
+	innerEmitter.Emit(Opcode::RETURN, nullptr);
+
+	// Finalize the inner function
+	String funcName = StringUtils::Format("@f{0}", funcIndex);
+	FuncDef funcDef = innerEmitter.Finalize(funcName);
+
+	// Set parameter info on the FuncDef
+	for (Int32 i = 0; i < node.ParamNames().Count(); i++) {
+		funcDef.ParamNames().Add(make_string(node.ParamNames()[i]));
+		funcDef.ParamDefaults().Add(make_null());
+	}
+
+	// Store in the shared functions list
+	_functions[funcIndex] = funcDef;
+
+	// In the outer function, emit FUNCREF to create a reference
+	_emitter.EmitAB(Opcode::FUNCREF_iA_iBC, resultReg, funcIndex,
+		Interp("r{} = funcref {}", resultReg, funcName));
+
+	return resultReg;
+}
+Int32 CodeGeneratorStorage::Visit(ReturnNode node) {
+	// Compile return value into r0, then emit RETURN
+	if (!IsNull(node.Value())) {
+		CompileInto(node.Value(), 0);
+	}
+	_emitter.Emit(Opcode::RETURN, nullptr);
 	return -1;
 }
 

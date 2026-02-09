@@ -95,8 +95,14 @@ struct BreakNode;
 class BreakNodeStorage;
 struct ContinueNode;
 class ContinueNodeStorage;
+struct FunctionNode;
+class FunctionNodeStorage;
+struct ReturnNode;
+class ReturnNodeStorage;
 
 // DECLARATIONS
+
+
 
 
 
@@ -259,6 +265,7 @@ class AssemblerStorage : public std::enable_shared_from_this<AssemblerStorage> {
 
 
 struct Assembler {
+	friend class AssemblerStorage;
 	protected: std::shared_ptr<AssemblerStorage> storage;
   public:
 	Assembler(std::shared_ptr<AssemblerStorage> stor) : storage(stor) {}

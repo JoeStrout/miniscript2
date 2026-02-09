@@ -92,8 +92,14 @@ struct BreakNode;
 class BreakNodeStorage;
 struct ContinueNode;
 class ContinueNodeStorage;
+struct FunctionNode;
+class FunctionNodeStorage;
+struct ReturnNode;
+class ReturnNodeStorage;
 
 // DECLARATIONS
+
+
 
 
 
@@ -181,6 +187,7 @@ class FuncDefStorage : public std::enable_shared_from_this<FuncDefStorage> {
 
 // Function definition: code, constants, and how many registers it needs
 struct FuncDef {
+	friend class FuncDefStorage;
 	protected: std::shared_ptr<FuncDefStorage> storage;
   public:
 	FuncDef(std::shared_ptr<FuncDefStorage> stor) : storage(stor) {}

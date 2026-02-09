@@ -96,8 +96,14 @@ struct BreakNode;
 class BreakNodeStorage;
 struct ContinueNode;
 class ContinueNodeStorage;
+struct FunctionNode;
+class FunctionNodeStorage;
+struct ReturnNode;
+class ReturnNodeStorage;
 
 // DECLARATIONS
+
+
 
 
 
@@ -169,9 +175,13 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 	private: Int32 _targetReg; // Target register for next expression (-1 = allocate)
 	private: List<Int32> _loopExitLabels; // Stack of loop exit labels for break
 	private: List<Int32> _loopContinueLabels; // Stack of loop continue labels for continue
+	private: List<FuncDef> _functions; // All compiled functions (shared across inner generators)
 	public: ErrorPool Errors;
 
 	public: CodeGeneratorStorage(CodeEmitterBase emitter);
+
+	// Get all compiled functions (index 0 = @main, 1+ = inner functions)
+	public: List<FuncDef> GetFunctions();
 
 	// Allocate a register
 	private: Int32 AllocReg();
@@ -227,6 +237,9 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 
 	public: Int32 Visit(CallNode node);
 
+	// Compile a call to a user-defined function (funcref in a register)
+	private: Int32 CompileUserCall(CallNode node, Int32 funcVarReg, Int32 explicitTarget);
+
 	public: Int32 Visit(GroupNode node);
 
 	public: Int32 Visit(ListNode node);
@@ -248,12 +261,17 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 	public: Int32 Visit(BreakNode node);
 
 	public: Int32 Visit(ContinueNode node);
+
+	public: Int32 Visit(FunctionNode node);
+
+	public: Int32 Visit(ReturnNode node);
 }; // end of class CodeGeneratorStorage
 
 
 
 // Compiles AST nodes to bytecode
 struct CodeGenerator : public IASTVisitor {
+	friend class CodeGeneratorStorage;
 	protected: std::shared_ptr<CodeGeneratorStorage> storage;
   public:
 	CodeGenerator(std::shared_ptr<CodeGeneratorStorage> stor) : storage(stor) {}
@@ -278,12 +296,17 @@ struct CodeGenerator : public IASTVisitor {
 	private: void set__loopExitLabels(List<Int32> _v); // Stack of loop exit labels for break
 	private: List<Int32> _loopContinueLabels(); // Stack of loop continue labels for continue
 	private: void set__loopContinueLabels(List<Int32> _v); // Stack of loop continue labels for continue
+	private: List<FuncDef> _functions(); // All compiled functions (shared across inner generators)
+	private: void set__functions(List<FuncDef> _v); // All compiled functions (shared across inner generators)
 	public: ErrorPool Errors();
 	public: void set_Errors(ErrorPool _v);
 
 	public: static CodeGenerator New(CodeEmitterBase emitter) {
 		return CodeGenerator(std::make_shared<CodeGeneratorStorage>(emitter));
 	}
+
+	// Get all compiled functions (index 0 = @main, 1+ = inner functions)
+	public: List<FuncDef> GetFunctions() { return get()->GetFunctions(); }
 
 	// Allocate a register
 	private: Int32 AllocReg() { return get()->AllocReg(); }
@@ -339,6 +362,9 @@ struct CodeGenerator : public IASTVisitor {
 
 	public: Int32 Visit(CallNode node) { return get()->Visit(node); }
 
+	// Compile a call to a user-defined function (funcref in a register)
+	private: Int32 CompileUserCall(CallNode node, Int32 funcVarReg, Int32 explicitTarget) { return get()->CompileUserCall(node, funcVarReg, explicitTarget); }
+
 	public: Int32 Visit(GroupNode node) { return get()->Visit(node); }
 
 	public: Int32 Visit(ListNode node) { return get()->Visit(node); }
@@ -360,6 +386,10 @@ struct CodeGenerator : public IASTVisitor {
 	public: Int32 Visit(BreakNode node) { return get()->Visit(node); }
 
 	public: Int32 Visit(ContinueNode node) { return get()->Visit(node); }
+
+	public: Int32 Visit(FunctionNode node) { return get()->Visit(node); }
+
+	public: Int32 Visit(ReturnNode node) { return get()->Visit(node); }
 }; // end of struct CodeGenerator
 
 
@@ -382,6 +412,8 @@ inline List<Int32> CodeGenerator::_loopExitLabels() { return get()->_loopExitLab
 inline void CodeGenerator::set__loopExitLabels(List<Int32> _v) { get()->_loopExitLabels = _v; } // Stack of loop exit labels for break
 inline List<Int32> CodeGenerator::_loopContinueLabels() { return get()->_loopContinueLabels; } // Stack of loop continue labels for continue
 inline void CodeGenerator::set__loopContinueLabels(List<Int32> _v) { get()->_loopContinueLabels = _v; } // Stack of loop continue labels for continue
+inline List<FuncDef> CodeGenerator::_functions() { return get()->_functions; } // All compiled functions (shared across inner generators)
+inline void CodeGenerator::set__functions(List<FuncDef> _v) { get()->_functions = _v; } // All compiled functions (shared across inner generators)
 inline ErrorPool CodeGenerator::Errors() { return get()->Errors; }
 inline void CodeGenerator::set_Errors(ErrorPool _v) { get()->Errors = _v; }
 

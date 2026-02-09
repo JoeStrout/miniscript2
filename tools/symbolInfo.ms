@@ -81,7 +81,7 @@ end function
 
 ClassInfo.summary = function
 	if self.T then return self.type + " " + self.name + "<" + self.T + ">"
-	return self.type + " " + self.name
+	return "CLASS: " + self.type + " " + self.name
 end function
 
 //--------------------------------------------------------------------------------
@@ -108,7 +108,7 @@ VariableInfo.summary = function
 	parts.push self.type
 	parts.push self.name
 	if self.array then parts[-1] += "[]"
-	return parts.join
+	return "VAR: " + parts.join
 end function
 
 VariableInfo.elementType = function
@@ -147,5 +147,5 @@ MethodInfo.summary = function
 		end for
 	end if
 	parts.push self.name + "(" + paramStrs.join(", ") + ")"
-	return parts.join
+	return "METHOD: " + parts.join
 end function

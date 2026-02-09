@@ -93,6 +93,10 @@ struct BreakNode;
 class BreakNodeStorage;
 struct ContinueNode;
 class ContinueNodeStorage;
+struct FunctionNode;
+class FunctionNodeStorage;
+struct ReturnNode;
+class ReturnNodeStorage;
 
 // DECLARATIONS
 
@@ -163,11 +167,15 @@ enum class TokenType : Int32 {
 	ELSE,
 	BREAK,
 	CONTINUE,
+	FUNCTION,
+	RETURN,
 	END,
 	EOL,
 	COMMENT,
 	ERROR
 }; // end of enum TokenType
+
+
 
 
 

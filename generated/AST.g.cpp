@@ -474,4 +474,52 @@ Int32 ContinueNodeStorage::Accept(IASTVisitor& visitor) {
 }
 
 
+FunctionNodeStorage::FunctionNodeStorage(List<String> paramNames, List<ASTNode> body) {
+	ParamNames = paramNames;
+	Body = body;
+}
+String FunctionNodeStorage::ToStr() {
+	String result = "function(";
+	for (Int32 i = 0; i < ParamNames.Count(); i++) {
+		if (i > 0) result = result + ", ";
+		result = result + ParamNames[i];
+	}
+	result = result + ")\n";
+	for (Int32 i = 0; i < Body.Count(); i++) {
+		result = result + "  " + Body[i].ToStr() + "\n";
+	}
+	result = result + "end function";
+	return result;
+}
+ASTNode FunctionNodeStorage::Simplify() {
+	List<ASTNode> simplifiedBody =  List<ASTNode>::New();
+	for (Int32 i = 0; i < Body.Count(); i++) {
+		simplifiedBody.Add(Body[i].Simplify());
+	}
+	return  FunctionNode::New(ParamNames, simplifiedBody);
+}
+Int32 FunctionNodeStorage::Accept(IASTVisitor& visitor) {
+	FunctionNode _this(std::static_pointer_cast<FunctionNodeStorage>(shared_from_this()));
+	return visitor.Visit(_this);
+}
+
+
+ReturnNodeStorage::ReturnNodeStorage(ASTNode value) {
+	Value = value;
+}
+String ReturnNodeStorage::ToStr() {
+	if (!IsNull(Value)) return "return " + Value.ToStr();
+	return "return";
+}
+ASTNode ReturnNodeStorage::Simplify() {
+	ReturnNode _this(std::static_pointer_cast<ReturnNodeStorage>(shared_from_this()));
+	if (!IsNull(Value)) return  ReturnNode::New(Value.Simplify());
+	return _this;
+}
+Int32 ReturnNodeStorage::Accept(IASTVisitor& visitor) {
+	ReturnNode _this(std::static_pointer_cast<ReturnNodeStorage>(shared_from_this()));
+	return visitor.Visit(_this);
+}
+
+
 } // end of namespace MiniScript

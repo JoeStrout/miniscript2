@@ -93,6 +93,10 @@ struct BreakNode;
 class BreakNodeStorage;
 struct ContinueNode;
 class ContinueNodeStorage;
+struct FunctionNode;
+class FunctionNodeStorage;
+struct ReturnNode;
+class ReturnNodeStorage;
 
 // DECLARATIONS
 
@@ -149,6 +153,8 @@ class UnitTests {
 
 	public: static Boolean RunAll();
 }; // end of struct UnitTests
+
+
 
 
 

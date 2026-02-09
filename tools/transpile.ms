@@ -421,6 +421,7 @@ Transpiler.lookup = function(identifier, context)
 	
 	// 2. fields and methods of the current class
 	if self.curClass then
+		if identifier == self.curClass.name then return self.curClass
 		info = self.curClass.lookup(identifier, self.allClasses)
 		if info then return info
 	end if
@@ -450,7 +451,7 @@ Transpiler.transformStatement = function(trimmedLine)
 	// non-identifier string.
 	tokens = roughTokenize(trimmedLine)
 	
-	deepDebug = false; //trimmedLine.contains("node.Operand")
+	deepDebug = trimmedLine.contains("innerGen._functions")
 	ddprint = function(s); if deepDebug then print "====> " + s; end function
 	summarize = function(obj)
 		if obj == null then return "<null>"
@@ -612,7 +613,7 @@ Transpiler.transformStatement = function(trimmedLine)
 		if self.curClass then curClassName = self.curClass.name else curClassName = ""
 		ddprint "lookup of " + tokens[i] + ": " + summarize(nextInfo)
 		if curInfo isa ClassInfo and curInfo.type == ClassType.CLASS and
-		  nextInfo isa VariableInfo and curInfo.name != curClassName then
+		  nextInfo isa VariableInfo then
 			// Found a field lookup!  Or maybe an assignment.  Check the next token
 			// to determine which.
 			if i+1 < tokens.len and tokens[i+1].trimLeft.startsWith("= ") then
@@ -864,6 +865,7 @@ Transpiler.prepareRefClass = function
 		// we have to defer fully defining the constructor until the inline section.
 		self.curClass.superclass = self.m.baseClass
 		self.curClass.wrapperLines.push self.fill("struct ≤name≥ : public ≤baseClass≥ {")
+		self.curClass.wrapperLines.push self.fill("	friend class ≤name≥Storage;")
 		self.curClass.wrapperLines.push self.fill("	≤name≥(std::shared_ptr<≤name≥Storage> stor);")
 		self.curClass.inlineLines.push self.fill("inline ≤name≥::≤name≥(std::shared_ptr<≤name≥Storage> stor) : ≤baseClass≥(stor) {}")
 		self.curClass.wrapperLines.push self.fill("	≤name≥() : ≤baseClass≥() {}")
@@ -875,6 +877,7 @@ Transpiler.prepareRefClass = function
 		else
 			self.curClass.wrapperLines.push self.fill("struct ≤name≥ {")
 		end if
+		self.curClass.wrapperLines.push self.fill("	friend class ≤name≥Storage;")
 		self.curClass.wrapperLines.push self.fill("	protected: std::shared_ptr<≤name≥Storage> storage;")
 		self.curClass.wrapperLines.push "  public:"
 		self.curClass.wrapperLines.push self.fill("	≤name≥(std::shared_ptr<≤name≥Storage> stor) : storage(stor) {}")

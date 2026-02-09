@@ -1,8 +1,13 @@
 // AUTO-GENERATED FILE.  DO NOT MODIFY.
-// Transpiled from: VarMap.cs
+// Transpiled from: ErrorPool.cs
 
 #pragma once
 #include "core_includes.h"
+// ErrorPool.cs - Simple error collection for MiniScript compilation and execution.
+// Shared across lexer, parser, code generator, and VM stages.
+
+
+namespace MiniScript {
 
 // FORWARD DECLARATIONS
 
@@ -97,6 +102,26 @@ class ContinueNodeStorage;
 
 
 
+struct ErrorPool {
+	private: List<String> _errors;
+
+	// Use Create() to get an initialized ErrorPool before copying it.
+	// This ensures all copies share the same underlying list.
+	public: static ErrorPool Create();
+
+	private: void EnsureList();
+
+	public: void Add(String message);
+
+	public: Boolean HasError();
+
+	public: String TopError();
+
+	public: List<String> GetErrors();
+
+	public: void Clear();
+}; // end of struct ErrorPool
+
 
 
 
@@ -154,3 +179,4 @@ class ContinueNodeStorage;
 
 // INLINE METHODS
 
+} // end of namespace MiniScript

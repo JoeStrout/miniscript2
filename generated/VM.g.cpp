@@ -152,11 +152,12 @@ void VMStorage::Reset(List<FuncDef> allFunctions) {
 }
 void VMStorage::RaiseRuntimeError(String message) {
 	RuntimeError = message;
+	Errors.Add(StringUtils::Format("Runtime Error: {0}", message));
 	IsRunning = Boolean(false);
 }
 bool VMStorage::ReportRuntimeError() {
 	if (String::IsNullOrEmpty(RuntimeError)) return Boolean(false);
-	IOHelper::Print(StringUtils::Format("Runtime error: {0} [{1} line {2}]",
+	IOHelper::Print(StringUtils::Format("Runtime Error: {0} [{1} line {2}]",
 	  RuntimeError, CurrentFunction.Name(), PC - 1));
 	return Boolean(true);
 }

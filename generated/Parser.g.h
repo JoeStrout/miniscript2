@@ -15,6 +15,7 @@
 #include "LangConstants.g.h"
 #include "Lexer.g.h"
 #include "Parselet.g.h"
+#include "ErrorPool.g.h"
 
 
 namespace MiniScript {
@@ -165,12 +166,12 @@ class ContinueNodeStorage;
 
 
 
+
 class ParserStorage : public std::enable_shared_from_this<ParserStorage>, public IParser {
 	friend struct Parser;
 	private: Lexer _lexer;
 	private: Token _current;
-	private: Boolean _hadError;
-	private: List<String> _errors;
+	public: ErrorPool Errors;
 	private: Dictionary<TokenType, PrefixParselet> _prefixParselets;
 	private: Dictionary<TokenType, InfixParselet> _infixParselets;
 
@@ -270,6 +271,12 @@ class ParserStorage : public std::enable_shared_from_this<ParserStorage>, public
 	// For single expressions/statements, returns the AST node
 	public: ASTNode Parse(String source);
 
+	// Describe a token for use in error messages, matching MiniScript 1.x format
+	private: String TokenDescription(Token tok);
+
+	// Format an error in the 1.x style: "got X where Y is required"
+	private: String GotExpected(String expected);
+
 	// Report an error
 	public: void ReportError(String message);
 
@@ -296,10 +303,8 @@ struct Parser : public IParser {
 	private: void set__lexer(Lexer _v);
 	private: Token _current();
 	private: void set__current(Token _v);
-	private: Boolean _hadError();
-	private: void set__hadError(Boolean _v);
-	private: List<String> _errors();
-	private: void set__errors(List<String> _v);
+	public: ErrorPool Errors();
+	public: void set_Errors(ErrorPool _v);
 	private: Dictionary<TokenType, PrefixParselet> _prefixParselets();
 	private: void set__prefixParselets(Dictionary<TokenType, PrefixParselet> _v);
 	private: Dictionary<TokenType, InfixParselet> _infixParselets();
@@ -403,6 +408,12 @@ struct Parser : public IParser {
 	// For single expressions/statements, returns the AST node
 	public: ASTNode Parse(String source) { return get()->Parse(source); }
 
+	// Describe a token for use in error messages, matching MiniScript 1.x format
+	private: String TokenDescription(Token tok) { return get()->TokenDescription(tok); }
+
+	// Format an error in the 1.x style: "got X where Y is required"
+	private: String GotExpected(String expected) { return get()->GotExpected(expected); }
+
 	// Report an error
 	public: void ReportError(String message) { return get()->ReportError(message); }
 
@@ -421,10 +432,8 @@ inline Lexer Parser::_lexer() { return get()->_lexer; }
 inline void Parser::set__lexer(Lexer _v) { get()->_lexer = _v; }
 inline Token Parser::_current() { return get()->_current; }
 inline void Parser::set__current(Token _v) { get()->_current = _v; }
-inline Boolean Parser::_hadError() { return get()->_hadError; }
-inline void Parser::set__hadError(Boolean _v) { get()->_hadError = _v; }
-inline List<String> Parser::_errors() { return get()->_errors; }
-inline void Parser::set__errors(List<String> _v) { get()->_errors = _v; }
+inline ErrorPool Parser::Errors() { return get()->Errors; }
+inline void Parser::set_Errors(ErrorPool _v) { get()->Errors = _v; }
 inline Dictionary<TokenType, PrefixParselet> Parser::_prefixParselets() { return get()->_prefixParselets; }
 inline void Parser::set__prefixParselets(Dictionary<TokenType, PrefixParselet> _v) { get()->_prefixParselets = _v; }
 inline Dictionary<TokenType, InfixParselet> Parser::_infixParselets() { return get()->_infixParselets; }

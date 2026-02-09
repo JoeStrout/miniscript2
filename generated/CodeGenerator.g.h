@@ -8,6 +8,7 @@
 
 #include "AST.g.h"
 #include "CodeEmitter.g.h"
+#include "ErrorPool.g.h"
 
 namespace MiniScript {
 
@@ -157,6 +158,7 @@ class ContinueNodeStorage;
 
 
 
+
 class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorStorage>, public IASTVisitor {
 	friend struct CodeGenerator;
 	private: CodeEmitterBase _emitter;
@@ -167,6 +169,7 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 	private: Int32 _targetReg; // Target register for next expression (-1 = allocate)
 	private: List<Int32> _loopExitLabels; // Stack of loop exit labels for break
 	private: List<Int32> _loopContinueLabels; // Stack of loop continue labels for continue
+	public: ErrorPool Errors;
 
 	public: CodeGeneratorStorage(CodeEmitterBase emitter);
 
@@ -275,6 +278,8 @@ struct CodeGenerator : public IASTVisitor {
 	private: void set__loopExitLabels(List<Int32> _v); // Stack of loop exit labels for break
 	private: List<Int32> _loopContinueLabels(); // Stack of loop continue labels for continue
 	private: void set__loopContinueLabels(List<Int32> _v); // Stack of loop continue labels for continue
+	public: ErrorPool Errors();
+	public: void set_Errors(ErrorPool _v);
 
 	public: static CodeGenerator New(CodeEmitterBase emitter) {
 		return CodeGenerator(std::make_shared<CodeGeneratorStorage>(emitter));
@@ -377,5 +382,7 @@ inline List<Int32> CodeGenerator::_loopExitLabels() { return get()->_loopExitLab
 inline void CodeGenerator::set__loopExitLabels(List<Int32> _v) { get()->_loopExitLabels = _v; } // Stack of loop exit labels for break
 inline List<Int32> CodeGenerator::_loopContinueLabels() { return get()->_loopContinueLabels; } // Stack of loop continue labels for continue
 inline void CodeGenerator::set__loopContinueLabels(List<Int32> _v) { get()->_loopContinueLabels = _v; } // Stack of loop continue labels for continue
+inline ErrorPool CodeGenerator::Errors() { return get()->Errors; }
+inline void CodeGenerator::set_Errors(ErrorPool _v) { get()->Errors = _v; }
 
 } // end of namespace MiniScript

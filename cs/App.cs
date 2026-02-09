@@ -5,6 +5,7 @@ using MiniScript;
 using static MiniScript.ValueHelpers;
 
 // H: #include "CodeEmitter.g.h"
+// H: #include "ErrorPool.g.h"
 // CPP: #include "UnitTests.g.h"
 // CPP: #include "VM.g.h"
 // CPP: #include "gc.h"
@@ -72,17 +73,18 @@ public struct App {
 		
 		// Handle inline code (-c) or file argument
 		List<FuncDef> functions = null;
+		ErrorPool errors = ErrorPool.Create();
 
 		if (inlineCode != null) {
 			// Compile inline code
 			if (debugMode) IOHelper.Print(StringUtils.Format("Compiling: {0}", inlineCode));
-			functions = CompileSource(inlineCode);
+			functions = CompileSource(inlineCode, errors, debugMode);
 		} else if (fileArgIndex != -1) {
 			String filePath = args[fileArgIndex];
 
 			// Determine file type by extension
 			if (filePath.EndsWith(".ms")) {
-				functions = CompileSourceFile(filePath);
+				functions = CompileSourceFile(filePath, errors);
 			} else {
 				// Default to assembly file (.msa or any other extension)
 				functions = AssembleFile(filePath);
@@ -90,35 +92,31 @@ public struct App {
 		}
 
 		if (functions != null) {
-			RunProgram(functions);
+			RunProgram(functions, errors);
+		}
+
+		if (errors.HasError()) {
+			IOHelper.Print(errors.TopError());
 		}
 		
 		IOHelper.Print("All done!");
 	}
 
-	// Compile MiniScript source code to a list of functions
-	private static List<FuncDef> CompileSource(String source) {
+	// Compile MiniScript source code to a list of functions.
+	// Set verbose=true for extra debug output (assembly listing, etc.)
+	private static List<FuncDef> CompileSource(String source, ErrorPool errors, Boolean verbose=false) {
 		// Parse the source as a program (multiple statements)
 		Parser parser = new Parser();
+		parser.Errors = errors;
 		parser.Init(source);
 		List<ASTNode> statements = parser.ParseProgram();
 
-		if (parser.HadError()) {
-			IOHelper.Print("Compilation failed with parse errors.");
-			return null;
-		}
+		if (parser.HadError()) return null;
 
 		if (statements.Count == 0) {
-			IOHelper.Print("No statements to compile.");
+			if (verbose) IOHelper.Print("No statements to compile.");
 			return null;
 		}
-
-		// if (debugMode) {
-		// 	IOHelper.Print(StringUtils.Format("Parsed {0} statement(s):", statements.Count));
-		// 	for (Int32 i = 0; i < statements.Count; i++) {
-		// 		IOHelper.Print(StringUtils.Format("  [{0}] {1}", i, statements[i].ToStr()));
-		// 	}
-		// }
 
 		// Simplify each AST (e.g. constant folding)
 		for (Int32 i = 0; i < statements.Count; i++) {
@@ -128,12 +126,15 @@ public struct App {
 		// Compile to bytecode
 		BytecodeEmitter emitter = new BytecodeEmitter();
 		CodeGenerator generator = new CodeGenerator(emitter);
+		generator.Errors = errors;
 		FuncDef mainFunc = generator.CompileProgram(statements, "@main");
 
-		if (debugMode) IOHelper.Print("Compilation complete.");
+		if (generator.Errors.HasError()) return null;
 
-		// In debug mode, also generate and print assembly
-		if (debugMode) {
+		if (verbose) IOHelper.Print("Compilation complete.");
+
+		// In verbose mode, also generate and print assembly
+		if (verbose) {
 			AssemblyEmitter asmEmitter = new AssemblyEmitter();
 			CodeGenerator asmGenerator = new CodeGenerator(asmEmitter);
 			asmGenerator.CompileProgram(statements, "@main");
@@ -147,8 +148,7 @@ public struct App {
 		return functions;
 	}
 
-	// Compile a MiniScript source file (.ms) to a list of functions
-	private static List<FuncDef> CompileSourceFile(String filePath) {
+	private static List<FuncDef> CompileSourceFile(String filePath, ErrorPool errors) {
 		if (debugMode) IOHelper.Print(StringUtils.Format("Reading source file: {0}", filePath));
 
 		List<String> lines = IOHelper.ReadFile(filePath);
@@ -166,7 +166,7 @@ public struct App {
 
 		if (debugMode) IOHelper.Print(StringUtils.Format("Parsing {0} lines...", lines.Count));
 
-		return CompileSource(source);
+		return CompileSource(source, errors, debugMode);
 	}
 
 	// Assemble an assembly file (.msa) to a list of functions
@@ -281,55 +281,39 @@ public struct App {
 		// Skip empty tests
 		if (String.IsNullOrEmpty(source.Trim())) return true;
 
-		// Parse as a program (multiple statements)
-		Parser parser = new Parser();
-		parser.Init(source);
-		List<ASTNode> statements = parser.ParseProgram();
+		// Set up a shared error pool for all stages
+		ErrorPool errors = ErrorPool.Create();
 
-		if (parser.HadError()) {
-			IOHelper.Print(StringUtils.Format("FAIL (line {0}): Parse error in: {1}", lineNum, source));
-			return false;
-		}
-
-		if (statements.Count == 0) {
-			// Empty program is OK if no expected output
-			if (expectedLines.Count == 0) return true;
-			IOHelper.Print(StringUtils.Format("FAIL (line {0}): No statements parsed from: {1}", lineNum, source));
-			return false;
-		}
-
-		// Simplify each AST
-		for (Int32 i = 0; i < statements.Count; i++) {
-			statements[i] = statements[i].Simplify();
-		}
-
-		// Compile to bytecode
-		BytecodeEmitter emitter = new BytecodeEmitter();
-		CodeGenerator generator = new CodeGenerator(emitter);
-		FuncDef mainFunc = generator.CompileProgram(statements, "@main");
-
-		List<FuncDef> functions = new List<FuncDef>();
-		functions.Add(mainFunc);
+		// Compile the source (parser + code generator share the error pool)
+		List<FuncDef> functions = CompileSource(source, errors);
 
 		// Set up print output capture
 		List<String> printOutput = new List<String>();
 		// CPP: static List<String> gPrintOutput;
 		// CPP: gPrintOutput = printOutput;  // Use global reference
 
-		// Run the program with print callback
-		VM vm = new VM();
-		//*** BEGIN CS_ONLY ***
-		vm.SetPrintCallback((String s) => { printOutput.Add(s); });
-		//*** END CS_ONLY ***
-		// CPP: VMStorage::sPrintCallback = [](const String& s) { gPrintOutput.Add(s); };
-		vm.Reset(functions);
-		vm.Run();
+		if (functions != null) {
+			// Run the program with print callback
+			VM vm = new VM();
+			vm.Errors = errors;
+			//*** BEGIN CS_ONLY ***
+			vm.SetPrintCallback((String s) => { printOutput.Add(s); });
+			//*** END CS_ONLY ***
+			// CPP: VMStorage::sPrintCallback = [](const String& s) { gPrintOutput.Add(s); };
+			vm.Reset(functions);
+			vm.Run();
 
-		// Check for runtime errors
-		if (!String.IsNullOrEmpty(vm.RuntimeError)) {
-			IOHelper.Print(StringUtils.Format("FAIL (line {0}): Runtime error: {1}", lineNum, vm.RuntimeError));
-			IOHelper.Print(StringUtils.Format("  Source: {0}", source));
-			return false;
+			// Reset the callback before returning
+			//*** BEGIN CS_ONLY ***
+			vm.SetPrintCallback(null);
+			//*** END CS_ONLY ***
+			// CPP: VMStorage::sPrintCallback = nullptr;
+		}
+
+		// If there were errors, add the first error to the output
+		// (matching MiniScript 1.x behavior of reporting only the first error)
+		if (errors.HasError()) {
+			printOutput.Add(errors.TopError());
 		}
 
 		// Get expected output (join lines, trim trailing empty lines)
@@ -348,12 +332,6 @@ public struct App {
 		}
 		actual = actual.Trim();
 
-		// Reset the callback before returning
-		//*** BEGIN CS_ONLY ***
-		vm.SetPrintCallback(null);
-		//*** END CS_ONLY ***
-		// CPP: VMStorage::sPrintCallback = nullptr;
-
 		if (actual != expected) {
 			IOHelper.Print(StringUtils.Format("FAIL (line {0}): {1}", lineNum, source));
 			IOHelper.Print(StringUtils.Format("  Expected: {0}", expected));
@@ -365,7 +343,7 @@ public struct App {
 	}
 
 	// Run a program given its list of functions
-	private static void RunProgram(List<FuncDef> functions) {
+	private static void RunProgram(List<FuncDef> functions, ErrorPool errors) {
 		// Disassemble and print program (debug only)
 		if (debugMode) {
 			IOHelper.Print("Disassembly:\n");
@@ -388,6 +366,7 @@ public struct App {
 
 		// Run the program
 		VM vm = new VM();
+		vm.Errors = errors;
 		vm.Reset(functions);
 		Value result = make_null();
 
@@ -425,7 +404,7 @@ public struct App {
 			result = vm.Run();
 		}
 
-		if (!vm.ReportRuntimeError()) {
+		if (!errors.HasError()) {
 			IOHelper.Print("\nVM execution complete. Result in r0:");
 			IOHelper.Print(StringUtils.Format("\u001b[1;93m{0}\u001b[0m", result)); // (bold bright yellow)
 		}

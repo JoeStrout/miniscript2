@@ -24,6 +24,7 @@ Lexer::Lexer(String source) {
 	_position = 0;
 	_line = 1;
 	_column = 1;
+	Errors = ErrorPool();
 }
 Char Lexer::Peek() {
 	if (_position >= _input.Length()) return '\0';
@@ -209,7 +210,7 @@ Token Lexer::NextToken() {
 	return singleTok;
 }
 void Lexer::Error(String message) {
-	IOHelper::Print(Interp("Lexer error at _line {}, _column {}: {}", _line, _column, message));
+	Errors.Add(StringUtils::Format("Compiler Error: {0} [line {1}]", message, _line));
 }
 
 

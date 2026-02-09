@@ -157,6 +157,7 @@ class ContinueNodeStorage;
 
 
 
+
 class AssemblerStorage : public std::enable_shared_from_this<AssemblerStorage> {
 	friend struct Assembler;
 

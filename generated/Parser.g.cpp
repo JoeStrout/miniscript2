@@ -4,12 +4,13 @@
 #include "Parser.g.h"
 #include "AST.g.h"
 #include "IOHelper.g.h"
+#include "StringUtils.g.h"
 
 namespace MiniScript {
 
 
 ParserStorage::ParserStorage() {
-	_errors =  List<String>::New();
+	Errors = ErrorPool();
 	_prefixParselets =  Dictionary<TokenType, PrefixParselet>::New();
 	_infixParselets =  Dictionary<TokenType, InfixParselet>::New();
 
@@ -62,8 +63,8 @@ void ParserStorage::RegisterInfix(TokenType type, InfixParselet parselet) {
 }
 void ParserStorage::Init(String source) {
 	_lexer = Lexer(source);
-	_hadError = Boolean(false);
-	_errors.Clear();
+	Errors.Clear();
+	_lexer.Errors = Errors;  // Share the same error pool
 	Advance();  // Prime the pump with the first token
 }
 void ParserStorage::Advance() {
@@ -262,7 +263,7 @@ void ParserStorage::RequireEndKeyword(TokenType keyword, String keywordName) {
 	}
 	Advance();  // consume END
 	if (_current.Type != keyword) {
-		ReportError(Interp("Expected '{}' after 'end', got: {}", keywordName, _current.Text));
+		ReportError(GotExpected(StringUtils::Format("Keyword({0})", keywordName)));
 		return;
 	}
 	Advance();  // consume keyword
@@ -272,7 +273,7 @@ ASTNode ParserStorage::ParseIfStatement() {
 
 	// Expect THEN
 	if (_current.Type != TokenType::THEN) {
-		ReportError(Interp("Expected 'then' after if condition, got: {}", _current.Text));
+		ReportError(GotExpected("Keyword(then)"));
 		return  IfNode::New(condition,  List<ASTNode>::New(),  List<ASTNode>::New());
 	}
 	Advance();  // consume THEN
@@ -362,7 +363,7 @@ ASTNode ParserStorage::ParseForStatement() {
 
 	// Expect IN
 	if (_current.Type != TokenType::IN) {
-		ReportError(Interp("Expected 'in' after loop variable, got: {}", _current.Text));
+		ReportError(GotExpected("Keyword(in)"));
 	} else {
 		Advance();  // consume IN
 	}
@@ -454,17 +455,37 @@ ASTNode ParserStorage::Parse(String source) {
 
 	return result;
 }
+String ParserStorage::TokenDescription(Token tok) {
+	if (tok.Type == TokenType::EOL || tok.Type == TokenType::END_OF_INPUT) return "EOL";
+	if (tok.Type == TokenType::NUMBER) return tok.Text;
+	if (tok.Type == TokenType::STRING) return StringUtils::Format("\"{0}\"", tok.Text);
+	if (tok.Type == TokenType::IDENTIFIER) return tok.Text;
+	// Keywords
+	if (tok.Type == TokenType::WHILE) return "Keyword(while)";
+	if (tok.Type == TokenType::FOR) return "Keyword(for)";
+	if (tok.Type == TokenType::IN) return "Keyword(in)";
+	if (tok.Type == TokenType::IF) return "Keyword(if)";
+	if (tok.Type == TokenType::THEN) return "Keyword(then)";
+	if (tok.Type == TokenType::ELSE) return "Keyword(else)";
+	if (tok.Type == TokenType::END) return "Keyword(end)";
+	if (tok.Type == TokenType::BREAK) return "Keyword(break)";
+	if (tok.Type == TokenType::CONTINUE) return "Keyword(continue)";
+	if (tok.Type == TokenType::AND) return "Keyword(and)";
+	if (tok.Type == TokenType::OR) return "Keyword(or)";
+	if (tok.Type == TokenType::NOT) return "Keyword(not)";
+	return tok.Text;
+}
+String ParserStorage::GotExpected(String expected) {
+	return StringUtils::Format("got {0} where {1} is required", TokenDescription(_current), expected);
+}
 void ParserStorage::ReportError(String message) {
-	_hadError = Boolean(true);
-	String error = Interp("Parse error at line {}, column {}: {}", _current.Line, _current.Column, message);
-	_errors.Add(error);
-	IOHelper::Print(error);
+	Errors.Add(StringUtils::Format("Compiler Error: {0} [line {1}]", message, _current.Line));
 }
 Boolean ParserStorage::HadError() {
-	return _hadError;
+	return Errors.HasError();
 }
 List<String> ParserStorage::GetErrors() {
-	return _errors;
+	return Errors.GetErrors();
 }
 
 

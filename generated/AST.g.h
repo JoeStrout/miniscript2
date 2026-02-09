@@ -133,6 +133,7 @@ class ContinueNodeStorage;
 
 
 
+
 // Operator constants (stored as strings to ease debugging)
 class Op {
 	public: static const String PLUS;

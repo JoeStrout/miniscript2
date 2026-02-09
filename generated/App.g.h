@@ -5,6 +5,7 @@
 #include "core_includes.h"
 
 #include "CodeEmitter.g.h"
+#include "ErrorPool.g.h"
 
 namespace MiniScript {
 
@@ -152,17 +153,18 @@ class ContinueNodeStorage;
 
 
 
+
 struct App {
 	public: static bool debugMode;
 	public: static bool visMode;
 	
 	public: static void MainProgram(List<String> args);
 
-	// Compile MiniScript source code to a list of functions
-	private: static List<FuncDef> CompileSource(String source);
+	// Compile MiniScript source code to a list of functions.
+	// Set verbose=true for extra debug output (assembly listing, etc.)
+	private: static List<FuncDef> CompileSource(String source, ErrorPool errors, Boolean verbose=false);
 
-	// Compile a MiniScript source file (.ms) to a list of functions
-	private: static List<FuncDef> CompileSourceFile(String filePath);
+	private: static List<FuncDef> CompileSourceFile(String filePath, ErrorPool errors);
 
 	// Assemble an assembly file (.msa) to a list of functions
 	private: static List<FuncDef> AssembleFile(String filePath);
@@ -174,7 +176,7 @@ struct App {
 	private: static bool RunSingleTest(List<String> inputLines, List<String> expectedLines, Int32 lineNum);
 
 	// Run a program given its list of functions
-	private: static void RunProgram(List<FuncDef> functions);
+	private: static void RunProgram(List<FuncDef> functions, ErrorPool errors);
 
 }; // end of struct App
 

@@ -5,6 +5,7 @@
 #include "core_includes.h"
 #include "value.h"
 #include "FuncDef.g.h"
+#include "ErrorPool.g.h"
 #include "value_map.h"
 
 
@@ -172,6 +173,7 @@ struct CallInfo {
 
 
 
+
 class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	friend struct VM;
 	public: Boolean DebugMode = false;
@@ -190,6 +192,7 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	public: Boolean IsRunning;
 	public: Int32 BaseIndex;
 	public: String RuntimeError;
+	public: ErrorPool Errors;
 
 	// Print callback: if set, print output goes here instead of IOHelper.Print
 	// H: public: std::function<void(const String&)> _printCallback;
@@ -230,7 +233,7 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	public: void Reset(List<FuncDef> allFunctions);
 
 	public: void RaiseRuntimeError(String message);
-	
+
 	public: bool ReportRuntimeError();
 
 	// Helper for argument processing (FUNCTION_CALLS.md steps 1-3):
@@ -297,6 +300,8 @@ struct VM {
 	public: void set_BaseIndex(Int32 _v);
 	public: String RuntimeError();
 	public: void set_RuntimeError(String _v);
+	public: ErrorPool Errors();
+	public: void set_Errors(ErrorPool _v);
 
 	// Print callback: if set, print output goes here instead of IOHelper.Print
 	// H: public: std::function<void(const String&)> _printCallback;
@@ -337,7 +342,7 @@ struct VM {
 	public: void Reset(List<FuncDef> allFunctions) { return get()->Reset(allFunctions); }
 
 	public: void RaiseRuntimeError(String message) { return get()->RaiseRuntimeError(message); }
-	
+
 	public: bool ReportRuntimeError() { return get()->ReportRuntimeError(); }
 
 	// Helper for argument processing (FUNCTION_CALLS.md steps 1-3):
@@ -397,6 +402,8 @@ inline Int32 VM::BaseIndex() { return get()->BaseIndex; }
 inline void VM::set_BaseIndex(Int32 _v) { get()->BaseIndex = _v; }
 inline String VM::RuntimeError() { return get()->RuntimeError; }
 inline void VM::set_RuntimeError(String _v) { get()->RuntimeError = _v; }
+inline ErrorPool VM::Errors() { return get()->Errors; }
+inline void VM::set_Errors(ErrorPool _v) { get()->Errors = _v; }
 inline Value VM::FuncNamePrint() { return get()->FuncNamePrint; }
 inline Value VM::FuncNameInput() { return get()->FuncNameInput; }
 inline Value VM::FuncNameVal() { return get()->FuncNameVal; }

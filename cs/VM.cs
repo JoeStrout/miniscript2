@@ -4,6 +4,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 // H: #include "value.h"
 // H: #include "FuncDef.g.h"
+// H: #include "ErrorPool.g.h"
 // H: #include "value_map.h"
 // CPP: #include "gc.h"
 // CPP: #include "value_list.h"
@@ -91,6 +92,7 @@ public class VM {
 	public Boolean IsRunning { get; private set; }
 	public Int32 BaseIndex { get; private set; }
 	public String RuntimeError { get; private set; }
+	public ErrorPool Errors;
 
 	public Int32 StackSize() {
 		return stack.Count;
@@ -214,12 +216,13 @@ public class VM {
 
 	public void RaiseRuntimeError(String message) {
 		RuntimeError = message;
+		Errors.Add(StringUtils.Format("Runtime Error: {0}", message));
 		IsRunning = false;
 	}
-	
+
 	public bool ReportRuntimeError() {
 		if (String.IsNullOrEmpty(RuntimeError)) return false;
-		IOHelper.Print(StringUtils.Format("Runtime error: {0} [{1} line {2}]",
+		IOHelper.Print(StringUtils.Format("Runtime Error: {0} [{1} line {2}]",
 		  RuntimeError, CurrentFunction.Name, PC - 1));
 		return true;
 	}

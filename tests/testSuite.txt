@@ -1261,6 +1261,34 @@ end for
 130
 210
 230
+================================================================================
+==== SECTION 14: ERROR CASES
+================================================================================
+==== Runtime error: key not found in map
+================================
+m = {"a": 1}
+print m["b"]
+--------------------------------
+Runtime Error: Key Not Found: 'b' not found in map
+================================
+==== Runtime error: index into non-collection
+================================
+x = 42
+print x[0]
+--------------------------------
+Runtime Error: Can't index into 42
+================================
+==== Compiler error: break outside loop
+================================
+break
+--------------------------------
+Compiler Error: 'break' without open loop block
+================================
+==== Compiler error: continue outside loop
+================================
+continue
+--------------------------------
+Compiler Error: 'continue' without open loop block
 ================================
 ==== END OF TESTS
 ================================================================================

@@ -7,6 +7,7 @@
 // Simple expression tokenizer (to be expanded for full MiniScript grammar)
 
 #include "LangConstants.g.h"
+#include "ErrorPool.g.h"
 
 namespace MiniScript {
 
@@ -155,6 +156,7 @@ class ContinueNodeStorage;
 
 
 
+
 // Represents a single token from the lexer
 struct Token {
 	public: TokenType Type;
@@ -176,6 +178,7 @@ struct Lexer {
 	private: Int32 _position;
 	private: Int32 _line;
 	private: Int32 _column;
+	public: ErrorPool Errors;
 	public: Lexer() {}
 
 	// H: public: Lexer() {}

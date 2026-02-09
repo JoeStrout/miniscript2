@@ -12,8 +12,10 @@ using System.Collections.Generic;
 // H: #include "LangConstants.g.h"
 // H: #include "Lexer.g.h"
 // H: #include "Parselet.g.h"
+// H: #include "ErrorPool.g.h"
 // CPP: #include "AST.g.h"
 // CPP: #include "IOHelper.g.h"
+// CPP: #include "StringUtils.g.h"
 
 
 namespace MiniScript {
@@ -23,15 +25,14 @@ namespace MiniScript {
 public class Parser : IParser {
 	private Lexer _lexer;
 	private Token _current;
-	private Boolean _hadError;
-	private List<String> _errors;
+	public ErrorPool Errors;
 
 	// Parselet tables - indexed by TokenType
 	private Dictionary<TokenType, PrefixParselet> _prefixParselets;
 	private Dictionary<TokenType, InfixParselet> _infixParselets;
 
 	public Parser() {
-		_errors = new List<String>();
+		Errors = new ErrorPool();
 		_prefixParselets = new Dictionary<TokenType, PrefixParselet>();
 		_infixParselets = new Dictionary<TokenType, InfixParselet>();
 
@@ -90,8 +91,8 @@ public class Parser : IParser {
 	// Initialize the parser with source code
 	public void Init(String source) {
 		_lexer = new Lexer(source);
-		_hadError = false;
-		_errors.Clear();
+		Errors.Clear();
+		_lexer.Errors = Errors;  // Share the same error pool
 		Advance();  // Prime the pump with the first token
 	}
 
@@ -321,7 +322,7 @@ public class Parser : IParser {
 		}
 		Advance();  // consume END
 		if (_current.Type != keyword) {
-			ReportError($"Expected '{keywordName}' after 'end', got: {_current.Text}");
+			ReportError(GotExpected(StringUtils.Format("Keyword({0})", keywordName)));
 			return;
 		}
 		Advance();  // consume keyword
@@ -334,7 +335,7 @@ public class Parser : IParser {
 
 		// Expect THEN
 		if (_current.Type != TokenType.THEN) {
-			ReportError($"Expected 'then' after if condition, got: {_current.Text}");
+			ReportError(GotExpected("Keyword(then)"));
 			return new IfNode(condition, new List<ASTNode>(), new List<ASTNode>());
 		}
 		Advance();  // consume THEN
@@ -439,7 +440,7 @@ public class Parser : IParser {
 
 		// Expect IN
 		if (_current.Type != TokenType.IN) {
-			ReportError($"Expected 'in' after loop variable, got: {_current.Text}");
+			ReportError(GotExpected("Keyword(in)"));
 		} else {
 			Advance();  // consume IN
 		}
@@ -540,22 +541,46 @@ public class Parser : IParser {
 		return result;
 	}
 
+	// Describe a token for use in error messages, matching MiniScript 1.x format
+	private String TokenDescription(Token tok) {
+		if (tok.Type == TokenType.EOL || tok.Type == TokenType.END_OF_INPUT) return "EOL";
+		if (tok.Type == TokenType.NUMBER) return tok.Text;
+		if (tok.Type == TokenType.STRING) return StringUtils.Format("\"{0}\"", tok.Text);
+		if (tok.Type == TokenType.IDENTIFIER) return tok.Text;
+		// Keywords
+		if (tok.Type == TokenType.WHILE) return "Keyword(while)";
+		if (tok.Type == TokenType.FOR) return "Keyword(for)";
+		if (tok.Type == TokenType.IN) return "Keyword(in)";
+		if (tok.Type == TokenType.IF) return "Keyword(if)";
+		if (tok.Type == TokenType.THEN) return "Keyword(then)";
+		if (tok.Type == TokenType.ELSE) return "Keyword(else)";
+		if (tok.Type == TokenType.END) return "Keyword(end)";
+		if (tok.Type == TokenType.BREAK) return "Keyword(break)";
+		if (tok.Type == TokenType.CONTINUE) return "Keyword(continue)";
+		if (tok.Type == TokenType.AND) return "Keyword(and)";
+		if (tok.Type == TokenType.OR) return "Keyword(or)";
+		if (tok.Type == TokenType.NOT) return "Keyword(not)";
+		return tok.Text;
+	}
+
+	// Format an error in the 1.x style: "got X where Y is required"
+	private String GotExpected(String expected) {
+		return StringUtils.Format("got {0} where {1} is required", TokenDescription(_current), expected);
+	}
+
 	// Report an error
 	public void ReportError(String message) {
-		_hadError = true;
-		String error = $"Parse error at line {_current.Line}, column {_current.Column}: {message}";
-		_errors.Add(error);
-		IOHelper.Print(error);
+		Errors.Add(StringUtils.Format("Compiler Error: {0} [line {1}]", message, _current.Line));
 	}
 
 	// Check if any errors occurred
 	public Boolean HadError() {
-		return _hadError;
+		return Errors.HasError();
 	}
 
 	// Get the list of errors
 	public List<String> GetErrors() {
-		return _errors;
+		return Errors.GetErrors();
 	}
 }
 

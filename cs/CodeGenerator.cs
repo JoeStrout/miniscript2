@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using static MiniScript.ValueHelpers;
 // H: #include "AST.g.h"
 // H: #include "CodeEmitter.g.h"
+// H: #include "ErrorPool.g.h"
 // CPP: #include "CS_Math.h"
 
 namespace MiniScript {
@@ -21,6 +22,7 @@ public class CodeGenerator : IASTVisitor {
 	private Int32 _targetReg;           // Target register for next expression (-1 = allocate)
 	private List<Int32> _loopExitLabels;      // Stack of loop exit labels for break
 	private List<Int32> _loopContinueLabels;  // Stack of loop continue labels for continue
+	public ErrorPool Errors;
 
 	public CodeGenerator(CodeEmitterBase emitter) {
 		_emitter = emitter;
@@ -254,7 +256,7 @@ public class CodeGenerator : IASTVisitor {
 		// Note the desired target register, if any (but see notes below).
 		Int32 explicitTarget = _targetReg;
 		if (_targetReg > 0) {
-			IOHelper.Print($"ERROR: unexpected _targetReg {_targetReg} in Visit(AssignmentNOde)");
+			Errors.Add(StringUtils.Format("Compiler Error: unexpected target register {0} in assignment", _targetReg));
 		}
 		
 		// Get or allocate register for this variable
@@ -314,7 +316,7 @@ public class CodeGenerator : IASTVisitor {
 		}
 
 		// Unknown unary operator - move operand to result if needed
-		// ToDo: report internal error
+		Errors.Add("Compiler Error: unknown unary operator");
 		if (operandReg != resultReg) {
 			_emitter.EmitABC(Opcode.LOAD_rA_rB, resultReg, operandReg, 0, "move to target");
 			FreeReg(operandReg);
@@ -663,8 +665,7 @@ public class CodeGenerator : IASTVisitor {
 	public Int32 Visit(BreakNode node) {
 		// Break jumps to the innermost loop's exit label
 		if (_loopExitLabels.Count == 0) {
-			// Error: break outside of loop
-			// For now, just emit a NOOP; could report error
+			Errors.Add("Compiler Error: 'break' without open loop block");
 			_emitter.Emit(Opcode.NOOP, "break outside loop (error)");
 		} else {
 			Int32 exitLabel = _loopExitLabels[_loopExitLabels.Count - 1];
@@ -676,8 +677,7 @@ public class CodeGenerator : IASTVisitor {
 	public Int32 Visit(ContinueNode node) {
 		// Continue jumps to the innermost loop's continue label (loop start)
 		if (_loopContinueLabels.Count == 0) {
-			// Error: continue outside of loop
-			// For now, just emit a NOOP; could report error
+			Errors.Add("Compiler Error: 'continue' without open loop block");
 			_emitter.Emit(Opcode.NOOP, "continue outside loop (error)");
 		} else {
 			Int32 continueLabel = _loopContinueLabels[_loopContinueLabels.Count - 1];

@@ -102,6 +102,7 @@ class ContinueNodeStorage;
 
 
 
+
 struct VMVis {
 	private: static const String Esc;
 	private: static const String Clear;

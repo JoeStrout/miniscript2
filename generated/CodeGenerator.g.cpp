@@ -198,7 +198,7 @@ Int32 CodeGeneratorStorage::VisitIdentifier(IdentifierNode node, bool addressOf)
 	} else {
 		// Undefined variable - for now just load 0
 		// TODO: handle outer/globals lookup or report error
-		_emitter.EmitAB(Opcode::LOAD_rA_iBC, resultReg, 0, Interp("undefined identifier: {}", node.Name()));
+		_emitter.EmitAB(Opcode::LOAD_rA_iBC, resultReg, 0, Interp("undefined: {}", node.Name()));
 	}
 
 	return resultReg;
@@ -210,7 +210,7 @@ Int32 CodeGeneratorStorage::Visit(AssignmentNode node) {
 	// Note the desired target register, if any (but see notes below).
 	Int32 explicitTarget = _targetReg;
 	if (_targetReg > 0) {
-		IOHelper::Print(Interp("ERROR: unexpected _targetReg {} in Visit(AssignmentNOde)", _targetReg));
+		Errors.Add(StringUtils::Format("Compiler Error: unexpected target register {0} in assignment", _targetReg));
 	}
 	
 	// Get or allocate register for this variable
@@ -270,7 +270,7 @@ Int32 CodeGeneratorStorage::Visit(UnaryOpNode node) {
 	}
 
 	// Unknown unary operator - move operand to result if needed
-	// ToDo: report internal error
+	Errors.Add("Compiler Error: unknown unary operator");
 	if (operandReg != resultReg) {
 		_emitter.EmitABC(Opcode::LOAD_rA_rB, resultReg, operandReg, 0, "move to target");
 		FreeReg(operandReg);
@@ -616,8 +616,7 @@ Int32 CodeGeneratorStorage::Visit(ForNode node) {
 Int32 CodeGeneratorStorage::Visit(BreakNode node) {
 	// Break jumps to the innermost loop's exit label
 	if (_loopExitLabels.Count() == 0) {
-		// Error: break outside of loop
-		// For now, just emit a NOOP; could report error
+		Errors.Add("Compiler Error: 'break' without open loop block");
 		_emitter.Emit(Opcode::NOOP, "break outside loop (error)");
 	} else {
 		Int32 exitLabel = _loopExitLabels[_loopExitLabels.Count() - 1];
@@ -628,8 +627,7 @@ Int32 CodeGeneratorStorage::Visit(BreakNode node) {
 Int32 CodeGeneratorStorage::Visit(ContinueNode node) {
 	// Continue jumps to the innermost loop's continue label (loop start)
 	if (_loopContinueLabels.Count() == 0) {
-		// Error: continue outside of loop
-		// For now, just emit a NOOP; could report error
+		Errors.Add("Compiler Error: 'continue' without open loop block");
 		_emitter.Emit(Opcode::NOOP, "continue outside loop (error)");
 	} else {
 		Int32 continueLabel = _loopContinueLabels[_loopContinueLabels.Count() - 1];

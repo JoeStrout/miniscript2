@@ -5,6 +5,7 @@ using System;
 using System.Runtime.CompilerServices;
 using static System.Runtime.CompilerServices.MethodImplOptions;
 // H: #include "LangConstants.g.h"
+// H: #include "ErrorPool.g.h"
 // CPP: #include "StringUtils.g.h"
 // CPP: #include "IOHelper.g.h"
 
@@ -37,6 +38,7 @@ public struct Lexer {
 	private Int32 _position;
 	private Int32 _line;
 	private Int32 _column;
+	public ErrorPool Errors;
 
 	// H: public: Lexer() {}
 	public Lexer(String source) {
@@ -44,6 +46,7 @@ public struct Lexer {
 		_position = 0;
 		_line = 1;
 		_column = 1;
+		Errors = new ErrorPool();
 	}
 
 	// Peek at current character without advancing
@@ -274,7 +277,7 @@ public struct Lexer {
 
 	// Report an error
 	public void Error(String message) {
-		IOHelper.Print($"Lexer error at _line {_line}, _column {_column}: {message}");
+		Errors.Add(StringUtils.Format("Compiler Error: {0} [line {1}]", message, _line));
 	}
 }
 

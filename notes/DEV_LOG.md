@@ -315,3 +315,11 @@ So, since we have a little more time today, I'm going to implement `while` loops
 
 Today I'm just adding more parsing of various control structures: `if`, `break`, `for`, etc.  I also found some repetitive code that was a good candidate for DRYing out.
 
+
+## Feb 09, 2026
+
+Added support for functions today.  These hook into the parser as expressions, so ought to be usable everywhere an expression is allowed, though I haven't thoroughly tested that yet.  Near-term to-do list:
+
+- Confirm that we can use expressions in list literals, map literals, and as arguments to other functions.
+- Add support for default parameter values.  Try to do this in a way that allows any expression, as long as it simplifies to a constant.
+- Move on to dot syntax (working towards OOP features).

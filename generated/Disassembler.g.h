@@ -81,6 +81,8 @@ struct MemberNode;
 class MemberNodeStorage;
 struct MethodCallNode;
 class MethodCallNodeStorage;
+struct ExprCallNode;
+class ExprCallNodeStorage;
 struct WhileNode;
 class WhileNodeStorage;
 struct IfNode;
@@ -116,6 +118,7 @@ class Disassembler {
 	public: static List<String> Disassemble(List<FuncDef> functions, Boolean detailed=true);
 
 }; // end of struct Disassembler
+
 
 
 

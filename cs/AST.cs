@@ -46,6 +46,7 @@ public interface IASTVisitor {
 	Int32 Visit(IndexNode node);
 	Int32 Visit(MemberNode node);
 	Int32 Visit(MethodCallNode node);
+	Int32 Visit(ExprCallNode node);
 	Int32 Visit(WhileNode node);
 	Int32 Visit(IfNode node);
 	Int32 Visit(ForNode node);
@@ -475,6 +476,41 @@ public class MethodCallNode : ASTNode {
 			simplifiedArgs.Add(Arguments[i].Simplify());
 		}
 		return new MethodCallNode(Target.Simplify(), Method, simplifiedArgs);
+	}
+
+	public override Int32 Accept(IASTVisitor visitor) {
+		return visitor.Visit(this);
+	}
+}
+
+// Expression call node (e.g., funcs[0](10), getFunc()(x))
+// Calls the result of an arbitrary expression, unlike CallNode which
+// calls a named function.
+public class ExprCallNode : ASTNode {
+	public ASTNode Function;            // expression that evaluates to a function
+	public List<ASTNode> Arguments;     // list of argument expressions
+
+	public ExprCallNode(ASTNode function, List<ASTNode> arguments) {
+		Function = function;
+		Arguments = arguments;
+	}
+
+	public override String ToStr() {
+		String result = Function.ToStr() + "(";
+		for (Int32 i = 0; i < Arguments.Count; i++) {
+			if (i > 0) result = result + ", ";
+			result = result + Arguments[i].ToStr();
+		}
+		result = result + ")";
+		return result;
+	}
+
+	public override ASTNode Simplify() {
+		List<ASTNode> simplifiedArgs = new List<ASTNode>();
+		for (Int32 i = 0; i < Arguments.Count; i++) {
+			simplifiedArgs.Add(Arguments[i].Simplify());
+		}
+		return new ExprCallNode(Function.Simplify(), simplifiedArgs);
 	}
 
 	public override Int32 Accept(IASTVisitor visitor) {

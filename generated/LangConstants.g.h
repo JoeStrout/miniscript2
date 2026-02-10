@@ -83,6 +83,8 @@ struct MemberNode;
 class MemberNodeStorage;
 struct MethodCallNode;
 class MethodCallNodeStorage;
+struct ExprCallNode;
+class ExprCallNodeStorage;
 struct WhileNode;
 class WhileNodeStorage;
 struct IfNode;
@@ -174,6 +176,7 @@ enum class TokenType : Int32 {
 	COMMENT,
 	ERROR
 }; // end of enum TokenType
+
 
 
 

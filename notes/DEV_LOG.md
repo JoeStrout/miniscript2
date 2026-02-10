@@ -320,6 +320,14 @@ Today I'm just adding more parsing of various control structures: `if`, `break`,
 
 Added support for functions today.  These hook into the parser as expressions, so ought to be usable everywhere an expression is allowed, though I haven't thoroughly tested that yet.  Near-term to-do list:
 
-- Confirm that we can use expressions in list literals, map literals, and as arguments to other functions.
+- Confirm that we can use functions in list literals, map literals, and as arguments to other functions.
 - Add support for default parameter values.  Try to do this in a way that allows any expression, as long as it simplifies to a constant.
 - Move on to dot syntax (working towards OOP features).
+
+
+## Feb 10, 2026
+
+It occurred to me this morning that in MS2, we could allow list and map literals as default values -- they just need to be (automatically) frozen.  So, it might be just about time to add support for the freeze feature.
+
+But, I've just noticed that we don't support line continuation where we should.  So, implementing that first.
+

@@ -84,6 +84,8 @@ struct MemberNode;
 class MemberNodeStorage;
 struct MethodCallNode;
 class MethodCallNodeStorage;
+struct ExprCallNode;
+class ExprCallNodeStorage;
 struct WhileNode;
 class WhileNodeStorage;
 struct IfNode;
@@ -176,6 +178,7 @@ class IASTVisitor {
 	virtual Int32 Visit(IndexNode node) = 0;
 	virtual Int32 Visit(MemberNode node) = 0;
 	virtual Int32 Visit(MethodCallNode node) = 0;
+	virtual Int32 Visit(ExprCallNode node) = 0;
 	virtual Int32 Visit(WhileNode node) = 0;
 	virtual Int32 Visit(IfNode node) = 0;
 	virtual Int32 Visit(ForNode node) = 0;
@@ -184,6 +187,7 @@ class IASTVisitor {
 	virtual Int32 Visit(FunctionNode node) = 0;
 	virtual Int32 Visit(ReturnNode node) = 0;
 }; // end of interface IASTVisitor
+
 
 
 
@@ -433,6 +437,20 @@ class MethodCallNodeStorage : public ASTNodeStorage {
 
 	public: Int32 Accept(IASTVisitor& visitor);
 }; // end of class MethodCallNodeStorage
+
+class ExprCallNodeStorage : public ASTNodeStorage {
+	friend struct ExprCallNode;
+	public: ASTNode Function; // expression that evaluates to a function
+	public: List<ASTNode> Arguments; // list of argument expressions
+
+	public: ExprCallNodeStorage(ASTNode function, List<ASTNode> arguments);
+
+	public: String ToStr();
+
+	public: ASTNode Simplify();
+
+	public: Int32 Accept(IASTVisitor& visitor);
+}; // end of class ExprCallNodeStorage
 
 class WhileNodeStorage : public ASTNodeStorage {
 	friend struct WhileNode;
@@ -861,6 +879,33 @@ struct MethodCallNode : public ASTNode {
 }; // end of struct MethodCallNode
 
 
+// Expression call node (e.g., funcs[0](10), getFunc()(x))
+// Calls the result of an arbitrary expression, unlike CallNode which
+// calls a named function.
+struct ExprCallNode : public ASTNode {
+	friend class ExprCallNodeStorage;
+	ExprCallNode(std::shared_ptr<ExprCallNodeStorage> stor);
+	ExprCallNode() : ASTNode() {}
+	ExprCallNode(std::nullptr_t) : ASTNode(nullptr) {}
+	private: ExprCallNodeStorage* get() const;
+
+	public: ASTNode Function(); // expression that evaluates to a function
+	public: void set_Function(ASTNode _v); // expression that evaluates to a function
+	public: List<ASTNode> Arguments(); // list of argument expressions
+	public: void set_Arguments(List<ASTNode> _v); // list of argument expressions
+
+	public: static ExprCallNode New(ASTNode function, List<ASTNode> arguments) {
+		return ExprCallNode(std::make_shared<ExprCallNodeStorage>(function, arguments));
+	}
+
+	public: String ToStr() { return get()->ToStr(); }
+
+	public: ASTNode Simplify() { return get()->Simplify(); }
+
+	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
+}; // end of struct ExprCallNode
+
+
 // While loop node (e.g., while x < 10 ... end while)
 struct WhileNode : public ASTNode {
 	friend class WhileNodeStorage;
@@ -1121,6 +1166,13 @@ inline String MethodCallNode::Method() { return get()->Method; } // the method n
 inline void MethodCallNode::set_Method(String _v) { get()->Method = _v; } // the method name
 inline List<ASTNode> MethodCallNode::Arguments() { return get()->Arguments; } // list of argument expressions
 inline void MethodCallNode::set_Arguments(List<ASTNode> _v) { get()->Arguments = _v; } // list of argument expressions
+
+inline ExprCallNode::ExprCallNode(std::shared_ptr<ExprCallNodeStorage> stor) : ASTNode(stor) {}
+inline ExprCallNodeStorage* ExprCallNode::get() const { return static_cast<ExprCallNodeStorage*>(storage.get()); }
+inline ASTNode ExprCallNode::Function() { return get()->Function; } // expression that evaluates to a function
+inline void ExprCallNode::set_Function(ASTNode _v) { get()->Function = _v; } // expression that evaluates to a function
+inline List<ASTNode> ExprCallNode::Arguments() { return get()->Arguments; } // list of argument expressions
+inline void ExprCallNode::set_Arguments(List<ASTNode> _v) { get()->Arguments = _v; } // list of argument expressions
 
 inline WhileNode::WhileNode(std::shared_ptr<WhileNodeStorage> stor) : ASTNode(stor) {}
 inline WhileNodeStorage* WhileNode::get() const { return static_cast<WhileNodeStorage*>(storage.get()); }

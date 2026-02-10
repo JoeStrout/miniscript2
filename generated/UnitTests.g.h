@@ -83,6 +83,8 @@ struct MemberNode;
 class MemberNodeStorage;
 struct MethodCallNode;
 class MethodCallNodeStorage;
+struct ExprCallNode;
+class ExprCallNodeStorage;
 struct WhileNode;
 class WhileNodeStorage;
 struct IfNode;
@@ -153,6 +155,7 @@ class UnitTests {
 
 	public: static Boolean RunAll();
 }; // end of struct UnitTests
+
 
 
 

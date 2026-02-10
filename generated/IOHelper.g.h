@@ -83,6 +83,8 @@ struct MemberNode;
 class MemberNodeStorage;
 struct MethodCallNode;
 class MethodCallNodeStorage;
+struct ExprCallNode;
+class ExprCallNodeStorage;
 struct WhileNode;
 class WhileNodeStorage;
 struct IfNode;
@@ -143,6 +145,7 @@ class IOHelper {
 	public: static List<String> ReadFile(String filePath);
 	
 }; // end of struct IOHelper
+
 
 
 

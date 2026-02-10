@@ -83,6 +83,8 @@ struct MemberNode;
 class MemberNodeStorage;
 struct MethodCallNode;
 class MethodCallNodeStorage;
+struct ExprCallNode;
+class ExprCallNodeStorage;
 struct WhileNode;
 class WhileNodeStorage;
 struct IfNode;
@@ -156,6 +158,7 @@ struct VMVis {
 
 	public: void UpdateDisplay();
 }; // end of struct VMVis
+
 
 
 

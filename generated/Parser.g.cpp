@@ -68,9 +68,33 @@ void ParserStorage::Init(String source) {
 	Advance();  // Prime the pump with the first token
 }
 void ParserStorage::Advance() {
+	_previousType = _current.Type;
 	do {
 		_current = _lexer.NextToken();
-	} while (_current.Type == TokenType::COMMENT);
+	} while (_current.Type == TokenType::COMMENT
+		|| (_current.Type == TokenType::EOL && AllowsLineContinuation(_previousType)));
+}
+Boolean ParserStorage::AllowsLineContinuation(TokenType type) {
+	return type == TokenType::COMMA
+		|| type == TokenType::LPAREN
+		|| type == TokenType::LBRACKET
+		|| type == TokenType::LBRACE
+		|| type == TokenType::PLUS
+		|| type == TokenType::MINUS
+		|| type == TokenType::TIMES
+		|| type == TokenType::DIVIDE
+		|| type == TokenType::MOD
+		|| type == TokenType::CARET
+		|| type == TokenType::EQUALS
+		|| type == TokenType::NOT_EQUAL
+		|| type == TokenType::LESS_THAN
+		|| type == TokenType::GREATER_THAN
+		|| type == TokenType::LESS_EQUAL
+		|| type == TokenType::GREATER_EQUAL
+		|| type == TokenType::AND
+		|| type == TokenType::OR
+		|| type == TokenType::COLON
+		|| type == TokenType::ASSIGN;
 }
 Boolean ParserStorage::Check(TokenType type) {
 	return _current.Type == type;
@@ -128,7 +152,7 @@ ASTNode ParserStorage::ParseExpression(Precedence minPrecedence) {
 	// Look up the prefix parselet for this token
 	PrefixParselet prefix = nullptr;
 	if (!_prefixParselets.TryGetValue(token.Type, &prefix)) {
-		ReportError(Interp("Unexpected token: {}", token.Text));
+		ReportError(Interp("Unexpected token: {}", TokenDescription(token)));
 		return  NumberNode::New(0);
 	}
 
@@ -231,7 +255,19 @@ ASTNode ParserStorage::ParseSimpleStatement() {
 		// - Just a plain identifier: x
 		// Continue parsing as expression with the identifier as the left operand
 		ASTNode left =  IdentifierNode::New(identToken.Text);
-		return ParseExpressionFrom(left);
+		ASTNode expr = ParseExpressionFrom(left);
+
+		// Check for no-parens call on an expression result, e.g. funcs[0] 10
+		if (_current.AfterSpace && CanStartExpression(_current.Type)) {
+			List<ASTNode> args =  List<ASTNode>::New();
+			args.Add(ParseExpression());
+			while (Match(TokenType::COMMA)) {
+				args.Add(ParseExpression());
+			}
+			return  ExprCallNode::New(expr, args);
+		}
+
+		return expr;
 	}
 
 	// Not an identifier - parse as expression statement

@@ -559,6 +559,50 @@ public class CodeGenerator : IASTVisitor {
 		return resultReg;
 	}
 
+	public Int32 Visit(ExprCallNode node) {
+		// Call a function referenced by an arbitrary expression (e.g. funcs[0](10))
+		Int32 explicitTarget = _targetReg;
+		_targetReg = -1;
+
+		Int32 argCount = node.Arguments.Count;
+
+		// Evaluate the function expression to get the funcref
+		Int32 funcReg = node.Function.Accept(this);
+
+		// Compile arguments into temporary registers
+		List<Int32> argRegs = new List<Int32>();
+		for (Int32 i = 0; i < argCount; i++) {
+			argRegs.Add(node.Arguments[i].Accept(this));
+		}
+
+		// Emit ARGBLK (24-bit arg count)
+		_emitter.EmitABC(Opcode.ARGBLK_iABC, 0, 0, argCount, $"argblock {argCount}");
+
+		// Emit ARG for each argument
+		for (Int32 i = 0; i < argCount; i++) {
+			_emitter.EmitA(Opcode.ARG_rA, argRegs[i], $"arg {i}");
+		}
+
+		// Determine base register for callee frame (past all our used registers)
+		Int32 calleeBase = _maxRegUsed + 1;
+		_emitter.ReserveRegister(calleeBase);
+
+		// Determine result register
+		Int32 resultReg = (explicitTarget >= 0) ? explicitTarget : AllocReg();
+
+		// Emit CALL: result in rA, callee frame at rB, funcref in rC
+		_emitter.EmitABC(Opcode.CALL_rA_rB_rC, resultReg, calleeBase, funcReg,
+			$"call expr, result to r{resultReg}");
+
+		// Free argument registers and funcref register
+		for (Int32 i = 0; i < argCount; i++) {
+			FreeReg(argRegs[i]);
+		}
+		FreeReg(funcReg);
+
+		return resultReg;
+	}
+
 	public Int32 Visit(MethodCallNode node) {
 		// Method calls not yet implemented
 		Int32 reg = GetTargetOrAlloc();

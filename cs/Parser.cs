@@ -25,6 +25,7 @@ namespace MiniScript {
 public class Parser : IParser {
 	private Lexer _lexer;
 	private Token _current;
+	private TokenType _previousType;
 	public ErrorPool Errors;
 
 	// Parselet tables - indexed by TokenType
@@ -96,11 +97,40 @@ public class Parser : IParser {
 		Advance();  // Prime the pump with the first token
 	}
 
-	// Advance to the next token, skipping comments
+	// Advance to the next token, skipping comments and line continuations.
+	// A line continuation is an EOL that follows a token which naturally
+	// expects more input (comma, open bracket/paren/brace, binary operator).
 	private void Advance() {
+		_previousType = _current.Type;
 		do {
 			_current = _lexer.NextToken();
-		} while (_current.Type == TokenType.COMMENT);
+		} while (_current.Type == TokenType.COMMENT
+			|| (_current.Type == TokenType.EOL && AllowsLineContinuation(_previousType)));
+	}
+
+	// Return true if the given token type allows a line continuation after it.
+	// That is, an EOL following this token should be silently ignored.
+	private static Boolean AllowsLineContinuation(TokenType type) {
+		return type == TokenType.COMMA
+			|| type == TokenType.LPAREN
+			|| type == TokenType.LBRACKET
+			|| type == TokenType.LBRACE
+			|| type == TokenType.PLUS
+			|| type == TokenType.MINUS
+			|| type == TokenType.TIMES
+			|| type == TokenType.DIVIDE
+			|| type == TokenType.MOD
+			|| type == TokenType.CARET
+			|| type == TokenType.EQUALS
+			|| type == TokenType.NOT_EQUAL
+			|| type == TokenType.LESS_THAN
+			|| type == TokenType.GREATER_THAN
+			|| type == TokenType.LESS_EQUAL
+			|| type == TokenType.GREATER_EQUAL
+			|| type == TokenType.AND
+			|| type == TokenType.OR
+			|| type == TokenType.COLON
+			|| type == TokenType.ASSIGN;
 	}
 
 	// Check if current token matches the given type (without consuming)
@@ -171,7 +201,7 @@ public class Parser : IParser {
 		// Look up the prefix parselet for this token
 		PrefixParselet prefix = null;
 		if (!_prefixParselets.TryGetValue(token.Type, out prefix)) {
-			ReportError($"Unexpected token: {token.Text}");
+			ReportError($"Unexpected token: {TokenDescription(token)}");
 			return new NumberNode(0);
 		}
 
@@ -282,7 +312,19 @@ public class Parser : IParser {
 			// - Just a plain identifier: x
 			// Continue parsing as expression with the identifier as the left operand
 			ASTNode left = new IdentifierNode(identToken.Text);
-			return ParseExpressionFrom(left);
+			ASTNode expr = ParseExpressionFrom(left);
+
+			// Check for no-parens call on an expression result, e.g. funcs[0] 10
+			if (_current.AfterSpace && CanStartExpression(_current.Type)) {
+				List<ASTNode> args = new List<ASTNode>();
+				args.Add(ParseExpression());
+				while (Match(TokenType.COMMA)) {
+					args.Add(ParseExpression());
+				}
+				return new ExprCallNode(expr, args);
+			}
+
+			return expr;
 		}
 
 		// Not an identifier - parse as expression statement

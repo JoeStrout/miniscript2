@@ -354,6 +354,32 @@ Int32 MethodCallNodeStorage::Accept(IASTVisitor& visitor) {
 }
 
 
+ExprCallNodeStorage::ExprCallNodeStorage(ASTNode function, List<ASTNode> arguments) {
+	Function = function;
+	Arguments = arguments;
+}
+String ExprCallNodeStorage::ToStr() {
+	String result = Function.ToStr() + "(";
+	for (Int32 i = 0; i < Arguments.Count(); i++) {
+		if (i > 0) result = result + ", ";
+		result = result + Arguments[i].ToStr();
+	}
+	result = result + ")";
+	return result;
+}
+ASTNode ExprCallNodeStorage::Simplify() {
+	List<ASTNode> simplifiedArgs =  List<ASTNode>::New();
+	for (Int32 i = 0; i < Arguments.Count(); i++) {
+		simplifiedArgs.Add(Arguments[i].Simplify());
+	}
+	return  ExprCallNode::New(Function.Simplify(), simplifiedArgs);
+}
+Int32 ExprCallNodeStorage::Accept(IASTVisitor& visitor) {
+	ExprCallNode _this(std::static_pointer_cast<ExprCallNodeStorage>(shared_from_this()));
+	return visitor.Visit(_this);
+}
+
+
 WhileNodeStorage::WhileNodeStorage(ASTNode condition, List<ASTNode> body) {
 	Condition = condition;
 	Body = body;

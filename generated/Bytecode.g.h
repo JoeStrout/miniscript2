@@ -80,6 +80,8 @@ struct MemberNode;
 class MemberNodeStorage;
 struct MethodCallNode;
 class MethodCallNodeStorage;
+struct ExprCallNode;
+class ExprCallNodeStorage;
 struct WhileNode;
 class WhileNodeStorage;
 struct IfNode;
@@ -257,6 +259,7 @@ class BytecodeUtil {
 	
 	public: static Opcode FromMnemonic(String s);
 }; // end of struct BytecodeUtil
+
 
 
 

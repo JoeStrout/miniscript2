@@ -94,6 +94,8 @@ struct MemberNode;
 class MemberNodeStorage;
 struct MethodCallNode;
 class MethodCallNodeStorage;
+struct ExprCallNode;
+class ExprCallNodeStorage;
 struct WhileNode;
 class WhileNodeStorage;
 struct IfNode;
@@ -173,10 +175,12 @@ class ReturnNodeStorage;
 
 
 
+
 class ParserStorage : public std::enable_shared_from_this<ParserStorage>, public IParser {
 	friend struct Parser;
 	private: Lexer _lexer;
 	private: Token _current;
+	private: TokenType _previousType;
 	public: ErrorPool Errors;
 	private: Dictionary<TokenType, PrefixParselet> _prefixParselets;
 	private: Dictionary<TokenType, InfixParselet> _infixParselets;
@@ -195,8 +199,14 @@ class ParserStorage : public std::enable_shared_from_this<ParserStorage>, public
 	// Initialize the parser with source code
 	public: void Init(String source);
 
-	// Advance to the next token, skipping comments
+	// Advance to the next token, skipping comments and line continuations.
+	// A line continuation is an EOL that follows a token which naturally
+	// expects more input (comma, open bracket/paren/brace, binary operator).
 	private: void Advance();
+
+	// Return true if the given token type allows a line continuation after it.
+	// That is, an EOL following this token should be silently ignored.
+	private: static Boolean AllowsLineContinuation(TokenType type);
 
 	// Check if current token matches the given type (without consuming)
 	public: Boolean Check(TokenType type);
@@ -315,6 +325,8 @@ struct Parser : public IParser {
 	private: void set__lexer(Lexer _v);
 	private: Token _current();
 	private: void set__current(Token _v);
+	private: TokenType _previousType();
+	private: void set__previousType(TokenType _v);
 	public: ErrorPool Errors();
 	public: void set_Errors(ErrorPool _v);
 	private: Dictionary<TokenType, PrefixParselet> _prefixParselets();
@@ -338,8 +350,14 @@ struct Parser : public IParser {
 	// Initialize the parser with source code
 	public: void Init(String source) { return get()->Init(source); }
 
-	// Advance to the next token, skipping comments
+	// Advance to the next token, skipping comments and line continuations.
+	// A line continuation is an EOL that follows a token which naturally
+	// expects more input (comma, open bracket/paren/brace, binary operator).
 	private: void Advance() { return get()->Advance(); }
+
+	// Return true if the given token type allows a line continuation after it.
+	// That is, an EOL following this token should be silently ignored.
+	private: static Boolean AllowsLineContinuation(TokenType type) { return ParserStorage::AllowsLineContinuation(type); }
 
 	// Check if current token matches the given type (without consuming)
 	public: Boolean Check(TokenType type) { return get()->Check(type); }
@@ -449,6 +467,8 @@ inline Lexer Parser::_lexer() { return get()->_lexer; }
 inline void Parser::set__lexer(Lexer _v) { get()->_lexer = _v; }
 inline Token Parser::_current() { return get()->_current; }
 inline void Parser::set__current(Token _v) { get()->_current = _v; }
+inline TokenType Parser::_previousType() { return get()->_previousType; }
+inline void Parser::set__previousType(TokenType _v) { get()->_previousType = _v; }
 inline ErrorPool Parser::Errors() { return get()->Errors; }
 inline void Parser::set_Errors(ErrorPool _v) { get()->Errors = _v; }
 inline Dictionary<TokenType, PrefixParselet> Parser::_prefixParselets() { return get()->_prefixParselets; }

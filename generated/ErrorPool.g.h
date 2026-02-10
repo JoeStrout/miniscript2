@@ -83,6 +83,8 @@ struct MemberNode;
 class MemberNodeStorage;
 struct MethodCallNode;
 class MethodCallNodeStorage;
+struct ExprCallNode;
+class ExprCallNodeStorage;
 struct WhileNode;
 class WhileNodeStorage;
 struct IfNode;
@@ -125,6 +127,7 @@ struct ErrorPool {
 
 	public: void Clear();
 }; // end of struct ErrorPool
+
 
 
 

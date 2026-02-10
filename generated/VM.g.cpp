@@ -45,6 +45,7 @@ Value CallInfo::GetLocalVarMap(List<Value> registers, List<Value> names, int bas
 
 
 	std::function<void(const String&)> VMStorage::sPrintCallback;
+	thread_local VMStorage* VMStorage::_activeVM = nullptr;
 Int32 VMStorage::StackSize() {
 	return stack.Count();
 }
@@ -241,6 +242,16 @@ Value VMStorage::Run(UInt32 maxCycles) {
 		return make_null();
 	}
 
+	// Set thread-local active VM (save/restore for nested calls)
+	VMStorage* previousVM = _activeVM;
+	_activeVM = this;
+	GC_PUSH_SCOPE();
+	Value runResult = RunInner(maxCycles); GC_PROTECT(&runResult);
+	_activeVM = previousVM;
+	GC_POP_SCOPE();
+	return runResult;
+}
+Value VMStorage::RunInner(UInt32 maxCycles) {
 	// Copy instance variables to locals for performance
 	Int32 pc = PC;
 	Int32 baseIndex = BaseIndex;

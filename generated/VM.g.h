@@ -202,6 +202,7 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	public: Int32 BaseIndex;
 	public: String RuntimeError;
 	public: ErrorPool Errors;
+	private: static thread_local VMStorage* _activeVM;
 
 	// Print callback: if set, print output goes here instead of IOHelper.Print
 	// H: public: std::function<void(const String&)> _printCallback;
@@ -214,6 +215,10 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 
 
 	// Execution state (persistent across RunSteps calls)
+
+	// Thread-local active VM: set during Run(), so value operations
+	// (like list_push) can report errors without passing ErrorPool around.
+	// H: private: static thread_local VMStorage* _activeVM;
 
 	public: Int32 StackSize();
 	public: Int32 CallStackDepth();
@@ -260,6 +265,8 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	public: Value Execute(FuncDef entry, UInt32 maxCycles);
 
 	public: Value Run(UInt32 maxCycles=0);
+
+	private: Value RunInner(UInt32 maxCycles);
 
 	private: void EnsureFrame(Int32 baseIndex, UInt16 neededRegs);
 
@@ -325,6 +332,10 @@ struct VM {
 
 	// Execution state (persistent across RunSteps calls)
 
+	// Thread-local active VM: set during Run(), so value operations
+	// (like list_push) can report errors without passing ErrorPool around.
+	// H: private: static thread_local VMStorage* _activeVM;
+
 	public: Int32 StackSize() { return get()->StackSize(); }
 	public: Int32 CallStackDepth() { return get()->CallStackDepth(); }
 
@@ -370,6 +381,8 @@ struct VM {
 	public: Value Execute(FuncDef entry, UInt32 maxCycles) { return get()->Execute(entry, maxCycles); }
 
 	public: Value Run(UInt32 maxCycles=0) { return get()->Run(maxCycles); }
+
+	private: Value RunInner(UInt32 maxCycles) { return get()->RunInner(maxCycles); }
 
 	private: void EnsureFrame(Int32 baseIndex, UInt16 neededRegs) { return get()->EnsureFrame(baseIndex, neededRegs); }
 

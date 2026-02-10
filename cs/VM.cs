@@ -94,6 +94,15 @@ public class VM {
 	public String RuntimeError { get; private set; }
 	public ErrorPool Errors;
 
+	// Thread-local active VM: set during Run(), so value operations
+	// (like list_push) can report errors without passing ErrorPool around.
+	//*** BEGIN CS_ONLY ***
+	[ThreadStatic] private static VM _activeVM;
+	//*** END CS_ONLY ***
+	// H: private: static thread_local VMStorage* _activeVM;
+	// CPP: thread_local VMStorage* VMStorage::_activeVM = nullptr;
+	public static VM ActiveVM { get { return _activeVM; } } // CPP_METHOD: static VMStorage* ActiveVM() { return _activeVM; }
+
 	public Int32 StackSize() {
 		return stack.Count;
 	}
@@ -314,6 +323,15 @@ public class VM {
 			return make_null();
 		}
 
+		// Set thread-local active VM (save/restore for nested calls)
+		VM previousVM = _activeVM; // CPP: VMStorage* previousVM = _activeVM;
+		_activeVM = this; // CPP: _activeVM = this;
+		Value runResult = RunInner(maxCycles);
+		_activeVM = previousVM;
+		return runResult;
+	}
+
+	private Value RunInner(UInt32 maxCycles) {
 		// Copy instance variables to locals for performance
 		Int32 pc = PC;
 		Int32 baseIndex = BaseIndex;

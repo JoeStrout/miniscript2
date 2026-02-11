@@ -2,6 +2,7 @@
 #include "value.h"
 #include "gc.h"
 #include "value_string.h"
+#include "vm_error.h"
 #include "hashing.h"
 #include <stdlib.h>
 #include <assert.h>
@@ -20,6 +21,7 @@ Value make_list(int initial_capacity) {
     ValueList* list = (ValueList*)gc_allocate(sizeof(ValueList) + initial_capacity * sizeof(Value));
     list->count = 0;
     list->capacity = initial_capacity;
+    list->frozen = false;
     return LIST_TAG | ((uintptr_t)list & 0xFFFFFFFFFFFFULL);
 }
 
@@ -57,6 +59,7 @@ Value list_get(Value list_val, int index) {
 void list_set(Value list_val, int index, Value item) {
     ValueList* list = as_list(list_val);
     if (!list) return;
+    if (list->frozen) { vm_raise_runtime_error("Attempt to modify a frozen list"); return; }
     if (index < 0) index += list->count;
     if (index >= 0 && index < list->count) {
         list->items[index] = item;
@@ -66,7 +69,8 @@ void list_set(Value list_val, int index, Value item) {
 void list_push(Value list_val, Value item) {
     ValueList* list = as_list(list_val);
     if (!list) return;
-    
+    if (list->frozen) { vm_raise_runtime_error("Attempt to modify a frozen list"); return; }
+
     // Add item if there's space
     if (list->count < list->capacity) {
         list->items[list->count++] = item;
@@ -79,6 +83,7 @@ void list_push(Value list_val, Value item) {
 Value list_pop(Value list_val) {
     ValueList* list = as_list(list_val);
     if (!list || list->count <= 0) return make_null();
+    if (list->frozen) { vm_raise_runtime_error("Attempt to modify a frozen list"); return make_null(); }
     
     return list->items[--list->count];
 }
@@ -86,6 +91,7 @@ Value list_pop(Value list_val) {
 void list_insert(Value list_val, int index, Value item) {
     ValueList* list = as_list(list_val);
     if (!list) return;
+    if (list->frozen) { vm_raise_runtime_error("Attempt to modify a frozen list"); return; }
     if (index < 0) index += list->count;
     if (index < 0 || index > list->count) return;
     
@@ -104,6 +110,7 @@ void list_insert(Value list_val, int index, Value item) {
 bool list_remove(Value list_val, int index) {
     ValueList* list = as_list(list_val);
     if (!list) return false;
+    if (list->frozen) { vm_raise_runtime_error("Attempt to modify a frozen list"); return false; }
     if (index < 0) index += list->count;
     if (index < 0 || index > list->count) return false;
     
@@ -138,9 +145,9 @@ bool list_contains(Value list_val, Value item) {
 // List utilities
 void list_clear(Value list_val) {
     ValueList* list = as_list(list_val);
-    if (list) {
-        list->count = 0;
-    }
+    if (!list) return;
+    if (list->frozen) { vm_raise_runtime_error("Attempt to modify a frozen list"); return; }
+    list->count = 0;
 }
 
 Value list_copy(Value list_val) {

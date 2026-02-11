@@ -10,6 +10,7 @@
 #include "Disassembler.g.h"
 #include "StringUtils.g.h"
 #include "dispatch_macros.h"
+#include "vm_error.h"
 
 namespace MiniScript {
 
@@ -45,7 +46,10 @@ Value CallInfo::GetLocalVarMap(List<Value> registers, List<Value> names, int bas
 
 
 	std::function<void(const String&)> VMStorage::sPrintCallback;
-	thread_local VMStorage* VMStorage::_activeVM = nullptr;
+	thread_local VM VMStorage::_activeVM;
+VM VMStorage::ActiveVM() {
+	return _activeVM;
+}
 Int32 VMStorage::StackSize() {
 	return stack.Count();
 }
@@ -91,7 +95,14 @@ void VMStorage::InitVM(Int32 stackSlots, Int32 callSlots) {
 		callStack.Add(CallInfo(0, 0, -1)); // -1 = invalid function index
 	}
 	
+	// Register as a source of roots for the GC system
 	gc_register_mark_callback(VMStorage::MarkRoots, this);
+	
+	// And, ensure that runtime errors are routed through the active VM
+	vm_error_set_callback([](const char* msg) {
+		VM vm = VMStorage::ActiveVM();
+		if (!IsNull(vm)) vm.RaiseRuntimeError(String(msg));
+	});
 }
 void VMStorage::CleanupVM() {
 	gc_unregister_mark_callback(VMStorage::MarkRoots, this);
@@ -238,13 +249,14 @@ Value VMStorage::Execute(FuncDef entry, UInt32 maxCycles) {
 	return Run(maxCycles);
 }
 Value VMStorage::Run(UInt32 maxCycles) {
+	VM _this(std::static_pointer_cast<VMStorage>(shared_from_this()));
 	if (!IsRunning || !CurrentFunction) {
 		return make_null();
 	}
 
 	// Set thread-local active VM (save/restore for nested calls)
-	VMStorage* previousVM = _activeVM;
-	_activeVM = this;
+	VM previousVM = _activeVM;
+	_activeVM = _this;
 	GC_PUSH_SCOPE();
 	Value runResult = RunInner(maxCycles); GC_PROTECT(&runResult);
 	_activeVM = previousVM;
@@ -1279,6 +1291,9 @@ const Value VMStorage::FuncNameInput = make_string("input");
 const Value VMStorage::FuncNameVal = make_string("val");
 const Value VMStorage::FuncNameLen = make_string("len");
 const Value VMStorage::FuncNameRemove = make_string("remove");
+const Value VMStorage::FuncNameFreeze = make_string("freeze");
+const Value VMStorage::FuncNameIsFrozen = make_string("isFrozen");
+const Value VMStorage::FuncNameFrozenCopy = make_string("frozenCopy");
 void VMStorage::DoIntrinsic(Value funcName, Int32 baseReg) {
 	// Run the named intrinsic, with its parameters and return value
 	// stored in our stack starting at baseReg.
@@ -1322,6 +1337,16 @@ void VMStorage::DoIntrinsic(Value funcName, Int32 baseReg) {
 		}
 		stack[baseReg] = make_int(result);
 	
+	} else if (value_equal(funcName, FuncNameFreeze)) {
+		freeze_value(stack[baseReg]);
+		stack[baseReg] = make_null();
+
+	} else if (value_equal(funcName, FuncNameIsFrozen)) {
+		stack[baseReg] = make_int(is_frozen(stack[baseReg]));
+
+	} else if (value_equal(funcName, FuncNameFrozenCopy)) {
+		stack[baseReg] = frozen_copy(stack[baseReg]);
+
 	} else {
 		IOHelper::Print(
 		  StringUtils::Format("ERROR: Unknown function '{0}'", funcName)

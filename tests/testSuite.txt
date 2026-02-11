@@ -1409,6 +1409,88 @@ print funcs[1](10)
 --------------------------------
 20
 30
+================================================================================
+==== SECTION 16: FROZEN VALUES
+================================================================================
+==== isFrozen on unfrozen list and map
+================================
+x = [1, 2, 3]
+print isFrozen(x)
+m = {"a": 1}
+print isFrozen(m)
+--------------------------------
+0
+0
+================================
+==== freeze a list, verify isFrozen
+================================
+x = [1, 2, 3]
+freeze x
+print isFrozen(x)
+--------------------------------
+1
+================================
+==== freeze a map, verify isFrozen
+================================
+m = {"a": 1}
+freeze m
+print isFrozen(m)
+--------------------------------
+1
+================================
+==== frozen list: remove raises error
+================================
+x = [1, 2, 3]
+freeze x
+remove x, 0
+--------------------------------
+Runtime Error: Attempt to modify a frozen list
+================================
+==== frozen map: remove raises error
+================================
+m = {"a": 1, "b": 2}
+freeze m
+remove m, "a"
+--------------------------------
+Runtime Error: Attempt to modify a frozen map
+================================
+==== freeze is recursive
+================================
+inner = [10, 20]
+outer = [inner, 30]
+freeze outer
+print isFrozen(inner)
+--------------------------------
+1
+================================
+==== frozenCopy returns frozen copy without affecting original
+================================
+x = [1, 2, 3]
+y = frozenCopy(x)
+print isFrozen(x)
+print isFrozen(y)
+--------------------------------
+0
+1
+================================
+==== frozenCopy of already-frozen returns same value
+================================
+x = [1, 2, 3]
+freeze x
+y = frozenCopy(x)
+print isFrozen(y)
+--------------------------------
+1
+================================
+==== isFrozen on non-collection returns false
+================================
+print isFrozen(42)
+print isFrozen("hello")
+print isFrozen(null)
+--------------------------------
+0
+0
+0
 ================================
 ==== END OF TESTS
 ================================================================================

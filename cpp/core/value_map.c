@@ -3,6 +3,7 @@
 #include "value_string.h"
 #include "gc.h"
 #include "gc_debug_output.h"
+#include "vm_error.h"
 #include "hashing.h"
 #include <stdlib.h>
 #include <assert.h>
@@ -30,6 +31,7 @@ Value make_map(int initial_capacity) {
     map->count = 0;
     map->capacity = initial_capacity;
     map->varmap_data = NULL; // Regular map, no VarMap data
+    map->frozen = false;
 
     // Allocate the entries array separately
     // (create and protect the Value immediately so subsequent allocations don't collect it)
@@ -235,6 +237,7 @@ static bool base_map_set(Value map_val, Value key, Value value) {
 bool map_set(Value map_val, Value key, Value value) {
     ValueMap* map = as_map(map_val);
     if (!map) return false;
+    if (map->frozen) { vm_raise_runtime_error("Attempt to modify a frozen map"); return false; }
 
     // VarMap check - handle register assignment
     if (map->varmap_data != NULL) {
@@ -258,6 +261,7 @@ bool map_set(Value map_val, Value key, Value value) {
 bool map_remove(Value map_val, Value key) {
     ValueMap* map = as_map(map_val);
     if (!map) return false;
+    if (map->frozen) { vm_raise_runtime_error("Attempt to modify a frozen map"); return false; }
 
     // VarMap check - handle register clearing
     if (map->varmap_data != NULL) {
@@ -332,6 +336,7 @@ bool map_has_key(Value map_val, Value key) {
 void map_clear(Value map_val) {
     ValueMap* map = as_map(map_val);
     if (!map) return;
+    if (map->frozen) { vm_raise_runtime_error("Attempt to modify a frozen map"); return; }
 
     for (int i = 0; i < map->capacity; i++) {
         map->entries[i].occupied = false;
@@ -562,6 +567,7 @@ Value make_varmap(Value* registers, Value* names, int firstIndex, int count) {
     Value result = MAP_TAG | ((uintptr_t)map & 0xFFFFFFFFFFFFULL);
     map->count = 0;
     map->capacity = 8;
+    map->frozen = false;
     map->entries = (MapEntry*)gc_allocate(8 * sizeof(MapEntry));
 
     // Allocate and initialize VarMapData

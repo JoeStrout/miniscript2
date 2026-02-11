@@ -7,6 +7,7 @@
 #include "value_string.h"
 #include "value_list.h"
 #include "value_map.h"
+#include "vm_error.h"
 #include "gc.h"
 #include "StringStorage.h"
 #include <stdio.h>
@@ -324,4 +325,69 @@ uint32_t value_hash(Value v) {
         // hash the raw uint64_t value
         return uint64_hash(v);
     }
+}
+
+// Frozen value support
+
+bool is_frozen(Value v) {
+    if (is_list(v)) {
+        ValueList* list = as_list(v);
+        return list != NULL && list->frozen;
+    }
+    if (is_map(v)) {
+        ValueMap* map = as_map(v);
+        return map != NULL && map->frozen;
+    }
+    return false;
+}
+
+void freeze_value(Value v) {
+    if (is_list(v)) {
+        ValueList* list = as_list(v);
+        if (!list || list->frozen) return;
+        list->frozen = true;
+        for (int i = 0; i < list->count; i++) {
+            freeze_value(list->items[i]);
+        }
+    } else if (is_map(v)) {
+        ValueMap* map = as_map(v);
+        if (!map || map->frozen) return;
+        map->frozen = true;
+        for (int i = 0; i < map->capacity; i++) {
+            if (map->entries[i].occupied) {
+                freeze_value(map->entries[i].key);
+                freeze_value(map->entries[i].value);
+            }
+        }
+    }
+}
+
+Value frozen_copy(Value v) {
+    if (is_list(v)) {
+        ValueList* list = as_list(v);
+        if (!list || list->frozen) return v;
+        Value new_list = make_list(list->count > 0 ? list->count : 8);
+        ValueList* dst = as_list(new_list);
+        dst->frozen = true;
+        for (int i = 0; i < list->count; i++) {
+            dst->items[i] = frozen_copy(list->items[i]);
+        }
+        dst->count = list->count;
+        return new_list;
+    }
+    if (is_map(v)) {
+        ValueMap* map = as_map(v);
+        if (!map || map->frozen) return v;
+        Value new_map = make_map(map->capacity);
+        ValueMap* dst = as_map(new_map);
+        // Copy map contents, then freeze
+        for (int i = 0; i < map->capacity; i++) {
+            if (map->entries[i].occupied) {
+                map_set(new_map, frozen_copy(map->entries[i].key), frozen_copy(map->entries[i].value));
+            }
+        }
+        dst->frozen = true;
+        return new_map;
+    }
+    return v;
 }

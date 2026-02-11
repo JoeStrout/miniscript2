@@ -202,7 +202,7 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	public: Int32 BaseIndex;
 	public: String RuntimeError;
 	public: ErrorPool Errors;
-	private: static thread_local VMStorage* _activeVM;
+	private: thread_local static VM _activeVM;
 
 	// Print callback: if set, print output goes here instead of IOHelper.Print
 	// H: public: std::function<void(const String&)> _printCallback;
@@ -218,7 +218,7 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 
 	// Thread-local active VM: set during Run(), so value operations
 	// (like list_push) can report errors without passing ErrorPool around.
-	// H: private: static thread_local VMStorage* _activeVM;
+	public: static VM ActiveVM();
 
 	public: Int32 StackSize();
 	public: Int32 CallStackDepth();
@@ -276,6 +276,9 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	private: static const Value FuncNameVal;
 	private: static const Value FuncNameLen;
 	private: static const Value FuncNameRemove;
+	private: static const Value FuncNameFreeze;
+	private: static const Value FuncNameIsFrozen;
+	private: static const Value FuncNameFrozenCopy;
 	
 	
 	private: void DoIntrinsic(Value funcName, Int32 baseReg);
@@ -319,6 +322,8 @@ struct VM {
 	public: void set_RuntimeError(String _v);
 	public: ErrorPool Errors();
 	public: void set_Errors(ErrorPool _v);
+	private: VM _activeVM();
+	private: void set__activeVM(VM _v);
 
 	// Print callback: if set, print output goes here instead of IOHelper.Print
 	// H: public: std::function<void(const String&)> _printCallback;
@@ -334,7 +339,7 @@ struct VM {
 
 	// Thread-local active VM: set during Run(), so value operations
 	// (like list_push) can report errors without passing ErrorPool around.
-	// H: private: static thread_local VMStorage* _activeVM;
+	public: static VM ActiveVM() { return VMStorage::ActiveVM(); }
 
 	public: Int32 StackSize() { return get()->StackSize(); }
 	public: Int32 CallStackDepth() { return get()->CallStackDepth(); }
@@ -392,6 +397,9 @@ struct VM {
 	private: Value FuncNameVal();
 	private: Value FuncNameLen();
 	private: Value FuncNameRemove();
+	private: Value FuncNameFreeze();
+	private: Value FuncNameIsFrozen();
+	private: Value FuncNameFrozenCopy();
 	
 	
 	private: void DoIntrinsic(Value funcName, Int32 baseReg) { return get()->DoIntrinsic(funcName, baseReg); }
@@ -427,11 +435,16 @@ inline String VM::RuntimeError() { return get()->RuntimeError; }
 inline void VM::set_RuntimeError(String _v) { get()->RuntimeError = _v; }
 inline ErrorPool VM::Errors() { return get()->Errors; }
 inline void VM::set_Errors(ErrorPool _v) { get()->Errors = _v; }
+inline VM VM::_activeVM() { return get()->_activeVM; }
+inline void VM::set__activeVM(VM _v) { get()->_activeVM = _v; }
 inline Value VM::FuncNamePrint() { return get()->FuncNamePrint; }
 inline Value VM::FuncNameInput() { return get()->FuncNameInput; }
 inline Value VM::FuncNameVal() { return get()->FuncNameVal; }
 inline Value VM::FuncNameLen() { return get()->FuncNameLen; }
 inline Value VM::FuncNameRemove() { return get()->FuncNameRemove; }
+inline Value VM::FuncNameFreeze() { return get()->FuncNameFreeze; }
+inline Value VM::FuncNameIsFrozen() { return get()->FuncNameIsFrozen; }
+inline Value VM::FuncNameFrozenCopy() { return get()->FuncNameFrozenCopy; }
 
 } // end of namespace MiniScript
 

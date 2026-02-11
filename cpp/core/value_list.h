@@ -20,6 +20,7 @@ extern "C" {
 typedef struct {
     int count;       // Number of elements
     int capacity;    // Allocated capacity
+    bool frozen;     // If true, mutations are disallowed
     Value items[];   // Array of Values
 } ValueList;
 

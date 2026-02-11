@@ -973,7 +973,7 @@ end function
 Transpiler.updateStateCLASS = function
 	line = self.line
 	comment = self.line.comment
-
+	
 	if comment.startsWith("// CPP: ") then
 		self.curClass.defLines.push line.indentation + comment[8:]
 		return
@@ -988,7 +988,7 @@ Transpiler.updateStateCLASS = function
 			self.curClass.declLines.push line.indentation + comment[6:]
 		end if
 	end if
-
+	
 	if line.full.startsWith("}") then
 		if self.curClass.type == ClassType.CLASS then
 			if self.preLines then self.curClass.storageLines += self.preLines
@@ -1009,10 +1009,12 @@ Transpiler.updateStateCLASS = function
 	
 	if line.trimmed.startsWith("[") then
 		// decorator -- most are ignored, but check for inline flag
+		// and thread-local flag
 		if line.trimmed.contains("AggressiveInlining") then
 			self.nextMethodInline = true
+		else if not line.trimmed.startsWith("[ThreadStatic]") then
+			return
 		end if
-		return
 	end if
 	
 	if self.curClass.type == ClassType.ENUM then
@@ -1071,6 +1073,21 @@ Transpiler.updateStateCLASS = function
 		else if self.match("≤scope:w≥ static ≤type:w≥ ≤name:w≥ = ≤value≥;") then
 			self.curClass.declLines.push self.fill("	≤scope≥: static ≤type≥ ≤name≥;")
 			self.curClass.defLines.push self.fill("≤type≥ ≤className≥::≤name≥ = ≤value≥;")
+			if self.gatherMode then self.curClass.fields.push VariableInfo.Make(self.m.name, self.m.type, self.m.scope, true)
+
+		// thread-local static field
+		else if self.match("[ThreadStatic] ≤scope:w≥ static ≤type:w≥ ≤name:w≥;") then
+			if self.curClass.type == ClassType.CLASS then
+				self.curClass.storageLines.push self.fill("	≤scope≥: thread_local static ≤type≥ ≤name≥;")
+				self.curClass.defLines.push self.fill("	thread_local ≤type≥ ≤className≥Storage::≤name≥;")
+				self.curClass.wrapperLines.push self.fill("	≤scope≥: ≤type≥ ≤name≥();")
+				self.curClass.inlineLines.push  self.fill("inline ≤type≥ ≤className≥::≤name≥() { return get()->≤name≥; }")
+				self.curClass.wrapperLines.push self.fill("	≤scope≥: void set_≤name≥(≤type≥ _v);")
+				self.curClass.inlineLines.push  self.fill("inline void ≤className≥::set_≤name≥(≤type≥ _v) { get()->≤name≥ = _v; }")
+			else
+				self.curClass.declLines.push self.fill("	≤scope≥: thread_only static ≤type≥ ≤name≥;")
+				self.curClass.defLines.push self.fill("≤type≥ ≤className≥::≤name≥ = ≤value≥;")
+			end if
 			if self.gatherMode then self.curClass.fields.push VariableInfo.Make(self.m.name, self.m.type, self.m.scope, true)
 
 		// constructor method (no return type)
@@ -1200,6 +1217,8 @@ Transpiler.updateStateCLASS = function
 			if self.gatherMode then self.curClass.methods.push MethodInfo.Make(self.m.name)
 		else if self.line.trimmed == "" then
 			self.preLines.push self.line.full
+		else if self.line.trimmed.contains("ctiveVM") then
+			print "====> Didn't match anything: " + self.line.full
 		end if
 	end if
 end function

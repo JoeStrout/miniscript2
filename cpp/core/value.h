@@ -53,6 +53,7 @@ typedef struct ValueMap {
     int capacity;       // Number of slots in the hash table
     MapEntry* entries;  // Pointer to separately-allocated entries array
     VarMapData* varmap_data; // NULL for regular maps, non-NULL for VarMaps
+    bool frozen;        // If true, mutations are disallowed
 } ValueMap;
 
 // NaN-boxing masks and constants
@@ -405,6 +406,11 @@ Value value_shl(Value v, int shift);
 
 // Hash function for Values
 uint32_t value_hash(Value v);
+
+// Frozen value support
+bool is_frozen(Value v);
+void freeze_value(Value v);
+Value frozen_copy(Value v);
 
 #ifdef __cplusplus
 } // extern "C"

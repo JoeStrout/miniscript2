@@ -14,6 +14,7 @@ using System.Runtime.InteropServices;
 // CPP: #include "Disassembler.g.h"
 // CPP: #include "StringUtils.g.h"
 // CPP: #include "dispatch_macros.h"
+// CPP: #include "vm_error.h"
 
 using static MiniScript.ValueHelpers;
 
@@ -96,12 +97,10 @@ public class VM {
 
 	// Thread-local active VM: set during Run(), so value operations
 	// (like list_push) can report errors without passing ErrorPool around.
-	//*** BEGIN CS_ONLY ***
 	[ThreadStatic] private static VM _activeVM;
-	//*** END CS_ONLY ***
-	// H: private: static thread_local VMStorage* _activeVM;
-	// CPP: thread_local VMStorage* VMStorage::_activeVM = nullptr;
-	public static VM ActiveVM { get { return _activeVM; } } // CPP_METHOD: static VMStorage* ActiveVM() { return _activeVM; }
+	public static VM ActiveVM() {
+		return _activeVM;
+	}
 
 	public Int32 StackSize() {
 		return stack.Count;
@@ -154,7 +153,16 @@ public class VM {
 			callStack.Add(new CallInfo(0, 0, -1)); // -1 = invalid function index
 		}
 		
-		// CPP: gc_register_mark_callback(VMStorage::MarkRoots, this);
+		/*** BEGIN CPP_ONLY ***
+		// Register as a source of roots for the GC system
+		gc_register_mark_callback(VMStorage::MarkRoots, this);
+		
+		// And, ensure that runtime errors are routed through the active VM
+		vm_error_set_callback([](const char* msg) {
+			VM vm = VMStorage::ActiveVM();
+			if (!IsNull(vm)) vm.RaiseRuntimeError(String(msg));
+		});
+		*** END CPP_ONLY ***/
 	}
 	
 	private void CleanupVM() {
@@ -324,8 +332,8 @@ public class VM {
 		}
 
 		// Set thread-local active VM (save/restore for nested calls)
-		VM previousVM = _activeVM; // CPP: VMStorage* previousVM = _activeVM;
-		_activeVM = this; // CPP: _activeVM = this;
+		VM previousVM = _activeVM;
+		_activeVM = this;
 		Value runResult = RunInner(maxCycles);
 		_activeVM = previousVM;
 		return runResult;
@@ -1351,6 +1359,9 @@ public class VM {
 	private static readonly Value FuncNameVal = make_string("val");
 	private static readonly Value FuncNameLen = make_string("len");
 	private static readonly Value FuncNameRemove = make_string("remove");
+	private static readonly Value FuncNameFreeze = make_string("freeze");
+	private static readonly Value FuncNameIsFrozen = make_string("isFrozen");
+	private static readonly Value FuncNameFrozenCopy = make_string("frozenCopy");
 	
 	private void DoIntrinsic(Value funcName, Int32 baseReg) {
 		// Run the named intrinsic, with its parameters and return value
@@ -1394,6 +1405,16 @@ public class VM {
 			}
 			stack[baseReg] = make_int(result);
 		
+		} else if (value_equal(funcName, FuncNameFreeze)) {
+			freeze_value(stack[baseReg]);
+			stack[baseReg] = make_null();
+
+		} else if (value_equal(funcName, FuncNameIsFrozen)) {
+			stack[baseReg] = make_int(is_frozen(stack[baseReg]));
+
+		} else if (value_equal(funcName, FuncNameFrozenCopy)) {
+			stack[baseReg] = frozen_copy(stack[baseReg]);
+
 		} else {
 			IOHelper.Print(
 			  StringUtils.Format("ERROR: Unknown function '{0}'", funcName)

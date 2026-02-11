@@ -329,5 +329,23 @@ Added support for functions today.  These hook into the parser as expressions, s
 
 It occurred to me this morning that in MS2, we could allow list and map literals as default values -- they just need to be (automatically) frozen.  So, it might be just about time to add support for the freeze feature.
 
-But, I've just noticed that we don't support line continuation where we should.  So, implementing that first.
+But, I've just noticed that we don't support line continuation where we should.  So, implementing that first.   ...Done.
 
+So now I'm implementing frozen lists/maps, but it has exposed another to-do item:
+- indexed assignment (e.g. x[2] = 42)
+
+To make error reporting for things like frozen values easier, I added a thread-static ActiveVM, so any code called from the VM can get to the VM (and therefore to its error pool).  All this is working fine in C#, but it needs some work in C++.  The H/CPP guards have gotten a little thorny.  I have to quit for now, but when I get more time I need to sit down and carefully sort those out.
+
+
+## Feb 11, 2026
+
+OK, I added support for thread-local static variables to the transpiler, and cleaned up the static _activeVM field so that it actually uses our wrapper pattern instead of fighting it.  On the C++ side, runtime errors are routed through a little callback (see vm_error.h/.c) which maintains the isolation between low-level Value code, and higher layers like the VM and error systems.  All working nicely now!
+
+My to-do list appears to be growing, though.  Let's recap:
+
+- Support indexed assignment (e.g. x[2] = 42)
+- Add support for default parameter values.  Try to do this in a way that allows any expression, as long as it simplifies to a constant.  Default list/map literals should be frozen.
+- Move on to dot syntax (working towards OOP features).
+- Add a REPL for more interactive testing.
+
+I'm actually a bit torn on that last one -- it would be handy, but at the same time, it would reduce the pressure to constantly add more integration tests, which is what I *should* always do.  So, hmm.  Going to think about that.

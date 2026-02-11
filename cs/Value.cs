@@ -451,21 +451,27 @@ public static class ValueHelpers {
 	public static void list_set(Value list_val, int index, Value item) {
 		if (!list_val.IsList) return;
 		var valueList = HandlePool.Get(list_val.Handle()) as ValueList;
-		valueList?.Set(index, item);
+		if (valueList == null) return;
+		if (valueList.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return; }
+		valueList.Set(index, item);
 	}
-	
+
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static void list_push(Value list_val, Value item) {
 		if (!list_val.IsList) return;
 		var valueList = HandlePool.Get(list_val.Handle()) as ValueList;
-		valueList?.Add(item);
+		if (valueList == null) return;
+		if (valueList.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return; }
+		valueList.Add(item);
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool list_remove(Value list_val, int index) {
 		if (!list_val.IsList) return false;
 		var valueList = HandlePool.Get(list_val.Handle()) as ValueList;
-		return valueList != null ? valueList.Remove(index) : false;
+		if (valueList == null) return false;
+		if (valueList.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return false; }
+		return valueList.Remove(index);
 	}
 
 	// Map functions (matching value_map.h)
@@ -524,13 +530,17 @@ public static class ValueHelpers {
 	public static bool map_set(Value map_val, Value key, Value value) {
 		if (!map_val.IsMap) return false;
 		var valueMap = HandlePool.Get(map_val.Handle()) as ValueMap;
-		return valueMap?.Set(key, value) ?? false;
+		if (valueMap == null) return false;
+		if (valueMap.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen map"); return false; }
+		return valueMap.Set(key, value);
 	}
 
 	public static bool map_remove(Value map_val, Value key) {
 		if (!map_val.IsMap) return false;
 		var valueMap = HandlePool.Get(map_val.Handle()) as ValueMap;
-		return valueMap?.Remove(key) ?? false;
+		if (valueMap == null) return false;
+		if (valueMap.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen map"); return false; }
+		return valueMap.Remove(key);
 	}
 
 	public static bool map_has_key(Value map_val, Value key) {
@@ -542,13 +552,73 @@ public static class ValueHelpers {
 	public static void map_clear(Value map_val) {
 		if (!map_val.IsMap) return;
 		var valueMap = HandlePool.Get(map_val.Handle()) as ValueMap;
-		valueMap?.Clear();
+		if (valueMap == null) return;
+		if (valueMap.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen map"); return; }
+		valueMap.Clear();
 	}
 	
 	public static void varmap_gather(Value map_val) {
 		if (!map_val.IsMap) return;
 		var varMap = HandlePool.Get(map_val.Handle()) as VarMap;
 		varMap?.Gather();
+	}
+
+	// Frozen value helpers
+	public static bool is_frozen(Value v) {
+		if (v.IsList) {
+			var valueList = HandlePool.Get(v.Handle()) as ValueList;
+			return valueList != null && valueList.Frozen;
+		}
+		if (v.IsMap) {
+			var valueMap = HandlePool.Get(v.Handle()) as ValueMap;
+			return valueMap != null && valueMap.Frozen;
+		}
+		return false;
+	}
+
+	public static void freeze_value(Value v) {
+		if (v.IsList) {
+			var valueList = HandlePool.Get(v.Handle()) as ValueList;
+			if (valueList == null || valueList.Frozen) return;
+			valueList.Frozen = true;
+			for (int i = 0; i < valueList.Count; i++) {
+				freeze_value(valueList.Get(i));
+			}
+		} else if (v.IsMap) {
+			var valueMap = HandlePool.Get(v.Handle()) as ValueMap;
+			if (valueMap == null || valueMap.Frozen) return;
+			valueMap.Frozen = true;
+			foreach (var kvp in valueMap.Items) {
+				freeze_value(kvp.Key);
+				freeze_value(kvp.Value);
+			}
+		}
+	}
+
+	public static Value frozen_copy(Value v) {
+		if (v.IsList) {
+			var valueList = HandlePool.Get(v.Handle()) as ValueList;
+			if (valueList == null || valueList.Frozen) return v;
+			Value newList = make_list(valueList.Count);
+			var newValueList = HandlePool.Get(newList.Handle()) as ValueList;
+			newValueList.Frozen = true;
+			for (int i = 0; i < valueList.Count; i++) {
+				newValueList.Add(frozen_copy(valueList.Get(i)));
+			}
+			return newList;
+		}
+		if (v.IsMap) {
+			var valueMap = HandlePool.Get(v.Handle()) as ValueMap;
+			if (valueMap == null || valueMap.Frozen) return v;
+			Value newMap = make_map(valueMap.Count);
+			var newValueMap = HandlePool.Get(newMap.Handle()) as ValueMap;
+			newValueMap.Frozen = true;
+			foreach (var kvp in valueMap.Items) {
+				newValueMap.Set(frozen_copy(kvp.Key), frozen_copy(kvp.Value));
+			}
+			return newMap;
+		}
+		return v;
 	}
 
 	// Value representation function (for literal representation)
@@ -820,7 +890,8 @@ internal static class HandlePool {
 // List implementation for Value lists
 public class ValueList {
 	private List<Value> _items = new List<Value>();
-	
+	public bool Frozen;
+
 	public int Count => _items.Count;
 	
 	public void Add(Value item) => _items.Add(item);
@@ -854,6 +925,7 @@ public class ValueList {
 
 public class ValueMap {
 	protected Dictionary<Value, Value> _items = new Dictionary<Value, Value>();
+	public bool Frozen;
 
 	public virtual int Count => _items.Count;
 

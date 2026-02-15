@@ -265,6 +265,15 @@ ASTNode ParserStorage::ParseSimpleStatement() {
 			return  IndexedAssignmentNode::New(idxNode.Target(), idxNode.Index(), value);
 		}
 
+		// Check for member assignment: expr.member = value
+		MemberNode memNode = As<MemberNode, MemberNodeStorage>(expr);
+		if (!IsNull(memNode) && _current.Type == TokenType::ASSIGN) {
+			Advance(); // consume '='
+			ASTNode value = ParseExpression();
+			ASTNode index =  StringNode::New(memNode.Member());
+			return  IndexedAssignmentNode::New(memNode.Target(), index, value);
+		}
+
 		// Check for no-parens call on an expression result, e.g. funcs[0] 10
 		if (_current.AfterSpace && CanStartExpression(_current.Type)) {
 			List<ASTNode> args =  List<ASTNode>::New();
@@ -285,6 +294,13 @@ ASTNode ParserStorage::ParseSimpleStatement() {
 		Advance(); // consume '='
 		ASTNode value = ParseExpression();
 		return  IndexedAssignmentNode::New(idxNode2.Target(), idxNode2.Index(), value);
+	}
+	MemberNode memNode2 = As<MemberNode, MemberNodeStorage>(expr2);
+	if (!IsNull(memNode2) && _current.Type == TokenType::ASSIGN) {
+		Advance(); // consume '='
+		ASTNode value = ParseExpression();
+		ASTNode index =  StringNode::New(memNode2.Member());
+		return  IndexedAssignmentNode::New(memNode2.Target(), index, value);
 	}
 	return expr2;
 }

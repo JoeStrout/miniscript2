@@ -564,11 +564,14 @@ public class CodeGenerator : IASTVisitor {
 	}
 
 	public Int32 Visit(MemberNode node) {
-		// Member access not yet fully implemented
-		Int32 resultReg = GetTargetOrAlloc();  // Capture target before any recursive calls
+		Int32 resultReg = GetTargetOrAlloc();
 		Int32 targetReg = node.Target.Accept(this);
-		// TODO: Implement member access
-		_emitter.EmitABC(Opcode.LOAD_rA_rB, resultReg, targetReg, 0, $"TODO: {node.Target.ToStr()}.{node.Member}");
+		Int32 indexReg = AllocReg();
+		Int32 constIdx = _emitter.AddConstant(make_string(node.Member));
+		_emitter.EmitAB(Opcode.LOAD_rA_kBC, indexReg, constIdx, $"r{indexReg} = \"{node.Member}\"");
+		_emitter.EmitABC(Opcode.INDEX_rA_rB_rC, resultReg, targetReg, indexReg,
+			$"{node.Target.ToStr()}.{node.Member}");
+		FreeReg(indexReg);
 		FreeReg(targetReg);
 		return resultReg;
 	}

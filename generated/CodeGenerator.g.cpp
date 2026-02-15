@@ -513,11 +513,14 @@ Int32 CodeGeneratorStorage::Visit(IndexNode node) {
 }
 Int32 CodeGeneratorStorage::Visit(MemberNode node) {
 	CodeGenerator _this(std::static_pointer_cast<CodeGeneratorStorage>(shared_from_this()));
-	// Member access not yet fully implemented
-	Int32 resultReg = GetTargetOrAlloc();  // Capture target before any recursive calls
+	Int32 resultReg = GetTargetOrAlloc();
 	Int32 targetReg = node.Target().Accept(_this);
-	// TODO: Implement member access
-	_emitter.EmitABC(Opcode::LOAD_rA_rB, resultReg, targetReg, 0, Interp("TODO: {}.{}", node.Target().ToStr(), node.Member()));
+	Int32 indexReg = AllocReg();
+	Int32 constIdx = _emitter.AddConstant(make_string(node.Member()));
+	_emitter.EmitAB(Opcode::LOAD_rA_kBC, indexReg, constIdx, Interp("r{} = \"{}\"", indexReg, node.Member()));
+	_emitter.EmitABC(Opcode::INDEX_rA_rB_rC, resultReg, targetReg, indexReg,
+		Interp("{}.{}", node.Target().ToStr(), node.Member()));
+	FreeReg(indexReg);
 	FreeReg(targetReg);
 	return resultReg;
 }

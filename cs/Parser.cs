@@ -322,6 +322,15 @@ public class Parser : IParser {
 				return new IndexedAssignmentNode(idxNode.Target, idxNode.Index, value);
 			}
 
+			// Check for member assignment: expr.member = value
+			MemberNode memNode = expr as MemberNode;
+			if (memNode != null && _current.Type == TokenType.ASSIGN) {
+				Advance(); // consume '='
+				ASTNode value = ParseExpression();
+				ASTNode index = new StringNode(memNode.Member);
+				return new IndexedAssignmentNode(memNode.Target, index, value);
+			}
+
 			// Check for no-parens call on an expression result, e.g. funcs[0] 10
 			if (_current.AfterSpace && CanStartExpression(_current.Type)) {
 				List<ASTNode> args = new List<ASTNode>();
@@ -342,6 +351,13 @@ public class Parser : IParser {
 			Advance(); // consume '='
 			ASTNode value = ParseExpression();
 			return new IndexedAssignmentNode(idxNode2.Target, idxNode2.Index, value);
+		}
+		MemberNode memNode2 = expr2 as MemberNode;
+		if (memNode2 != null && _current.Type == TokenType.ASSIGN) {
+			Advance(); // consume '='
+			ASTNode value = ParseExpression();
+			ASTNode index = new StringNode(memNode2.Member);
+			return new IndexedAssignmentNode(memNode2.Target, index, value);
 		}
 		return expr2;
 	}

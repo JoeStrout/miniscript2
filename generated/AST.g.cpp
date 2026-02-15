@@ -517,8 +517,9 @@ Int32 ContinueNodeStorage::Accept(IASTVisitor& visitor) {
 }
 
 
-FunctionNodeStorage::FunctionNodeStorage(List<String> paramNames, List<ASTNode> body) {
+FunctionNodeStorage::FunctionNodeStorage(List<String> paramNames, List<ASTNode> paramDefaults, List<ASTNode> body) {
 	ParamNames = paramNames;
+	ParamDefaults = paramDefaults;
 	Body = body;
 }
 String FunctionNodeStorage::ToStr() {
@@ -526,6 +527,10 @@ String FunctionNodeStorage::ToStr() {
 	for (Int32 i = 0; i < ParamNames.Count(); i++) {
 		if (i > 0) result = result + ", ";
 		result = result + ParamNames[i];
+		ASTNode def = ParamDefaults[i];
+		if (!IsNull(def)) {
+			result = result + "=" + def.ToStr();
+		}
 	}
 	result = result + ")\n";
 	for (Int32 i = 0; i < Body.Count(); i++) {
@@ -535,11 +540,20 @@ String FunctionNodeStorage::ToStr() {
 	return result;
 }
 ASTNode FunctionNodeStorage::Simplify() {
+	List<ASTNode> simplifiedDefaults =  List<ASTNode>::New();
+	for (Int32 i = 0; i < ParamDefaults.Count(); i++) {
+		ASTNode def = ParamDefaults[i];
+		if (!IsNull(def)) {
+			simplifiedDefaults.Add(def.Simplify());
+		} else {
+			simplifiedDefaults.Add(nullptr);
+		}
+	}
 	List<ASTNode> simplifiedBody =  List<ASTNode>::New();
 	for (Int32 i = 0; i < Body.Count(); i++) {
 		simplifiedBody.Add(Body[i].Simplify());
 	}
-	return  FunctionNode::New(ParamNames, simplifiedBody);
+	return  FunctionNode::New(ParamNames, simplifiedDefaults, simplifiedBody);
 }
 Int32 FunctionNodeStorage::Accept(IASTVisitor& visitor) {
 	FunctionNode _this(std::static_pointer_cast<FunctionNodeStorage>(shared_from_this()));

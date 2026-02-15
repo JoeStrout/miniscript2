@@ -272,6 +272,12 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 
 	public: Int32 Visit(ContinueNode node);
 
+	// Try to evaluate an AST node as a compile-time constant value.
+	// Returns true if successful, with the result in 'result'.
+	// Handles: numbers, strings, null/true/false, unary minus, list/map literals.
+	// Lists and maps are automatically frozen (immutable).
+	public: static Boolean TryEvaluateConstant(ASTNode node, Value* result);
+
 	public: Int32 Visit(FunctionNode node);
 
 	public: Int32 Visit(ReturnNode node);
@@ -400,6 +406,12 @@ struct CodeGenerator : public IASTVisitor {
 	public: Int32 Visit(BreakNode node) { return get()->Visit(node); }
 
 	public: Int32 Visit(ContinueNode node) { return get()->Visit(node); }
+
+	// Try to evaluate an AST node as a compile-time constant value.
+	// Returns true if successful, with the result in 'result'.
+	// Handles: numbers, strings, null/true/false, unary minus, list/map literals.
+	// Lists and maps are automatically frozen (immutable).
+	public: static Boolean TryEvaluateConstant(ASTNode node, Value* result) { return CodeGeneratorStorage::TryEvaluateConstant(node, result); }
 
 	public: Int32 Visit(FunctionNode node) { return get()->Visit(node); }
 

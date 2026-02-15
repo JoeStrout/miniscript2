@@ -357,7 +357,8 @@ Transpiler.fill = function(pattern, addComment=true)
 	end if
 	if pattern.contains("≤params≥") and not self.m.hasIndex("fixedRefs") then
 		// Add & to any interface types, e.g. IParser --> IParser&
-		s = self.m.params
+		// and also fix output parameters, etc.
+		s = self.transformParams(self.m.params)
 		for cls in self.allClasses
 			if cls.type == ClassType.INTERFACE then s = s.replace(cls.name, cls.name + "&")
 		end for
@@ -451,7 +452,7 @@ Transpiler.transformStatement = function(trimmedLine)
 	// non-identifier string.
 	tokens = roughTokenize(trimmedLine)
 	
-	deepDebug = false // trimmedLine.contains("innerGen._functions")
+	deepDebug = trimmedLine.contains("result")
 	ddprint = function(s); if deepDebug then print "====> " + s; end function
 	summarize = function(obj)
 		if obj == null then return "<null>"
@@ -480,8 +481,10 @@ Transpiler.transformStatement = function(trimmedLine)
 			tokens[i] = "Boolean(true)"  // make true/false literals Boolean rather than bool
 		else if tokens[i] == "false" then
 			tokens[i] = "Boolean(false)"
-		else if tokens[i] == "out" then
-			// This is used on output arguments; in C++, just take the address.
+		else if tokens[i] == "out" or tokens[i] == "ref" then
+			// This is used for out/ref arguments; in C++, make this into & to pass
+			// the argument as a pointer (since it needs to work in C too, where
+			// reference parameters are not supported).
 			tokens[i] = "&"
 			if i+1 < tokens.len and tokens[i+1] == " " then tokens.remove i+1
 		else if tokens[i] == "." then   // dot operator: resolve var type and continue
@@ -612,6 +615,11 @@ Transpiler.transformStatement = function(trimmedLine)
 		nextInfo = self.lookup(tokens[i], curInfo)
 		if self.curClass then curClassName = self.curClass.name else curClassName = ""
 		ddprint "lookup of " + tokens[i] + ": " + summarize(nextInfo)
+		if nextInfo isa VariableInfo and nextInfo.ref then
+			// "reference" (pointer) type -- insert '*'
+			tokens[i] = "*" + tokens[i]
+			ddprint "Changed token to " + tokens[i]
+		end if
 		if curInfo isa ClassInfo and curInfo.type == ClassType.CLASS and
 		  nextInfo isa VariableInfo then
 			// Found a field lookup!  Or maybe an assignment.  Check the next token
@@ -646,27 +654,53 @@ Transpiler.transformStatement = function(trimmedLine)
 	
 end function
 
+Transpiler.transformParams = function(paramStr)
+	// Fix up any language transformations needed for the given parameters string.
+	result = []
+	for part in paramStr.split(", ")  // note: assumes no commas in string literal defaults!
+		m = part.match("out ≤type:w≥ ≤whatever≥")
+		if not m then m = part.match("ref ≤type:w≥ ≤whatever≥")
+		if m then
+			// Turn these into pointer types, as it needs to be compatible with
+			// C too (see map_try_get), which doesn't support reference parameters.
+			result.push "≤type≥* ≤whatever≥".fill(m)
+			continue
+		end if
+		result.push part
+	end for
+	return result.join(", ")
+end function
+
 Transpiler.parseParams = function(paramStr)
 	// Parse the given parameter string into a list of VariableInfo.
 	result = []
-	for part in paramStr.split(", ")
+	for part in paramStr.split(", ")  // note: assumes no commas in string literal defaults!
 		m = part.match("≤type:w≥")
 		if m then continue  // unnamed (because unused) parameter
+		// standard parameters
 		m = part.match("≤type:w≥ ≤name:w≥ = ≤value≥")
 		if not m then m = part.match("≤type:w≥ ≤name:w≥=≤value≥")
 		if not m then m = part.match("≤type:w≥ ≤name:w≥")
-		if not m then m = part.match("ref ≤type:w≥ ≤name:w≥") // ToDo: not ref in VariableInfo
 		if m then
 			result.push VariableInfo.Make(m.name, m.type, Scope.LOCAL)
+			continue
+		end if
+		// reference/output parameters
+		m = part.match("ref ≤type:w≥ ≤name:w≥")
+		if not m then m = part.match("out ≤type:w≥ ≤name:w≥")
+		if m then
+			result.push VariableInfo.Make(m.name, m.type, Scope.LOCAL)
+			result[-1].ref = true
+			continue
+		end if
+		// array parameters
+		m = part.match("≤type:w≥[] ≤name:w≥")
+		if not m then m = part.match("params ≤type:w≥[] ≤name:w≥")
+		if m then
+			result.push VariableInfo.Make(m.name, m.type, Scope.LOCAL)
+			result[-1].array = true
 		else
-			m = part.match("≤type:w≥[] ≤name:w≥")
-			if not m then m = part.match("params ≤type:w≥[] ≤name:w≥")
-			if m then
-				result.push VariableInfo.Make(m.name, m.type, Scope.LOCAL)
-				result[-1].array = true
-			else
-				self.assert false, "Could not parse parameter: " + part
-			end if
+			self.assert false, "Could not parse parameter: " + part
 		end if
 	end for
 	return result

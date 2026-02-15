@@ -1409,6 +1409,107 @@ print funcs[1](10)
 --------------------------------
 20
 30
+================================
+==== Function with default parameter values
+================================
+f = function(x, y=10)
+	return x + y
+end function
+print f(5)
+print f(5, 20)
+--------------------------------
+15
+25
+================================
+==== Default string parameter
+================================
+f = function(s="hi")
+	return s
+end function
+print f
+print f("bye")
+--------------------------------
+hi
+bye
+================================
+==== Default true/false/null
+================================
+f = function(a=true, b=false, c=null)
+	print a
+	print b
+	print c
+end function
+f
+--------------------------------
+1
+0
+null
+================================
+==== Negative number default
+================================
+f = function(x=-5)
+	return x
+end function
+print f
+--------------------------------
+-5
+================================
+==== Computed (but still constant)  default
+================================
+f = function(x=6*7)
+	return x
+end function
+print f
+--------------------------------
+42
+================================
+==== Default list (frozen)
+================================
+f = function(x=[1, 2, 3])
+	return x
+end function
+print f
+print isFrozen(f)
+--------------------------------
+[1, 2, 3]
+1
+================================
+==== Default map (frozen)
+================================
+f = function(m={"a": 1})
+	return m
+end function
+print f
+print isFrozen(f)
+--------------------------------
+{"a": 1}
+1
+================================
+==== Omitted args get null
+================================
+f = function(a, b=10)
+	print a
+	print b
+end function
+f
+--------------------------------
+null
+10
+================================
+==== Multiple defaults, some omitted
+================================
+f = function(a=1, b=2, c=3)
+	return a + b + c
+end function
+print f
+print f(10)
+print f(10, 20)
+print f(10, 20, 30)
+--------------------------------
+6
+15
+33
+60
 ================================================================================
 ==== SECTION 16: FROZEN VALUES
 ================================================================================

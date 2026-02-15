@@ -540,9 +540,10 @@ class ContinueNodeStorage : public ASTNodeStorage {
 class FunctionNodeStorage : public ASTNodeStorage {
 	friend struct FunctionNode;
 	public: List<String> ParamNames; // parameter names
+	public: List<ASTNode> ParamDefaults; // default value expressions (null = no explicit default)
 	public: List<ASTNode> Body; // statements in the function body
 
-	public: FunctionNodeStorage(List<String> paramNames, List<ASTNode> body);
+	public: FunctionNodeStorage(List<String> paramNames, List<ASTNode> paramDefaults, List<ASTNode> body);
 
 	public: String ToStr();
 
@@ -1083,11 +1084,13 @@ struct FunctionNode : public ASTNode {
 
 	public: List<String> ParamNames(); // parameter names
 	public: void set_ParamNames(List<String> _v); // parameter names
+	public: List<ASTNode> ParamDefaults(); // default value expressions (null = no explicit default)
+	public: void set_ParamDefaults(List<ASTNode> _v); // default value expressions (null = no explicit default)
 	public: List<ASTNode> Body(); // statements in the function body
 	public: void set_Body(List<ASTNode> _v); // statements in the function body
 
-	public: static FunctionNode New(List<String> paramNames, List<ASTNode> body) {
-		return FunctionNode(std::make_shared<FunctionNodeStorage>(paramNames, body));
+	public: static FunctionNode New(List<String> paramNames, List<ASTNode> paramDefaults, List<ASTNode> body) {
+		return FunctionNode(std::make_shared<FunctionNodeStorage>(paramNames, paramDefaults, body));
 	}
 
 	public: String ToStr() { return get()->ToStr(); }
@@ -1264,6 +1267,8 @@ inline FunctionNode::FunctionNode(std::shared_ptr<FunctionNodeStorage> stor) : A
 inline FunctionNodeStorage* FunctionNode::get() const { return static_cast<FunctionNodeStorage*>(storage.get()); }
 inline List<String> FunctionNode::ParamNames() { return get()->ParamNames; } // parameter names
 inline void FunctionNode::set_ParamNames(List<String> _v) { get()->ParamNames = _v; } // parameter names
+inline List<ASTNode> FunctionNode::ParamDefaults() { return get()->ParamDefaults; } // default value expressions (null = no explicit default)
+inline void FunctionNode::set_ParamDefaults(List<ASTNode> _v) { get()->ParamDefaults = _v; } // default value expressions (null = no explicit default)
 inline List<ASTNode> FunctionNode::Body() { return get()->Body; } // statements in the function body
 inline void FunctionNode::set_Body(List<ASTNode> _v) { get()->Body = _v; } // statements in the function body
 

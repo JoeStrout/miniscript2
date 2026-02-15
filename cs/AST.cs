@@ -698,10 +698,12 @@ public class ContinueNode : ASTNode {
 // Function definition expression (e.g., function(x, y) ... end function)
 public class FunctionNode : ASTNode {
 	public List<String> ParamNames;     // parameter names
+	public List<ASTNode> ParamDefaults; // default value expressions (null = no explicit default)
 	public List<ASTNode> Body;          // statements in the function body
 
-	public FunctionNode(List<String> paramNames, List<ASTNode> body) {
+	public FunctionNode(List<String> paramNames, List<ASTNode> paramDefaults, List<ASTNode> body) {
 		ParamNames = paramNames;
+		ParamDefaults = paramDefaults;
 		Body = body;
 	}
 
@@ -710,6 +712,10 @@ public class FunctionNode : ASTNode {
 		for (Int32 i = 0; i < ParamNames.Count; i++) {
 			if (i > 0) result = result + ", ";
 			result = result + ParamNames[i];
+			ASTNode def = ParamDefaults[i];
+			if (def != null) {
+				result = result + "=" + def.ToStr();
+			}
 		}
 		result = result + ")\n";
 		for (Int32 i = 0; i < Body.Count; i++) {
@@ -720,11 +726,20 @@ public class FunctionNode : ASTNode {
 	}
 
 	public override ASTNode Simplify() {
+		List<ASTNode> simplifiedDefaults = new List<ASTNode>();
+		for (Int32 i = 0; i < ParamDefaults.Count; i++) {
+			ASTNode def = ParamDefaults[i];
+			if (def != null) {
+				simplifiedDefaults.Add(def.Simplify());
+			} else {
+				simplifiedDefaults.Add(null);
+			}
+		}
 		List<ASTNode> simplifiedBody = new List<ASTNode>();
 		for (Int32 i = 0; i < Body.Count; i++) {
 			simplifiedBody.Add(Body[i].Simplify());
 		}
-		return new FunctionNode(ParamNames, simplifiedBody);
+		return new FunctionNode(ParamNames, simplifiedDefaults, simplifiedBody);
 	}
 
 	public override Int32 Accept(IASTVisitor visitor) {

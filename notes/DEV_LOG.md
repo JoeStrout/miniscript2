@@ -353,3 +353,6 @@ I'm actually a bit torn on that last one -- it would be handy, but at the same t
 ## Feb. 15, 2025
 
 Indexed assignment works now.
+
+And, so do default values, including _computed_ default values!  As long as it simplifies to a constant, you can do stuff like `function(x=6*7)`.  You can also use maps and lists as default values; they appear frozen (immutable).  Huzzah!
+

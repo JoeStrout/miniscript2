@@ -3,6 +3,7 @@
 
 #include "CodeGenerator.g.h"
 #include "CS_Math.h"
+#include "gc.h"
 
 namespace MiniScript {
 
@@ -744,6 +745,77 @@ Int32 CodeGeneratorStorage::Visit(ContinueNode node) {
 	}
 	return -1;
 }
+Boolean CodeGeneratorStorage::TryEvaluateConstant(ASTNode node, Value* result) {
+	*result = make_null();
+	NumberNode numNode = As<NumberNode, NumberNodeStorage>(node);
+	if (!IsNull(numNode)) {
+		*result = make_double(numNode.Value());
+		return Boolean(true);
+	}
+	StringNode strNode = As<StringNode, StringNodeStorage>(node);
+	if (!IsNull(strNode)) {
+		*result = make_string(strNode.Value());
+		return Boolean(true);
+	}
+	IdentifierNode idNode = As<IdentifierNode, IdentifierNodeStorage>(node);
+	if (!IsNull(idNode)) {
+		if (idNode.Name() == "null") { *result = make_null(); return Boolean(true); }
+		if (idNode.Name() == "true") { *result = make_double(1); return Boolean(true); }
+		if (idNode.Name() == "false") { *result = make_double(0); return Boolean(true); }
+		return Boolean(false);
+	}
+	UnaryOpNode unaryNode = As<UnaryOpNode, UnaryOpNodeStorage>(node);
+	if (!IsNull(unaryNode) && unaryNode.Op() == Op::MINUS) {
+		NumberNode innerNum = As<NumberNode, NumberNodeStorage>(unaryNode.Operand());
+		if (!IsNull(innerNum)) {
+			*result = make_double(-innerNum.Value());
+			return Boolean(true);
+		}
+		return Boolean(false);
+	}
+	GC_PUSH_SCOPE();
+	Value list; GC_PROTECT(&list);
+	Value elemVal; GC_PROTECT(&elemVal);
+	ListNode listNode = As<ListNode, ListNodeStorage>(node);
+	if (!IsNull(listNode)) {
+		list = make_list(listNode.Elements().Count());
+		for (Int32 i = 0; i < listNode.Elements().Count(); i++) {
+			if (!TryEvaluateConstant(listNode.Elements()[i], &elemVal))  {
+				GC_POP_SCOPE();
+				return Boolean(false);
+			}
+			list_push(list, elemVal);
+		}
+		freeze_value(list);
+		*result = list;
+		GC_POP_SCOPE();
+		return Boolean(true);
+	}
+	Value map; GC_PROTECT(&map);
+	Value keyVal; GC_PROTECT(&keyVal);
+	Value valVal; GC_PROTECT(&valVal);
+	MapNode mapNode = As<MapNode, MapNodeStorage>(node);
+	if (!IsNull(mapNode)) {
+		map = make_map(mapNode.Keys().Count());
+		for (Int32 i = 0; i < mapNode.Keys().Count(); i++) {
+			if (!TryEvaluateConstant(mapNode.Keys()[i], &keyVal))  {
+				GC_POP_SCOPE();
+				return Boolean(false);
+			}
+			if (!TryEvaluateConstant(mapNode.Values()[i], &valVal))  {
+				GC_POP_SCOPE();
+				return Boolean(false);
+			}
+			map_set(map, keyVal, valVal);
+		}
+		freeze_value(map);
+		*result = map;
+		GC_POP_SCOPE();
+		return Boolean(true);
+	}
+	GC_POP_SCOPE();
+	return Boolean(false);
+}
 Int32 CodeGeneratorStorage::Visit(FunctionNode node) {
 	Int32 resultReg = GetTargetOrAlloc();
 
@@ -778,9 +850,21 @@ Int32 CodeGeneratorStorage::Visit(FunctionNode node) {
 	FuncDef funcDef = innerEmitter.Finalize(funcName);
 
 	// Set parameter info on the FuncDef
+	GC_PUSH_SCOPE();
+	Value defaultVal; GC_PROTECT(&defaultVal);
 	for (Int32 i = 0; i < node.ParamNames().Count(); i++) {
 		funcDef.ParamNames().Add(make_string(node.ParamNames()[i]));
-		funcDef.ParamDefaults().Add(make_null());
+		ASTNode defaultNode = node.ParamDefaults()[i];
+		if (!IsNull(defaultNode)) {
+			if (TryEvaluateConstant(defaultNode, &defaultVal)) {
+				funcDef.ParamDefaults().Add(defaultVal);
+			} else {
+				Errors.Add(StringUtils::Format("Default value for parameter '{0}' must be a constant", node.ParamNames()[i]));
+				funcDef.ParamDefaults().Add(make_null());
+			}
+		} else {
+			funcDef.ParamDefaults().Add(make_null());
+		}
 	}
 
 	// Store in the shared functions list
@@ -790,6 +874,7 @@ Int32 CodeGeneratorStorage::Visit(FunctionNode node) {
 	_emitter.EmitAB(Opcode::FUNCREF_iA_iBC, resultReg, funcIndex,
 		Interp("r{} = funcref {}", resultReg, funcName));
 
+	GC_POP_SCOPE();
 	return resultReg;
 }
 Int32 CodeGeneratorStorage::Visit(ReturnNode node) {

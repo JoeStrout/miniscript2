@@ -433,10 +433,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 
 					// Switch to callee frame: base slides to argument window
 					baseIndex += curFunc.MaxRegs();
-					for (Int32 i = 0; i < callee.MaxRegs(); i++) { // clear registers (ugh)
-						stack[baseIndex + i] = make_null();
-						names[baseIndex + i] = make_null();
-					}
+					SetupCallFrame(0, baseIndex, callee);
 					pc = 0; // Start at beginning of callee code
 					curFunc = callee; // Switch to callee function
 					codeCount = curFunc.Code().Count();

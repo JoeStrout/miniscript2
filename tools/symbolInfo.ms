@@ -91,6 +91,7 @@ VariableInfo.type = ""
 VariableInfo.scope = ""			// Scope.PUBLIC, etc.
 VariableInfo.static = false
 VariableInfo.array = false
+VariableInfo.ref = false		// ref or out parameter
 
 VariableInfo.Make = function(name="", type="", scope="", static=false)
 	noob = new VariableInfo
@@ -105,6 +106,7 @@ VariableInfo.summary = function
 	parts = []
 	if self.scope then parts.push self.scope
 	if self.static then parts.push "static"
+	if self.ref then parts.push "ref"
 	parts.push self.type
 	parts.push self.name
 	if self.array then parts[-1] += "[]"

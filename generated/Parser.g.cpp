@@ -453,6 +453,7 @@ ASTNode ParserStorage::ParseForStatement() {
 ASTNode ParserStorage::ParseFunctionExpression() {
 	// Parse parameter list (parentheses optional for no-param functions)
 	List<String> paramNames =  List<String>::New();
+	List<ASTNode> paramDefaults =  List<ASTNode>::New();
 	if (_current.Type == TokenType::LPAREN) {
 		Advance();  // consume '('
 		if (_current.Type != TokenType::RPAREN) {
@@ -460,6 +461,13 @@ ASTNode ParserStorage::ParseFunctionExpression() {
 				Token paramToken = Expect(TokenType::IDENTIFIER, "Expected parameter name");
 				if (paramToken.Type != TokenType::ERROR) {
 					paramNames.Add(paramToken.Text);
+					if (Match(TokenType::ASSIGN)) {
+						// Parse default value expression
+						ASTNode defaultExpr = ParseExpression(Precedence::NONE);
+						paramDefaults.Add(defaultExpr);
+					} else {
+						paramDefaults.Add(nullptr);
+					}
 				}
 			} while (Match(TokenType::COMMA));
 		}
@@ -475,7 +483,7 @@ ASTNode ParserStorage::ParseFunctionExpression() {
 	List<ASTNode> body = ParseBlock(TokenType::END, TokenType::END);
 	RequireEndKeyword(TokenType::FUNCTION, "function");
 
-	return  FunctionNode::New(paramNames, body);
+	return  FunctionNode::New(paramNames, paramDefaults, body);
 }
 ASTNode ParserStorage::ParseStatement() {
 	// Skip leading blank lines

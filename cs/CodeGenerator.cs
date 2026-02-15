@@ -8,6 +8,7 @@ using static MiniScript.ValueHelpers;
 // H: #include "CodeEmitter.g.h"
 // H: #include "ErrorPool.g.h"
 // CPP: #include "CS_Math.h"
+// CPP: #include "gc.h"
 
 namespace MiniScript {
 
@@ -799,6 +800,69 @@ public class CodeGenerator : IASTVisitor {
 		return -1;
 	}
 
+	// Try to evaluate an AST node as a compile-time constant value.
+	// Returns true if successful, with the result in 'result'.
+	// Handles: numbers, strings, null/true/false, unary minus, list/map literals.
+	// Lists and maps are automatically frozen (immutable).
+	public static Boolean TryEvaluateConstant(ASTNode node, out Value result) {
+		result = make_null();
+		NumberNode numNode = node as NumberNode;
+		if (numNode != null) {
+			result = make_double(numNode.Value);
+			return true;
+		}
+		StringNode strNode = node as StringNode;
+		if (strNode != null) {
+			result = make_string(strNode.Value);
+			return true;
+		}
+		IdentifierNode idNode = node as IdentifierNode;
+		if (idNode != null) {
+			if (idNode.Name == "null") { result = make_null(); return true; }
+			if (idNode.Name == "true") { result = make_double(1); return true; }
+			if (idNode.Name == "false") { result = make_double(0); return true; }
+			return false;
+		}
+		UnaryOpNode unaryNode = node as UnaryOpNode;
+		if (unaryNode != null && unaryNode.Op == Op.MINUS) {
+			NumberNode innerNum = unaryNode.Operand as NumberNode;
+			if (innerNum != null) {
+				result = make_double(-innerNum.Value);
+				return true;
+			}
+			return false;
+		}
+		Value list;
+		Value elemVal;
+		ListNode listNode = node as ListNode;
+		if (listNode != null) {
+			list = make_list(listNode.Elements.Count);
+			for (Int32 i = 0; i < listNode.Elements.Count; i++) {
+				if (!TryEvaluateConstant(listNode.Elements[i], out elemVal)) return false;
+				list_push(list, elemVal);
+			}
+			freeze_value(list);
+			result = list;
+			return true;
+		}
+		Value map;
+		Value keyVal;
+		Value valVal;
+		MapNode mapNode = node as MapNode;
+		if (mapNode != null) {
+			map = make_map(mapNode.Keys.Count);
+			for (Int32 i = 0; i < mapNode.Keys.Count; i++) {
+				if (!TryEvaluateConstant(mapNode.Keys[i], out keyVal)) return false;
+				if (!TryEvaluateConstant(mapNode.Values[i], out valVal)) return false;
+				map_set(map, keyVal, valVal);
+			}
+			freeze_value(map);
+			result = map;
+			return true;
+		}
+		return false;
+	}
+
 	public Int32 Visit(FunctionNode node) {
 		Int32 resultReg = GetTargetOrAlloc();
 
@@ -833,9 +897,20 @@ public class CodeGenerator : IASTVisitor {
 		FuncDef funcDef = innerEmitter.Finalize(funcName);
 
 		// Set parameter info on the FuncDef
+		Value defaultVal;
 		for (Int32 i = 0; i < node.ParamNames.Count; i++) {
 			funcDef.ParamNames.Add(make_string(node.ParamNames[i]));
-			funcDef.ParamDefaults.Add(make_null());
+			ASTNode defaultNode = node.ParamDefaults[i];
+			if (defaultNode != null) {
+				if (TryEvaluateConstant(defaultNode, out defaultVal)) {
+					funcDef.ParamDefaults.Add(defaultVal);
+				} else {
+					Errors.Add(StringUtils.Format("Default value for parameter '{0}' must be a constant", node.ParamNames[i]));
+					funcDef.ParamDefaults.Add(make_null());
+				}
+			} else {
+				funcDef.ParamDefaults.Add(make_null());
+			}
 		}
 
 		// Store in the shared functions list

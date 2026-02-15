@@ -540,6 +540,7 @@ public class Parser : IParser {
 	private ASTNode ParseFunctionExpression() {
 		// Parse parameter list (parentheses optional for no-param functions)
 		List<String> paramNames = new List<String>();
+		List<ASTNode> paramDefaults = new List<ASTNode>();
 		if (_current.Type == TokenType.LPAREN) {
 			Advance();  // consume '('
 			if (_current.Type != TokenType.RPAREN) {
@@ -547,6 +548,13 @@ public class Parser : IParser {
 					Token paramToken = Expect(TokenType.IDENTIFIER, "Expected parameter name");
 					if (paramToken.Type != TokenType.ERROR) {
 						paramNames.Add(paramToken.Text);
+						if (Match(TokenType.ASSIGN)) {
+							// Parse default value expression
+							ASTNode defaultExpr = ParseExpression(Precedence.NONE);
+							paramDefaults.Add(defaultExpr);
+						} else {
+							paramDefaults.Add(null);
+						}
 					}
 				} while (Match(TokenType.COMMA));
 			}
@@ -562,7 +570,7 @@ public class Parser : IParser {
 		List<ASTNode> body = ParseBlock(TokenType.END, TokenType.END);
 		RequireEndKeyword(TokenType.FUNCTION, "function");
 
-		return new FunctionNode(paramNames, body);
+		return new FunctionNode(paramNames, paramDefaults, body);
 	}
 
 	// Parse a statement (handles both simple statements and block statements)

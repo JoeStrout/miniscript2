@@ -63,6 +63,8 @@ struct IdentifierNode;
 class IdentifierNodeStorage;
 struct AssignmentNode;
 class AssignmentNodeStorage;
+struct IndexedAssignmentNode;
+class IndexedAssignmentNodeStorage;
 struct UnaryOpNode;
 class UnaryOpNodeStorage;
 struct BinaryOpNode;
@@ -118,6 +120,7 @@ class Disassembler {
 	public: static List<String> Disassemble(List<FuncDef> functions, Boolean detailed=true);
 
 }; // end of struct Disassembler
+
 
 
 

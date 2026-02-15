@@ -60,6 +60,8 @@ struct IdentifierNode;
 class IdentifierNodeStorage;
 struct AssignmentNode;
 class AssignmentNodeStorage;
+struct IndexedAssignmentNode;
+class IndexedAssignmentNodeStorage;
 struct UnaryOpNode;
 class UnaryOpNodeStorage;
 struct BinaryOpNode;
@@ -96,6 +98,7 @@ struct ReturnNode;
 class ReturnNodeStorage;
 
 // DECLARATIONS
+
 
 
 

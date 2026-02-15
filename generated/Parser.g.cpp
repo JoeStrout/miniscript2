@@ -257,6 +257,14 @@ ASTNode ParserStorage::ParseSimpleStatement() {
 		ASTNode left =  IdentifierNode::New(identToken.Text);
 		ASTNode expr = ParseExpressionFrom(left);
 
+		// Check for indexed assignment: expr[index] = value
+		IndexNode idxNode = As<IndexNode, IndexNodeStorage>(expr);
+		if (!IsNull(idxNode) && _current.Type == TokenType::ASSIGN) {
+			Advance(); // consume '='
+			ASTNode value = ParseExpression();
+			return  IndexedAssignmentNode::New(idxNode.Target(), idxNode.Index(), value);
+		}
+
 		// Check for no-parens call on an expression result, e.g. funcs[0] 10
 		if (_current.AfterSpace && CanStartExpression(_current.Type)) {
 			List<ASTNode> args =  List<ASTNode>::New();
@@ -271,7 +279,14 @@ ASTNode ParserStorage::ParseSimpleStatement() {
 	}
 
 	// Not an identifier - parse as expression statement
-	return ParseExpression();
+	ASTNode expr2 = ParseExpression();
+	IndexNode idxNode2 = As<IndexNode, IndexNodeStorage>(expr2);
+	if (!IsNull(idxNode2) && _current.Type == TokenType::ASSIGN) {
+		Advance(); // consume '='
+		ASTNode value = ParseExpression();
+		return  IndexedAssignmentNode::New(idxNode2.Target(), idxNode2.Index(), value);
+	}
+	return expr2;
 }
 Boolean ParserStorage::IsBlockTerminator(TokenType t1, TokenType t2) {
 	return _current.Type == TokenType::END_OF_INPUT

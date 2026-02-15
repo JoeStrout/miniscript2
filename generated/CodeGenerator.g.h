@@ -68,6 +68,8 @@ struct IdentifierNode;
 class IdentifierNodeStorage;
 struct AssignmentNode;
 class AssignmentNodeStorage;
+struct IndexedAssignmentNode;
+class IndexedAssignmentNodeStorage;
 struct UnaryOpNode;
 class UnaryOpNodeStorage;
 struct BinaryOpNode;
@@ -104,6 +106,7 @@ struct ReturnNode;
 class ReturnNodeStorage;
 
 // DECLARATIONS
+
 
 
 
@@ -234,6 +237,8 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 
 	public: Int32 Visit(AssignmentNode node);
 
+	public: Int32 Visit(IndexedAssignmentNode node);
+
 	public: Int32 Visit(UnaryOpNode node);
 
 	public: Int32 Visit(BinaryOpNode node);
@@ -360,6 +365,8 @@ struct CodeGenerator : public IASTVisitor {
 	public: Int32 Visit(IdentifierNode node) { return get()->Visit(node); }
 
 	public: Int32 Visit(AssignmentNode node) { return get()->Visit(node); }
+
+	public: Int32 Visit(IndexedAssignmentNode node) { return get()->Visit(node); }
 
 	public: Int32 Visit(UnaryOpNode node) { return get()->Visit(node); }
 

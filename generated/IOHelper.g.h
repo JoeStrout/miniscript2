@@ -65,6 +65,8 @@ struct IdentifierNode;
 class IdentifierNodeStorage;
 struct AssignmentNode;
 class AssignmentNodeStorage;
+struct IndexedAssignmentNode;
+class IndexedAssignmentNodeStorage;
 struct UnaryOpNode;
 class UnaryOpNodeStorage;
 struct BinaryOpNode;
@@ -145,6 +147,7 @@ class IOHelper {
 	public: static List<String> ReadFile(String filePath);
 	
 }; // end of struct IOHelper
+
 
 
 

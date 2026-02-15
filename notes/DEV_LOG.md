@@ -349,3 +349,7 @@ My to-do list appears to be growing, though.  Let's recap:
 - Add a REPL for more interactive testing.
 
 I'm actually a bit torn on that last one -- it would be handy, but at the same time, it would reduce the pressure to constantly add more integration tests, which is what I *should* always do.  So, hmm.  Going to think about that.
+
+## Feb. 15, 2025
+
+Indexed assignment works now.

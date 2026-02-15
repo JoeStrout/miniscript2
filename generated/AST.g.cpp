@@ -96,6 +96,23 @@ Int32 AssignmentNodeStorage::Accept(IASTVisitor& visitor) {
 }
 
 
+IndexedAssignmentNodeStorage::IndexedAssignmentNodeStorage(ASTNode target, ASTNode index, ASTNode value) {
+	Target = target;
+	Index = index;
+	Value = value;
+}
+String IndexedAssignmentNodeStorage::ToStr() {
+	return Target.ToStr() + "[" + Index.ToStr() + "] = " + Value.ToStr();
+}
+ASTNode IndexedAssignmentNodeStorage::Simplify() {
+	return  IndexedAssignmentNode::New(Target.Simplify(), Index.Simplify(), Value.Simplify());
+}
+Int32 IndexedAssignmentNodeStorage::Accept(IASTVisitor& visitor) {
+	IndexedAssignmentNode _this(std::static_pointer_cast<IndexedAssignmentNodeStorage>(shared_from_this()));
+	return visitor.Visit(_this);
+}
+
+
 UnaryOpNodeStorage::UnaryOpNodeStorage(String op, ASTNode operand) {
 	Op = op;
 	Operand = operand;

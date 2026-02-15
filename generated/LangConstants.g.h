@@ -65,6 +65,8 @@ struct IdentifierNode;
 class IdentifierNodeStorage;
 struct AssignmentNode;
 class AssignmentNodeStorage;
+struct IndexedAssignmentNode;
+class IndexedAssignmentNodeStorage;
 struct UnaryOpNode;
 class UnaryOpNodeStorage;
 struct BinaryOpNode;
@@ -176,6 +178,7 @@ enum class TokenType : Int32 {
 	COMMENT,
 	ERROR
 }; // end of enum TokenType
+
 
 
 

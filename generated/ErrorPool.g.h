@@ -65,6 +65,8 @@ struct IdentifierNode;
 class IdentifierNodeStorage;
 struct AssignmentNode;
 class AssignmentNodeStorage;
+struct IndexedAssignmentNode;
+class IndexedAssignmentNodeStorage;
 struct UnaryOpNode;
 class UnaryOpNodeStorage;
 struct BinaryOpNode;
@@ -127,6 +129,7 @@ struct ErrorPool {
 
 	public: void Clear();
 }; // end of struct ErrorPool
+
 
 
 

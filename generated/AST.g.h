@@ -66,6 +66,8 @@ struct IdentifierNode;
 class IdentifierNodeStorage;
 struct AssignmentNode;
 class AssignmentNodeStorage;
+struct IndexedAssignmentNode;
+class IndexedAssignmentNodeStorage;
 struct UnaryOpNode;
 class UnaryOpNodeStorage;
 struct BinaryOpNode;
@@ -186,7 +188,9 @@ class IASTVisitor {
 	virtual Int32 Visit(ContinueNode node) = 0;
 	virtual Int32 Visit(FunctionNode node) = 0;
 	virtual Int32 Visit(ReturnNode node) = 0;
+	virtual Int32 Visit(IndexedAssignmentNode node) = 0;
 }; // end of interface IASTVisitor
+
 
 
 
@@ -305,6 +309,21 @@ class AssignmentNodeStorage : public ASTNodeStorage {
 
 	public: Int32 Accept(IASTVisitor& visitor);
 }; // end of class AssignmentNodeStorage
+
+class IndexedAssignmentNodeStorage : public ASTNodeStorage {
+	friend struct IndexedAssignmentNode;
+	public: ASTNode Target; // the container (list/map) being assigned into
+	public: ASTNode Index; // the index/key expression
+	public: ASTNode Value; // the value being assigned
+
+	public: IndexedAssignmentNodeStorage(ASTNode target, ASTNode index, ASTNode value);
+
+	public: String ToStr();
+
+	public: ASTNode Simplify();
+
+	public: Int32 Accept(IASTVisitor& visitor);
+}; // end of class IndexedAssignmentNodeStorage
 
 class UnaryOpNodeStorage : public ASTNodeStorage {
 	friend struct UnaryOpNode;
@@ -638,6 +657,33 @@ struct AssignmentNode : public ASTNode {
 
 	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct AssignmentNode
+
+
+// Indexed assignment node (e.g., lst[0] = 42, map["key"] = value)
+struct IndexedAssignmentNode : public ASTNode {
+	friend class IndexedAssignmentNodeStorage;
+	IndexedAssignmentNode(std::shared_ptr<IndexedAssignmentNodeStorage> stor);
+	IndexedAssignmentNode() : ASTNode() {}
+	IndexedAssignmentNode(std::nullptr_t) : ASTNode(nullptr) {}
+	private: IndexedAssignmentNodeStorage* get() const;
+
+	public: ASTNode Target(); // the container (list/map) being assigned into
+	public: void set_Target(ASTNode _v); // the container (list/map) being assigned into
+	public: ASTNode Index(); // the index/key expression
+	public: void set_Index(ASTNode _v); // the index/key expression
+	public: ASTNode Value(); // the value being assigned
+	public: void set_Value(ASTNode _v); // the value being assigned
+
+	public: static IndexedAssignmentNode New(ASTNode target, ASTNode index, ASTNode value) {
+		return IndexedAssignmentNode(std::make_shared<IndexedAssignmentNodeStorage>(target, index, value));
+	}
+
+	public: String ToStr() { return get()->ToStr(); }
+
+	public: ASTNode Simplify() { return get()->Simplify(); }
+
+	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
+}; // end of struct IndexedAssignmentNode
 
 
 // Unary operator node (e.g., -x, not flag)
@@ -1103,6 +1149,15 @@ inline String AssignmentNode::Variable() { return get()->Variable; } // variable
 inline void AssignmentNode::set_Variable(String _v) { get()->Variable = _v; } // variable name being assigned to
 inline ASTNode AssignmentNode::Value() { return get()->Value; } // expression being assigned
 inline void AssignmentNode::set_Value(ASTNode _v) { get()->Value = _v; } // expression being assigned
+
+inline IndexedAssignmentNode::IndexedAssignmentNode(std::shared_ptr<IndexedAssignmentNodeStorage> stor) : ASTNode(stor) {}
+inline IndexedAssignmentNodeStorage* IndexedAssignmentNode::get() const { return static_cast<IndexedAssignmentNodeStorage*>(storage.get()); }
+inline ASTNode IndexedAssignmentNode::Target() { return get()->Target; } // the container (list/map) being assigned into
+inline void IndexedAssignmentNode::set_Target(ASTNode _v) { get()->Target = _v; } // the container (list/map) being assigned into
+inline ASTNode IndexedAssignmentNode::Index() { return get()->Index; } // the index/key expression
+inline void IndexedAssignmentNode::set_Index(ASTNode _v) { get()->Index = _v; } // the index/key expression
+inline ASTNode IndexedAssignmentNode::Value() { return get()->Value; } // the value being assigned
+inline void IndexedAssignmentNode::set_Value(ASTNode _v) { get()->Value = _v; } // the value being assigned
 
 inline UnaryOpNode::UnaryOpNode(std::shared_ptr<UnaryOpNodeStorage> stor) : ASTNode(stor) {}
 inline UnaryOpNodeStorage* UnaryOpNode::get() const { return static_cast<UnaryOpNodeStorage*>(storage.get()); }

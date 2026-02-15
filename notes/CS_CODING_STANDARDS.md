@@ -147,6 +147,16 @@ C# lets you instantiate a class that does not have an explicit constructor.  The
 
 - The `switch` statement may only be used with integer types (including enums).  For Strings or other custom types, use `if` statements instead.
 
+- Don't use `is` type checks; instead, use `as` to downcast to a more specifically-typed local variable, and then check if the result is null, e.g.:
+```
+  // DON'T:
+  if (expr is SomeType) { SomeType x = (SomeType)expr; ... }
+
+  // DO:                                                                                                                      
+  SomeType x = expr as SomeType;                                               
+  if (x != null) { /* use x */ }
+```
+
 ## Capitalization
 
 While not strictly required for the transpiler, in this project we follow C# capitalization conventions:

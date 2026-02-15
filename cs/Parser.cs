@@ -314,6 +314,14 @@ public class Parser : IParser {
 			ASTNode left = new IdentifierNode(identToken.Text);
 			ASTNode expr = ParseExpressionFrom(left);
 
+			// Check for indexed assignment: expr[index] = value
+			IndexNode idxNode = expr as IndexNode;
+			if (idxNode != null && _current.Type == TokenType.ASSIGN) {
+				Advance(); // consume '='
+				ASTNode value = ParseExpression();
+				return new IndexedAssignmentNode(idxNode.Target, idxNode.Index, value);
+			}
+
 			// Check for no-parens call on an expression result, e.g. funcs[0] 10
 			if (_current.AfterSpace && CanStartExpression(_current.Type)) {
 				List<ASTNode> args = new List<ASTNode>();
@@ -328,7 +336,14 @@ public class Parser : IParser {
 		}
 
 		// Not an identifier - parse as expression statement
-		return ParseExpression();
+		ASTNode expr2 = ParseExpression();
+		IndexNode idxNode2 = expr2 as IndexNode;
+		if (idxNode2 != null && _current.Type == TokenType.ASSIGN) {
+			Advance(); // consume '='
+			ASTNode value = ParseExpression();
+			return new IndexedAssignmentNode(idxNode2.Target, idxNode2.Index, value);
+		}
+		return expr2;
 	}
 
 	// Check if current token is a block terminator

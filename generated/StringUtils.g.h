@@ -72,6 +72,8 @@ struct IdentifierNode;
 class IdentifierNodeStorage;
 struct AssignmentNode;
 class AssignmentNodeStorage;
+struct IndexedAssignmentNode;
+class IndexedAssignmentNodeStorage;
 struct UnaryOpNode;
 class UnaryOpNodeStorage;
 struct BinaryOpNode;
@@ -241,6 +243,7 @@ class StringUtils {
 	// Convert a Value to its representation (quoted string for strings, plain for others)
 	// This is used when displaying values in source code form.
 }; // end of struct StringUtils
+
 
 
 

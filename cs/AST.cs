@@ -54,6 +54,7 @@ public interface IASTVisitor {
 	Int32 Visit(ContinueNode node);
 	Int32 Visit(FunctionNode node);
 	Int32 Visit(ReturnNode node);
+	Int32 Visit(IndexedAssignmentNode node);
 }
 
 // Base class for all AST nodes.
@@ -150,6 +151,31 @@ public class AssignmentNode : ASTNode {
 	public override ASTNode Simplify() {
 		ASTNode simplifiedValue = Value.Simplify();
 		return new AssignmentNode(Variable, simplifiedValue);
+	}
+
+	public override Int32 Accept(IASTVisitor visitor) {
+		return visitor.Visit(this);
+	}
+}
+
+// Indexed assignment node (e.g., lst[0] = 42, map["key"] = value)
+public class IndexedAssignmentNode : ASTNode {
+	public ASTNode Target;      // the container (list/map) being assigned into
+	public ASTNode Index;       // the index/key expression
+	public ASTNode Value;       // the value being assigned
+
+	public IndexedAssignmentNode(ASTNode target, ASTNode index, ASTNode value) {
+		Target = target;
+		Index = index;
+		Value = value;
+	}
+
+	public override String ToStr() {
+		return Target.ToStr() + "[" + Index.ToStr() + "] = " + Value.ToStr();
+	}
+
+	public override ASTNode Simplify() {
+		return new IndexedAssignmentNode(Target.Simplify(), Index.Simplify(), Value.Simplify());
 	}
 
 	public override Int32 Accept(IASTVisitor visitor) {

@@ -65,6 +65,8 @@ struct IdentifierNode;
 class IdentifierNodeStorage;
 struct AssignmentNode;
 class AssignmentNodeStorage;
+struct IndexedAssignmentNode;
+class IndexedAssignmentNodeStorage;
 struct UnaryOpNode;
 class UnaryOpNodeStorage;
 struct BinaryOpNode;
@@ -155,6 +157,7 @@ class UnitTests {
 
 	public: static Boolean RunAll();
 }; // end of struct UnitTests
+
 
 
 

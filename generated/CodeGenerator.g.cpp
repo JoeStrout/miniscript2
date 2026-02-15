@@ -250,6 +250,19 @@ Int32 CodeGeneratorStorage::Visit(AssignmentNode node) {
 	// assignment can't be used in an expression in MiniScript).  So:
 	return varReg;
 }
+Int32 CodeGeneratorStorage::Visit(IndexedAssignmentNode node) {
+	CodeGenerator _this(std::static_pointer_cast<CodeGeneratorStorage>(shared_from_this()));
+	Int32 containerReg = node.Target().Accept(_this);
+	Int32 indexReg = node.Index().Accept(_this);
+	Int32 valueReg = node.Value().Accept(_this);
+
+	_emitter.EmitABC(Opcode::IDXSET_rA_rB_rC, containerReg, indexReg, valueReg,
+		Interp("{}[{}] = {}", node.Target().ToStr(), node.Index().ToStr(), node.Value().ToStr()));
+
+	FreeReg(valueReg);
+	FreeReg(indexReg);
+	return containerReg;
+}
 Int32 CodeGeneratorStorage::Visit(UnaryOpNode node) {
 	CodeGenerator _this(std::static_pointer_cast<CodeGeneratorStorage>(shared_from_this()));
 	if (node.Op() == Op::ADDRESS_OF) {

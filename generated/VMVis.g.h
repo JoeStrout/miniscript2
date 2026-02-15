@@ -65,6 +65,8 @@ struct IdentifierNode;
 class IdentifierNodeStorage;
 struct AssignmentNode;
 class AssignmentNodeStorage;
+struct IndexedAssignmentNode;
+class IndexedAssignmentNodeStorage;
 struct UnaryOpNode;
 class UnaryOpNodeStorage;
 struct BinaryOpNode;
@@ -158,6 +160,7 @@ struct VMVis {
 
 	public: void UpdateDisplay();
 }; // end of struct VMVis
+
 
 
 

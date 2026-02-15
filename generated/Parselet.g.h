@@ -68,6 +68,8 @@ struct IdentifierNode;
 class IdentifierNodeStorage;
 struct AssignmentNode;
 class AssignmentNodeStorage;
+struct IndexedAssignmentNode;
+class IndexedAssignmentNodeStorage;
 struct UnaryOpNode;
 class UnaryOpNodeStorage;
 struct BinaryOpNode;
@@ -134,6 +136,7 @@ class IParser {
 	virtual void ReportError(String message) = 0;
 	virtual Boolean CanStartExpression(TokenType type) = 0;
 }; // end of interface IParser
+
 
 
 

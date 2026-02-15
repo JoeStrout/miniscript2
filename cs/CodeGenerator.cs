@@ -300,6 +300,19 @@ public class CodeGenerator : IASTVisitor {
 		return varReg;
 	}
 
+	public Int32 Visit(IndexedAssignmentNode node) {
+		Int32 containerReg = node.Target.Accept(this);
+		Int32 indexReg = node.Index.Accept(this);
+		Int32 valueReg = node.Value.Accept(this);
+
+		_emitter.EmitABC(Opcode.IDXSET_rA_rB_rC, containerReg, indexReg, valueReg,
+			$"{node.Target.ToStr()}[{node.Index.ToStr()}] = {node.Value.ToStr()}");
+
+		FreeReg(valueReg);
+		FreeReg(indexReg);
+		return containerReg;
+	}
+
 	public Int32 Visit(UnaryOpNode node) {
 		if (node.Op == Op.ADDRESS_OF) {
 			// Special case: just an identifier lookup without function call

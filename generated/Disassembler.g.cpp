@@ -77,6 +77,7 @@ String Disassembler::AssemOp(Opcode opcode) {
 		case Opcode::CALL_rA_rB_rC: return "CALL";
 		case Opcode::RETURN:        return "RETURN";
 		case Opcode::NEW_rA_rB:     return "NEW";
+		case Opcode::ISA_rA_rB_rC:  return "ISA";
 		default:
 			return "Unknown opcode";
 	}		
@@ -194,6 +195,7 @@ String Disassembler::ToString(UInt32 instruction) {
 		case Opcode::INDEX_rA_rB_rC:
 		case Opcode::IDXSET_rA_rB_rC:
 		case Opcode::CALL_rA_rB_rC:
+		case Opcode::ISA_rA_rB_rC:
 			return StringUtils::Format("{0} r{1}, r{2}, r{3}",
 				mnemonic,
 				(Int32)BytecodeUtil::Au(instruction),

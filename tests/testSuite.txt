@@ -1797,6 +1797,50 @@ print duck.legs
 4
 2
 ================================
+==== isa operator: identity
+================================
+Animal = {"legs": 4}
+print Animal isa Animal
+--------------------------------
+1
+================================
+==== isa operator: direct parent
+================================
+Animal = {"legs": 4}
+duck = new Animal
+print duck isa Animal
+--------------------------------
+1
+================================
+==== isa operator: multi-level chain
+================================
+Animal = {"legs": 4}
+Bird = new Animal
+duck = new Bird
+print duck isa Bird
+print duck isa Animal
+--------------------------------
+1
+1
+================================
+==== isa operator: unrelated map
+================================
+Animal = {"legs": 4}
+Vehicle = {"wheels": 4}
+duck = new Animal
+print duck isa Vehicle
+--------------------------------
+0
+================================
+==== isa operator: non-map lhs
+================================
+Animal = {"legs": 4}
+print 42 isa Animal
+print "hello" isa Animal
+--------------------------------
+0
+0
+================================
 ==== END OF TESTS
 ================================================================================
 

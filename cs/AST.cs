@@ -30,6 +30,7 @@ public static class Op {
 	public const String OR = "OR";
 	public const String NOT = "NOT";
 	public const String NEW = "NEW";
+	public const String ISA = "ISA";
 }
 
 // Visitor interface for AST traversal (e.g., code generation)

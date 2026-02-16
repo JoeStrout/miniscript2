@@ -51,6 +51,9 @@ void ParserStorage::RegisterParselets() {
 	RegisterInfix(TokenType::AND,  BinaryOpParselet::New(Op::AND, Precedence::AND));
 	RegisterInfix(TokenType::OR,  BinaryOpParselet::New(Op::OR, Precedence::OR));
 
+	// Type-checking operator
+	RegisterInfix(TokenType::ISA,  BinaryOpParselet::New(Op::ISA, Precedence::EQUALITY));
+
 	// Call and index operators
 	RegisterInfix(TokenType::LPAREN,  CallParselet::New());
 	RegisterInfix(TokenType::LBRACKET,  IndexParselet::New());
@@ -94,6 +97,7 @@ Boolean ParserStorage::AllowsLineContinuation(TokenType type) {
 		|| type == TokenType::GREATER_EQUAL
 		|| type == TokenType::AND
 		|| type == TokenType::OR
+		|| type == TokenType::ISA
 		|| type == TokenType::COLON
 		|| type == TokenType::ASSIGN;
 }
@@ -598,6 +602,7 @@ String ParserStorage::TokenDescription(Token tok) {
 	if (tok.Type == TokenType::OR) return "Keyword(or)";
 	if (tok.Type == TokenType::NOT) return "Keyword(not)";
 	if (tok.Type == TokenType::NEW) return "Keyword(new)";
+	if (tok.Type == TokenType::ISA) return "Keyword(isa)";
 	return tok.Text;
 }
 String ParserStorage::GotExpected(String expected) {

@@ -366,6 +366,10 @@ public class VM {
 		Value expectedName = make_null();
 		Value actualName = make_null();
 		Value locals = make_null();
+		Value lhs;
+		Value rhs;
+		Value current;
+		Value next;
 
 /*** BEGIN CPP_ONLY ***
 		Value* stackPtr = &stack[0];
@@ -1272,6 +1276,33 @@ public class VM {
 					map_set(result, val_isa_key, localStack[b]);
 					localStack[a] = result;
 					break;
+				}
+
+				case Opcode.ISA_rA_rB_rC: { // CPP: VM_CASE(ISA_rA_rB_rC) {
+					// R[A] = (R[B] isa R[C])
+					// True if R[B] and R[C] are the same reference, or if R[C]
+					// appears anywhere in R[B]'s __isa chain.
+					Byte a = BytecodeUtil.Au(instruction);
+					Byte b = BytecodeUtil.Bu(instruction);
+					Byte c = BytecodeUtil.Cu(instruction);
+					lhs = localStack[b];
+					rhs = localStack[c];
+					Int32 isaResult = 0;
+					if (value_identical(lhs, rhs)) {
+						isaResult = 1;
+					} else {
+						current = lhs;
+						for (Int32 depth = 0; depth < 256; depth++) {
+							if (!map_try_get(current, val_isa_key, out next)) break;
+							if (value_identical(next, rhs)) {
+								isaResult = 1;
+								break;
+							}
+							current = next;
+						}
+					}
+					localStack[a] = make_int(isaResult);
+					break; // CPP: VM_NEXT();
 				}
 
 				case Opcode.RETURN: {

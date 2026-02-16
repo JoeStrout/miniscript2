@@ -350,11 +350,20 @@ My to-do list appears to be growing, though.  Let's recap:
 
 I'm actually a bit torn on that last one -- it would be handy, but at the same time, it would reduce the pressure to constantly add more integration tests, which is what I *should* always do.  So, hmm.  Going to think about that.
 
-## Feb. 15, 2025
+
+## Feb. 15, 2026
 
 Indexed assignment works now.
 
 And, so do default values, including _computed_ default values!  As long as it simplifies to a constant, you can do stuff like `function(x=6*7)`.  You can also use maps and lists as default values; they appear frozen (immutable).  Huzzah!
 
 Now working on dot syntax... and done.  That's everything from the to-do list in the last entry except a REPL, and I'm still thinking about that one.
+
+
+## Feb. 16, 2026
+
+Added the `new` operator.  In testing that, I discovered that we had not yet put in proper comparison semantics for lists and maps; that's fixed now too.  (Though I'll need to return to that at some point and put in guards against infinite recursion.)
+
+Tackling `isa` next; for now, only looking at maps (i.e. we don't yet have the built-in maps `number`, `string`, etc., and that's fine for now).   ...And, that's done too.
+
 

@@ -85,6 +85,7 @@ public enum Opcode : Byte {
 	CALL_rA_rB_rC,
 	RETURN,
 	NEW_rA_rB,
+	ISA_rA_rB_rC,
 	OP__COUNT  // Not an opcode, but rather how many opcodes we have.
 }
 
@@ -252,6 +253,7 @@ public static class BytecodeUtil {
 			case Opcode.CALL_rA_rB_rC:  return "CALL_rA_rB_rC";
 			case Opcode.RETURN:         return "RETURN";
 			case Opcode.NEW_rA_rB:      return "NEW_rA_rB";
+			case Opcode.ISA_rA_rB_rC:   return "ISA_rA_rB_rC";
 			default:
 				return "Unknown opcode";
 		}
@@ -325,6 +327,7 @@ public static class BytecodeUtil {
 		if (s == "CALL_rA_rB_rC")   return Opcode.CALL_rA_rB_rC;
 		if (s == "RETURN")          return Opcode.RETURN;
 		if (s == "NEW_rA_rB")       return Opcode.NEW_rA_rB;
+		if (s == "ISA_rA_rB_rC")    return Opcode.ISA_rA_rB_rC;
 		return Opcode.NOOP;
 	}
 }

@@ -86,7 +86,9 @@ Our internal opcode names include a verb/mnemonic, and a description of how the 
 | CALLF_iA_iBC | call funcs[BC] with parameters/return value at register A |
 | CALLFN_iA_kBC | call function named constants[BC] with params/return at rA |
 | CALL_rA_rB_rC | invoke FuncRef in R[C], with stack frame at R[B], result to R[A] |
-| RETURN | return with result in R[0]
+| RETURN | return with result in R[0] |
+| NEW_rA_rB | R[A] := new map with __isa set to R[B] |
+| ISA_rA_rB_rC | R[A] := (R[B] isa R[C]) — true if identical or R[C] is in R[B]'s __isa chain |
 
 (More opcodes will be added as the prototype develops.)
 

@@ -118,6 +118,8 @@ Token Lexer::NextToken() {
 			tok = Token(TokenType::RETURN, text, startLine, startColumn);
 		} else if (text == "new") {
 			tok = Token(TokenType::NEW, text, startLine, startColumn);
+		} else if (text == "isa") {
+			tok = Token(TokenType::ISA, text, startLine, startColumn);
 		} else if (text == "end") {
 			tok = Token(TokenType::END, text, startLine, startColumn);
 		} else {

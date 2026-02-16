@@ -891,6 +891,14 @@ public class Assembler {
 			Byte srcReg = ParseRegister(parts[2]);
 			instruction = BytecodeUtil.INS_ABC(Opcode.NEW_rA_rB, destReg, srcReg, 0);
 
+		} else if (mnemonic == "ISA") {
+			if (parts.Count != 4) { Error("ISA requires 3 operands"); return 0; }
+			Byte dest = ParseRegister(parts[1]);
+			Current.ReserveRegister(dest);
+			Byte src1 = ParseRegister(parts[2]);
+			Byte src2 = ParseRegister(parts[3]);
+			instruction = BytecodeUtil.INS_ABC(Opcode.ISA_rA_rB_rC, dest, src1, src2);
+
 		} else {
 			Error(StringUtils.Format("Unknown opcode: '{0}'", mnemonic));
 			return 0;

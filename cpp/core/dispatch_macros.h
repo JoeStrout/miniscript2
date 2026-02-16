@@ -90,7 +90,8 @@
 	X(CALLFN_iA_kBC) \
 	X(CALL_rA_rB_rC) \
 	X(RETURN) \
-	X(NEW_rA_rB)
+	X(NEW_rA_rB) \
+	X(ISA_rA_rB_rC)
 
 
 #if VM_USE_COMPUTED_GOTO

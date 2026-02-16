@@ -161,6 +161,7 @@ class Op {
 	public: static const String OR;
 	public: static const String NOT;
 	public: static const String NEW;
+	public: static const String ISA;
 }; // end of struct Op
 
 

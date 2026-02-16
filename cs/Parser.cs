@@ -76,6 +76,9 @@ public class Parser : IParser {
 		RegisterInfix(TokenType.AND, new BinaryOpParselet(Op.AND, Precedence.AND));
 		RegisterInfix(TokenType.OR, new BinaryOpParselet(Op.OR, Precedence.OR));
 
+		// Type-checking operator
+		RegisterInfix(TokenType.ISA, new BinaryOpParselet(Op.ISA, Precedence.EQUALITY));
+
 		// Call and index operators
 		RegisterInfix(TokenType.LPAREN, new CallParselet());
 		RegisterInfix(TokenType.LBRACKET, new IndexParselet());
@@ -130,6 +133,7 @@ public class Parser : IParser {
 			|| type == TokenType.GREATER_EQUAL
 			|| type == TokenType.AND
 			|| type == TokenType.OR
+			|| type == TokenType.ISA
 			|| type == TokenType.COLON
 			|| type == TokenType.ASSIGN;
 	}
@@ -695,6 +699,7 @@ public class Parser : IParser {
 		if (tok.Type == TokenType.OR) return "Keyword(or)";
 		if (tok.Type == TokenType.NOT) return "Keyword(not)";
 		if (tok.Type == TokenType.NEW) return "Keyword(new)";
+		if (tok.Type == TokenType.ISA) return "Keyword(isa)";
 		return tok.Text;
 	}
 

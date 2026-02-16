@@ -291,6 +291,10 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 	Value expectedName = make_null(); GC_PROTECT(&expectedName);
 	Value actualName = make_null(); GC_PROTECT(&actualName);
 	Value locals = make_null(); GC_PROTECT(&locals);
+	Value lhs; GC_PROTECT(&lhs);
+	Value rhs; GC_PROTECT(&rhs);
+	Value current; GC_PROTECT(&current);
+	Value next; GC_PROTECT(&next);
 
 	Value* stackPtr = &stack[0];
 #if VM_USE_COMPUTED_GOTO
@@ -1212,6 +1216,33 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				result = make_map(2);
 				map_set(result, val_isa_key, localStack[b]);
 				localStack[a] = result;
+				VM_NEXT();
+			}
+
+			VM_CASE(ISA_rA_rB_rC) {
+				// R[A] = (R[B] isa R[C])
+				// True if R[B] and R[C] are the same reference, or if R[C]
+				// appears anywhere in R[B]'s __isa chain.
+				Byte a = BytecodeUtil::Au(instruction);
+				Byte b = BytecodeUtil::Bu(instruction);
+				Byte c = BytecodeUtil::Cu(instruction);
+				lhs = localStack[b];
+				rhs = localStack[c];
+				Int32 isaResult = 0;
+				if (value_identical(lhs, rhs)) {
+					isaResult = 1;
+				} else {
+					current = lhs;
+					for (Int32 depth = 0; depth < 256; depth++) {
+						if (!map_try_get(current, val_isa_key, &next)) break;
+						if (value_identical(next, rhs)) {
+							isaResult = 1;
+							break;
+						}
+						current = next;
+					}
+				}
+				localStack[a] = make_int(isaResult);
 				VM_NEXT();
 			}
 

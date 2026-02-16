@@ -420,6 +420,9 @@ public class CodeGenerator : IASTVisitor {
 			// Fuzzy logic OR: AbsClamp01(a + b - a*b)
 			op = Opcode.OR_rA_rB_rC;
 			opSymbol = "or";
+		} else if (node.Op == Op.ISA) {
+			op = Opcode.ISA_rA_rB_rC;
+			opSymbol = "isa";
 		}
 
 		if (op != Opcode.NOOP) {

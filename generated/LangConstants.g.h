@@ -173,6 +173,7 @@ enum class TokenType : Int32 {
 	CONTINUE,
 	FUNCTION,
 	RETURN,
+	NEW,
 	END,
 	EOL,
 	COMMENT,

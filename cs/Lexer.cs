@@ -181,6 +181,8 @@ public struct Lexer {
 				tok = new Token(TokenType.FUNCTION, text, startLine, startColumn);
 			} else if (text == "return") {
 				tok = new Token(TokenType.RETURN, text, startLine, startColumn);
+			} else if (text == "new") {
+				tok = new Token(TokenType.NEW, text, startLine, startColumn);
 			} else if (text == "end") {
 				tok = new Token(TokenType.END, text, startLine, startColumn);
 			} else {

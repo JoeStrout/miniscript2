@@ -185,6 +185,28 @@ bool map_try_get(Value map_val, Value key, Value* out_value) {
     return false;
 }
 
+bool map_lookup(Value map_val, Value key, Value* out_value) {
+    Value current = map_val;
+    for (int depth = 0; depth < 256; depth++) {
+        if (!is_map(current)) {
+            if (out_value) *out_value = make_null();
+            return false;
+        }
+        if (map_try_get(current, key, out_value)) {
+            return true;
+        }
+        // Walk up __isa chain
+        Value isa;
+        if (!map_try_get(current, val_isa_key, &isa)) {
+            if (out_value) *out_value = make_null();
+            return false;
+        }
+        current = isa;
+    }
+    if (out_value) *out_value = make_null();
+    return false;
+}
+
 static bool base_map_set(Value map_val, Value key, Value value) {
     GC_PUSH_SCOPE();
 

@@ -27,6 +27,7 @@ public struct App {
 	
 	public static void MainProgram(List<String> args) {
 		// CPP: gc_init();
+		// CPP: value_init_constants();
 	
 		// Parse command-line switches
 		Int32 fileArgIndex = -1;
@@ -332,8 +333,8 @@ public struct App {
 
 		if (actual != expected) {
 			IOHelper.Print(StringUtils.Format("FAIL (line {0}): {1}", lineNum, source));
-			IOHelper.Print(StringUtils.Format("  Expected: {0}", expected));
-			IOHelper.Print(StringUtils.Format("  Actual:   {0}", actual));
+			IOHelper.Print(StringUtils.Format("Expected:\n{0}", expected));
+			IOHelper.Print(StringUtils.Format("Actual:  \n{0}", actual));
 			return false;
 		}
 

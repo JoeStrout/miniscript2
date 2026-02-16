@@ -354,6 +354,7 @@ public class VM {
 		if (maxCycles == 0) cyclesLeft--;  // wraps to MAX_UINT32
 
 		// Reusable Value variables (declared outside loop for GC safety in C++)
+		// ToDo: see if we can reduce these to a more reasonable number.
 		Value val = make_null();
 		Value outerVars = make_null();
 		Value container = make_null();
@@ -656,7 +657,7 @@ public class VM {
 						// ToDo: add a list_try_get and use it here, like we do with map below
 						localStack[a] = list_get(container, as_int(indexVal));
 					} else if (is_map(container)) {
-						if (!map_try_get(container, indexVal, out result)) {
+						if (!map_lookup(container, indexVal, out result)) {
 							RaiseRuntimeError(StringUtils.Format("Key Not Found: '{0}' not found in map", indexVal));
 						}
 						localStack[a] = result;
@@ -1263,6 +1264,16 @@ public class VM {
 					break;
 				}
 
+				case Opcode.NEW_rA_rB: {
+					// R[A] = new map with __isa set to R[B]
+					Byte a = BytecodeUtil.Au(instruction);
+					Byte b = BytecodeUtil.Bu(instruction);
+					result = make_map(2);
+					map_set(result, val_isa_key, localStack[b]);
+					localStack[a] = result;
+					break;
+				}
+
 				case Opcode.RETURN: {
 					// Return value convention: value is in base[0]
 					result = stack[baseIndex];
@@ -1411,6 +1422,19 @@ public class VM {
 
 		} else if (value_equal(funcName, FuncNameFrozenCopy)) {
 			stack[baseReg] = frozen_copy(stack[baseReg]);
+
+		} else if (value_equal(funcName, FuncNameLen)) {
+			container = stack[baseReg];
+			if (is_list(container)) {
+				stack[baseReg] = make_int(list_count(container));
+			} else if (is_string(container)) {
+				stack[baseReg] = make_int(string_length(container));
+			} else if (is_map(container)) {
+				stack[baseReg] = make_int(map_count(container));
+			} else {
+				RaiseRuntimeError(StringUtils.Format("Can't get len of {0}", container));
+				stack[baseReg] = make_null();
+			}
 
 		} else {
 			IOHelper.Print(

@@ -291,6 +291,11 @@ Int32 CodeGeneratorStorage::Visit(UnaryOpNode node) {
 		_emitter.EmitABC(Opcode::NOT_rA_rB, resultReg, operandReg, 0, Interp("not {}", node.Operand().ToStr()));
 		FreeReg(operandReg);
 		return resultReg;
+	} else if (node.Op() == Op::NEW) {
+		// new: create a map with __isa set to the operand
+		_emitter.EmitABC(Opcode::NEW_rA_rB, resultReg, operandReg, 0, Interp("new {}", node.Operand().ToStr()));
+		FreeReg(operandReg);
+		return resultReg;
 	}
 
 	// Unknown unary operator - move operand to result if needed

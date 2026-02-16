@@ -1016,7 +1016,16 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 
 	} else if (mnemonic == "RETURN") {
 		instruction = BytecodeUtil::INS(Opcode::RETURN);
-	
+
+	} else if (mnemonic == "NEW") {
+		if (parts.Count() != 3) { Error("NEW requires 2 operands");  {
+			GC_POP_SCOPE();
+			return 0; }
+		}
+		Byte destReg = ParseRegister(parts[1]);
+		Byte srcReg = ParseRegister(parts[2]);
+		instruction = BytecodeUtil::INS_ABC(Opcode::NEW_rA_rB, destReg, srcReg, 0);
+
 	} else {
 		Error(StringUtils::Format("Unknown opcode: '{0}'", mnemonic));
 		GC_POP_SCOPE();

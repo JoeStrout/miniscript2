@@ -29,6 +29,7 @@ void ParserStorage::RegisterParselets() {
 	RegisterPrefix(TokenType::MINUS,  UnaryOpParselet::New(Op::MINUS, Precedence::UNARY_MINUS));
 	RegisterPrefix(TokenType::NOT,  UnaryOpParselet::New(Op::NOT, Precedence::UNARY_MINUS));
 	RegisterPrefix(TokenType::ADDRESS_OF,  UnaryOpParselet::New(Op::ADDRESS_OF, Precedence::ADDRESS_OF));
+	RegisterPrefix(TokenType::NEW,  UnaryOpParselet::New(Op::NEW, Precedence::UNARY_MINUS));
 
 	// Binary operators
 	RegisterInfix(TokenType::PLUS,  BinaryOpParselet::New(Op::PLUS, Precedence::SUM));
@@ -137,6 +138,7 @@ Boolean ParserStorage::CanStartExpression(TokenType type) {
 		|| type == TokenType::MINUS
 		|| type == TokenType::ADDRESS_OF
 		|| type == TokenType::NOT
+		|| type == TokenType::NEW
 		|| type == TokenType::FUNCTION;
 }
 ASTNode ParserStorage::ParseExpression(Precedence minPrecedence) {
@@ -595,6 +597,7 @@ String ParserStorage::TokenDescription(Token tok) {
 	if (tok.Type == TokenType::AND) return "Keyword(and)";
 	if (tok.Type == TokenType::OR) return "Keyword(or)";
 	if (tok.Type == TokenType::NOT) return "Keyword(not)";
+	if (tok.Type == TokenType::NEW) return "Keyword(new)";
 	return tok.Text;
 }
 String ParserStorage::GotExpected(String expected) {

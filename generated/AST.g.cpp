@@ -25,6 +25,7 @@ const String Op::GREATER_EQUAL = "GREATER_EQUAL";
 const String Op::AND = "AND";
 const String Op::OR = "OR";
 const String Op::NOT = "NOT";
+const String Op::NEW = "NEW";
 
 
 

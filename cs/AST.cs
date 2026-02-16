@@ -29,6 +29,7 @@ public static class Op {
 	public const String AND = "AND";
 	public const String OR = "OR";
 	public const String NOT = "NOT";
+	public const String NEW = "NEW";
 }
 
 // Visitor interface for AST traversal (e.g., code generation)

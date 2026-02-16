@@ -78,6 +78,7 @@ public static class Disassembler {
 			case Opcode.CALLFN_iA_kBC: return "CALLFN";
 			case Opcode.CALL_rA_rB_rC: return "CALL";
 			case Opcode.RETURN:        return "RETURN";
+			case Opcode.NEW_rA_rB:     return "NEW";
 			default:
 				return "Unknown opcode";
 		}		
@@ -116,6 +117,7 @@ public static class Disassembler {
 			case Opcode.LOAD_rA_rB:
 			case Opcode.PUSH_rA_rB:
 			case Opcode.NOT_rA_rB:
+			case Opcode.NEW_rA_rB:
 			case Opcode.IFLT_rA_rB:
 			case Opcode.IFLE_rA_rB:
 			case Opcode.IFEQ_rA_rB:

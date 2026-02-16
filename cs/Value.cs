@@ -384,6 +384,31 @@ public readonly struct Value {
 		// Null only equals Null
 		if (a.IsNull || b.IsNull) return a.IsNull && b.IsNull;
 
+		// Lists: compare by content
+		// (ToDo: limit recursion in case of circular references)
+		if (a.IsList && b.IsList) {
+			int countA = list_count(a);
+			if (countA != list_count(b)) return false;
+			for (int i = 0; i < countA; i++) {
+				if (!value_equal(list_get(a, i), list_get(b, i))) return false;
+			}
+			return true;
+		}
+
+		// Maps: compare by content
+		// (ToDo: limit recursion in case of circular references)
+		if (a.IsMap && b.IsMap) {
+			var mapA = HandlePool.Get(a.Handle()) as ValueMap;
+			var mapB = HandlePool.Get(b.Handle()) as ValueMap;
+			if (mapA == null || mapB == null) return false;
+			if (mapA.Count != mapB.Count) return false;
+			foreach (var kvp in mapA.Items) {
+				if (!mapB.HasKey(kvp.Key)) return false;
+				if (!value_equal(kvp.Value, mapB.Get(kvp.Key))) return false;
+			}
+			return true;
+		}
+
 		return false;
 	}
 
@@ -406,6 +431,7 @@ public static class ValueHelpers {
 	public static Value val_zero = Value.FromInt(0);
 	public static Value val_one = Value.FromInt(1);
 	public static Value val_empty_string = Value.FromString("");
+	public static Value val_isa_key = Value.FromString("__isa");
 
 	// Core value creation functions (matching value.h)
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -514,6 +540,8 @@ public static class ValueHelpers {
 		return valueMap?.Get(key) ?? make_null();
 	}
 
+	// Look up a key directly in map_val only (not walking the __isa chain).
+	// Returns true if found (with value in out parameter), false otherwise.
 	public static bool map_try_get(Value map_val, Value key, out Value value) {
 		value = make_null();
 		if (!map_val.IsMap) return false;
@@ -523,6 +551,27 @@ public static class ValueHelpers {
 		if (valueMap.HasKey(key)) {
 			value = valueMap.Get(key);
 			return true;
+		}
+		return false;
+	}
+
+	// Look up a key in a map, walking the __isa chain if needed.
+	// Returns true if found (with value in out parameter), false otherwise.
+	public static bool map_lookup(Value map_val, Value key, out Value value) {
+		value = make_null();
+		Value isaKey = val_isa_key;
+		Value current = map_val;
+		for (Int32 depth = 0; depth < 256; depth++) {
+			if (!is_map(current)) return false;
+			var valueMap = HandlePool.Get(current.Handle()) as ValueMap;
+			if (valueMap == null) return false;
+			if (valueMap.HasKey(key)) {
+				value = valueMap.Get(key);
+				return true;
+			}
+			// Walk up __isa chain
+			if (!valueMap.HasKey(isaKey)) return false;
+			current = valueMap.Get(isaKey);
 		}
 		return false;
 	}

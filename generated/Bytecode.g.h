@@ -212,6 +212,7 @@ enum class Opcode : Byte {
 	CALLFN_iA_kBC,
 	CALL_rA_rB_rC,
 	RETURN,
+	NEW_rA_rB,
 	OP__COUNT  // Not an opcode, but rather how many opcodes we have.
 }; // end of enum Opcode
 

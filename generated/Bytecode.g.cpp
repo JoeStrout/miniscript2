@@ -138,6 +138,7 @@ String BytecodeUtil::ToMnemonic(Opcode opcode) {
 		case Opcode::CALLFN_iA_kBC:  return "CALLFN_iA_kBC";
 		case Opcode::CALL_rA_rB_rC:  return "CALL_rA_rB_rC";
 		case Opcode::RETURN:         return "RETURN";
+		case Opcode::NEW_rA_rB:      return "NEW_rA_rB";
 		default:
 			return "Unknown opcode";
 	}
@@ -209,6 +210,7 @@ Opcode BytecodeUtil::FromMnemonic(String s) {
 	if (s == "CALLFN_iA_kBC")   return Opcode::CALLFN_iA_kBC;
 	if (s == "CALL_rA_rB_rC")   return Opcode::CALL_rA_rB_rC;
 	if (s == "RETURN")          return Opcode::RETURN;
+	if (s == "NEW_rA_rB")       return Opcode::NEW_rA_rB;
 	return Opcode::NOOP;
 }
 

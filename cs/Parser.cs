@@ -54,6 +54,7 @@ public class Parser : IParser {
 		RegisterPrefix(TokenType.MINUS, new UnaryOpParselet(Op.MINUS, Precedence.UNARY_MINUS));
 		RegisterPrefix(TokenType.NOT, new UnaryOpParselet(Op.NOT, Precedence.UNARY_MINUS));
 		RegisterPrefix(TokenType.ADDRESS_OF, new UnaryOpParselet(Op.ADDRESS_OF, Precedence.ADDRESS_OF));
+		RegisterPrefix(TokenType.NEW, new UnaryOpParselet(Op.NEW, Precedence.UNARY_MINUS));
 
 		// Binary operators
 		RegisterInfix(TokenType.PLUS, new BinaryOpParselet(Op.PLUS, Precedence.SUM));
@@ -185,6 +186,7 @@ public class Parser : IParser {
 			|| type == TokenType.MINUS
 			|| type == TokenType.ADDRESS_OF
 			|| type == TokenType.NOT
+			|| type == TokenType.NEW
 			|| type == TokenType.FUNCTION;
 	}
 
@@ -692,6 +694,7 @@ public class Parser : IParser {
 		if (tok.Type == TokenType.AND) return "Keyword(and)";
 		if (tok.Type == TokenType.OR) return "Keyword(or)";
 		if (tok.Type == TokenType.NOT) return "Keyword(not)";
+		if (tok.Type == TokenType.NEW) return "Keyword(new)";
 		return tok.Text;
 	}
 

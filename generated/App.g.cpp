@@ -29,6 +29,7 @@ bool App::debugMode = false;
 bool App::visMode = false;
 void App::MainProgram(List<String> args) {
 	gc_init();
+	value_init_constants();
 
 	// Parse command-line switches
 	Int32 fileArgIndex = -1;
@@ -316,8 +317,8 @@ bool App::RunSingleTest(List<String> inputLines, List<String> expectedLines, Int
 
 	if (actual != expected) {
 		IOHelper::Print(StringUtils::Format("FAIL (line {0}): {1}", lineNum, source));
-		IOHelper::Print(StringUtils::Format("  Expected: {0}", expected));
-		IOHelper::Print(StringUtils::Format("  Actual:   {0}", actual));
+		IOHelper::Print(StringUtils::Format("Expected:\n{0}", expected));
+		IOHelper::Print(StringUtils::Format("Actual:  \n{0}", actual));
 		return Boolean(false);
 	}
 

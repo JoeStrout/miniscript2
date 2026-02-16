@@ -25,6 +25,13 @@
 #endif
 #include <string.h>
 
+// Global constant values
+Value val_isa_key = 0;  // initialized by value_init_constants()
+
+void value_init_constants(void) {
+	val_isa_key = make_string("__isa");
+}
+
 // Debug utilities for Value inspection
 // Arithmetic operations for VM support
 // Note: value_add() and value_sub() are now inlined in value.h
@@ -106,7 +113,36 @@ bool value_equal(Value a, Value b) {
     if (is_null(a) && sameType) {
     	return true;
     }
-    // Different types or unsupported types
+    // Lists: compare by content
+	// (ToDo: limit recursion in case of circular references)
+    if (is_list(a) && sameType) {
+        if (a == b) return true;  // identity shortcut
+        int countA = list_count(a);
+        if (countA != list_count(b)) return false;
+        for (int i = 0; i < countA; i++) {
+            if (!value_equal(list_get(a, i), list_get(b, i))) return false;
+        }
+        return true;
+    }
+    // Maps: compare by content
+	// (ToDo: limit recursion in case of circular references)
+    if (is_map(a) && sameType) {
+        if (a == b) return true;  // identity shortcut
+        ValueMap* mapA = as_map(a);
+        ValueMap* mapB = as_map(b);
+        if (!mapA || !mapB) return false;
+        if (mapA->count != mapB->count) return false;
+        for (int i = 0; i < mapA->capacity; i++) {
+            if (!mapA->entries[i].occupied) continue;
+            Value val;
+            if (!map_try_get(b, mapA->entries[i].key, &val)) return false;
+            if (!value_equal(mapA->entries[i].value, val)) return false;
+        }
+        return true;
+    }
+    // Other same-type reference values (funcrefs): identity comparison
+    if (sameType) return a == b;
+    // Different types
     return false;
 }
 

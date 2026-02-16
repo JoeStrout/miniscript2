@@ -160,6 +160,7 @@ class Op {
 	public: static const String AND;
 	public: static const String OR;
 	public: static const String NOT;
+	public: static const String NEW;
 }; // end of struct Op
 
 

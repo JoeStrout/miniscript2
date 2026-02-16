@@ -180,7 +180,7 @@ This is causing grief.  We need to do those same transformations, and *also* add
 
 ## Jan 15, 2026
 
-The local var problem was easily fix, along with a couple other minor features; the VM test now runs and passes the tests.
+The local var problem was easily fixed, along with a couple other minor features; the VM test now runs and passes the tests.
 
 But it looks like I do indeed have to reconsider how I protect local values in a loop.  GC_PROTECT pushes an entry onto the shadow stack.  If I call that repeatedly, the shadow stack grows more than it should.  Doing this in the main dispatch loop, a MiniScript program could even cause the shadow stack to overflow.
 

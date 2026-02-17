@@ -25,11 +25,15 @@
 #endif
 #include <string.h>
 
-// Global constant values
-Value val_isa_key = 0;  // initialized by value_init_constants()
+// Global constant values, initialized by value_init_constants()
+Value val_isa_key = 0;
+Value val_self = 0;
+Value val_super = 0;
 
 void value_init_constants(void) {
 	val_isa_key = make_string("__isa");
+	val_self = make_string("self");
+	val_super = make_string("super");
 }
 
 // Debug utilities for Value inspection

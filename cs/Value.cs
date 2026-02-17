@@ -432,6 +432,8 @@ public static class ValueHelpers {
 	public static Value val_one = Value.FromInt(1);
 	public static Value val_empty_string = Value.FromString("");
 	public static Value val_isa_key = Value.FromString("__isa");
+	public static Value val_self = Value.FromString("self");
+	public static Value val_super = Value.FromString("super");
 
 	// Core value creation functions (matching value.h)
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -567,6 +569,33 @@ public static class ValueHelpers {
 			if (valueMap == null) return false;
 			if (valueMap.HasKey(key)) {
 				value = valueMap.Get(key);
+				return true;
+			}
+			// Walk up __isa chain
+			if (!valueMap.HasKey(isaKey)) return false;
+			current = valueMap.Get(isaKey);
+		}
+		return false;
+	}
+
+	// Look up a key in a map walking the __isa chain, and also return the __isa
+	// of the map where the key was found (for computing 'super').
+	// Returns true if found, false otherwise.
+	public static bool map_lookup_with_origin(Value map_val, Value key, out Value value, out Value superVal) {
+		value = make_null();
+		superVal = make_null();
+		Value isaKey = val_isa_key;
+		Value current = map_val;
+		for (Int32 depth = 0; depth < 256; depth++) {
+			if (!is_map(current)) return false;
+			var valueMap = HandlePool.Get(current.Handle()) as ValueMap;
+			if (valueMap == null) return false;
+			if (valueMap.HasKey(key)) {
+				value = valueMap.Get(key);
+				// super = the __isa of the map where we found it
+				if (valueMap.HasKey(isaKey)) {
+					superVal = valueMap.Get(isaKey);
+				}
 				return true;
 			}
 			// Walk up __isa chain
@@ -973,7 +1002,7 @@ public class ValueList {
 }
 
 public class ValueMap {
-	protected Dictionary<Value, Value> _items = new Dictionary<Value, Value>();
+	protected Dictionary<Value, Value> _items = new Dictionary<Value, Value>(new ValueEqualityComparer());
 	public bool Frozen;
 
 	public virtual int Count => _items.Count;

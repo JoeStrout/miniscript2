@@ -34,6 +34,10 @@ struct InfixParselet;
 class InfixParseletStorage;
 struct NumberParselet;
 class NumberParseletStorage;
+struct SelfParselet;
+class SelfParseletStorage;
+struct SuperParselet;
+class SuperParseletStorage;
 struct StringParselet;
 class StringParseletStorage;
 struct IdentifierParselet;
@@ -102,10 +106,18 @@ struct ContinueNode;
 class ContinueNodeStorage;
 struct FunctionNode;
 class FunctionNodeStorage;
+struct SelfNode;
+class SelfNodeStorage;
+struct SuperNode;
+class SuperNodeStorage;
 struct ReturnNode;
 class ReturnNodeStorage;
 
 // DECLARATIONS
+
+
+
+
 
 
 
@@ -256,7 +268,13 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 
 	public: Int32 Visit(IndexNode node);
 
+	// Compile index access, optionally as address-of (no auto-invoke)
+	private: Int32 VisitIndex(IndexNode node, bool addressOf);
+
 	public: Int32 Visit(MemberNode node);
+
+	// Compile member access, optionally as address-of (no auto-invoke)
+	private: Int32 VisitMember(MemberNode node, bool addressOf);
 
 	public: Int32 Visit(ExprCallNode node);
 
@@ -279,6 +297,23 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 	public: static Boolean TryEvaluateConstant(ASTNode node, Value* result);
 
 	public: Int32 Visit(FunctionNode node);
+
+	// Allocate (or retrieve) the register for 'self'
+	private: Int32 GetSelfReg();
+
+	// Allocate (or retrieve) the register for 'super'
+	private: Int32 GetSuperReg();
+
+	public: Int32 Visit(SelfNode node);
+
+	public: Int32 Visit(SuperNode node);
+
+	// Emit a method call: METHFIND + optional SETSELF + ARGBLK + ARGs + CALL
+	// receiverReg: register holding the receiver object
+	// methodKey: string name of the method
+	// arguments: list of argument AST nodes
+	// preserveSelf: if true, emit SETSELF to keep current self (for super.method() calls)
+	private: Int32 EmitMethodCall(Int32 receiverReg, String methodKey, List<ASTNode> arguments, bool preserveSelf);
 
 	public: Int32 Visit(ReturnNode node);
 }; // end of class CodeGeneratorStorage
@@ -322,90 +357,96 @@ struct CodeGenerator : public IASTVisitor {
 	}
 
 	// Get all compiled functions (index 0 = @main, 1+ = inner functions)
-	public: List<FuncDef> GetFunctions() { return get()->GetFunctions(); }
+	public: inline List<FuncDef> GetFunctions();
 
 	// Allocate a register
-	private: Int32 AllocReg() { return get()->AllocReg(); }
+	private: inline Int32 AllocReg();
 
 	// Free a register so it can be reused
-	private: void FreeReg(Int32 reg) { return get()->FreeReg(reg); }
+	private: inline void FreeReg(Int32 reg);
 
 	// Allocate a block of consecutive registers
 	// Returns the first register of the block
-	private: Int32 AllocConsecutiveRegs(Int32 count) { return get()->AllocConsecutiveRegs(count); }
+	private: inline Int32 AllocConsecutiveRegs(Int32 count);
 
 	// Compile an expression into a specific target register
 	// The target register should already be allocated by the caller
-	private: Int32 CompileInto(ASTNode node, Int32 targetReg) { return get()->CompileInto(node, targetReg); }
+	private: inline Int32 CompileInto(ASTNode node, Int32 targetReg);
 
 	// Get target register if set, otherwise allocate a new one
 	// IMPORTANT: Call this at the START of each Visit method, before any recursive calls
-	private: Int32 GetTargetOrAlloc() { return get()->GetTargetOrAlloc(); }
+	private: inline Int32 GetTargetOrAlloc();
 
 	// Compile an expression, placing result in a newly allocated register
 	// Returns the register number holding the result
-	public: Int32 Compile(ASTNode ast) { return get()->Compile(ast); }
+	public: inline Int32 Compile(ASTNode ast);
 
 	// Reset temporary registers before compiling a new statement.
 	// Keeps r0 and all variable registers; frees everything else.
-	private: void ResetTempRegisters() { return get()->ResetTempRegisters(); }
+	private: inline void ResetTempRegisters();
 
 	// Compile a list of statements (a block body).
 	// Resets temporary registers before each statement.
-	private: void CompileBody(List<ASTNode> body) { return get()->CompileBody(body); }
+	private: inline void CompileBody(List<ASTNode> body);
 
 	// Compile a complete function from a single expression/statement
-	public: FuncDef CompileFunction(ASTNode ast, String funcName) { return get()->CompileFunction(ast, funcName); }
+	public: inline FuncDef CompileFunction(ASTNode ast, String funcName);
 
 	// Compile a complete function from a list of statements (program)
-	public: FuncDef CompileProgram(List<ASTNode> statements, String funcName) { return get()->CompileProgram(statements, funcName); }
+	public: inline FuncDef CompileProgram(List<ASTNode> statements, String funcName);
 
 	// --- Visit methods for each AST node type ---
 
-	public: Int32 Visit(NumberNode node) { return get()->Visit(node); }
+	public: inline Int32 Visit(NumberNode node);
 
-	public: Int32 Visit(StringNode node) { return get()->Visit(node); }
+	public: inline Int32 Visit(StringNode node);
 
-	private: Int32 VisitIdentifier(IdentifierNode node, bool addressOf) { return get()->VisitIdentifier(node, addressOf); }
+	private: inline Int32 VisitIdentifier(IdentifierNode node, bool addressOf);
 
-	public: Int32 Visit(IdentifierNode node) { return get()->Visit(node); }
+	public: inline Int32 Visit(IdentifierNode node);
 
-	public: Int32 Visit(AssignmentNode node) { return get()->Visit(node); }
+	public: inline Int32 Visit(AssignmentNode node);
 
-	public: Int32 Visit(IndexedAssignmentNode node) { return get()->Visit(node); }
+	public: inline Int32 Visit(IndexedAssignmentNode node);
 
-	public: Int32 Visit(UnaryOpNode node) { return get()->Visit(node); }
+	public: inline Int32 Visit(UnaryOpNode node);
 
-	public: Int32 Visit(BinaryOpNode node) { return get()->Visit(node); }
+	public: inline Int32 Visit(BinaryOpNode node);
 
-	public: Int32 Visit(CallNode node) { return get()->Visit(node); }
+	public: inline Int32 Visit(CallNode node);
 
 	// Compile a call to a user-defined function (funcref in a register)
-	private: Int32 CompileUserCall(CallNode node, Int32 funcVarReg, Int32 explicitTarget) { return get()->CompileUserCall(node, funcVarReg, explicitTarget); }
+	private: inline Int32 CompileUserCall(CallNode node, Int32 funcVarReg, Int32 explicitTarget);
 
-	public: Int32 Visit(GroupNode node) { return get()->Visit(node); }
+	public: inline Int32 Visit(GroupNode node);
 
-	public: Int32 Visit(ListNode node) { return get()->Visit(node); }
+	public: inline Int32 Visit(ListNode node);
 
-	public: Int32 Visit(MapNode node) { return get()->Visit(node); }
+	public: inline Int32 Visit(MapNode node);
 
-	public: Int32 Visit(IndexNode node) { return get()->Visit(node); }
+	public: inline Int32 Visit(IndexNode node);
 
-	public: Int32 Visit(MemberNode node) { return get()->Visit(node); }
+	// Compile index access, optionally as address-of (no auto-invoke)
+	private: inline Int32 VisitIndex(IndexNode node, bool addressOf);
 
-	public: Int32 Visit(ExprCallNode node) { return get()->Visit(node); }
+	public: inline Int32 Visit(MemberNode node);
 
-	public: Int32 Visit(MethodCallNode node) { return get()->Visit(node); }
+	// Compile member access, optionally as address-of (no auto-invoke)
+	private: inline Int32 VisitMember(MemberNode node, bool addressOf);
 
-	public: Int32 Visit(WhileNode node) { return get()->Visit(node); }
+	public: inline Int32 Visit(ExprCallNode node);
 
-	public: Int32 Visit(IfNode node) { return get()->Visit(node); }
+	public: inline Int32 Visit(MethodCallNode node);
 
-	public: Int32 Visit(ForNode node) { return get()->Visit(node); }
+	public: inline Int32 Visit(WhileNode node);
 
-	public: Int32 Visit(BreakNode node) { return get()->Visit(node); }
+	public: inline Int32 Visit(IfNode node);
 
-	public: Int32 Visit(ContinueNode node) { return get()->Visit(node); }
+	public: inline Int32 Visit(ForNode node);
+
+	public: inline Int32 Visit(BreakNode node);
+
+	public: inline Int32 Visit(ContinueNode node);
 
 	// Try to evaluate an AST node as a compile-time constant value.
 	// Returns true if successful, with the result in 'result'.
@@ -413,9 +454,26 @@ struct CodeGenerator : public IASTVisitor {
 	// Lists and maps are automatically frozen (immutable).
 	public: static Boolean TryEvaluateConstant(ASTNode node, Value* result) { return CodeGeneratorStorage::TryEvaluateConstant(node, result); }
 
-	public: Int32 Visit(FunctionNode node) { return get()->Visit(node); }
+	public: inline Int32 Visit(FunctionNode node);
 
-	public: Int32 Visit(ReturnNode node) { return get()->Visit(node); }
+	// Allocate (or retrieve) the register for 'self'
+	private: inline Int32 GetSelfReg();
+
+	// Allocate (or retrieve) the register for 'super'
+	private: inline Int32 GetSuperReg();
+
+	public: inline Int32 Visit(SelfNode node);
+
+	public: inline Int32 Visit(SuperNode node);
+
+	// Emit a method call: METHFIND + optional SETSELF + ARGBLK + ARGs + CALL
+	// receiverReg: register holding the receiver object
+	// methodKey: string name of the method
+	// arguments: list of argument AST nodes
+	// preserveSelf: if true, emit SETSELF to keep current self (for super.method() calls)
+	private: inline Int32 EmitMethodCall(Int32 receiverReg, String methodKey, List<ASTNode> arguments, bool preserveSelf);
+
+	public: inline Int32 Visit(ReturnNode node);
 }; // end of struct CodeGenerator
 
 
@@ -442,5 +500,47 @@ inline List<FuncDef> CodeGenerator::_functions() { return get()->_functions; } /
 inline void CodeGenerator::set__functions(List<FuncDef> _v) { get()->_functions = _v; } // All compiled functions (shared across inner generators)
 inline ErrorPool CodeGenerator::Errors() { return get()->Errors; }
 inline void CodeGenerator::set_Errors(ErrorPool _v) { get()->Errors = _v; }
+inline List<FuncDef> CodeGenerator::GetFunctions() { return get()->GetFunctions(); }
+inline Int32 CodeGenerator::AllocReg() { return get()->AllocReg(); }
+inline void CodeGenerator::FreeReg(Int32 reg) { return get()->FreeReg(reg); }
+inline Int32 CodeGenerator::AllocConsecutiveRegs(Int32 count) { return get()->AllocConsecutiveRegs(count); }
+inline Int32 CodeGenerator::CompileInto(ASTNode node, Int32 targetReg) { return get()->CompileInto(node, targetReg); }
+inline Int32 CodeGenerator::GetTargetOrAlloc() { return get()->GetTargetOrAlloc(); }
+inline Int32 CodeGenerator::Compile(ASTNode ast) { return get()->Compile(ast); }
+inline void CodeGenerator::ResetTempRegisters() { return get()->ResetTempRegisters(); }
+inline void CodeGenerator::CompileBody(List<ASTNode> body) { return get()->CompileBody(body); }
+inline FuncDef CodeGenerator::CompileFunction(ASTNode ast, String funcName) { return get()->CompileFunction(ast, funcName); }
+inline FuncDef CodeGenerator::CompileProgram(List<ASTNode> statements, String funcName) { return get()->CompileProgram(statements, funcName); }
+inline Int32 CodeGenerator::Visit(NumberNode node) { return get()->Visit(node); }
+inline Int32 CodeGenerator::Visit(StringNode node) { return get()->Visit(node); }
+inline Int32 CodeGenerator::VisitIdentifier(IdentifierNode node, bool addressOf) { return get()->VisitIdentifier(node, addressOf); }
+inline Int32 CodeGenerator::Visit(IdentifierNode node) { return get()->Visit(node); }
+inline Int32 CodeGenerator::Visit(AssignmentNode node) { return get()->Visit(node); }
+inline Int32 CodeGenerator::Visit(IndexedAssignmentNode node) { return get()->Visit(node); }
+inline Int32 CodeGenerator::Visit(UnaryOpNode node) { return get()->Visit(node); }
+inline Int32 CodeGenerator::Visit(BinaryOpNode node) { return get()->Visit(node); }
+inline Int32 CodeGenerator::Visit(CallNode node) { return get()->Visit(node); }
+inline Int32 CodeGenerator::CompileUserCall(CallNode node, Int32 funcVarReg, Int32 explicitTarget) { return get()->CompileUserCall(node, funcVarReg, explicitTarget); }
+inline Int32 CodeGenerator::Visit(GroupNode node) { return get()->Visit(node); }
+inline Int32 CodeGenerator::Visit(ListNode node) { return get()->Visit(node); }
+inline Int32 CodeGenerator::Visit(MapNode node) { return get()->Visit(node); }
+inline Int32 CodeGenerator::Visit(IndexNode node) { return get()->Visit(node); }
+inline Int32 CodeGenerator::VisitIndex(IndexNode node, bool addressOf) { return get()->VisitIndex(node, addressOf); }
+inline Int32 CodeGenerator::Visit(MemberNode node) { return get()->Visit(node); }
+inline Int32 CodeGenerator::VisitMember(MemberNode node, bool addressOf) { return get()->VisitMember(node, addressOf); }
+inline Int32 CodeGenerator::Visit(ExprCallNode node) { return get()->Visit(node); }
+inline Int32 CodeGenerator::Visit(MethodCallNode node) { return get()->Visit(node); }
+inline Int32 CodeGenerator::Visit(WhileNode node) { return get()->Visit(node); }
+inline Int32 CodeGenerator::Visit(IfNode node) { return get()->Visit(node); }
+inline Int32 CodeGenerator::Visit(ForNode node) { return get()->Visit(node); }
+inline Int32 CodeGenerator::Visit(BreakNode node) { return get()->Visit(node); }
+inline Int32 CodeGenerator::Visit(ContinueNode node) { return get()->Visit(node); }
+inline Int32 CodeGenerator::Visit(FunctionNode node) { return get()->Visit(node); }
+inline Int32 CodeGenerator::GetSelfReg() { return get()->GetSelfReg(); }
+inline Int32 CodeGenerator::GetSuperReg() { return get()->GetSuperReg(); }
+inline Int32 CodeGenerator::Visit(SelfNode node) { return get()->Visit(node); }
+inline Int32 CodeGenerator::Visit(SuperNode node) { return get()->Visit(node); }
+inline Int32 CodeGenerator::EmitMethodCall(Int32 receiverReg, String methodKey, List<ASTNode> arguments, bool preserveSelf) { return get()->EmitMethodCall(receiverReg, methodKey, arguments, preserveSelf); }
+inline Int32 CodeGenerator::Visit(ReturnNode node) { return get()->Visit(node); }
 
 } // end of namespace MiniScript

@@ -42,6 +42,10 @@ struct InfixParselet;
 class InfixParseletStorage;
 struct NumberParselet;
 class NumberParseletStorage;
+struct SelfParselet;
+class SelfParseletStorage;
+struct SuperParselet;
+class SuperParseletStorage;
 struct StringParselet;
 class StringParseletStorage;
 struct IdentifierParselet;
@@ -110,10 +114,18 @@ struct ContinueNode;
 class ContinueNodeStorage;
 struct FunctionNode;
 class FunctionNodeStorage;
+struct SelfNode;
+class SelfNodeStorage;
+struct SuperNode;
+class SuperNodeStorage;
 struct ReturnNode;
 class ReturnNodeStorage;
 
 // DECLARATIONS
+
+
+
+
 
 
 
@@ -344,122 +356,122 @@ struct Parser : public IParser {
 	}
 
 	// Register all parselets
-	private: void RegisterParselets() { return get()->RegisterParselets(); }
+	private: inline void RegisterParselets();
 
-	private: void RegisterPrefix(TokenType type, PrefixParselet parselet) { return get()->RegisterPrefix(type, parselet); }
+	private: inline void RegisterPrefix(TokenType type, PrefixParselet parselet);
 
-	private: void RegisterInfix(TokenType type, InfixParselet parselet) { return get()->RegisterInfix(type, parselet); }
+	private: inline void RegisterInfix(TokenType type, InfixParselet parselet);
 
 	// Initialize the parser with source code
-	public: void Init(String source) { return get()->Init(source); }
+	public: inline void Init(String source);
 
 	// Advance to the next token, skipping comments and line continuations.
 	// A line continuation is an EOL that follows a token which naturally
 	// expects more input (comma, open bracket/paren/brace, binary operator).
-	private: void Advance() { return get()->Advance(); }
+	private: inline void Advance();
 
 	// Return true if the given token type allows a line continuation after it.
 	// That is, an EOL following this token should be silently ignored.
 	private: static Boolean AllowsLineContinuation(TokenType type) { return ParserStorage::AllowsLineContinuation(type); }
 
 	// Check if current token matches the given type (without consuming)
-	public: Boolean Check(TokenType type) { return get()->Check(type); }
+	public: inline Boolean Check(TokenType type);
 
 	// Check if current token matches and consume it if so
-	public: Boolean Match(TokenType type) { return get()->Match(type); }
+	public: inline Boolean Match(TokenType type);
 
 	// Consume the current token (used by parselets)
-	public: Token Consume() { return get()->Consume(); }
+	public: inline Token Consume();
 
 	// Expect a specific token type, report error if not found
-	public: Token Expect(TokenType type, String errorMessage) { return get()->Expect(type, errorMessage); }
+	public: inline Token Expect(TokenType type, String errorMessage);
 
 	// Get the precedence of the infix parselet for the current token
-	private: Precedence GetPrecedence() { return get()->GetPrecedence(); }
+	private: inline Precedence GetPrecedence();
 
 	// Check if a token type can start an expression
-	public: Boolean CanStartExpression(TokenType type) { return get()->CanStartExpression(type); }
+	public: inline Boolean CanStartExpression(TokenType type);
 
 	// Parse an expression with the given minimum precedence (Pratt parser core)
-	public: ASTNode ParseExpression(Precedence minPrecedence) { return get()->ParseExpression(minPrecedence); }
+	public: inline ASTNode ParseExpression(Precedence minPrecedence);
 
 	// Parse an expression (convenience method with default precedence)
-	public: ASTNode ParseExpression() { return get()->ParseExpression(); }
+	public: inline ASTNode ParseExpression();
 
 	// Continue parsing an expression given a starting left operand.
 	// Used when we've already consumed a token (like an identifier) and need
 	// to continue with any infix operators that follow.
-	private: ASTNode ParseExpressionFrom(ASTNode left) { return get()->ParseExpressionFrom(left); }
+	private: inline ASTNode ParseExpressionFrom(ASTNode left);
 
 	// Parse a simple statement (grammar: simpleStatement)
 	// Handles: callStatement, assignmentStatement, breakStatement, continueStatement, expressionStatement
-	private: ASTNode ParseSimpleStatement() { return get()->ParseSimpleStatement(); }
+	private: inline ASTNode ParseSimpleStatement();
 
 	// Check if current token is a block terminator
-	private: Boolean IsBlockTerminator(TokenType t1, TokenType t2) { return get()->IsBlockTerminator(t1, t2); }
+	private: inline Boolean IsBlockTerminator(TokenType t1, TokenType t2);
 
 	// Parse a block of statements until we hit a terminator token.
 	// Used for block bodies in while, if, for, function, etc.
 	// Terminators are not consumed.
-	private: List<ASTNode> ParseBlock(TokenType terminator1, TokenType terminator2) { return get()->ParseBlock(terminator1, terminator2); }
+	private: inline List<ASTNode> ParseBlock(TokenType terminator1, TokenType terminator2);
 
 	// Require "end <keyword>" and consume it, reporting error if not found
-	private: void RequireEndKeyword(TokenType keyword, String keywordName) { return get()->RequireEndKeyword(keyword, keywordName); }
+	private: inline void RequireEndKeyword(TokenType keyword, String keywordName);
 
 	// Parse an if statement: IF already consumed
 	// Handles both block form and single-line form
-	private: ASTNode ParseIfStatement() { return get()->ParseIfStatement(); }
+	private: inline ASTNode ParseIfStatement();
 
 	// Parse else/else-if clause for block if statements
 	// Returns the else body (which may contain a nested IfNode for else-if)
-	private: List<ASTNode> ParseElseClause() { return get()->ParseElseClause(); }
+	private: inline List<ASTNode> ParseElseClause();
 
 	// Parse a statement that can appear in single-line if context
 	// This includes simple statements, nested if statements, and return
 	// (but not, for example, for/while loops, which are invalid
 	// in the context of a single-line `if`).
-	private: ASTNode ParseSingleLineStatement() { return get()->ParseSingleLineStatement(); }
+	private: inline ASTNode ParseSingleLineStatement();
 
 	// Parse single-line if body (after "if condition then ")
-	private: ASTNode ParseSingleLineIfBody(ASTNode condition) { return get()->ParseSingleLineIfBody(condition); }
+	private: inline ASTNode ParseSingleLineIfBody(ASTNode condition);
 
 	// Parse a while statement: WHILE already consumed
-	private: ASTNode ParseWhileStatement() { return get()->ParseWhileStatement(); }
+	private: inline ASTNode ParseWhileStatement();
 
 	// Parse a for statement: FOR already consumed
 	// Syntax: for <identifier> in <expression> <EOL> <body> end for
-	private: ASTNode ParseForStatement() { return get()->ParseForStatement(); }
+	private: inline ASTNode ParseForStatement();
 
 	// Parse a function expression: FUNCTION already consumed
 	// Syntax: function(param1, param2, ...) <body> end function
 	// The parentheses are optional for no-parameter functions.
-	private: ASTNode ParseFunctionExpression() { return get()->ParseFunctionExpression(); }
+	private: inline ASTNode ParseFunctionExpression();
 
 	// Parse a statement (handles both simple statements and block statements)
-	public: ASTNode ParseStatement() { return get()->ParseStatement(); }
+	public: inline ASTNode ParseStatement();
 
 	// Parse a program (grammar: program : (eol | statement)* EOF)
 	// Returns a list of statement AST nodes
-	public: List<ASTNode> ParseProgram() { return get()->ParseProgram(); }
+	public: inline List<ASTNode> ParseProgram();
 
 	// Parse a complete source string (convenience method)
 	// For single expressions/statements, returns the AST node
-	public: ASTNode Parse(String source) { return get()->Parse(source); }
+	public: inline ASTNode Parse(String source);
 
 	// Describe a token for use in error messages, matching MiniScript 1.x format
-	private: String TokenDescription(Token tok) { return get()->TokenDescription(tok); }
+	private: inline String TokenDescription(Token tok);
 
 	// Format an error in the 1.x style: "got X where Y is required"
-	private: String GotExpected(String expected) { return get()->GotExpected(expected); }
+	private: inline String GotExpected(String expected);
 
 	// Report an error
-	public: void ReportError(String message) { return get()->ReportError(message); }
+	public: inline void ReportError(String message);
 
 	// Check if any errors occurred
-	public: Boolean HadError() { return get()->HadError(); }
+	public: inline Boolean HadError();
 
 	// Get the list of errors
-	public: List<String> GetErrors() { return get()->GetErrors(); }
+	public: inline List<String> GetErrors();
 }; // end of struct Parser
 
 
@@ -478,5 +490,38 @@ inline Dictionary<TokenType, PrefixParselet> Parser::_prefixParselets() { return
 inline void Parser::set__prefixParselets(Dictionary<TokenType, PrefixParselet> _v) { get()->_prefixParselets = _v; }
 inline Dictionary<TokenType, InfixParselet> Parser::_infixParselets() { return get()->_infixParselets; }
 inline void Parser::set__infixParselets(Dictionary<TokenType, InfixParselet> _v) { get()->_infixParselets = _v; }
+inline void Parser::RegisterParselets() { return get()->RegisterParselets(); }
+inline void Parser::RegisterPrefix(TokenType type, PrefixParselet parselet) { return get()->RegisterPrefix(type, parselet); }
+inline void Parser::RegisterInfix(TokenType type, InfixParselet parselet) { return get()->RegisterInfix(type, parselet); }
+inline void Parser::Init(String source) { return get()->Init(source); }
+inline void Parser::Advance() { return get()->Advance(); }
+inline Boolean Parser::Check(TokenType type) { return get()->Check(type); }
+inline Boolean Parser::Match(TokenType type) { return get()->Match(type); }
+inline Token Parser::Consume() { return get()->Consume(); }
+inline Token Parser::Expect(TokenType type, String errorMessage) { return get()->Expect(type, errorMessage); }
+inline Precedence Parser::GetPrecedence() { return get()->GetPrecedence(); }
+inline Boolean Parser::CanStartExpression(TokenType type) { return get()->CanStartExpression(type); }
+inline ASTNode Parser::ParseExpression(Precedence minPrecedence) { return get()->ParseExpression(minPrecedence); }
+inline ASTNode Parser::ParseExpression() { return get()->ParseExpression(); }
+inline ASTNode Parser::ParseExpressionFrom(ASTNode left) { return get()->ParseExpressionFrom(left); }
+inline ASTNode Parser::ParseSimpleStatement() { return get()->ParseSimpleStatement(); }
+inline Boolean Parser::IsBlockTerminator(TokenType t1, TokenType t2) { return get()->IsBlockTerminator(t1, t2); }
+inline List<ASTNode> Parser::ParseBlock(TokenType terminator1, TokenType terminator2) { return get()->ParseBlock(terminator1, terminator2); }
+inline void Parser::RequireEndKeyword(TokenType keyword, String keywordName) { return get()->RequireEndKeyword(keyword, keywordName); }
+inline ASTNode Parser::ParseIfStatement() { return get()->ParseIfStatement(); }
+inline List<ASTNode> Parser::ParseElseClause() { return get()->ParseElseClause(); }
+inline ASTNode Parser::ParseSingleLineStatement() { return get()->ParseSingleLineStatement(); }
+inline ASTNode Parser::ParseSingleLineIfBody(ASTNode condition) { return get()->ParseSingleLineIfBody(condition); }
+inline ASTNode Parser::ParseWhileStatement() { return get()->ParseWhileStatement(); }
+inline ASTNode Parser::ParseForStatement() { return get()->ParseForStatement(); }
+inline ASTNode Parser::ParseFunctionExpression() { return get()->ParseFunctionExpression(); }
+inline ASTNode Parser::ParseStatement() { return get()->ParseStatement(); }
+inline List<ASTNode> Parser::ParseProgram() { return get()->ParseProgram(); }
+inline ASTNode Parser::Parse(String source) { return get()->Parse(source); }
+inline String Parser::TokenDescription(Token tok) { return get()->TokenDescription(tok); }
+inline String Parser::GotExpected(String expected) { return get()->GotExpected(expected); }
+inline void Parser::ReportError(String message) { return get()->ReportError(message); }
+inline Boolean Parser::HadError() { return get()->HadError(); }
+inline List<String> Parser::GetErrors() { return get()->GetErrors(); }
 
 } // end of namespace MiniScript

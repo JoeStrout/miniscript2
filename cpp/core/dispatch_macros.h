@@ -91,7 +91,10 @@
 	X(CALL_rA_rB_rC) \
 	X(RETURN) \
 	X(NEW_rA_rB) \
-	X(ISA_rA_rB_rC)
+	X(ISA_rA_rB_rC) \
+	X(METHFIND_rA_rB_rC) \
+	X(SETSELF_rA) \
+	X(CALLIFREF_rA)
 
 
 #if VM_USE_COMPUTED_GOTO

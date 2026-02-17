@@ -245,6 +245,20 @@ public class CodeGenerator : IASTVisitor {
 	private Int32 VisitIdentifier(IdentifierNode node, bool addressOf) {
 		Int32 resultReg = GetTargetOrAlloc();
 
+		// Handle built-in constants
+		if (node.Name == "null") {
+			_emitter.EmitAB(Opcode.LOAD_rA_iBC, resultReg, 0, $"r{resultReg} = null");
+			return resultReg;
+		}
+		if (node.Name == "true") {
+			_emitter.EmitAB(Opcode.LOAD_rA_iBC, resultReg, 1, $"r{resultReg} = true");
+			return resultReg;
+		}
+		if (node.Name == "false") {
+			_emitter.EmitAB(Opcode.LOAD_rA_iBC, resultReg, 0, $"r{resultReg} = false");
+			return resultReg;
+		}
+
 		Int32 varReg;
 		if (_variableRegs.TryGetValue(node.Name, out varReg)) {
 			// Variable found - emit LOADC (load-and-call for implicit function invocation)
@@ -254,9 +268,14 @@ public class CodeGenerator : IASTVisitor {
 			_emitter.EmitABC(op, resultReg, varReg, nameIdx,
 				$"r{resultReg} = {a}{node.Name}");
 		} else {
-			// Undefined variable - for now just load 0
-			// TODO: handle outer/globals lookup or report error
-			_emitter.EmitAB(Opcode.LOAD_rA_iBC, resultReg, 0, $"undefined: {node.Name}");
+			// Variable not in local scope — emit LOADC/LOADV referencing r0 with
+			// the variable name. At runtime, the name check on r0 will fail,
+			// triggering LookupVariable to search outer/global scope.
+			Int32 nameIdx = _emitter.AddConstant(make_string(node.Name));
+			Opcode op = addressOf ? Opcode.LOADV_rA_rB_kC : Opcode.LOADC_rA_rB_kC;
+			String a = addressOf ? "@" : "";
+			_emitter.EmitABC(op, resultReg, 0, nameIdx,
+				$"r{resultReg} = {a}{node.Name} (outer)");
 		}
 
 		return resultReg;
@@ -267,8 +286,6 @@ public class CodeGenerator : IASTVisitor {
 	}
 
 	public Int32 Visit(AssignmentNode node) {
-		// Note the desired target register, if any (but see notes below).
-		Int32 explicitTarget = _targetReg;
 		if (_targetReg > 0) {
 			Errors.Add(StringUtils.Format("Compiler Error: unexpected target register {0} in assignment", _targetReg));
 		}
@@ -316,10 +333,14 @@ public class CodeGenerator : IASTVisitor {
 
 	public Int32 Visit(UnaryOpNode node) {
 		if (node.Op == Op.ADDRESS_OF) {
-			// Special case: just an identifier lookup without function call
+			// Special case: lookup without function call (address-of)
 			var ident = node.Operand as IdentifierNode;
 			if (ident != null) return VisitIdentifier(ident, true);
-			// On anything other than an identifier, @ has no effect.
+			var member = node.Operand as MemberNode;
+			if (member != null) return VisitMember(member, true);
+			var index = node.Operand as IndexNode;
+			if (index != null) return VisitIndex(index, true);
+			// On anything else, @ has no effect.
 			return node.Operand.Accept(this);
 		}
 			
@@ -559,12 +580,28 @@ public class CodeGenerator : IASTVisitor {
 	}
 
 	public Int32 Visit(IndexNode node) {
+		return VisitIndex(node, false);
+	}
+
+	// Compile index access, optionally as address-of (no auto-invoke)
+	private Int32 VisitIndex(IndexNode node, bool addressOf) {
 		Int32 resultReg = GetTargetOrAlloc();  // Capture target before any recursive calls
 		Int32 targetReg = node.Target.Accept(this);
 		Int32 indexReg = node.Index.Accept(this);
 
-		_emitter.EmitABC(Opcode.INDEX_rA_rB_rC, resultReg, targetReg, indexReg,
-			$"{node.Target.ToStr()}[{node.Index.ToStr()}]");
+		if (addressOf) {
+			_emitter.EmitABC(Opcode.INDEX_rA_rB_rC, resultReg, targetReg, indexReg,
+				$"@{node.Target.ToStr()}[{node.Index.ToStr()}]");
+		} else {
+			_emitter.EmitABC(Opcode.METHFIND_rA_rB_rC, resultReg, targetReg, indexReg,
+				$"{node.Target.ToStr()}[{node.Index.ToStr()}]");
+			SuperNode superTarget = node.Target as SuperNode;
+			if (superTarget != null) {
+				Int32 selfReg = GetSelfReg();
+				_emitter.EmitA(Opcode.SETSELF_rA, selfReg, $"preserve self for super access");
+			}
+			_emitter.EmitA(Opcode.CALLIFREF_rA, resultReg, $"auto-invoke if funcref");
+		}
 
 		FreeReg(indexReg);
 		FreeReg(targetReg);
@@ -572,67 +609,161 @@ public class CodeGenerator : IASTVisitor {
 	}
 
 	public Int32 Visit(MemberNode node) {
+		return VisitMember(node, false);
+	}
+
+	// Compile member access, optionally as address-of (no auto-invoke)
+	private Int32 VisitMember(MemberNode node, bool addressOf) {
 		Int32 resultReg = GetTargetOrAlloc();
 		Int32 targetReg = node.Target.Accept(this);
 		Int32 indexReg = AllocReg();
 		Int32 constIdx = _emitter.AddConstant(make_string(node.Member));
 		_emitter.EmitAB(Opcode.LOAD_rA_kBC, indexReg, constIdx, $"r{indexReg} = \"{node.Member}\"");
-		_emitter.EmitABC(Opcode.INDEX_rA_rB_rC, resultReg, targetReg, indexReg,
-			$"{node.Target.ToStr()}.{node.Member}");
+
+		if (addressOf) {
+			// @ prefix: plain INDEX, no auto-invoke
+			_emitter.EmitABC(Opcode.INDEX_rA_rB_rC, resultReg, targetReg, indexReg,
+				$"@{node.Target.ToStr()}.{node.Member}");
+		} else {
+			// Normal access: METHFIND + optional SETSELF + CALLIFREF
+			_emitter.EmitABC(Opcode.METHFIND_rA_rB_rC, resultReg, targetReg, indexReg,
+				$"{node.Target.ToStr()}.{node.Member}");
+			// If target is 'super', preserve current self
+			SuperNode superTarget = node.Target as SuperNode;
+			if (superTarget != null) {
+				Int32 selfReg = GetSelfReg();
+				_emitter.EmitA(Opcode.SETSELF_rA, selfReg, $"preserve self for super access");
+			}
+			_emitter.EmitA(Opcode.CALLIFREF_rA, resultReg, $"auto-invoke if funcref");
+		}
+
 		FreeReg(indexReg);
 		FreeReg(targetReg);
 		return resultReg;
 	}
 
 	public Int32 Visit(ExprCallNode node) {
-		// Call a function referenced by an arbitrary expression (e.g. funcs[0](10))
-		Int32 explicitTarget = _targetReg;
+		// Check if the function expression is a member access or index operation
+		// on a map — if so, this is a method call and we need to set self/super.
+		MemberNode memberTarget = node.Function as MemberNode;
+		if (memberTarget != null) {
+			// obj.method() via ExprCallNode — treat as method call
+			SuperNode superTarget = memberTarget.Target as SuperNode;
+			bool preserveSelf = (superTarget != null);
+			Int32 receiverReg = memberTarget.Target.Accept(this);
+			Int32 resultReg = EmitMethodCall(receiverReg, memberTarget.Member, node.Arguments, preserveSelf);
+			FreeReg(receiverReg);
+			return resultReg;
+		}
+
+		IndexNode indexTarget = node.Function as IndexNode;
+		if (indexTarget != null) {
+			// obj[key]() — treat as method call if key is a string
+			SuperNode superTarget = indexTarget.Target as SuperNode;
+			bool preserveSelf = (superTarget != null);
+			Int32 explicitTarget = _targetReg;
+			_targetReg = -1;
+
+			// Evaluate receiver and key
+			Int32 receiverReg = indexTarget.Target.Accept(this);
+			Int32 keyReg = indexTarget.Index.Accept(this);
+
+			// Use METHFIND instead of INDEX
+			Int32 funcReg = AllocReg();
+			_emitter.EmitABC(Opcode.METHFIND_rA_rB_rC, funcReg, receiverReg, keyReg,
+				$"r{funcReg} = method lookup");
+
+			// For super[key]() calls, preserve self
+			if (preserveSelf) {
+				Int32 selfReg = GetSelfReg();
+				_emitter.EmitA(Opcode.SETSELF_rA, selfReg, $"preserve self for super call");
+			}
+
+			FreeReg(keyReg);
+
+			// Compile arguments
+			Int32 argCount = node.Arguments.Count;
+			List<Int32> argRegs = new List<Int32>();
+			for (Int32 i = 0; i < argCount; i++) {
+				argRegs.Add(node.Arguments[i].Accept(this));
+			}
+
+			_emitter.EmitABC(Opcode.ARGBLK_iABC, 0, 0, argCount, $"argblock {argCount}");
+			for (Int32 i = 0; i < argCount; i++) {
+				_emitter.EmitA(Opcode.ARG_rA, argRegs[i], $"arg {i}");
+			}
+
+			Int32 calleeBase = _maxRegUsed + 1;
+			_emitter.ReserveRegister(calleeBase);
+			Int32 resultReg = (explicitTarget >= 0) ? explicitTarget : AllocReg();
+
+			_emitter.EmitABC(Opcode.CALL_rA_rB_rC, resultReg, calleeBase, funcReg,
+				$"method call via index, result to r{resultReg}");
+
+			for (Int32 i = 0; i < argCount; i++) {
+				FreeReg(argRegs[i]);
+			}
+			FreeReg(funcReg);
+			FreeReg(receiverReg);
+			return resultReg;
+		}
+
+		// Regular function call (not a method call)
+		Int32 explicitTarget2 = _targetReg;
 		_targetReg = -1;
 
-		Int32 argCount = node.Arguments.Count;
+		Int32 argCount2 = node.Arguments.Count;
 
 		// Evaluate the function expression to get the funcref
-		Int32 funcReg = node.Function.Accept(this);
+		Int32 funcReg2 = node.Function.Accept(this);
 
 		// Compile arguments into temporary registers
-		List<Int32> argRegs = new List<Int32>();
-		for (Int32 i = 0; i < argCount; i++) {
-			argRegs.Add(node.Arguments[i].Accept(this));
+		List<Int32> argRegs2 = new List<Int32>();
+		for (Int32 i = 0; i < argCount2; i++) {
+			argRegs2.Add(node.Arguments[i].Accept(this));
 		}
 
 		// Emit ARGBLK (24-bit arg count)
-		_emitter.EmitABC(Opcode.ARGBLK_iABC, 0, 0, argCount, $"argblock {argCount}");
+		_emitter.EmitABC(Opcode.ARGBLK_iABC, 0, 0, argCount2, $"argblock {argCount2}");
 
 		// Emit ARG for each argument
-		for (Int32 i = 0; i < argCount; i++) {
-			_emitter.EmitA(Opcode.ARG_rA, argRegs[i], $"arg {i}");
+		for (Int32 i = 0; i < argCount2; i++) {
+			_emitter.EmitA(Opcode.ARG_rA, argRegs2[i], $"arg {i}");
 		}
 
 		// Determine base register for callee frame (past all our used registers)
-		Int32 calleeBase = _maxRegUsed + 1;
-		_emitter.ReserveRegister(calleeBase);
+		Int32 calleeBase2 = _maxRegUsed + 1;
+		_emitter.ReserveRegister(calleeBase2);
 
 		// Determine result register
-		Int32 resultReg = (explicitTarget >= 0) ? explicitTarget : AllocReg();
+		Int32 resultReg2 = (explicitTarget2 >= 0) ? explicitTarget2 : AllocReg();
 
 		// Emit CALL: result in rA, callee frame at rB, funcref in rC
-		_emitter.EmitABC(Opcode.CALL_rA_rB_rC, resultReg, calleeBase, funcReg,
-			$"call expr, result to r{resultReg}");
+		_emitter.EmitABC(Opcode.CALL_rA_rB_rC, resultReg2, calleeBase2, funcReg2,
+			$"call expr, result to r{resultReg2}");
 
 		// Free argument registers and funcref register
-		for (Int32 i = 0; i < argCount; i++) {
-			FreeReg(argRegs[i]);
+		for (Int32 i = 0; i < argCount2; i++) {
+			FreeReg(argRegs2[i]);
 		}
-		FreeReg(funcReg);
+		FreeReg(funcReg2);
 
-		return resultReg;
+		return resultReg2;
 	}
 
 	public Int32 Visit(MethodCallNode node) {
-		// Method calls not yet implemented
-		Int32 reg = GetTargetOrAlloc();
-		_emitter.EmitAB(Opcode.LOAD_rA_iBC, reg, 0, $"TODO: {node.Target.ToStr()}.{node.Method}()");
-		return reg;
+		// Check if the target is 'super' — if so, preserve current self
+		SuperNode superTarget = node.Target as SuperNode;
+		bool preserveSelf = (superTarget != null);
+
+		// Evaluate receiver
+		Int32 receiverReg = node.Target.Accept(this);
+
+		// Emit method call
+		Int32 resultReg = EmitMethodCall(receiverReg, node.Method, node.Arguments, preserveSelf);
+
+		FreeReg(receiverReg);
+		return resultReg;
 	}
 
 	public Int32 Visit(WhileNode node) {
@@ -924,12 +1055,117 @@ public class CodeGenerator : IASTVisitor {
 			}
 		}
 
+		// If the inner function uses self/super, ensure the outer function also
+		// allocates those registers so ApplyPendingContext can populate them
+		// and FUNCREF can capture them for the closure.
+		if (funcDef.SelfReg >= 0) GetSelfReg();
+		if (funcDef.SuperReg >= 0) GetSuperReg();
+
 		// Store in the shared functions list
 		_functions[funcIndex] = funcDef;
 
 		// In the outer function, emit FUNCREF to create a reference
 		_emitter.EmitAB(Opcode.FUNCREF_iA_iBC, resultReg, funcIndex,
 			$"r{resultReg} = funcref {funcName}");
+
+		return resultReg;
+	}
+
+	// Allocate (or retrieve) the register for 'self'
+	private Int32 GetSelfReg() {
+		FuncDef fd = _emitter.PendingFunc;
+		if (fd.SelfReg >= 0) return fd.SelfReg;
+		Int32 reg = AllocReg();
+		_variableRegs["self"] = reg;
+		// Don't emit NAME here — ApplyPendingContext sets the name at runtime
+		// when called as a method. If not called as a method, the name stays
+		// empty so LOADV/LOADC will fall through to outer scope lookup (closures).
+		fd.SelfReg = (Int16)reg;
+		return reg;
+	}
+
+	// Allocate (or retrieve) the register for 'super'
+	private Int32 GetSuperReg() {
+		FuncDef fd = _emitter.PendingFunc;
+		if (fd.SuperReg >= 0) return fd.SuperReg;
+		Int32 reg = AllocReg();
+		_variableRegs["super"] = reg;
+		// Don't emit NAME here — see GetSelfReg comment.
+		fd.SuperReg = (Int16)reg;
+		return reg;
+	}
+
+	public Int32 Visit(SelfNode node) {
+		Int32 resultReg = GetTargetOrAlloc();
+		Int32 selfReg = GetSelfReg();
+		Int32 nameIdx = _emitter.AddConstant(val_self);
+		_emitter.EmitABC(Opcode.LOADV_rA_rB_kC, resultReg, selfReg, nameIdx,
+			$"r{resultReg} = self");
+		return resultReg;
+	}
+
+	public Int32 Visit(SuperNode node) {
+		Int32 resultReg = GetTargetOrAlloc();
+		Int32 superReg = GetSuperReg();
+		Int32 nameIdx = _emitter.AddConstant(val_super);
+		_emitter.EmitABC(Opcode.LOADV_rA_rB_kC, resultReg, superReg, nameIdx,
+			$"r{resultReg} = super");
+		return resultReg;
+	}
+
+	// Emit a method call: METHFIND + optional SETSELF + ARGBLK + ARGs + CALL
+	// receiverReg: register holding the receiver object
+	// methodKey: string name of the method
+	// arguments: list of argument AST nodes
+	// preserveSelf: if true, emit SETSELF to keep current self (for super.method() calls)
+	private Int32 EmitMethodCall(Int32 receiverReg, String methodKey, List<ASTNode> arguments, bool preserveSelf) {
+		Int32 explicitTarget = _targetReg;
+		_targetReg = -1;
+
+		// Look up the method using METHFIND (walks __isa chain, sets pending self/super)
+		Int32 keyReg = AllocReg();
+		Int32 constIdx = _emitter.AddConstant(make_string(methodKey));
+		_emitter.EmitAB(Opcode.LOAD_rA_kBC, keyReg, constIdx, $"r{keyReg} = \"{methodKey}\"");
+		Int32 funcReg = AllocReg();
+		_emitter.EmitABC(Opcode.METHFIND_rA_rB_rC, funcReg, receiverReg, keyReg,
+			$"r{funcReg} = {methodKey} (method lookup)");
+		FreeReg(keyReg);
+
+		// For super.method() calls, override pendingSelf with the current self
+		if (preserveSelf) {
+			Int32 selfReg = GetSelfReg();
+			_emitter.EmitA(Opcode.SETSELF_rA, selfReg, $"preserve self for super call");
+		}
+
+		// Compile arguments
+		Int32 argCount = arguments.Count;
+		List<Int32> argRegs = new List<Int32>();
+		for (Int32 i = 0; i < argCount; i++) {
+			argRegs.Add(arguments[i].Accept(this));
+		}
+
+		// Emit ARGBLK + ARG instructions
+		_emitter.EmitABC(Opcode.ARGBLK_iABC, 0, 0, argCount, $"argblock {argCount}");
+		for (Int32 i = 0; i < argCount; i++) {
+			_emitter.EmitA(Opcode.ARG_rA, argRegs[i], $"arg {i}");
+		}
+
+		// Determine callee frame base
+		Int32 calleeBase = _maxRegUsed + 1;
+		_emitter.ReserveRegister(calleeBase);
+
+		// Result register
+		Int32 resultReg = (explicitTarget >= 0) ? explicitTarget : AllocReg();
+
+		// Emit CALL
+		_emitter.EmitABC(Opcode.CALL_rA_rB_rC, resultReg, calleeBase, funcReg,
+			$"method call {methodKey}, result to r{resultReg}");
+
+		// Free temporaries
+		for (Int32 i = 0; i < argCount; i++) {
+			FreeReg(argRegs[i]);
+		}
+		FreeReg(funcReg);
 
 		return resultReg;
 	}

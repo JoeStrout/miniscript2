@@ -207,6 +207,27 @@ bool map_lookup(Value map_val, Value key, Value* out_value) {
     return false;
 }
 
+bool map_lookup_with_origin(Value map_val, Value key, Value* out_value, Value* out_super) {
+    if (out_value) *out_value = make_null();
+    if (out_super) *out_super = make_null();
+    Value current = map_val;
+    Value isa;
+    for (int depth = 0; depth < 256; depth++) {
+        if (!is_map(current)) return false;
+        if (map_try_get(current, key, out_value)) {
+            // super = the __isa of the map where we found it
+            if (map_try_get(current, val_isa_key, &isa)) {
+                if (out_super) *out_super = isa;
+            }
+            return true;
+        }
+        // Walk up __isa chain
+        if (!map_try_get(current, val_isa_key, &isa)) return false;
+        current = isa;
+    }
+    return false;
+}
+
 static bool base_map_set(Value map_val, Value key, Value value) {
     GC_PUSH_SCOPE();
 

@@ -6,45 +6,51 @@
 namespace MiniScript {
 
 
+Int32 CodeEmitterBaseStorage::AddConstant(Value value) {
+	List<Value> constants = PendingFunc.Constants();
+	for (Int32 i = 0; i < constants.Count(); i++) {
+		if (value_equal(constants[i], value)) return i;
+	}
+	constants.Add(value);
+	return constants.Count() - 1;
+}
+void CodeEmitterBaseStorage::ReserveRegister(Int32 registerNumber) {
+	PendingFunc.ReserveRegister(registerNumber);
+}
+FuncDef CodeEmitterBaseStorage::Finalize(String name) {
+	FuncDef result = PendingFunc;
+	result.set_Name(name);
+	return result;
+}
 
 
 
 
 BytecodeEmitterStorage::BytecodeEmitterStorage() {
-	_code =  List<UInt32>::New();
-	_constants =  List<Value>::New();
-	_maxRegs = 0;
+	PendingFunc =  FuncDef::New();
 	_labelAddresses =  Dictionary<Int32, Int32>::New();
 	_labelRefs =  List<LabelRef>::New();
 	_nextLabelId = 0;
 }
 void BytecodeEmitterStorage::Emit(Opcode op, String comment) {
 	BytecodeUtil::CheckEmitPattern(op, EmitPattern::None);
-	_code.Add(BytecodeUtil::INS(op));
+	PendingFunc.Code().Add(BytecodeUtil::INS(op));
 }
 void BytecodeEmitterStorage::EmitA(Opcode op, Int32 a, String comment) {
 	BytecodeUtil::CheckEmitPattern(op, EmitPattern::A);
-	_code.Add(BytecodeUtil::INS_A(op, (Byte)a));
+	PendingFunc.Code().Add(BytecodeUtil::INS_A(op, (Byte)a));
 }
 void BytecodeEmitterStorage::EmitAB(Opcode op, Int32 a, Int32 bc, String comment) {
 	BytecodeUtil::CheckEmitPattern(op, EmitPattern::AB);
-	_code.Add(BytecodeUtil::INS_AB(op, (Byte)a, (Int16)bc));
+	PendingFunc.Code().Add(BytecodeUtil::INS_AB(op, (Byte)a, (Int16)bc));
 }
 void BytecodeEmitterStorage::EmitBC(Opcode op, Int32 ab, Int32 c, String comment) {
 	BytecodeUtil::CheckEmitPattern(op, EmitPattern::BC);
-	_code.Add(BytecodeUtil::INS_BC(op, (Int16)ab, (Byte)c));
+	PendingFunc.Code().Add(BytecodeUtil::INS_BC(op, (Int16)ab, (Byte)c));
 }
 void BytecodeEmitterStorage::EmitABC(Opcode op, Int32 a, Int32 b, Int32 c, String comment) {
 	BytecodeUtil::CheckEmitPattern(op, EmitPattern::ABC);
-	_code.Add(BytecodeUtil::INS_ABC(op, (Byte)a, (Byte)b, (Byte)c));
-}
-Int32 BytecodeEmitterStorage::AddConstant(Value value) {
-	// Check if constant already exists (deduplication)
-	for (Int32 i = 0; i < _constants.Count(); i++) {
-		if (value_equal(_constants[i], value)) return i;
-	}
-	_constants.Add(value);
-	return _constants.Count() - 1;
+	PendingFunc.Code().Add(BytecodeUtil::INS_ABC(op, (Byte)a, (Byte)b, (Byte)c));
 }
 Int32 BytecodeEmitterStorage::CreateLabel() {
 	Int32 labelId = _nextLabelId;
@@ -52,36 +58,33 @@ Int32 BytecodeEmitterStorage::CreateLabel() {
 	return labelId;
 }
 void BytecodeEmitterStorage::PlaceLabel(Int32 labelId) {
-	_labelAddresses[labelId] = _code.Count();
+	_labelAddresses[labelId] = PendingFunc.Code().Count();
 }
 void BytecodeEmitterStorage::EmitJump(Opcode op, Int32 labelId, String comment) {
 	// Emit placeholder instruction, record for later patching
 	LabelRef labelRef;
-	labelRef.CodeIndex = _code.Count();
+	labelRef.CodeIndex = PendingFunc.Code().Count();
 	labelRef.LabelId = labelId;
 	labelRef.Op = op;
 	labelRef.A = 0;
 	labelRef.IsABC = Boolean(true);  // 24-bit offset for JUMP_iABC
 	_labelRefs.Add(labelRef);
-	_code.Add(BytecodeUtil::INS(op));  // placeholder
+	PendingFunc.Code().Add(BytecodeUtil::INS(op));  // placeholder
 }
 void BytecodeEmitterStorage::EmitBranch(Opcode op, Int32 reg, Int32 labelId, String comment) {
 	// Emit placeholder instruction for conditional branch, record for later patching
 	LabelRef labelRef;
-	labelRef.CodeIndex = _code.Count();
+	labelRef.CodeIndex = PendingFunc.Code().Count();
 	labelRef.LabelId = labelId;
 	labelRef.Op = op;
 	labelRef.A = reg;
 	labelRef.IsABC = Boolean(false);  // 16-bit offset for BRFALSE_rA_iBC, BRTRUE_rA_iBC
 	_labelRefs.Add(labelRef);
-	_code.Add(BytecodeUtil::INS(op));  // placeholder
-}
-void BytecodeEmitterStorage::ReserveRegister(Int32 registerNumber) {
-	UInt16 impliedCount = (UInt16)(registerNumber + 1);
-	if (_maxRegs < impliedCount) _maxRegs = impliedCount;
+	PendingFunc.Code().Add(BytecodeUtil::INS(op));  // placeholder
 }
 FuncDef BytecodeEmitterStorage::Finalize(String name) {
 	// Patch all label references
+	List<UInt32> code = PendingFunc.Code();
 	for (Int32 i = 0; i < _labelRefs.Count(); i++) {
 		LabelRef labelRef = _labelRefs[i];
 		if (!_labelAddresses.ContainsKey(labelRef.LabelId)) {
@@ -99,26 +102,20 @@ FuncDef BytecodeEmitterStorage::Finalize(String name) {
 			Byte a = (Byte)((offset >> 16) & 0xFF);
 			Byte b = (Byte)((offset >> 8) & 0xFF);
 			Byte c = (Byte)(offset & 0xFF);
-			_code[labelRef.CodeIndex] = BytecodeUtil::INS_ABC(labelRef.Op, a, b, c);
+			code[labelRef.CodeIndex] = BytecodeUtil::INS_ABC(labelRef.Op, a, b, c);
 		} else {
 			// 8-bit register + 16-bit offset for BRFALSE_rA_iBC, BRTRUE_rA_iBC
-			_code[labelRef.CodeIndex] = BytecodeUtil::INS_AB(labelRef.Op, (Byte)labelRef.A, (Int16)offset);
+			code[labelRef.CodeIndex] = BytecodeUtil::INS_AB(labelRef.Op, (Byte)labelRef.A, (Int16)offset);
 		}
 	}
 
-	FuncDef func =  FuncDef::New();
-	func.set_Name(name);
-	func.set_Code(_code);
-	func.set_Constants(_constants);
-	func.set_MaxRegs(_maxRegs);
-	return func;
+	return this->CodeEmitterBaseStorage::Finalize(name); 
 }
 
 
 AssemblyEmitterStorage::AssemblyEmitterStorage() {
+	PendingFunc =  FuncDef::New();
 	_lines =  List<String>::New();
-	_constants =  List<Value>::New();
-	_maxRegs = 0;
 	_labelNames =  Dictionary<Int32, String>::New();
 	_nextLabelId = 0;
 }
@@ -167,14 +164,6 @@ void AssemblyEmitterStorage::EmitABC(Opcode op, Int32 a, Int32 b, Int32 c, Strin
 	if (!IsNull(comment)) line += Interp("  ; {}", comment);
 	_lines.Add(line);
 }
-Int32 AssemblyEmitterStorage::AddConstant(Value value) {
-	// Check if constant already exists (deduplication)
-	for (Int32 i = 0; i < _constants.Count(); i++) {
-		if (value_equal(_constants[i], value)) return i;
-	}
-	_constants.Add(value);
-	return _constants.Count() - 1;
-}
 Int32 AssemblyEmitterStorage::CreateLabel() {
 	Int32 labelId = _nextLabelId;
 	_nextLabelId = _nextLabelId + 1;
@@ -193,19 +182,6 @@ void AssemblyEmitterStorage::EmitBranch(Opcode op, Int32 reg, Int32 labelId, Str
 	String line = Interp("  {} r{}, {}", BytecodeUtil::ToMnemonic(op), reg, _labelNames[labelId]);
 	if (!IsNull(comment)) line += Interp("  ; {}", comment);
 	_lines.Add(line);
-}
-void AssemblyEmitterStorage::ReserveRegister(Int32 registerNumber) {
-	UInt16 impliedCount = (UInt16)(registerNumber + 1);
-	if (_maxRegs < impliedCount) _maxRegs = impliedCount;
-}
-FuncDef AssemblyEmitterStorage::Finalize(String name) {
-	// For assembly emitter, we don't actually produce a FuncDef
-	// This is primarily for debugging output
-	FuncDef func =  FuncDef::New();
-	func.set_Name(name);
-	func.set_Constants(_constants);
-	func.set_MaxRegs(_maxRegs);
-	return func;
 }
 List<String> AssemblyEmitterStorage::GetLines() {
 	return _lines;

@@ -366,4 +366,26 @@ Added the `new` operator.  In testing that, I discovered that we had not yet put
 
 Tackling `isa` next; for now, only looking at maps (i.e. we don't yet have the built-in maps `number`, `string`, etc., and that's fine for now).   ...And, that's done too.
 
+So, that brings us now to `self` and `super`.  These are a bit tricky.  `self` needs to refer to the map the function was invoked on.  It will need to be set up as part of the call context, maybe like an implicit parameter.  Note that MiniScript 1.3 does this for index syntax as well as dot syntax:
+
+```
+> A = {}
+> A.f = function; print "self: " + self; end function
+> A.f
+self: {"f": FUNCTION()}
+> a = new A
+> a.f
+self: {"__isa": {"f": FUNCTION()}}
+> a["f"]
+self: {"__isa": {"f": FUNCTION()}}
+> f = @a.f
+> f
+Runtime Error: Undefined Identifier: 'self' is unknown in this context [line 1]
+```
+
+`super` also needs to be set up with the call, but it refers to the parent of the map the function was found on (which may not be the same as the one it was invoked on).
+
+So, do we just store these as two additional slots on the stack?  Or do they belong somewhere else, like in CallInfo?  The simplest solution seems to be to put them on the stack, but only when they are actually referenced by the code; we can determine this and assign slots as we compile, just as we do with local variables.  
+
+In the course of implementing that, we found some other rough edges (map keys were not properly comparing strings bigger than tiny-string size, etc.).  Fixed.  Also, refactored CodeGenerator to keep a pending FuncDef and fill it in as it goes, rather than creating it only at the end (requiring a bunch of extra state to keep all the data we need).
 

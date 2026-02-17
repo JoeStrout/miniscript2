@@ -33,6 +33,10 @@ struct InfixParselet;
 class InfixParseletStorage;
 struct NumberParselet;
 class NumberParseletStorage;
+struct SelfParselet;
+class SelfParseletStorage;
+struct SuperParselet;
+class SuperParseletStorage;
 struct StringParselet;
 class StringParseletStorage;
 struct IdentifierParselet;
@@ -101,6 +105,10 @@ struct ContinueNode;
 class ContinueNodeStorage;
 struct FunctionNode;
 class FunctionNodeStorage;
+struct SelfNode;
+class SelfNodeStorage;
+struct SuperNode;
+class SuperNodeStorage;
 struct ReturnNode;
 class ReturnNodeStorage;
 
@@ -186,6 +194,10 @@ struct CallInfo {
 
 
 
+
+
+
+
 class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	friend struct VM;
 	public: Boolean DebugMode = false;
@@ -205,6 +217,9 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	public: Int32 BaseIndex;
 	public: String RuntimeError;
 	public: ErrorPool Errors;
+	private: Value pendingSelf;
+	private: Value pendingSuper;
+	private: bool hasPendingContext;
 	private: thread_local static VM _activeVM;
 
 	// Print callback: if set, print output goes here instead of IOHelper.Print
@@ -218,6 +233,9 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 
 
 	// Execution state (persistent across RunSteps calls)
+
+	// Pending self/super for method calls, set by METHFIND/SETSELF,
+	// consumed by the next CALL instruction
 
 	// Thread-local active VM: set during Run(), so value operations
 	// (like list_push) can report errors without passing ErrorPool around.
@@ -257,6 +275,10 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	// Process ARG instructions, validate argument count, and set up parameter registers.
 	// Returns the PC after the CALL instruction, or -1 on error.
 	private: Int32 ProcessArguments(Int32 argCount, Int32 startPC, Int32 callerBase, Int32 calleeBase, FuncDef callee, List<UInt32> code);
+
+	// Apply pending self/super context to a callee's frame, if any.
+	// Called after SetupCallFrame to populate the callee's self/super registers.
+	private: void ApplyPendingContext(Int32 calleeBase, FuncDef callee);
 
 	// Helper for call setup (FUNCTION_CALLS.md steps 4-6):
 	// Initialize remaining parameters with defaults and clear callee's registers.
@@ -325,6 +347,12 @@ struct VM {
 	public: void set_RuntimeError(String _v);
 	public: ErrorPool Errors();
 	public: void set_Errors(ErrorPool _v);
+	private: Value pendingSelf();
+	private: void set_pendingSelf(Value _v);
+	private: Value pendingSuper();
+	private: void set_pendingSuper(Value _v);
+	private: bool hasPendingContext();
+	private: void set_hasPendingContext(bool _v);
 	private: VM _activeVM();
 	private: void set__activeVM(VM _v);
 
@@ -340,61 +368,68 @@ struct VM {
 
 	// Execution state (persistent across RunSteps calls)
 
+	// Pending self/super for method calls, set by METHFIND/SETSELF,
+	// consumed by the next CALL instruction
+
 	// Thread-local active VM: set during Run(), so value operations
 	// (like list_push) can report errors without passing ErrorPool around.
 	public: static VM ActiveVM() { return VMStorage::ActiveVM(); }
 
-	public: Int32 StackSize() { return get()->StackSize(); }
-	public: Int32 CallStackDepth() { return get()->CallStackDepth(); }
+	public: inline Int32 StackSize();
+	public: inline Int32 CallStackDepth();
 
-	public: Value GetStackValue(Int32 index) { return get()->GetStackValue(index); }
+	public: inline Value GetStackValue(Int32 index);
 
-	public: Value GetStackName(Int32 index) { return get()->GetStackName(index); }
+	public: inline Value GetStackName(Int32 index);
 
-	public: CallInfo GetCallStackFrame(Int32 index) { return get()->GetCallStackFrame(index); }
+	public: inline CallInfo GetCallStackFrame(Int32 index);
 
-	public: String GetFunctionName(Int32 funcIndex) { return get()->GetFunctionName(funcIndex); }
+	public: inline String GetFunctionName(Int32 funcIndex);
 
 	public: static VM New(Int32 stackSlots=1024, Int32 callSlots=256) {
 		return VM(std::make_shared<VMStorage>(stackSlots, callSlots));
 	}
 
-	private: void InitVM(Int32 stackSlots, Int32 callSlots) { return get()->InitVM(stackSlots, callSlots); }
+	private: inline void InitVM(Int32 stackSlots, Int32 callSlots);
 	
-	private: void CleanupVM() { return get()->CleanupVM(); }
+	private: inline void CleanupVM();
 
 	// H: static void MarkRoots(void* user_data);
 	// H: public: ~VMStorage() { CleanupVM(); }
 
-	public: void RegisterFunction(FuncDef funcDef) { return get()->RegisterFunction(funcDef); }
+	public: inline void RegisterFunction(FuncDef funcDef);
 
-	public: void Reset(List<FuncDef> allFunctions) { return get()->Reset(allFunctions); }
+	public: inline void Reset(List<FuncDef> allFunctions);
 
-	public: void RaiseRuntimeError(String message) { return get()->RaiseRuntimeError(message); }
+	public: inline void RaiseRuntimeError(String message);
 
-	public: bool ReportRuntimeError() { return get()->ReportRuntimeError(); }
+	public: inline bool ReportRuntimeError();
 
 	// Helper for argument processing (FUNCTION_CALLS.md steps 1-3):
 	// Process ARG instructions, validate argument count, and set up parameter registers.
 	// Returns the PC after the CALL instruction, or -1 on error.
-	private: Int32 ProcessArguments(Int32 argCount, Int32 startPC, Int32 callerBase, Int32 calleeBase, FuncDef callee, List<UInt32> code) { return get()->ProcessArguments(argCount, startPC, callerBase, calleeBase, callee, code); }
+	private: inline Int32 ProcessArguments(Int32 argCount, Int32 startPC, Int32 callerBase, Int32 calleeBase, FuncDef callee, List<UInt32> code);
+
+	// Apply pending self/super context to a callee's frame, if any.
+	// Called after SetupCallFrame to populate the callee's self/super registers.
+	private: inline void ApplyPendingContext(Int32 calleeBase, FuncDef callee);
 
 	// Helper for call setup (FUNCTION_CALLS.md steps 4-6):
 	// Initialize remaining parameters with defaults and clear callee's registers.
 	// Note: Parameters start at r1 (r0 is reserved for return value)
-	private: void SetupCallFrame(Int32 argCount, Int32 calleeBase, FuncDef callee) { return get()->SetupCallFrame(argCount, calleeBase, callee); }
+	private: inline void SetupCallFrame(Int32 argCount, Int32 calleeBase, FuncDef callee);
 
-	public: Value Execute(FuncDef entry) { return get()->Execute(entry); }
+	public: inline Value Execute(FuncDef entry);
 
-	public: Value Execute(FuncDef entry, UInt32 maxCycles) { return get()->Execute(entry, maxCycles); }
+	public: inline Value Execute(FuncDef entry, UInt32 maxCycles);
 
-	public: Value Run(UInt32 maxCycles=0) { return get()->Run(maxCycles); }
+	public: inline Value Run(UInt32 maxCycles=0);
 
-	private: Value RunInner(UInt32 maxCycles) { return get()->RunInner(maxCycles); }
+	private: inline Value RunInner(UInt32 maxCycles);
 
-	private: void EnsureFrame(Int32 baseIndex, UInt16 neededRegs) { return get()->EnsureFrame(baseIndex, neededRegs); }
+	private: inline void EnsureFrame(Int32 baseIndex, UInt16 neededRegs);
 
-	private: Value LookupVariable(Value varName) { return get()->LookupVariable(varName); }
+	private: inline Value LookupVariable(Value varName);
 	private: Value FuncNamePrint();
 	private: Value FuncNameInput();
 	private: Value FuncNameVal();
@@ -405,7 +440,7 @@ struct VM {
 	private: Value FuncNameFrozenCopy();
 	
 	
-	private: void DoIntrinsic(Value funcName, Int32 baseReg) { return get()->DoIntrinsic(funcName, baseReg); }
+	private: inline void DoIntrinsic(Value funcName, Int32 baseReg);
 }; // end of struct VM
 
 
@@ -438,8 +473,35 @@ inline String VM::RuntimeError() { return get()->RuntimeError; }
 inline void VM::set_RuntimeError(String _v) { get()->RuntimeError = _v; }
 inline ErrorPool VM::Errors() { return get()->Errors; }
 inline void VM::set_Errors(ErrorPool _v) { get()->Errors = _v; }
+inline Value VM::pendingSelf() { return get()->pendingSelf; }
+inline void VM::set_pendingSelf(Value _v) { get()->pendingSelf = _v; }
+inline Value VM::pendingSuper() { return get()->pendingSuper; }
+inline void VM::set_pendingSuper(Value _v) { get()->pendingSuper = _v; }
+inline bool VM::hasPendingContext() { return get()->hasPendingContext; }
+inline void VM::set_hasPendingContext(bool _v) { get()->hasPendingContext = _v; }
 inline VM VM::_activeVM() { return get()->_activeVM; }
 inline void VM::set__activeVM(VM _v) { get()->_activeVM = _v; }
+inline Int32 VM::StackSize() { return get()->StackSize(); }
+inline Int32 VM::CallStackDepth() { return get()->CallStackDepth(); }
+inline Value VM::GetStackValue(Int32 index) { return get()->GetStackValue(index); }
+inline Value VM::GetStackName(Int32 index) { return get()->GetStackName(index); }
+inline CallInfo VM::GetCallStackFrame(Int32 index) { return get()->GetCallStackFrame(index); }
+inline String VM::GetFunctionName(Int32 funcIndex) { return get()->GetFunctionName(funcIndex); }
+inline void VM::InitVM(Int32 stackSlots, Int32 callSlots) { return get()->InitVM(stackSlots, callSlots); }
+inline void VM::CleanupVM() { return get()->CleanupVM(); }
+inline void VM::RegisterFunction(FuncDef funcDef) { return get()->RegisterFunction(funcDef); }
+inline void VM::Reset(List<FuncDef> allFunctions) { return get()->Reset(allFunctions); }
+inline void VM::RaiseRuntimeError(String message) { return get()->RaiseRuntimeError(message); }
+inline bool VM::ReportRuntimeError() { return get()->ReportRuntimeError(); }
+inline Int32 VM::ProcessArguments(Int32 argCount, Int32 startPC, Int32 callerBase, Int32 calleeBase, FuncDef callee, List<UInt32> code) { return get()->ProcessArguments(argCount, startPC, callerBase, calleeBase, callee, code); }
+inline void VM::ApplyPendingContext(Int32 calleeBase, FuncDef callee) { return get()->ApplyPendingContext(calleeBase, callee); }
+inline void VM::SetupCallFrame(Int32 argCount, Int32 calleeBase, FuncDef callee) { return get()->SetupCallFrame(argCount, calleeBase, callee); }
+inline Value VM::Execute(FuncDef entry) { return get()->Execute(entry); }
+inline Value VM::Execute(FuncDef entry, UInt32 maxCycles) { return get()->Execute(entry, maxCycles); }
+inline Value VM::Run(UInt32 maxCycles) { return get()->Run(maxCycles); }
+inline Value VM::RunInner(UInt32 maxCycles) { return get()->RunInner(maxCycles); }
+inline void VM::EnsureFrame(Int32 baseIndex, UInt16 neededRegs) { return get()->EnsureFrame(baseIndex, neededRegs); }
+inline Value VM::LookupVariable(Value varName) { return get()->LookupVariable(varName); }
 inline Value VM::FuncNamePrint() { return get()->FuncNamePrint; }
 inline Value VM::FuncNameInput() { return get()->FuncNameInput; }
 inline Value VM::FuncNameVal() { return get()->FuncNameVal; }
@@ -448,6 +510,7 @@ inline Value VM::FuncNameRemove() { return get()->FuncNameRemove; }
 inline Value VM::FuncNameFreeze() { return get()->FuncNameFreeze; }
 inline Value VM::FuncNameIsFrozen() { return get()->FuncNameIsFrozen; }
 inline Value VM::FuncNameFrozenCopy() { return get()->FuncNameFrozenCopy; }
+inline void VM::DoIntrinsic(Value funcName, Int32 baseReg) { return get()->DoIntrinsic(funcName, baseReg); }
 
 } // end of namespace MiniScript
 

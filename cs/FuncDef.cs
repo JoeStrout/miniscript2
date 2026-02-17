@@ -16,6 +16,8 @@ public class FuncDef {
 	public UInt16 MaxRegs = 0; // how many registers to reserve for this function
 	public List<Value> ParamNames = new List<Value>();     // parameter names (as Value strings)
 	public List<Value> ParamDefaults = new List<Value>();  // default values for parameters
+	public Int16 SelfReg = -1;   // register for 'self' (-1 if not used)
+	public Int16 SuperReg = -1;  // register for 'super' (-1 if not used)
 
 	public FuncDef() {
 	}

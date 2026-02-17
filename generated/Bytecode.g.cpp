@@ -140,6 +140,9 @@ String BytecodeUtil::ToMnemonic(Opcode opcode) {
 		case Opcode::RETURN:         return "RETURN";
 		case Opcode::NEW_rA_rB:      return "NEW_rA_rB";
 		case Opcode::ISA_rA_rB_rC:   return "ISA_rA_rB_rC";
+		case Opcode::METHFIND_rA_rB_rC: return "METHFIND_rA_rB_rC";
+		case Opcode::SETSELF_rA:     return "SETSELF_rA";
+		case Opcode::CALLIFREF_rA:   return "CALLIFREF_rA";
 		default:
 			return "Unknown opcode";
 	}
@@ -213,6 +216,9 @@ Opcode BytecodeUtil::FromMnemonic(String s) {
 	if (s == "RETURN")          return Opcode::RETURN;
 	if (s == "NEW_rA_rB")       return Opcode::NEW_rA_rB;
 	if (s == "ISA_rA_rB_rC")    return Opcode::ISA_rA_rB_rC;
+	if (s == "METHFIND_rA_rB_rC") return Opcode::METHFIND_rA_rB_rC;
+	if (s == "SETSELF_rA")      return Opcode::SETSELF_rA;
+	if (s == "CALLIFREF_rA")    return Opcode::CALLIFREF_rA;
 	return Opcode::NOOP;
 }
 

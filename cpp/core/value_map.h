@@ -31,6 +31,7 @@ int map_capacity(Value map_val);
 Value map_get(Value map_val, Value key);
 bool map_try_get(Value map_val, Value key, Value* out_value);
 bool map_lookup(Value map_val, Value key, Value* out_value);
+bool map_lookup_with_origin(Value map_val, Value key, Value* out_value, Value* out_super);
 bool map_set(Value map_val, Value key, Value value);
 bool map_remove(Value map_val, Value key);
 bool map_has_key(Value map_val, Value key);

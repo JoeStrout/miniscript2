@@ -30,6 +30,10 @@ struct InfixParselet;
 class InfixParseletStorage;
 struct NumberParselet;
 class NumberParseletStorage;
+struct SelfParselet;
+class SelfParseletStorage;
+struct SuperParselet;
+class SuperParseletStorage;
 struct StringParselet;
 class StringParseletStorage;
 struct IdentifierParselet;
@@ -98,10 +102,18 @@ struct ContinueNode;
 class ContinueNodeStorage;
 struct FunctionNode;
 class FunctionNodeStorage;
+struct SelfNode;
+class SelfNodeStorage;
+struct SuperNode;
+class SuperNodeStorage;
 struct ReturnNode;
 class ReturnNodeStorage;
 
 // DECLARATIONS
+
+
+
+
 
 
 
@@ -175,6 +187,8 @@ class FuncDefStorage : public std::enable_shared_from_this<FuncDefStorage> {
 	public: UInt16 MaxRegs = 0; // how many registers to reserve for this function
 	public: List<Value> ParamNames = List<Value>::New(); // parameter names (as Value strings)
 	public: List<Value> ParamDefaults = List<Value>::New(); // default values for parameters
+	public: Int16 SelfReg = -1; // register for 'self' (-1 if not used)
+	public: Int16 SuperReg = -1; // register for 'super' (-1 if not used)
 
 	public: FuncDefStorage();
 
@@ -214,12 +228,16 @@ struct FuncDef {
 	public: void set_ParamNames(List<Value> _v); // parameter names (as Value strings)
 	public: List<Value> ParamDefaults(); // default values for parameters
 	public: void set_ParamDefaults(List<Value> _v); // default values for parameters
+	public: Int16 SelfReg(); // register for 'self' (-1 if not used)
+	public: void set_SelfReg(Int16 _v); // register for 'self' (-1 if not used)
+	public: Int16 SuperReg(); // register for 'super' (-1 if not used)
+	public: void set_SuperReg(Int16 _v); // register for 'super' (-1 if not used)
 
 	public: static FuncDef New() {
 		return FuncDef(std::make_shared<FuncDefStorage>());
 	}
 
-	public: void ReserveRegister(Int32 registerNumber) { return get()->ReserveRegister(registerNumber); }
+	public: inline void ReserveRegister(Int32 registerNumber);
 
 	// Returns a string like "functionName(a, b=1, c=0)"
 	public: String ToString() { return get()->ToString(); }
@@ -244,6 +262,11 @@ inline List<Value> FuncDef::ParamNames() { return get()->ParamNames; } // parame
 inline void FuncDef::set_ParamNames(List<Value> _v) { get()->ParamNames = _v; } // parameter names (as Value strings)
 inline List<Value> FuncDef::ParamDefaults() { return get()->ParamDefaults; } // default values for parameters
 inline void FuncDef::set_ParamDefaults(List<Value> _v) { get()->ParamDefaults = _v; } // default values for parameters
+inline Int16 FuncDef::SelfReg() { return get()->SelfReg; } // register for 'self' (-1 if not used)
+inline void FuncDef::set_SelfReg(Int16 _v) { get()->SelfReg = _v; } // register for 'self' (-1 if not used)
+inline Int16 FuncDef::SuperReg() { return get()->SuperReg; } // register for 'super' (-1 if not used)
+inline void FuncDef::set_SuperReg(Int16 _v) { get()->SuperReg = _v; } // register for 'super' (-1 if not used)
+inline void FuncDef::ReserveRegister(Int32 registerNumber) { return get()->ReserveRegister(registerNumber); }
 inline FuncDefStorage::operator bool() const {
 	return Name != "";
 }

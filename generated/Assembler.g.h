@@ -33,6 +33,10 @@ struct InfixParselet;
 class InfixParseletStorage;
 struct NumberParselet;
 class NumberParseletStorage;
+struct SelfParselet;
+class SelfParseletStorage;
+struct SuperParselet;
+class SuperParseletStorage;
 struct StringParselet;
 class StringParseletStorage;
 struct IdentifierParselet;
@@ -101,10 +105,18 @@ struct ContinueNode;
 class ContinueNodeStorage;
 struct FunctionNode;
 class FunctionNodeStorage;
+struct SelfNode;
+class SelfNodeStorage;
+struct SuperNode;
+class SuperNodeStorage;
 struct ReturnNode;
 class ReturnNodeStorage;
 
 // DECLARATIONS
+
+
+
+
 
 
 
@@ -306,43 +318,43 @@ struct Assembler {
 	// Error handling state
 
 	// Helper to find a function by name (returns -1 if not found)
-	public: Int32 FindFunctionIndex(String name) { return get()->FindFunctionIndex(name); }
+	public: inline Int32 FindFunctionIndex(String name);
 
 	// Helper to find a function by name.
 	// C#: returns null if not found; C++: returns an empty FuncDef.
-	public: FuncDef FindFunction(String name) { return get()->FindFunction(name); }
+	public: inline FuncDef FindFunction(String name);
 
 	// Helper to check if a function exists
-	public: Boolean HasFunction(String name) { return get()->HasFunction(name); }
+	public: inline Boolean HasFunction(String name);
 
 	public: static List<String> GetTokens(String line) { return AssemblerStorage::GetTokens(line); }
 	
-	private: void SetCurrentLine(Int32 lineNumber, String line) { return get()->SetCurrentLine(lineNumber, line); }
+	private: inline void SetCurrentLine(Int32 lineNumber, String line);
 	
-	public: void ClearError() { return get()->ClearError(); }
+	public: inline void ClearError();
 	
-	private: void Error(String errMsg) { return get()->Error(errMsg); }
+	private: inline void Error(String errMsg);
 	
 	// Assemble a single source line, add to our current function,
 	// and also return its value (mainly for unit testing).
-	public: UInt32 AddLine(String line) { return get()->AddLine(line); }
+	public: inline UInt32 AddLine(String line);
 	
-	public: UInt32 AddLine(String line, Int32 lineNumber) { return get()->AddLine(line, lineNumber); }
+	public: inline UInt32 AddLine(String line, Int32 lineNumber);
 	
 	// Helper to parse register like "r5" -> 5
-	private: Byte ParseRegister(String reg) { return get()->ParseRegister(reg); }
+	private: inline Byte ParseRegister(String reg);
 
 	// Helper to parse a Byte number (handles negative numbers)
-	private: Byte ParseByte(String num) { return get()->ParseByte(num); }
+	private: inline Byte ParseByte(String num);
 	
 	// Helper to parse an Int16 number (handles negative numbers)
-	private: Int16 ParseInt16(String num) { return get()->ParseInt16(num); }
+	private: inline Int16 ParseInt16(String num);
 
 	// Helper to parse a 24-bit int number (handles negative numbers)
-	private: Int32 ParseInt24(String num) { return get()->ParseInt24(num); }
+	private: inline Int32 ParseInt24(String num);
 
 	// Helper to parse a 32-bit int number (handles negative numbers)
-	private: Int32 ParseInt32(String num) { return get()->ParseInt32(num); }
+	private: inline Int32 ParseInt32(String num);
 
 	// Helper to determine if a token is a label (ends with colon)
 	private: static Boolean IsLabel(String token) { return AssemblerStorage::IsLabel(token); }
@@ -355,13 +367,13 @@ struct Assembler {
 
 	// Add a new empty function to our function list.
 	// Return true on success, false if failed (because function already exists).
-	private: bool AddFunction(String functionName) { return get()->AddFunction(functionName); }
+	private: inline bool AddFunction(String functionName);
 
 	// Helper to find the address of a label
-	private: Int32 FindLabelAddress(String labelName) { return get()->FindLabelAddress(labelName); }
+	private: inline Int32 FindLabelAddress(String labelName);
 
 	// Helper to add a constant to the constants table and return its index
-	private: Int32 AddConstant(Value value) { return get()->AddConstant(value); }
+	private: inline Int32 AddConstant(Value value);
 
 	// Helper to check if a token is a string literal (surrounded by quotes)
 	private: static Boolean IsStringLiteral(String token) { return AssemblerStorage::IsStringLiteral(token); }
@@ -371,18 +383,18 @@ struct Assembler {
 	private: static Boolean NeedsConstant(String token) { return AssemblerStorage::NeedsConstant(token); }
 
 	// Helper to create a Value from a token
-	private: Value ParseAsConstant(String token) { return get()->ParseAsConstant(token); }
+	private: inline Value ParseAsConstant(String token);
 
 	// Helper to parse a double from a string (basic implementation)
-	private: Double ParseDouble(String str) { return get()->ParseDouble(str); }
+	private: inline Double ParseDouble(String str);
 
 	// Multi-function assembly with support for @function: labels
-	public: void Assemble(List<String> sourceLines) { return get()->Assemble(sourceLines); }
+	public: inline void Assemble(List<String> sourceLines);
 
 	// Assemble a single function from sourceLines, starting at startLine,
 	// and proceeding until we hit another function label or run out of lines.
 	// Return the line number after this function ends.
-	private: Int32 AssembleFunction(List<String> sourceLines, Int32 startLine) { return get()->AssembleFunction(sourceLines, startLine); }
+	private: inline Int32 AssembleFunction(List<String> sourceLines, Int32 startLine);
 }; // end of struct Assembler
 
 
@@ -405,5 +417,25 @@ inline Int32 Assembler::CurrentLineNumber() { return get()->CurrentLineNumber; }
 inline void Assembler::set_CurrentLineNumber(Int32 _v) { get()->CurrentLineNumber = _v; }
 inline String Assembler::CurrentLine() { return get()->CurrentLine; }
 inline void Assembler::set_CurrentLine(String _v) { get()->CurrentLine = _v; }
+inline Int32 Assembler::FindFunctionIndex(String name) { return get()->FindFunctionIndex(name); }
+inline FuncDef Assembler::FindFunction(String name) { return get()->FindFunction(name); }
+inline Boolean Assembler::HasFunction(String name) { return get()->HasFunction(name); }
+inline void Assembler::SetCurrentLine(Int32 lineNumber, String line) { return get()->SetCurrentLine(lineNumber, line); }
+inline void Assembler::ClearError() { return get()->ClearError(); }
+inline void Assembler::Error(String errMsg) { return get()->Error(errMsg); }
+inline UInt32 Assembler::AddLine(String line) { return get()->AddLine(line); }
+inline UInt32 Assembler::AddLine(String line, Int32 lineNumber) { return get()->AddLine(line, lineNumber); }
+inline Byte Assembler::ParseRegister(String reg) { return get()->ParseRegister(reg); }
+inline Byte Assembler::ParseByte(String num) { return get()->ParseByte(num); }
+inline Int16 Assembler::ParseInt16(String num) { return get()->ParseInt16(num); }
+inline Int32 Assembler::ParseInt24(String num) { return get()->ParseInt24(num); }
+inline Int32 Assembler::ParseInt32(String num) { return get()->ParseInt32(num); }
+inline bool Assembler::AddFunction(String functionName) { return get()->AddFunction(functionName); }
+inline Int32 Assembler::FindLabelAddress(String labelName) { return get()->FindLabelAddress(labelName); }
+inline Int32 Assembler::AddConstant(Value value) { return get()->AddConstant(value); }
+inline Value Assembler::ParseAsConstant(String token) { return get()->ParseAsConstant(token); }
+inline Double Assembler::ParseDouble(String str) { return get()->ParseDouble(str); }
+inline void Assembler::Assemble(List<String> sourceLines) { return get()->Assemble(sourceLines); }
+inline Int32 Assembler::AssembleFunction(List<String> sourceLines, Int32 startLine) { return get()->AssembleFunction(sourceLines, startLine); }
 
 } // end of namespace MiniScript

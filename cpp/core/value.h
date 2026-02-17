@@ -74,6 +74,8 @@ typedef struct ValueMap {
 #define val_one ((Value)(INTEGER_TAG | 1))
 #define val_empty_string ((Value)TINY_STRING_TAG)
 extern Value val_isa_key;  // "__isa" (tiny string, no GC needed)
+extern Value val_self;     // "self" (tiny string, no GC needed)
+extern Value val_super;    // "super" (tiny string, no GC needed)
 void value_init_constants(void);
 
 static inline bool value_identical(Value a, Value b) {

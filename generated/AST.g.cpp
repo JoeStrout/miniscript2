@@ -563,6 +563,32 @@ Int32 FunctionNodeStorage::Accept(IASTVisitor& visitor) {
 }
 
 
+String SelfNodeStorage::ToStr() {
+	return "self";
+}
+ASTNode SelfNodeStorage::Simplify() {
+	SelfNode _this(std::static_pointer_cast<SelfNodeStorage>(shared_from_this()));
+	return _this;
+}
+Int32 SelfNodeStorage::Accept(IASTVisitor& visitor) {
+	SelfNode _this(std::static_pointer_cast<SelfNodeStorage>(shared_from_this()));
+	return visitor.Visit(_this);
+}
+
+
+String SuperNodeStorage::ToStr() {
+	return "super";
+}
+ASTNode SuperNodeStorage::Simplify() {
+	SuperNode _this(std::static_pointer_cast<SuperNodeStorage>(shared_from_this()));
+	return _this;
+}
+Int32 SuperNodeStorage::Accept(IASTVisitor& visitor) {
+	SuperNode _this(std::static_pointer_cast<SuperNodeStorage>(shared_from_this()));
+	return visitor.Visit(_this);
+}
+
+
 ReturnNodeStorage::ReturnNodeStorage(ASTNode value) {
 	Value = value;
 }

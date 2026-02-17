@@ -34,6 +34,10 @@ struct InfixParselet;
 class InfixParseletStorage;
 struct NumberParselet;
 class NumberParseletStorage;
+struct SelfParselet;
+class SelfParseletStorage;
+struct SuperParselet;
+class SuperParseletStorage;
 struct StringParselet;
 class StringParseletStorage;
 struct IdentifierParselet;
@@ -102,6 +106,10 @@ struct ContinueNode;
 class ContinueNodeStorage;
 struct FunctionNode;
 class FunctionNodeStorage;
+struct SelfNode;
+class SelfNodeStorage;
+struct SuperNode;
+class SuperNodeStorage;
 struct ReturnNode;
 class ReturnNodeStorage;
 
@@ -136,6 +144,10 @@ class IParser {
 	virtual void ReportError(String message) = 0;
 	virtual Boolean CanStartExpression(TokenType type) = 0;
 }; // end of interface IParser
+
+
+
+
 
 
 
@@ -260,6 +272,18 @@ class NumberParseletStorage : public PrefixParseletStorage {
 	public: ASTNode Parse(IParser& parser, Token token);
 }; // end of class NumberParseletStorage
 
+class SelfParseletStorage : public PrefixParseletStorage {
+	friend struct SelfParselet;
+	public: SelfParseletStorage() {}
+	public: ASTNode Parse(IParser& parser, Token token);
+}; // end of class SelfParseletStorage
+
+class SuperParseletStorage : public PrefixParseletStorage {
+	friend struct SuperParselet;
+	public: SuperParseletStorage() {}
+	public: ASTNode Parse(IParser& parser, Token token);
+}; // end of class SuperParseletStorage
+
 class StringParseletStorage : public PrefixParseletStorage {
 	friend struct StringParselet;
 	public: StringParseletStorage() {}
@@ -346,6 +370,36 @@ struct NumberParselet : public PrefixParselet {
 	}
 	public: ASTNode Parse(IParser& parser, Token token) { return get()->Parse(parser, token); }
 }; // end of struct NumberParselet
+
+
+// SelfParselet: handles the 'self' keyword.
+struct SelfParselet : public PrefixParselet {
+	friend class SelfParseletStorage;
+	SelfParselet(std::shared_ptr<SelfParseletStorage> stor);
+	SelfParselet() : PrefixParselet() {}
+	SelfParselet(std::nullptr_t) : PrefixParselet(nullptr) {}
+	private: SelfParseletStorage* get() const;
+
+	public: static SelfParselet New() {
+		return SelfParselet(std::make_shared<SelfParseletStorage>());
+	}
+	public: ASTNode Parse(IParser& parser, Token token) { return get()->Parse(parser, token); }
+}; // end of struct SelfParselet
+
+
+// SuperParselet: handles the 'super' keyword.
+struct SuperParselet : public PrefixParselet {
+	friend class SuperParseletStorage;
+	SuperParselet(std::shared_ptr<SuperParseletStorage> stor);
+	SuperParselet() : PrefixParselet() {}
+	SuperParselet(std::nullptr_t) : PrefixParselet(nullptr) {}
+	private: SuperParseletStorage* get() const;
+
+	public: static SuperParselet New() {
+		return SuperParselet(std::make_shared<SuperParseletStorage>());
+	}
+	public: ASTNode Parse(IParser& parser, Token token) { return get()->Parse(parser, token); }
+}; // end of struct SuperParselet
 
 
 // StringParselet: handles string literals.
@@ -534,6 +588,12 @@ inline ASTNode InfixParselet::Parse(IParser& parser, ASTNode left, Token token) 
 
 inline NumberParselet::NumberParselet(std::shared_ptr<NumberParseletStorage> stor) : PrefixParselet(stor) {}
 inline NumberParseletStorage* NumberParselet::get() const { return static_cast<NumberParseletStorage*>(storage.get()); }
+
+inline SelfParselet::SelfParselet(std::shared_ptr<SelfParseletStorage> stor) : PrefixParselet(stor) {}
+inline SelfParseletStorage* SelfParselet::get() const { return static_cast<SelfParseletStorage*>(storage.get()); }
+
+inline SuperParselet::SuperParselet(std::shared_ptr<SuperParseletStorage> stor) : PrefixParselet(stor) {}
+inline SuperParseletStorage* SuperParselet::get() const { return static_cast<SuperParseletStorage*>(storage.get()); }
 
 inline StringParselet::StringParselet(std::shared_ptr<StringParseletStorage> stor) : PrefixParselet(stor) {}
 inline StringParseletStorage* StringParselet::get() const { return static_cast<StringParseletStorage*>(storage.get()); }

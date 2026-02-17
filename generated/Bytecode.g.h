@@ -28,6 +28,10 @@ struct InfixParselet;
 class InfixParseletStorage;
 struct NumberParselet;
 class NumberParseletStorage;
+struct SelfParselet;
+class SelfParseletStorage;
+struct SuperParselet;
+class SuperParseletStorage;
 struct StringParselet;
 class StringParseletStorage;
 struct IdentifierParselet;
@@ -96,10 +100,16 @@ struct ContinueNode;
 class ContinueNodeStorage;
 struct FunctionNode;
 class FunctionNodeStorage;
+struct SelfNode;
+class SelfNodeStorage;
+struct SuperNode;
+class SuperNodeStorage;
 struct ReturnNode;
 class ReturnNodeStorage;
 
 // DECLARATIONS
+
+
 
 
 
@@ -214,6 +224,9 @@ enum class Opcode : Byte {
 	RETURN,
 	NEW_rA_rB,
 	ISA_rA_rB_rC,
+	METHFIND_rA_rB_rC,
+	SETSELF_rA,
+	CALLIFREF_rA,
 	OP__COUNT  // Not an opcode, but rather how many opcodes we have.
 }; // end of enum Opcode
 
@@ -263,6 +276,8 @@ class BytecodeUtil {
 	
 	public: static Opcode FromMnemonic(String s);
 }; // end of struct BytecodeUtil
+
+
 
 
 

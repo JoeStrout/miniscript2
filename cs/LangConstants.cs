@@ -67,6 +67,8 @@ public enum TokenType : Int32 {
 	RETURN,
 	NEW,
 	ISA,
+	SELF,
+	SUPER,
 	END,
 	EOL,
 	COMMENT,

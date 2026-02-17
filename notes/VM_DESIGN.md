@@ -89,6 +89,9 @@ Our internal opcode names include a verb/mnemonic, and a description of how the 
 | RETURN | return with result in R[0] |
 | NEW_rA_rB | R[A] := new map with __isa set to R[B] |
 | ISA_rA_rB_rC | R[A] := (R[B] isa R[C]) — true if identical or R[C] is in R[B]'s __isa chain |
+| METHFIND_rA_rB_rC | R[A] := method lookup on R[B] with key R[C], walking __isa chain; sets pendingSelf=R[B], pendingSuper=containing map's __isa |
+| SETSELF_rA | Override pendingSelf with R[A] (used for super.method() to preserve original self) |
+| CALLIFREF_rA | If R[A] is a funcref and pending context exists, auto-invoke it with pending self/super; otherwise clear pending context |
 
 (More opcodes will be added as the prototype develops.)
 

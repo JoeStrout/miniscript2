@@ -452,7 +452,7 @@ Transpiler.transformStatement = function(trimmedLine)
 	// non-identifier string.
 	tokens = roughTokenize(trimmedLine)
 	
-	deepDebug = false // trimmedLine.contains("result")
+	deepDebug = false // trimmedLine.contains("_emitter")
 	ddprint = function(s); if deepDebug then print "====> " + s; end function
 	summarize = function(obj)
 		if obj == null then return "<null>"
@@ -1204,12 +1204,31 @@ Transpiler.updateStateCLASS = function
 			self.enterState State.METHOD
 			if self.curClass.type == ClassType.CLASS then
 				self.curClass.storageLines.push self.fill("	≤scope≥: ≤type≥ ≤name≥(≤params≥);")
-				self.curClass.wrapperLines.push self.fill(
-				  "	≤scope≥: ≤type≥ ≤name≥(≤params≥) { return get()->≤name≥(≤args≥); }")
+				self.curClass.wrapperLines.push self.fill("	≤scope≥: inline ≤type≥ ≤name≥(≤params≥);")
 				self.stripDefaultArgs
+				self.curClass.inlineLines.push self.fill(
+				  "inline ≤type≥ ≤className≥::≤name≥(≤params≥) { return get()->≤name≥(≤args≥); }")
 				self.curClass.methodLines.push self.fill("≤inline≥≤type≥ ≤className≥Storage::≤name≥(≤params≥) {")
 			else
 				self.curClass.declLines.push self.fill("	≤scope≥: ≤type≥ ≤name≥(≤params≥);")
+				self.stripDefaultArgs
+				self.curClass.methodLines.push self.fill("≤inline≥≤type≥ ≤className≥::≤name≥(≤params≥) {")
+			end if
+			if self.gatherMode then self.curClass.methods.push MethodInfo.Make(self.m.name)
+
+		// virtual method
+		// (ToDo: try to consolidate some of these method variations)
+		else if self.match("≤scope:w≥ virtual ≤type:w≥ ≤name:w≥(≤params≥) {") then
+			self.enterState State.METHOD
+			if self.curClass.type == ClassType.CLASS then
+				self.curClass.storageLines.push self.fill("	≤scope≥: virtual ≤type≥ ≤name≥(≤params≥);")
+				self.curClass.wrapperLines.push self.fill("	≤scope≥: inline virtual ≤type≥ ≤name≥(≤params≥);")
+				self.stripDefaultArgs
+				self.curClass.inlineLines.push self.fill(
+				  "inline ≤type≥ ≤className≥::≤name≥(≤params≥) { return get()->≤name≥(≤args≥); }")
+				self.curClass.methodLines.push self.fill("≤inline≥≤type≥ ≤className≥Storage::≤name≥(≤params≥) {")
+			else
+				self.curClass.declLines.push self.fill("	≤scope≥: virtual ≤type≥ ≤name≥(≤params≥);")
 				self.stripDefaultArgs
 				self.curClass.methodLines.push self.fill("≤inline≥≤type≥ ≤className≥::≤name≥(≤params≥) {")
 			end if
@@ -1413,9 +1432,9 @@ Transpiler.generateOutput = function
 		headerLines += class.declLines
 		headerLines.push ""
 	end for
+	done = {}
 	// The storage/wrapper declarations must be done in a very specific order. 
 	// First, the wrapper for any base class (since subclass storage is likely to need it).
-	done = {}
 	for class in self.allClasses
 		if class.elsewhere or not class.wrapperLines or not self.subclassesOf(class) then continue
 		headerLines += class.wrapperLines

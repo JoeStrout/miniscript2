@@ -57,6 +57,8 @@ public interface IASTVisitor {
 	Int32 Visit(FunctionNode node);
 	Int32 Visit(ReturnNode node);
 	Int32 Visit(IndexedAssignmentNode node);
+	Int32 Visit(SelfNode node);
+	Int32 Visit(SuperNode node);
 }
 
 // Base class for all AST nodes.
@@ -744,6 +746,34 @@ public class FunctionNode : ASTNode {
 		return new FunctionNode(ParamNames, simplifiedDefaults, simplifiedBody);
 	}
 
+	public override Int32 Accept(IASTVisitor visitor) {
+		return visitor.Visit(this);
+	}
+}
+
+// Self keyword node — refers to the receiver in a method call
+public class SelfNode : ASTNode {
+	public SelfNode() {}
+	public override String ToStr() {
+		return "self";
+	}
+	public override ASTNode Simplify() {
+		return this;
+	}
+	public override Int32 Accept(IASTVisitor visitor) {
+		return visitor.Visit(this);
+	}
+}
+
+// Super keyword node — refers to the __isa parent of the map where the method was found
+public class SuperNode : ASTNode {
+	public SuperNode() {}
+	public override String ToStr() {
+		return "super";
+	}
+	public override ASTNode Simplify() {
+		return this;
+	}
 	public override Int32 Accept(IASTVisitor visitor) {
 		return visitor.Visit(this);
 	}

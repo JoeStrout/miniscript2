@@ -19,6 +19,16 @@ ASTNode NumberParseletStorage::Parse(IParser& parser, Token token) {
 }
 
 
+ASTNode SelfParseletStorage::Parse(IParser& parser, Token token) {
+	return  SelfNode::New();
+}
+
+
+ASTNode SuperParseletStorage::Parse(IParser& parser, Token token) {
+	return  SuperNode::New();
+}
+
+
 ASTNode StringParseletStorage::Parse(IParser& parser, Token token) {
 	return  StringNode::New(token.Text);
 }

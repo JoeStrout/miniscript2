@@ -45,6 +45,22 @@ public class NumberParselet : PrefixParselet {
 	}
 }
 
+// SelfParselet: handles the 'self' keyword.
+public class SelfParselet : PrefixParselet {
+	public SelfParselet() {}
+	public override ASTNode Parse(IParser parser, Token token) {
+		return new SelfNode();
+	}
+}
+
+// SuperParselet: handles the 'super' keyword.
+public class SuperParselet : PrefixParselet {
+	public SuperParselet() {}
+	public override ASTNode Parse(IParser parser, Token token) {
+		return new SuperNode();
+	}
+}
+
 // StringParselet: handles string literals.
 public class StringParselet : PrefixParselet {
 	public StringParselet() {}

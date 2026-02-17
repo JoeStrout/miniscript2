@@ -899,6 +899,24 @@ public class Assembler {
 			Byte src2 = ParseRegister(parts[3]);
 			instruction = BytecodeUtil.INS_ABC(Opcode.ISA_rA_rB_rC, dest, src1, src2);
 
+		} else if (mnemonic == "METHFIND") {
+			if (parts.Count != 4) { Error("METHFIND requires 3 operands"); return 0; }
+			Byte dest = ParseRegister(parts[1]);
+			Current.ReserveRegister(dest);
+			Byte obj = ParseRegister(parts[2]);
+			Byte key = ParseRegister(parts[3]);
+			instruction = BytecodeUtil.INS_ABC(Opcode.METHFIND_rA_rB_rC, dest, obj, key);
+
+		} else if (mnemonic == "SETSELF") {
+			if (parts.Count != 2) { Error("SETSELF requires 1 operand"); return 0; }
+			Byte reg = ParseRegister(parts[1]);
+			instruction = BytecodeUtil.INS_A(Opcode.SETSELF_rA, reg);
+
+		} else if (mnemonic == "CALLIFREF") {
+			if (parts.Count != 2) { Error("CALLIFREF requires 1 operand"); return 0; }
+			Byte reg = ParseRegister(parts[1]);
+			instruction = BytecodeUtil.INS_A(Opcode.CALLIFREF_rA, reg);
+
 		} else {
 			Error(StringUtils.Format("Unknown opcode: '{0}'", mnemonic));
 			return 0;

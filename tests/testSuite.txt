@@ -1841,6 +1841,122 @@ print "hello" isa Animal
 0
 0
 ================================
+==== self: dot-syntax method call
+================================
+Animal = {}
+Animal.speak = function
+	return "I am " + self.name
+end function
+dog = new Animal
+dog.name = "Rex"
+print dog.speak
+--------------------------------
+I am Rex
+================================
+==== self: bracket-syntax method call
+================================
+Animal = {}
+Animal.greet = function
+	return "Hello from " + self.name
+end function
+cat = new Animal
+cat.name = "Whiskers"
+f = "greet"
+print cat[f]
+--------------------------------
+Hello from Whiskers
+================================
+==== self: method inherited via __isa chain
+================================
+Animal = {}
+Animal.describe = function
+	return self.sound
+end function
+Dog = new Animal
+Dog.sound = "woof"
+fido = new Dog
+fido.sound = "bark"
+print fido.describe
+print Dog.describe
+--------------------------------
+bark
+woof
+================================
+==== super: accessing parent method
+================================
+Animal = {}
+Animal.speak = function
+	return "generic sound"
+end function
+Dog = new Animal
+Dog.speak = function
+	return "dog says: " + super.speak
+end function
+d = new Dog
+print d.speak
+--------------------------------
+dog says: generic sound
+================================
+==== super.method() preserves self
+================================
+Animal = {}
+Animal.name = "unknown"
+Animal.identify = function
+	return self.name
+end function
+Dog = new Animal
+Dog.identify = function
+	return "Dog: " + super.identify
+end function
+fido = new Dog
+fido.name = "Fido"
+print fido.identify
+--------------------------------
+Dog: Fido
+================================
+==== self in non-method call is null
+================================
+f = function
+	return self
+end function
+print f
+--------------------------------
+null
+================================
+==== self in closure captures self
+================================
+Animal = {}
+Animal.makeGreeter = function
+	return function
+		return "Hi, I'm " + self.name
+	end function
+end function
+cat = new Animal
+cat.name = "Luna"
+greeter = cat.makeGreeter
+print greeter
+--------------------------------
+Hi, I'm Luna
+================================
+==== multi-level super chain
+================================
+A = {}
+A.whoami = function
+	return "A"
+end function
+B = new A
+B.whoami = function
+	return "B>" + super.whoami
+end function
+C = new B
+C.whoami = function
+	return "C>" + super.whoami
+end function
+obj = new C
+print obj.whoami
+--------------------------------
+C>B>A
+================================
 ==== END OF TESTS
 ================================================================================
 

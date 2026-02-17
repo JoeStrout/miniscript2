@@ -120,6 +120,10 @@ Token Lexer::NextToken() {
 			tok = Token(TokenType::NEW, text, startLine, startColumn);
 		} else if (text == "isa") {
 			tok = Token(TokenType::ISA, text, startLine, startColumn);
+		} else if (text == "self") {
+			tok = Token(TokenType::SELF, text, startLine, startColumn);
+		} else if (text == "super") {
+			tok = Token(TokenType::SUPER, text, startLine, startColumn);
 		} else if (text == "end") {
 			tok = Token(TokenType::END, text, startLine, startColumn);
 		} else {

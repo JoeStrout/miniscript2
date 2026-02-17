@@ -32,6 +32,10 @@ struct InfixParselet;
 class InfixParseletStorage;
 struct NumberParselet;
 class NumberParseletStorage;
+struct SelfParselet;
+class SelfParseletStorage;
+struct SuperParselet;
+class SuperParseletStorage;
 struct StringParselet;
 class StringParseletStorage;
 struct IdentifierParselet;
@@ -100,10 +104,16 @@ struct ContinueNode;
 class ContinueNodeStorage;
 struct FunctionNode;
 class FunctionNodeStorage;
+struct SelfNode;
+class SelfNodeStorage;
+struct SuperNode;
+class SuperNodeStorage;
 struct ReturnNode;
 class ReturnNodeStorage;
 
 // DECLARATIONS
+
+
 
 
 
@@ -191,7 +201,11 @@ class IASTVisitor {
 	virtual Int32 Visit(FunctionNode node) = 0;
 	virtual Int32 Visit(ReturnNode node) = 0;
 	virtual Int32 Visit(IndexedAssignmentNode node) = 0;
+	virtual Int32 Visit(SelfNode node) = 0;
+	virtual Int32 Visit(SuperNode node) = 0;
 }; // end of interface IASTVisitor
+
+
 
 
 
@@ -553,6 +567,22 @@ class FunctionNodeStorage : public ASTNodeStorage {
 
 	public: Int32 Accept(IASTVisitor& visitor);
 }; // end of class FunctionNodeStorage
+
+class SelfNodeStorage : public ASTNodeStorage {
+	friend struct SelfNode;
+	public: SelfNodeStorage() {}
+	public: String ToStr();
+	public: ASTNode Simplify();
+	public: Int32 Accept(IASTVisitor& visitor);
+}; // end of class SelfNodeStorage
+
+class SuperNodeStorage : public ASTNodeStorage {
+	friend struct SuperNode;
+	public: SuperNodeStorage() {}
+	public: String ToStr();
+	public: ASTNode Simplify();
+	public: Int32 Accept(IASTVisitor& visitor);
+}; // end of class SuperNodeStorage
 
 class ReturnNodeStorage : public ASTNodeStorage {
 	friend struct ReturnNode;
@@ -1103,6 +1133,40 @@ struct FunctionNode : public ASTNode {
 }; // end of struct FunctionNode
 
 
+// Self keyword node — refers to the receiver in a method call
+struct SelfNode : public ASTNode {
+	friend class SelfNodeStorage;
+	SelfNode(std::shared_ptr<SelfNodeStorage> stor);
+	SelfNode() : ASTNode() {}
+	SelfNode(std::nullptr_t) : ASTNode(nullptr) {}
+	private: SelfNodeStorage* get() const;
+
+	public: static SelfNode New() {
+		return SelfNode(std::make_shared<SelfNodeStorage>());
+	}
+	public: String ToStr() { return get()->ToStr(); }
+	public: ASTNode Simplify() { return get()->Simplify(); }
+	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
+}; // end of struct SelfNode
+
+
+// Super keyword node — refers to the __isa parent of the map where the method was found
+struct SuperNode : public ASTNode {
+	friend class SuperNodeStorage;
+	SuperNode(std::shared_ptr<SuperNodeStorage> stor);
+	SuperNode() : ASTNode() {}
+	SuperNode(std::nullptr_t) : ASTNode(nullptr) {}
+	private: SuperNodeStorage* get() const;
+
+	public: static SuperNode New() {
+		return SuperNode(std::make_shared<SuperNodeStorage>());
+	}
+	public: String ToStr() { return get()->ToStr(); }
+	public: ASTNode Simplify() { return get()->Simplify(); }
+	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
+}; // end of struct SuperNode
+
+
 // Return statement node (e.g., return x + 1)
 struct ReturnNode : public ASTNode {
 	friend class ReturnNodeStorage;
@@ -1273,6 +1337,12 @@ inline List<ASTNode> FunctionNode::ParamDefaults() { return get()->ParamDefaults
 inline void FunctionNode::set_ParamDefaults(List<ASTNode> _v) { get()->ParamDefaults = _v; } // default value expressions (null = no explicit default)
 inline List<ASTNode> FunctionNode::Body() { return get()->Body; } // statements in the function body
 inline void FunctionNode::set_Body(List<ASTNode> _v) { get()->Body = _v; } // statements in the function body
+
+inline SelfNode::SelfNode(std::shared_ptr<SelfNodeStorage> stor) : ASTNode(stor) {}
+inline SelfNodeStorage* SelfNode::get() const { return static_cast<SelfNodeStorage*>(storage.get()); }
+
+inline SuperNode::SuperNode(std::shared_ptr<SuperNodeStorage> stor) : ASTNode(stor) {}
+inline SuperNodeStorage* SuperNode::get() const { return static_cast<SuperNodeStorage*>(storage.get()); }
 
 inline ReturnNode::ReturnNode(std::shared_ptr<ReturnNodeStorage> stor) : ASTNode(stor) {}
 inline ReturnNodeStorage* ReturnNode::get() const { return static_cast<ReturnNodeStorage*>(storage.get()); }

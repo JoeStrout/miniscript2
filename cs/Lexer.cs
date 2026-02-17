@@ -185,6 +185,10 @@ public struct Lexer {
 				tok = new Token(TokenType.NEW, text, startLine, startColumn);
 			} else if (text == "isa") {
 				tok = new Token(TokenType.ISA, text, startLine, startColumn);
+			} else if (text == "self") {
+				tok = new Token(TokenType.SELF, text, startLine, startColumn);
+			} else if (text == "super") {
+				tok = new Token(TokenType.SUPER, text, startLine, startColumn);
 			} else if (text == "end") {
 				tok = new Token(TokenType.END, text, startLine, startColumn);
 			} else {

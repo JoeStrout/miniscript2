@@ -96,7 +96,8 @@
 	X(ISA_rA_rB_rC) \
 	X(METHFIND_rA_rB_rC) \
 	X(SETSELF_rA) \
-	X(CALLIFREF_rA)
+	X(CALLIFREF_rA) \
+	X(ITERGET_rA_rB_rC)
 
 
 #if VM_USE_COMPUTED_GOTO

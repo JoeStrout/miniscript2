@@ -934,6 +934,13 @@ public class Assembler {
 			Byte reg = ParseRegister(parts[1]);
 			instruction = BytecodeUtil.INS_A(Opcode.CALLIFREF_rA, reg);
 
+		} else if (mnemonic == "ITERGET") {
+			if (parts.Count != 4) { Error("ITERGET requires 3 operands"); return 0; }
+			Byte dest = ParseRegister(parts[1]);
+			Byte containerReg = ParseRegister(parts[2]);
+			Byte indexReg = ParseRegister(parts[3]);
+			instruction = BytecodeUtil.INS_ABC(Opcode.ITERGET_rA_rB_rC, dest, containerReg, indexReg);
+
 		} else {
 			Error(StringUtils.Format("Unknown opcode: '{0}'", mnemonic));
 			return 0;

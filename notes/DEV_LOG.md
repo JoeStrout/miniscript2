@@ -402,7 +402,7 @@ Taking stock of what's not yet working (or maybe working, but not in the test su
   6. @ operator — function reference without invoking
 ✔️7. List + — concatenation ([1,2] + [3,4])
 ✔️8. List * / / — replication/division
-  9. Map + — merging maps
+✔️9. Map + — merging maps
   10. for over a map — iterating map keys
   11. for over range() — (depends on range intrinsic)
   12. Closures capturing outer variables — non-self outer-scope capture

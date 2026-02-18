@@ -868,8 +868,9 @@ Int32 CodeGeneratorStorage::Visit(ForNode node) {
 	_emitter.EmitABC(Opcode::NEXT_rA_rB, indexReg, listReg, 0, "index++; skip next if done");
 	_emitter.EmitJump(Opcode::JUMP_iABC, afterLoop, "exit loop");
 
-	// Get current element: varReg = listReg[indexReg]
-	_emitter.EmitABC(Opcode::INDEX_rA_rB_rC, varReg, listReg, indexReg, Interp("{} = list[index]", node.Variable()));
+	// Get current element by position: varReg = iterget(listReg, indexReg)
+	// For lists/strings this is the same as INDEX; for maps it returns {"key":k, "value":v}
+	_emitter.EmitABC(Opcode::ITERGET_rA_rB_rC, varReg, listReg, indexReg, Interp("{} = iterget(container, index)", node.Variable()));
 
 	// Compile body statements
 	CompileBody(node.Body());

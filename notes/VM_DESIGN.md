@@ -94,6 +94,7 @@ Our internal opcode names include a verb/mnemonic, and a description of how the 
 | METHFIND_rA_rB_rC | R[A] := method lookup on R[B] with key R[C], walking __isa chain; sets pendingSelf=R[B], pendingSuper=containing map's __isa |
 | SETSELF_rA | Override pendingSelf with R[A] (used for super.method() to preserve original self) |
 | CALLIFREF_rA | If R[A] is a funcref and pending context exists, auto-invoke it with pending self/super; otherwise clear pending context |
+| ITERGET_rA_rB_rC | R[A] := element at position R[C] from container R[B]; for lists/strings same as INDEX, for maps returns {"key":k, "value":v} |
 
 (More opcodes will be added as the prototype develops.)
 

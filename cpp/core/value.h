@@ -87,6 +87,7 @@ extern const char* get_string_data_zerocopy(const Value* v_ptr, int* out_len);
 extern int string_compare(Value a, Value b);
 extern bool string_equals(Value a, Value b);
 extern Value list_concat(Value a, Value b);
+extern Value map_concat(Value a, Value b);
 extern Value make_map(int initial_capacity);
 extern Value make_empty_map(void);
 extern ValueMap* as_map(Value v);
@@ -253,7 +254,12 @@ static inline Value value_add(Value a, Value b) {
     if (is_list(a) && is_list(b)) {
     	return list_concat(a, b);
     }
-    
+
+    // Handle map addition
+    if (is_map(a) && is_map(b)) {
+    	return map_concat(a, b);
+    }
+
     // For now, return nil for unsupported operations
     return make_null();
 }

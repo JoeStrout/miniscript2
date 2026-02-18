@@ -39,6 +39,7 @@ bool map_has_key(Value map_val, Value key);
 // Map utilities
 void map_clear(Value map_val);
 Value map_copy(Value map_val);
+Value map_concat(Value a, Value b);
 bool map_needs_expansion(Value map_val);
 bool map_expand_capacity(Value map_val);  // Expands in-place, returns success
 Value map_with_expanded_capacity(Value map_val);  // Deprecated - creates new map
@@ -56,6 +57,7 @@ typedef struct {
 
 MapIterator map_iterator(Value map_val);
 bool map_iterator_next(MapIterator* iter, Value* out_key, Value* out_value);
+Value map_nth_entry(Value map_val, int n);
 
 // Hash function for maps
 uint32_t map_hash(Value map_val);

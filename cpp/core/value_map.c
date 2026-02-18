@@ -405,6 +405,80 @@ Value map_copy(Value map_val) {
     return new_map;
 }
 
+Value map_concat(Value a, Value b) {
+    GC_PUSH_SCOPE();
+    GC_PROTECT(&a);
+    GC_PROTECT(&b);
+
+    ValueMap* mapA = as_map(a);
+    ValueMap* mapB = as_map(b);
+    int countA = mapA ? mapA->count : 0;
+    int countB = mapB ? mapB->count : 0;
+
+    Value result = make_map(countA + countB > 0 ? countA + countB : 4);
+
+    // Copy entries from a
+    mapA = as_map(a);  // re-fetch after allocation
+    if (mapA) {
+        for (int i = 0; i < mapA->capacity; i++) {
+            if (mapA->entries[i].occupied) {
+                map_set(result, mapA->entries[i].key, mapA->entries[i].value);
+            }
+        }
+    }
+
+    // Copy entries from b (overriding any matching keys from a)
+    mapB = as_map(b);  // re-fetch after map_set calls
+    if (mapB) {
+        for (int i = 0; i < mapB->capacity; i++) {
+            if (mapB->entries[i].occupied) {
+                map_set(result, mapB->entries[i].key, mapB->entries[i].value);
+            }
+        }
+    }
+
+    GC_POP_SCOPE();
+    return result;
+}
+
+// Return the Nth key-value pair from a map as a {"key":k, "value":v} mini-map.
+// TODO: Counting from the beginning every time is O(n) per call, making full
+// iteration O(n^2) for large maps. We may want to optimize this later, e.g.
+// by caching an iterator or using an ordered backing store.  Or, maybe this
+// should take n by reference, and update it with the next index to check.
+Value map_nth_entry(Value map_val, int n) {
+    ValueMap* map = as_map(map_val);
+    if (!map) return make_null();
+
+    GC_PUSH_SCOPE();
+    GC_PROTECT(&map_val);
+
+    // Walk occupied entries to find the Nth one
+    int count = 0;
+    Value key = make_null();
+    Value val = make_null();
+    for (int i = 0; i < map->capacity; i++) {
+        if (map->entries[i].occupied) {
+            if (count == n) {
+                key = map->entries[i].key;
+                val = map->entries[i].value;
+                break;
+            }
+            count++;
+        }
+    }
+
+    // Build a {"key": k, "value": v} mini-map
+    GC_PROTECT(&key);
+    GC_PROTECT(&val);
+    Value result = make_map(4);
+    map_set(result, make_string("key"), key);
+    map_set(result, make_string("value"), val);
+
+    GC_POP_SCOPE();
+    return result;
+}
+
 bool map_needs_expansion(Value map_val) {
     ValueMap* map = as_map(map_val);
     if (!map) return false;

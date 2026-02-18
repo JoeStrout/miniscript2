@@ -229,6 +229,8 @@ public readonly struct Value {
 		}
 		// List concatenation
 		if (a.IsList && b.IsList) return ValueHelpers.list_concat(a, b);
+		// Map addition
+		if (a.IsMap && b.IsMap) return ValueHelpers.map_concat(a, b);
 		return Null();
 	}
 
@@ -666,7 +668,28 @@ public static class ValueHelpers {
 		if (valueMap.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen map"); return; }
 		valueMap.Clear();
 	}
-	
+
+	// Return the Nth key-value pair from a map as a {"key":k, "value":v} mini-map.
+	// TODO: Counting from the beginning every time is O(n) per call, making full
+	// iteration O(n^2) for large maps. We may want to optimize this later, e.g.
+	// by caching an iterator or using an ordered backing store.
+	public static Value map_nth_entry(Value map_val, int n) {
+		if (!map_val.IsMap) return make_null();
+		var valueMap = HandlePool.Get(map_val.Handle()) as ValueMap;
+		if (valueMap == null) return make_null();
+		int i = 0;
+		foreach (var kvp in valueMap.Items) {
+			if (i == n) {
+				Value result = make_map(4);
+				map_set(result, make_string("key"), kvp.Key);
+				map_set(result, make_string("value"), kvp.Value);
+				return result;
+			}
+			i++;
+		}
+		return make_null();
+	}
+
 	public static void varmap_gather(Value map_val) {
 		if (!map_val.IsMap) return;
 		var varMap = HandlePool.Get(map_val.Handle()) as VarMap;
@@ -938,6 +961,23 @@ public static class ValueHelpers {
 		Value result = make_list(end - start);
 		for (int i = start; i < end; i++) {
 			list_push(result, list_get(list_val, i));
+		}
+		return result;
+	}
+
+	public static Value map_concat(Value a, Value b) {
+		Value result = make_map(0);
+		ValueMap mapA = HandlePool.Get(a.Handle()) as ValueMap;
+		if (mapA != null) {
+			foreach (var kvp in mapA.Items) {
+				map_set(result, kvp.Key, kvp.Value);
+			}
+		}
+		ValueMap mapB = HandlePool.Get(b.Handle()) as ValueMap;
+		if (mapB != null) {
+			foreach (var kvp in mapB.Items) {
+				map_set(result, kvp.Key, kvp.Value);
+			}
 		}
 		return result;
 	}

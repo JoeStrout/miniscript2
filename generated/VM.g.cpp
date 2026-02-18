@@ -1436,6 +1436,29 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				VM_NEXT();
 			}
 
+			VM_CASE(ITERGET_rA_rB_rC) {
+				// R[A] = R[B] element at position R[C]
+				// For lists: same as list[index]
+				// For strings: same as string[index]
+				// For maps: returns {"key":k, "value":v} mini-map for the Nth entry
+				Byte a = BytecodeUtil::Au(instruction);
+				Byte b = BytecodeUtil::Bu(instruction);
+				Byte c = BytecodeUtil::Cu(instruction);
+				container = localStack[b];
+				Int32 idx = as_int(localStack[c]);
+
+				if (is_list(container)) {
+					localStack[a] = list_get(container, idx);
+				} else if (is_map(container)) {
+					localStack[a] = map_nth_entry(container, idx);
+				} else if (is_string(container)) {
+					localStack[a] = string_substring(container, idx, 1);
+				} else {
+					localStack[a] = make_null();
+				}
+				VM_NEXT();
+			}
+
 			VM_DISPATCH_END();
 	}
 	VM_DISPATCH_BOTTOM();

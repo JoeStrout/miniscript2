@@ -330,6 +330,27 @@ Int32 IndexNodeStorage::Accept(IASTVisitor& visitor) {
 }
 
 
+SliceNodeStorage::SliceNodeStorage(ASTNode target, ASTNode startIndex, ASTNode endIndex) {
+	Target = target;
+	StartIndex = startIndex;
+	EndIndex = endIndex;
+}
+String SliceNodeStorage::ToStr() {
+	String startStr = (!IsNull(StartIndex)) ? StartIndex.ToStr() : "";
+	String endStr = (!IsNull(EndIndex)) ? EndIndex.ToStr() : "";
+	return Target.ToStr() + "[" + startStr + ":" + endStr + "]";
+}
+ASTNode SliceNodeStorage::Simplify() {
+	ASTNode simplifiedStart = (!IsNull(StartIndex)) ? StartIndex.Simplify() : nullptr;
+	ASTNode simplifiedEnd = (!IsNull(EndIndex)) ? EndIndex.Simplify() : nullptr;
+	return  SliceNode::New(Target.Simplify(), simplifiedStart, simplifiedEnd);
+}
+Int32 SliceNodeStorage::Accept(IASTVisitor& visitor) {
+	SliceNode _this(std::static_pointer_cast<SliceNodeStorage>(shared_from_this()));
+	return visitor.Visit(_this);
+}
+
+
 MemberNodeStorage::MemberNodeStorage(ASTNode target, String member) {
 	Target = target;
 	Member = member;

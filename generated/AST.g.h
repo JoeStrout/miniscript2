@@ -86,6 +86,8 @@ struct MapNode;
 class MapNodeStorage;
 struct IndexNode;
 class IndexNodeStorage;
+struct SliceNode;
+class SliceNodeStorage;
 struct MemberNode;
 class MemberNodeStorage;
 struct MethodCallNode;
@@ -190,6 +192,7 @@ class IASTVisitor {
 	virtual Int32 Visit(ListNode node) = 0;
 	virtual Int32 Visit(MapNode node) = 0;
 	virtual Int32 Visit(IndexNode node) = 0;
+	virtual Int32 Visit(SliceNode node) = 0;
 	virtual Int32 Visit(MemberNode node) = 0;
 	virtual Int32 Visit(MethodCallNode node) = 0;
 	virtual Int32 Visit(ExprCallNode node) = 0;
@@ -204,6 +207,7 @@ class IASTVisitor {
 	virtual Int32 Visit(SelfNode node) = 0;
 	virtual Int32 Visit(SuperNode node) = 0;
 }; // end of interface IASTVisitor
+
 
 
 
@@ -443,6 +447,21 @@ class IndexNodeStorage : public ASTNodeStorage {
 
 	public: Int32 Accept(IASTVisitor& visitor);
 }; // end of class IndexNodeStorage
+
+class SliceNodeStorage : public ASTNodeStorage {
+	friend struct SliceNode;
+	public: ASTNode Target; // container being sliced
+	public: ASTNode StartIndex; // null if omitted (means 0)
+	public: ASTNode EndIndex; // null if omitted (means len)
+
+	public: SliceNodeStorage(ASTNode target, ASTNode startIndex, ASTNode endIndex);
+
+	public: String ToStr();
+
+	public: ASTNode Simplify();
+
+	public: Int32 Accept(IASTVisitor& visitor);
+}; // end of class SliceNodeStorage
 
 class MemberNodeStorage : public ASTNodeStorage {
 	friend struct MemberNode;
@@ -905,6 +924,33 @@ struct IndexNode : public ASTNode {
 }; // end of struct IndexNode
 
 
+// Slice access node (e.g., list[1:3], str[2:])
+struct SliceNode : public ASTNode {
+	friend class SliceNodeStorage;
+	SliceNode(std::shared_ptr<SliceNodeStorage> stor);
+	SliceNode() : ASTNode() {}
+	SliceNode(std::nullptr_t) : ASTNode(nullptr) {}
+	private: SliceNodeStorage* get() const;
+
+	public: ASTNode Target(); // container being sliced
+	public: void set_Target(ASTNode _v); // container being sliced
+	public: ASTNode StartIndex(); // null if omitted (means 0)
+	public: void set_StartIndex(ASTNode _v); // null if omitted (means 0)
+	public: ASTNode EndIndex(); // null if omitted (means len)
+	public: void set_EndIndex(ASTNode _v); // null if omitted (means len)
+
+	public: static SliceNode New(ASTNode target, ASTNode startIndex, ASTNode endIndex) {
+		return SliceNode(std::make_shared<SliceNodeStorage>(target, startIndex, endIndex));
+	}
+
+	public: String ToStr() { return get()->ToStr(); }
+
+	public: ASTNode Simplify() { return get()->Simplify(); }
+
+	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
+}; // end of struct SliceNode
+
+
 // Member access node (e.g., obj.field)
 struct MemberNode : public ASTNode {
 	friend class MemberNodeStorage;
@@ -1274,6 +1320,15 @@ inline ASTNode IndexNode::Target() { return get()->Target; } // the list/map/str
 inline void IndexNode::set_Target(ASTNode _v) { get()->Target = _v; } // the list/map/string being indexed
 inline ASTNode IndexNode::Index() { return get()->Index; } // the index expression
 inline void IndexNode::set_Index(ASTNode _v) { get()->Index = _v; } // the index expression
+
+inline SliceNode::SliceNode(std::shared_ptr<SliceNodeStorage> stor) : ASTNode(stor) {}
+inline SliceNodeStorage* SliceNode::get() const { return static_cast<SliceNodeStorage*>(storage.get()); }
+inline ASTNode SliceNode::Target() { return get()->Target; } // container being sliced
+inline void SliceNode::set_Target(ASTNode _v) { get()->Target = _v; } // container being sliced
+inline ASTNode SliceNode::StartIndex() { return get()->StartIndex; } // null if omitted (means 0)
+inline void SliceNode::set_StartIndex(ASTNode _v) { get()->StartIndex = _v; } // null if omitted (means 0)
+inline ASTNode SliceNode::EndIndex() { return get()->EndIndex; } // null if omitted (means len)
+inline void SliceNode::set_EndIndex(ASTNode _v) { get()->EndIndex = _v; } // null if omitted (means len)
 
 inline MemberNode::MemberNode(std::shared_ptr<MemberNodeStorage> stor) : ASTNode(stor) {}
 inline MemberNodeStorage* MemberNode::get() const { return static_cast<MemberNodeStorage*>(storage.get()); }

@@ -152,9 +152,33 @@ IndexParseletStorage::IndexParseletStorage() {
 	Prec = Precedence::CALL;
 }
 ASTNode IndexParseletStorage::Parse(IParser& parser, ASTNode left, Token token) {
-	ASTNode index = parser.ParseExpression(Precedence::NONE);
+	// Check for [:endExpr] (omitted start)
+	if (parser.Check(TokenType::COLON)) {
+		parser.Consume();  // consume ':'
+		ASTNode endExpr = nullptr;
+		if (!parser.Check(TokenType::RBRACKET)) {
+			endExpr = parser.ParseExpression(Precedence::NONE);
+		}
+		parser.Expect(TokenType::RBRACKET, "Expected ']' after slice");
+		return  SliceNode::New(left, nullptr, endExpr);
+	}
+
+	ASTNode startExpr = parser.ParseExpression(Precedence::NONE);
+
+	// Check for slice syntax: [startExpr:endExpr]
+	if (parser.Check(TokenType::COLON)) {
+		parser.Consume();  // consume ':'
+		ASTNode endExpr = nullptr;
+		if (!parser.Check(TokenType::RBRACKET)) {
+			endExpr = parser.ParseExpression(Precedence::NONE);
+		}
+		parser.Expect(TokenType::RBRACKET, "Expected ']' after slice");
+		return  SliceNode::New(left, startExpr, endExpr);
+	}
+
+	// Plain index access
 	parser.Expect(TokenType::RBRACKET, "Expected ']' after index");
-	return  IndexNode::New(left, index);
+	return  IndexNode::New(left, startExpr);
 }
 
 

@@ -150,6 +150,44 @@ void list_clear(Value list_val) {
     list->count = 0;
 }
 
+Value list_slice(Value list_val, int start, int end) {
+    GC_PUSH_SCOPE();
+
+    Value result = make_null();
+    GC_PROTECT(&list_val);
+    GC_PROTECT(&result);
+
+    ValueList* src = as_list(list_val);
+    if (!src) {
+        GC_POP_SCOPE();
+        return make_list(0);
+    }
+
+    int len = src->count;
+    if (start < 0) start += len;
+    if (end < 0) end += len;
+    if (start < 0) start = 0;
+    if (end > len) end = len;
+    if (start >= end) {
+        result = make_list(0);
+        GC_POP_SCOPE();
+        return result;
+    }
+
+    int slice_len = end - start;
+    result = make_list(slice_len);
+    // Re-fetch src after allocation (GC may have moved it)
+    src = as_list(list_val);
+    ValueList* dst = as_list(result);
+    for (int i = 0; i < slice_len; i++) {
+        dst->items[i] = src->items[start + i];
+    }
+    dst->count = slice_len;
+
+    GC_POP_SCOPE();
+    return result;
+}
+
 Value list_copy(Value list_val) {
     ValueList* src = as_list(list_val);
     if (!src) return make_null();

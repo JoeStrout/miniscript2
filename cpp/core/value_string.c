@@ -531,7 +531,7 @@ Value string_substring(Value str, int startIndex, int len) {
     GC_PROTECT(&str);
     GC_PROTECT(&result);
     
-    if (!is_string(str) || startIndex < 0 || len < 0) {
+    if (!is_string(str) || len < 0) {
         GC_POP_SCOPE();
         return make_null();
     }
@@ -550,6 +550,9 @@ Value string_substring(Value str, int startIndex, int len) {
         GC_POP_SCOPE();
         return make_null();
     }
+    
+    // Handle negative index
+    if (startIndex < 0) startIndex += string_length(str);
     
     // Convert character indexes to byte indexes
     int startByteIndex = UTF8CharIndexToByteIndex((const unsigned char*)data, startIndex, strLenB);
@@ -580,6 +583,16 @@ Value string_substring(Value str, int startIndex, int len) {
     
     GC_POP_SCOPE();
     return result;
+}
+
+Value string_slice(Value str, int start, int end) {
+    int len = string_length(str);
+    if (start < 0) start += len;
+    if (end < 0) end += len;
+    if (start < 0) start = 0;
+    if (end > len) end = len;
+    if (start >= end) return val_empty_string;
+    return string_substring(str, start, end - start);
 }
 
 Value string_charAt(Value str, int index) {

@@ -88,6 +88,8 @@ struct MapNode;
 class MapNodeStorage;
 struct IndexNode;
 class IndexNodeStorage;
+struct SliceNode;
+class SliceNodeStorage;
 struct MemberNode;
 class MemberNodeStorage;
 struct MethodCallNode;
@@ -114,6 +116,7 @@ struct ReturnNode;
 class ReturnNodeStorage;
 
 // DECLARATIONS
+
 
 
 
@@ -270,6 +273,8 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 
 	// Compile index access, optionally as address-of (no auto-invoke)
 	private: Int32 VisitIndex(IndexNode node, bool addressOf);
+
+	public: Int32 Visit(SliceNode node);
 
 	public: Int32 Visit(MemberNode node);
 
@@ -429,6 +434,8 @@ struct CodeGenerator : public IASTVisitor {
 	// Compile index access, optionally as address-of (no auto-invoke)
 	private: inline Int32 VisitIndex(IndexNode node, bool addressOf);
 
+	public: inline Int32 Visit(SliceNode node);
+
 	public: inline Int32 Visit(MemberNode node);
 
 	// Compile member access, optionally as address-of (no auto-invoke)
@@ -526,6 +533,7 @@ inline Int32 CodeGenerator::Visit(ListNode node) { return get()->Visit(node); }
 inline Int32 CodeGenerator::Visit(MapNode node) { return get()->Visit(node); }
 inline Int32 CodeGenerator::Visit(IndexNode node) { return get()->Visit(node); }
 inline Int32 CodeGenerator::VisitIndex(IndexNode node, bool addressOf) { return get()->VisitIndex(node, addressOf); }
+inline Int32 CodeGenerator::Visit(SliceNode node) { return get()->Visit(node); }
 inline Int32 CodeGenerator::Visit(MemberNode node) { return get()->Visit(node); }
 inline Int32 CodeGenerator::VisitMember(MemberNode node, bool addressOf) { return get()->VisitMember(node, addressOf); }
 inline Int32 CodeGenerator::Visit(ExprCallNode node) { return get()->Visit(node); }

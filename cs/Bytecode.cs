@@ -22,6 +22,7 @@ public enum Opcode : Byte {
 	LOAD_rA_rB,
 	LOAD_rA_iBC,
 	LOAD_rA_kBC,
+	LOADNULL_rA,
 	LOADV_rA_rB_kC,
 	LOADC_rA_rB_kC,
 	FUNCREF_iA_iBC,
@@ -40,6 +41,7 @@ public enum Opcode : Byte {
 	PUSH_rA_rB,
 	INDEX_rA_rB_rC,
 	IDXSET_rA_rB_rC,
+	SLICE_rA_rB_rC,
 	LOCALS_rA,
 	OUTER_rA,
 	GLOBALS_rA,
@@ -193,6 +195,7 @@ public static class BytecodeUtil {
 			case Opcode.LOAD_rA_rB:     return "LOAD_rA_rB";
 			case Opcode.LOAD_rA_iBC:    return "LOAD_rA_iBC";
 			case Opcode.LOAD_rA_kBC:    return "LOAD_rA_kBC";
+			case Opcode.LOADNULL_rA:    return "LOADNULL_rA";
 			case Opcode.LOADV_rA_rB_kC: return "LOADV_rA_rB_kC";
 			case Opcode.LOADC_rA_rB_kC: return "LOADC_rA_rB_kC";
 			case Opcode.FUNCREF_iA_iBC: return "FUNCREF_iA_iBC";
@@ -211,6 +214,7 @@ public static class BytecodeUtil {
 			case Opcode.PUSH_rA_rB:     return "PUSH_rA_rB";
 			case Opcode.INDEX_rA_rB_rC: return "INDEX_rA_rB_rC";
 			case Opcode.IDXSET_rA_rB_rC:return "IDXSET_rA_rB_rC";
+			case Opcode.SLICE_rA_rB_rC: return "SLICE_rA_rB_rC";
 			case Opcode.LOCALS_rA:      return "LOCALS_rA";
 			case Opcode.OUTER_rA:       return "OUTER_rA";
 			case Opcode.GLOBALS_rA:     return "GLOBALS_rA";
@@ -270,6 +274,7 @@ public static class BytecodeUtil {
 		if (s == "LOAD_rA_rB")      return Opcode.LOAD_rA_rB;
 		if (s == "LOAD_rA_iBC")     return Opcode.LOAD_rA_iBC;
 		if (s == "LOAD_rA_kBC")     return Opcode.LOAD_rA_kBC;
+		if (s == "LOADNULL_rA")     return Opcode.LOADNULL_rA;
 		if (s == "LOADV_rA_rB_kC")  return Opcode.LOADV_rA_rB_kC;
 		if (s == "LOADC_rA_rB_kC")  return Opcode.LOADC_rA_rB_kC;
 		if (s == "FUNCREF_iA_iBC")  return Opcode.FUNCREF_iA_iBC;
@@ -288,6 +293,7 @@ public static class BytecodeUtil {
 		if (s == "PUSH_rA_rB")      return Opcode.PUSH_rA_rB;
 		if (s == "INDEX_rA_rB_rC")  return Opcode.INDEX_rA_rB_rC;
 		if (s == "IDXSET_rA_rB_rC") return Opcode.IDXSET_rA_rB_rC;
+		if (s == "SLICE_rA_rB_rC") return Opcode.SLICE_rA_rB_rC;
 		if (s == "LOCALS_rA")       return Opcode.LOCALS_rA;
 		if (s == "OUTER_rA")        return Opcode.OUTER_rA;
 		if (s == "GLOBALS_rA")      return Opcode.GLOBALS_rA;

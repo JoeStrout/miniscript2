@@ -83,6 +83,8 @@ struct MapNode;
 class MapNodeStorage;
 struct IndexNode;
 class IndexNodeStorage;
+struct SliceNode;
+class SliceNodeStorage;
 struct MemberNode;
 class MemberNodeStorage;
 struct MethodCallNode;
@@ -128,6 +130,7 @@ class Disassembler {
 	public: static List<String> Disassemble(List<FuncDef> functions, Boolean detailed=true);
 
 }; // end of struct Disassembler
+
 
 
 

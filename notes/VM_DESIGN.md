@@ -16,6 +16,7 @@ Our internal opcode names include a verb/mnemonic, and a description of how the 
 | LOAD_rA_rB | R[A] := R[B] (C unused) |
 | LOAD_rA_iBC | R[A] := BC (16-bit signed value) |
 | LOAD_rA_kBC | R[A] := constants[BC] (load from constants table) |
+| LOADNULL_rA | R[A] := null (no constant pool lookup needed) |
 | LOADV_rA_rB_kC | R[A] := R[B], but verify that register B has name matching constants[C] |
 | LOADC_rA_rB_kC | R[A] := R[B], but verify name matches constants[C] and call if funcref |
 | FUNCREF_iA_iBC | R[A] := make_funcref(BC) (create function reference to function BC) |
@@ -26,6 +27,7 @@ Our internal opcode names include a verb/mnemonic, and a description of how the 
 | PUSH_rA_rB | push R[B] onto list R[A] |
 | INDEX_rA_rB_rC | R[A] := R[B][R[C]] (get element R[C] from list R[B]) |
 | IDXSET_rA_rB_rC | R[A][R[B]] := R[C] (set element R[B] of list R[A] to R[C]) |
+| SLICE_rA_rB_rC | R[A] := R[B][R[C]:R[C+1]] (slice; end index in adjacent register) |
 | LOCALS_rA | R[A] := new VarMap for local variables (r0-r4) |
 
 ### Math

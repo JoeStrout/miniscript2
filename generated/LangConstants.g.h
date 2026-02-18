@@ -85,6 +85,8 @@ struct MapNode;
 class MapNodeStorage;
 struct IndexNode;
 class IndexNodeStorage;
+struct SliceNode;
+class SliceNodeStorage;
 struct MemberNode;
 class MemberNodeStorage;
 struct MethodCallNode;
@@ -190,6 +192,7 @@ enum class TokenType : Int32 {
 	COMMENT,
 	ERROR
 }; // end of enum TokenType
+
 
 
 

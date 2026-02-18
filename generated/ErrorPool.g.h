@@ -85,6 +85,8 @@ struct MapNode;
 class MapNodeStorage;
 struct IndexNode;
 class IndexNodeStorage;
+struct SliceNode;
+class SliceNodeStorage;
 struct MemberNode;
 class MemberNodeStorage;
 struct MethodCallNode;
@@ -137,6 +139,7 @@ struct ErrorPool {
 
 	public: void Clear();
 }; // end of struct ErrorPool
+
 
 
 

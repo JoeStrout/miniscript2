@@ -199,6 +199,16 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 			instruction = BytecodeUtil::INS_AB(Opcode::LOAD_rA_iBC, dest, immediate);
 		}
 
+	} else if (mnemonic == "LOADNULL") {
+		if (parts.Count() != 2) {
+			Error("Syntax error: LOADNULL requires exactly 1 operand");
+			GC_POP_SCOPE();
+			return 0;
+		}
+		Byte dest = ParseRegister(parts[1]);
+		Current.ReserveRegister(dest);
+		instruction = BytecodeUtil::INS_A(Opcode::LOADNULL_rA, dest);
+
 	} else if (mnemonic == "LOADV") {
 		// LOADV r1, r2, "varname"  -->  LOADV_rA_rB_kC
 		// Load value from r2 into r1, but verify that r2 has name matching varname
@@ -453,6 +463,17 @@ UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
 		Byte indexReg = ParseRegister(parts[2]);
 		Byte valueReg = ParseRegister(parts[3]);
 		instruction = BytecodeUtil::INS_ABC(Opcode::IDXSET_rA_rB_rC, listReg, indexReg, valueReg);
+
+	} else if (mnemonic == "SLICE") {
+		if (parts.Count() != 4) { Error("Syntax error: SLICE requires exactly 3 operands");  {
+			GC_POP_SCOPE();
+			return 0; }
+		}
+		Byte dest = ParseRegister(parts[1]);
+		Current.ReserveRegister(dest);
+		Byte containerReg = ParseRegister(parts[2]);
+		Byte startReg = ParseRegister(parts[3]);
+		instruction = BytecodeUtil::INS_ABC(Opcode::SLICE_rA_rB_rC, dest, containerReg, startReg);
 
 	} else if (mnemonic == "LOCALS") {
 		if (parts.Count() != 2) { Error("Syntax error: LOCALS requires exactly 1 operand");  {

@@ -247,7 +247,7 @@ public class CodeGenerator : IASTVisitor {
 
 		// Handle built-in constants
 		if (node.Name == "null") {
-			_emitter.EmitAB(Opcode.LOAD_rA_iBC, resultReg, 0, $"r{resultReg} = null");
+			_emitter.EmitA(Opcode.LOADNULL_rA, resultReg, $"r{resultReg} = null");
 			return resultReg;
 		}
 		if (node.Name == "true") {
@@ -605,6 +605,35 @@ public class CodeGenerator : IASTVisitor {
 
 		FreeReg(indexReg);
 		FreeReg(targetReg);
+		return resultReg;
+	}
+
+	public Int32 Visit(SliceNode node) {
+		Int32 resultReg = GetTargetOrAlloc();
+		Int32 containerReg = node.Target.Accept(this);
+
+		// Allocate two consecutive registers for start and end indices
+		Int32 startReg = AllocConsecutiveRegs(2);
+		Int32 endReg = startReg + 1;
+
+		if (node.StartIndex != null) {
+			CompileInto(node.StartIndex, startReg);
+		} else {
+			_emitter.EmitA(Opcode.LOADNULL_rA, startReg, $"r{startReg} = null (slice start)");
+		}
+
+		if (node.EndIndex != null) {
+			CompileInto(node.EndIndex, endReg);
+		} else {
+			_emitter.EmitA(Opcode.LOADNULL_rA, endReg, $"r{endReg} = null (slice end)");
+		}
+
+		_emitter.EmitABC(Opcode.SLICE_rA_rB_rC, resultReg, containerReg, startReg,
+			$"r{resultReg} = {node.Target.ToStr()}[{node.ToStr()}]");
+
+		FreeReg(endReg);
+		FreeReg(startReg);
+		FreeReg(containerReg);
 		return resultReg;
 	}
 

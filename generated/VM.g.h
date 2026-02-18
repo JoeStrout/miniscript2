@@ -87,6 +87,8 @@ struct MapNode;
 class MapNodeStorage;
 struct IndexNode;
 class IndexNodeStorage;
+struct SliceNode;
+class SliceNodeStorage;
 struct MemberNode;
 class MemberNodeStorage;
 struct MethodCallNode;
@@ -132,6 +134,7 @@ struct CallInfo {
 
 	public: Value GetLocalVarMap(List<Value> registers, List<Value> names, int baseIdx, int regCount);
 }; // end of struct CallInfo
+
 
 
 

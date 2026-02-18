@@ -313,6 +313,8 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 	Value current; GC_PROTECT(&current);
 	Value next; GC_PROTECT(&next);
 	Value superVal; GC_PROTECT(&superVal);
+	Value startVal; GC_PROTECT(&startVal);
+	Value endVal; GC_PROTECT(&endVal);
 
 	Value* stackPtr = &stack[0];
 #if VM_USE_COMPUTED_GOTO
@@ -391,6 +393,13 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Byte a = BytecodeUtil::Au(instruction);
 				UInt16 constIdx = BytecodeUtil::BCu(instruction);
 				localStack[a] = curConstants[constIdx];
+				VM_NEXT();
+			}
+
+			VM_CASE(LOADNULL_rA) {
+				// R[A] = null
+				Byte a = BytecodeUtil::Au(instruction);
+				localStack[a] = make_null();
 				VM_NEXT();
 			}
 
@@ -637,6 +646,32 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 					map_set(container, indexVal, valueArg);
 				} else {
 					RaiseRuntimeError(StringUtils::Format("Can't set indexed value in {0}", container));
+				}
+				VM_NEXT();
+			}
+
+			VM_CASE(SLICE_rA_rB_rC) {
+				// R[A] = R[B][R[C]:R[C+1]] (slice; end index in adjacent register)
+				Byte a = BytecodeUtil::Au(instruction);
+				Byte b = BytecodeUtil::Bu(instruction);
+				Byte c = BytecodeUtil::Cu(instruction);
+				container = localStack[b];
+				startVal = localStack[c];
+				endVal = localStack[c + 1];
+
+				if (is_string(container)) {
+					Int32 len = string_length(container);
+					Int32 startIdx = is_null(startVal) ? 0 : as_int(startVal);
+					Int32 endIdx = is_null(endVal) ? len : as_int(endVal);
+					localStack[a] = string_slice(container, startIdx, endIdx);
+				} else if (is_list(container)) {
+					Int32 len = list_count(container);
+					Int32 startIdx = is_null(startVal) ? 0 : as_int(startVal);
+					Int32 endIdx = is_null(endVal) ? len : as_int(endVal);
+					localStack[a] = list_slice(container, startIdx, endIdx);
+				} else {
+					RaiseRuntimeError(StringUtils::Format("Can't slice {0}", container));
+					localStack[a] = make_null();
 				}
 				VM_NEXT();
 			}

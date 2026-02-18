@@ -857,7 +857,7 @@ public static class ValueHelpers {
 
 	// String helper
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static string GetStringValue(Value val) {
+	private static string GetStringValue(Value val) {
 		if (val.IsTiny) return val.ToString();
 		if (val.IsHeapString) return HandlePool.Get(val.Handle()) as string ?? "";
 		return "";
@@ -881,7 +881,33 @@ public static class ValueHelpers {
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value string_substring(Value str, int startIndex, int len) {
 		string s = GetStringValue(str);
+		if (startIndex < 0) startIndex += s.Length;
 		return make_string(s.Substring(startIndex, len));
+	}
+
+	public static Value string_slice(Value str, int start, int end) {
+		string s = GetStringValue(str);
+		int len = s.Length;
+		if (start < 0) start += len;
+		if (end < 0) end += len;
+		if (start < 0) start = 0;
+		if (end > len) end = len;
+		if (start >= end) return val_empty_string;
+		return make_string(s.Substring(start, end - start));
+	}
+
+	public static Value list_slice(Value list_val, int start, int end) {
+		int len = list_count(list_val);
+		if (start < 0) start += len;
+		if (end < 0) end += len;
+		if (start < 0) start = 0;
+		if (end > len) end = len;
+		if (start >= end) return make_list(0);
+		Value result = make_list(end - start);
+		for (int i = start; i < end; i++) {
+			list_push(result, list_get(list_val, i));
+		}
+		return result;
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]

@@ -46,6 +46,7 @@ public interface IASTVisitor {
 	Int32 Visit(ListNode node);
 	Int32 Visit(MapNode node);
 	Int32 Visit(IndexNode node);
+	Int32 Visit(SliceNode node);
 	Int32 Visit(MemberNode node);
 	Int32 Visit(MethodCallNode node);
 	Int32 Visit(ExprCallNode node);
@@ -447,6 +448,35 @@ public class IndexNode : ASTNode {
 
 	public override ASTNode Simplify() {
 		return new IndexNode(Target.Simplify(), Index.Simplify());
+	}
+
+	public override Int32 Accept(IASTVisitor visitor) {
+		return visitor.Visit(this);
+	}
+}
+
+// Slice access node (e.g., list[1:3], str[2:])
+public class SliceNode : ASTNode {
+	public ASTNode Target;       // container being sliced
+	public ASTNode StartIndex;   // null if omitted (means 0)
+	public ASTNode EndIndex;     // null if omitted (means len)
+
+	public SliceNode(ASTNode target, ASTNode startIndex, ASTNode endIndex) {
+		Target = target;
+		StartIndex = startIndex;
+		EndIndex = endIndex;
+	}
+
+	public override String ToStr() {
+		String startStr = (StartIndex != null) ? StartIndex.ToStr() : "";
+		String endStr = (EndIndex != null) ? EndIndex.ToStr() : "";
+		return Target.ToStr() + "[" + startStr + ":" + endStr + "]";
+	}
+
+	public override ASTNode Simplify() {
+		ASTNode simplifiedStart = (StartIndex != null) ? StartIndex.Simplify() : null;
+		ASTNode simplifiedEnd = (EndIndex != null) ? EndIndex.Simplify() : null;
+		return new SliceNode(Target.Simplify(), simplifiedStart, simplifiedEnd);
 	}
 
 	public override Int32 Accept(IASTVisitor visitor) {

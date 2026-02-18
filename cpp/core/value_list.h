@@ -48,6 +48,7 @@ bool list_contains(Value list_val, Value item);
 // List utilities
 void list_clear(Value list_val);
 Value list_copy(Value list_val);
+Value list_slice(Value list_val, int start, int end);
 void list_resize(Value list_val, int new_capacity);
 
 // Capacity management utilities

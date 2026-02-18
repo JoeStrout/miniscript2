@@ -200,7 +200,7 @@ Int32 CodeGeneratorStorage::VisitIdentifier(IdentifierNode node, bool addressOf)
 
 	// Handle built-in constants
 	if (node.Name() == "null") {
-		_emitter.EmitAB(Opcode::LOAD_rA_iBC, resultReg, 0, Interp("r{} = null", resultReg));
+		_emitter.EmitA(Opcode::LOADNULL_rA, resultReg, Interp("r{} = null", resultReg));
 		return resultReg;
 	}
 	if (node.Name() == "true") {
@@ -552,6 +552,35 @@ Int32 CodeGeneratorStorage::VisitIndex(IndexNode node, bool addressOf) {
 
 	FreeReg(indexReg);
 	FreeReg(targetReg);
+	return resultReg;
+}
+Int32 CodeGeneratorStorage::Visit(SliceNode node) {
+	CodeGenerator _this(std::static_pointer_cast<CodeGeneratorStorage>(shared_from_this()));
+	Int32 resultReg = GetTargetOrAlloc();
+	Int32 containerReg = node.Target().Accept(_this);
+
+	// Allocate two consecutive registers for start and end indices
+	Int32 startReg = AllocConsecutiveRegs(2);
+	Int32 endReg = startReg + 1;
+
+	if (!IsNull(node.StartIndex())) {
+		CompileInto(node.StartIndex(), startReg);
+	} else {
+		_emitter.EmitA(Opcode::LOADNULL_rA, startReg, Interp("r{} = null (slice start)", startReg));
+	}
+
+	if (!IsNull(node.EndIndex())) {
+		CompileInto(node.EndIndex(), endReg);
+	} else {
+		_emitter.EmitA(Opcode::LOADNULL_rA, endReg, Interp("r{} = null (slice end)", endReg));
+	}
+
+	_emitter.EmitABC(Opcode::SLICE_rA_rB_rC, resultReg, containerReg, startReg,
+		Interp("r{} = {}[{}]", resultReg, node.Target().ToStr(), node.ToStr()));
+
+	FreeReg(endReg);
+	FreeReg(startReg);
+	FreeReg(containerReg);
 	return resultReg;
 }
 Int32 CodeGeneratorStorage::Visit(MemberNode node) {

@@ -389,3 +389,38 @@ So, do we just store these as two additional slots on the stack?  Or do they bel
 
 In the course of implementing that, we found some other rough edges (map keys were not properly comparing strings bigger than tiny-string size, etc.).  Fixed.  Also, refactored CodeGenerator to keep a pending FuncDef and fill it in as it goes, rather than creating it only at the end (requiring a bunch of extra state to keep all the data we need).
 
+
+## Feb 17, 2026
+
+Taking stock of what's not yet working (or maybe working, but not in the test suite):
+
+  1. String subtraction (-) — the "chop" operator
+  2. String indexing (s[i]) — get single character by index
+  3. String slicing (s[i:j]) — substring extraction
+  4. List slicing (lst[i:j]) — subset of a list
+  5. Doubled quote for literal quote — "say ""hello""" → say "hello"
+  6. @ operator — function reference without invoking
+  7. List + — concatenation ([1,2] + [3,4])
+  8. List * / / — replication/division
+  9. Map + — merging maps
+  10. for over a map — iterating map keys
+  11. for over range() — (depends on range intrinsic)
+  12. Closures capturing outer variables — non-self outer-scope capture
+  13. return with no value — bare return (implicit null)
+  14. Recursive functions
+  15. null in expressions — comparisons like x == null, null arithmetic
+  16. true / false as standalone values — beyond just default params
+  17. Chained comparisons, e.g. a < b <= c
+
+  
+## Feb 18, 2026
+
+Tackling slice syntax today.  This has involved two new opcodes:
+
+| Mnemonic | Description |
+| --- | --- |
+| LOADNULL_rA | R[A] := null (no constant pool lookup needed) |
+| SLICE_rA_rB_rC | R[A] := R[B][R[C]:R[C+1]] (slice; end index in adjacent register) |
+
+That last one is a bit unusual because it requires the slice start and end arguments to be in adjacent registers, similar to a function call.  But we needed 4 arguments total (including the destination register), so there was no simpler way to do it.  In practice it shouldn't be a big deal since we allocate registers sequentially anyway.
+

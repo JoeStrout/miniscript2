@@ -16,6 +16,7 @@ public static class Disassembler {
 			case Opcode.LOAD_rA_rB:
 			case Opcode.LOAD_rA_iBC:
 			case Opcode.LOAD_rA_kBC:   return "LOAD";
+			case Opcode.LOADNULL_rA:   return "LOADNULL";
 			case Opcode.LOADV_rA_rB_kC: return "LOADV";
 			case Opcode.LOADC_rA_rB_kC: return "LOADC";
 			case Opcode.FUNCREF_iA_iBC: return "FUNCREF";
@@ -33,6 +34,7 @@ public static class Disassembler {
 			case Opcode.PUSH_rA_rB:    return "PUSH";
 			case Opcode.INDEX_rA_rB_rC: return "INDEX";
 			case Opcode.IDXSET_rA_rB_rC: return "IDXSET";
+			case Opcode.SLICE_rA_rB_rC: return "SLICE";
 			case Opcode.LOCALS_rA:     return "LOCALS";
 			case Opcode.OUTER_rA:      return "OUTER";
 			case Opcode.GLOBALS_rA:    return "GLOBALS";
@@ -104,6 +106,7 @@ public static class Disassembler {
 
 			// One Operand:
 			// rA
+			case Opcode.LOADNULL_rA:
 			case Opcode.LOCALS_rA:
 			case Opcode.OUTER_rA:
 			case Opcode.GLOBALS_rA:
@@ -202,6 +205,7 @@ public static class Disassembler {
 			case Opcode.NE_rA_rB_rC:
 			case Opcode.INDEX_rA_rB_rC:
 			case Opcode.IDXSET_rA_rB_rC:
+			case Opcode.SLICE_rA_rB_rC:
 			case Opcode.CALL_rA_rB_rC:
 			case Opcode.ISA_rA_rB_rC:
 			case Opcode.METHFIND_rA_rB_rC:

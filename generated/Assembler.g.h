@@ -87,6 +87,8 @@ struct MapNode;
 class MapNodeStorage;
 struct IndexNode;
 class IndexNodeStorage;
+struct SliceNode;
+class SliceNodeStorage;
 struct MemberNode;
 class MemberNodeStorage;
 struct MethodCallNode;
@@ -113,6 +115,7 @@ struct ReturnNode;
 class ReturnNodeStorage;
 
 // DECLARATIONS
+
 
 
 

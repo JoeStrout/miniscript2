@@ -82,6 +82,8 @@ struct MapNode;
 class MapNodeStorage;
 struct IndexNode;
 class IndexNodeStorage;
+struct SliceNode;
+class SliceNodeStorage;
 struct MemberNode;
 class MemberNodeStorage;
 struct MethodCallNode;
@@ -160,6 +162,7 @@ enum class Opcode : Byte {
 	LOAD_rA_rB,
 	LOAD_rA_iBC,
 	LOAD_rA_kBC,
+	LOADNULL_rA,
 	LOADV_rA_rB_kC,
 	LOADC_rA_rB_kC,
 	FUNCREF_iA_iBC,
@@ -178,6 +181,7 @@ enum class Opcode : Byte {
 	PUSH_rA_rB,
 	INDEX_rA_rB_rC,
 	IDXSET_rA_rB_rC,
+	SLICE_rA_rB_rC,
 	LOCALS_rA,
 	OUTER_rA,
 	GLOBALS_rA,
@@ -276,6 +280,7 @@ class BytecodeUtil {
 	
 	public: static Opcode FromMnemonic(String s);
 }; // end of struct BytecodeUtil
+
 
 
 

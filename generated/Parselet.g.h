@@ -88,6 +88,8 @@ struct MapNode;
 class MapNodeStorage;
 struct IndexNode;
 class IndexNodeStorage;
+struct SliceNode;
+class SliceNodeStorage;
 struct MemberNode;
 class MemberNodeStorage;
 struct MethodCallNode;
@@ -144,6 +146,7 @@ class IParser {
 	virtual void ReportError(String message) = 0;
 	virtual Boolean CanStartExpression(TokenType type) = 0;
 }; // end of interface IParser
+
 
 
 

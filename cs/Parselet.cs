@@ -220,9 +220,33 @@ public class IndexParselet : InfixParselet {
 	}
 
 	public override ASTNode Parse(IParser parser, ASTNode left, Token token) {
-		ASTNode index = parser.ParseExpression(Precedence.NONE);
+		// Check for [:endExpr] (omitted start)
+		if (parser.Check(TokenType.COLON)) {
+			parser.Consume();  // consume ':'
+			ASTNode endExpr = null;
+			if (!parser.Check(TokenType.RBRACKET)) {
+				endExpr = parser.ParseExpression(Precedence.NONE);
+			}
+			parser.Expect(TokenType.RBRACKET, "Expected ']' after slice");
+			return new SliceNode(left, null, endExpr);
+		}
+
+		ASTNode startExpr = parser.ParseExpression(Precedence.NONE);
+
+		// Check for slice syntax: [startExpr:endExpr]
+		if (parser.Check(TokenType.COLON)) {
+			parser.Consume();  // consume ':'
+			ASTNode endExpr = null;
+			if (!parser.Check(TokenType.RBRACKET)) {
+				endExpr = parser.ParseExpression(Precedence.NONE);
+			}
+			parser.Expect(TokenType.RBRACKET, "Expected ']' after slice");
+			return new SliceNode(left, startExpr, endExpr);
+		}
+
+		// Plain index access
 		parser.Expect(TokenType.RBRACKET, "Expected ']' after index");
-		return new IndexNode(left, index);
+		return new IndexNode(left, startExpr);
 	}
 }
 

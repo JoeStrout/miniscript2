@@ -85,6 +85,8 @@ struct MapNode;
 class MapNodeStorage;
 struct IndexNode;
 class IndexNodeStorage;
+struct SliceNode;
+class SliceNodeStorage;
 struct MemberNode;
 class MemberNodeStorage;
 struct MethodCallNode;
@@ -165,6 +167,7 @@ class UnitTests {
 
 	public: static Boolean RunAll();
 }; // end of struct UnitTests
+
 
 
 

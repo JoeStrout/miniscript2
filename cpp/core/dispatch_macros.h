@@ -28,6 +28,7 @@
 	X(LOAD_rA_rB) \
 	X(LOAD_rA_iBC) \
 	X(LOAD_rA_kBC) \
+	X(LOADNULL_rA) \
 	X(LOADV_rA_rB_kC) \
 	X(LOADC_rA_rB_kC) \
 	X(FUNCREF_iA_iBC) \
@@ -46,6 +47,7 @@
 	X(PUSH_rA_rB) \
 	X(INDEX_rA_rB_rC) \
 	X(IDXSET_rA_rB_rC) \
+	X(SLICE_rA_rB_rC) \
 	X(LOCALS_rA) \
 	X(OUTER_rA) \
 	X(GLOBALS_rA) \

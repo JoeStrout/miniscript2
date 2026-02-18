@@ -85,6 +85,8 @@ struct MapNode;
 class MapNodeStorage;
 struct IndexNode;
 class IndexNodeStorage;
+struct SliceNode;
+class SliceNodeStorage;
 struct MemberNode;
 class MemberNodeStorage;
 struct MethodCallNode;
@@ -168,6 +170,7 @@ struct VMVis {
 
 	public: void UpdateDisplay();
 }; // end of struct VMVis
+
 
 
 

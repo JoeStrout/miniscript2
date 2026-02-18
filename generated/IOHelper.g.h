@@ -85,6 +85,8 @@ struct MapNode;
 class MapNodeStorage;
 struct IndexNode;
 class IndexNodeStorage;
+struct SliceNode;
+class SliceNodeStorage;
 struct MemberNode;
 class MemberNodeStorage;
 struct MethodCallNode;
@@ -157,6 +159,7 @@ class IOHelper {
 	public: static List<String> ReadFile(String filePath);
 	
 }; // end of struct IOHelper
+
 
 
 

@@ -49,6 +49,7 @@ bool list_contains(Value list_val, Value item);
 void list_clear(Value list_val);
 Value list_copy(Value list_val);
 Value list_slice(Value list_val, int start, int end);
+Value list_concat(Value a, Value b);
 void list_resize(Value list_val, int new_capacity);
 
 // Capacity management utilities

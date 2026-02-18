@@ -400,8 +400,8 @@ Taking stock of what's not yet working (or maybe working, but not in the test su
 ✔️4. List slicing (lst[i:j]) — subset of a list
 ✔️5. Doubled quote for literal quote — "say ""hello""" → say "hello"
   6. @ operator — function reference without invoking
-  7. List + — concatenation ([1,2] + [3,4])
-  8. List * / / — replication/division
+✔️7. List + — concatenation ([1,2] + [3,4])
+✔️8. List * / / — replication/division
   9. Map + — merging maps
   10. for over a map — iterating map keys
   11. for over range() — (depends on range intrinsic)
@@ -424,4 +424,6 @@ Tackling slice syntax today.  This has involved two new opcodes:
 
 That last one is a bit unusual because it requires the slice start and end arguments to be in adjacent registers, similar to a function call.  But we needed 4 arguments total (including the destination register), so there was no simpler way to do it.  In practice it shouldn't be a big deal since we allocate registers sequentially anyway.
 
-Also dealing with string subtraction, and handling of doubled quotes in the lexer.
+Also dealing with string subtraction, and handling of doubled quotes in the lexer.  ...And, list concatenation and replication.  Just checking things off of yesterday's list.
+
+

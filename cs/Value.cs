@@ -227,7 +227,8 @@ public readonly struct Value {
 		} else if(b.IsString) {
 			if (a.IsInt || a.IsDouble) return ValueHelpers.string_concat(ValueHelpers.make_string(a.ToString()), b);
 		}
-		// string concat, list append, etc. can be added here.
+		// List concatenation
+		if (a.IsList && b.IsList) return ValueHelpers.list_concat(a, b);
 		return Null();
 	}
 
@@ -274,7 +275,25 @@ public readonly struct Value {
 			if (extraChars > 0) result = ValueHelpers.string_concat(result, ValueHelpers.string_substring(a, 0, extraChars));
 			return result;
 		}
-		// string concat, list append, etc. can be added here.
+		// List replication: list * number
+		if (a.IsList && is_number(b)) {
+			double factor = b.IsInt ? b.AsInt() : b.AsDouble();
+			if (double.IsNaN(factor) || double.IsInfinity(factor)) return Null();
+			int len = ValueHelpers.list_count(a);
+			if (factor <= 0 || len == 0) return ValueHelpers.make_list(0);
+			int fullCopies = (int)factor;
+			int extraItems = (int)(len * (factor - fullCopies));
+			Value result = ValueHelpers.make_list(fullCopies * len + extraItems);
+			for (int c = 0; c < fullCopies; c++) {
+				for (int i = 0; i < len; i++) {
+					ValueHelpers.list_push(result, ValueHelpers.list_get(a, i));
+				}
+			}
+			for (int i = 0; i < extraItems; i++) {
+				ValueHelpers.list_push(result, ValueHelpers.list_get(a, i));
+			}
+			return result;
+		}
 		return Null();
 	}
 
@@ -290,7 +309,12 @@ public readonly struct Value {
 			// We'll just call through to value_mult for this, with a factor of 1/b.
 			return value_mult(a, value_div(make_double(1), b));
 		}
-		// string concat, list append, etc. can be added here.
+		// List division: list / number (same as list * (1/number))
+		if (a.IsList && is_number(b)) {
+			double db = b.IsInt ? b.AsInt() : b.AsDouble();
+			if (db == 0 || double.IsNaN(db) || double.IsInfinity(db)) return Null();
+			return value_mult(a, value_div(make_double(1), b));
+		}
 		return Null();
 	}
 
@@ -914,6 +938,19 @@ public static class ValueHelpers {
 		Value result = make_list(end - start);
 		for (int i = start; i < end; i++) {
 			list_push(result, list_get(list_val, i));
+		}
+		return result;
+	}
+
+	public static Value list_concat(Value a, Value b) {
+		int lenA = list_count(a);
+		int lenB = list_count(b);
+		Value result = make_list(lenA + lenB);
+		for (int i = 0; i < lenA; i++) {
+			list_push(result, list_get(a, i));
+		}
+		for (int i = 0; i < lenB; i++) {
+			list_push(result, list_get(b, i));
 		}
 		return result;
 	}

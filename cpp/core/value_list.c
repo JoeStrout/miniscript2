@@ -188,6 +188,36 @@ Value list_slice(Value list_val, int start, int end) {
     return result;
 }
 
+Value list_concat(Value a, Value b) {
+    GC_PUSH_SCOPE();
+
+    Value result = make_null();
+    GC_PROTECT(&a);
+    GC_PROTECT(&b);
+    GC_PROTECT(&result);
+
+    ValueList* la = as_list(a);
+    ValueList* lb = as_list(b);
+    int lenA = la ? la->count : 0;
+    int lenB = lb ? lb->count : 0;
+
+    result = make_list(lenA + lenB);
+    // Re-fetch after allocation (GC may have moved them)
+    la = as_list(a);
+    lb = as_list(b);
+    ValueList* dst = as_list(result);
+    for (int i = 0; i < lenA; i++) {
+        dst->items[i] = la->items[i];
+    }
+    for (int i = 0; i < lenB; i++) {
+        dst->items[lenA + i] = lb->items[i];
+    }
+    dst->count = lenA + lenB;
+
+    GC_POP_SCOPE();
+    return result;
+}
+
 Value list_copy(Value list_val) {
     ValueList* src = as_list(list_val);
     if (!src) return make_null();

@@ -30,9 +30,6 @@ extern "C" {
 
 typedef uint64_t Value;
 
-// Forward declarations of functions implemented elsewhere
-Value string_sub(Value a, Value b);
-
 // Forward declarations for map structures
 typedef struct MapEntry {
     Value key;
@@ -80,6 +77,22 @@ extern Value val_isa_key;  // "__isa" (tiny string, no GC needed)
 extern Value val_self;     // "self" (tiny string, no GC needed)
 extern Value val_super;    // "super" (tiny string, no GC needed)
 void value_init_constants(void);
+
+
+// Forward declarations of functions implemented elsewhere
+extern Value string_sub(Value a, Value b);
+extern Value string_concat(Value a, Value b);
+extern Value make_string(const char* str);
+extern const char* get_string_data_zerocopy(const Value* v_ptr, int* out_len);
+extern int string_compare(Value a, Value b);
+extern bool string_equals(Value a, Value b);
+extern Value list_concat(Value a, Value b);
+extern Value make_map(int initial_capacity);
+extern Value make_empty_map(void);
+extern ValueMap* as_map(Value v);
+extern void* gc_allocate(size_t size);
+
+// Gereal-purpose (often inline) Value functions
 
 static inline bool value_identical(Value a, Value b) {
 	return a == b;
@@ -156,9 +169,6 @@ typedef struct {
     Value outerVars;      // VarMap containing captured outer variables, or null if none
 } ValueFuncRef;
 
-// Forward declare GC allocation function (implemented in gc.h/.c)
-extern void* gc_allocate(size_t size);
-
 // FuncRef accessor functions
 static inline ValueFuncRef* as_funcref(Value v) {
     if (!is_funcref(v)) return NULL;
@@ -183,10 +193,6 @@ static inline Value make_funcref(int32_t funcIndex, Value outerVars) {
     return FUNCREF_TAG | ((uintptr_t)funcRefObj & 0xFFFFFFFFFFFFULL);
 }
 
-// Map creation functions (forward declarations for value_map.h)
-extern Value make_map(int initial_capacity);
-extern Value make_empty_map(void);
-
 // Core value extraction functions
 static inline int32_t as_int(Value v) {
     return (int32_t)v;
@@ -199,9 +205,6 @@ static inline double as_double(Value v) {
     return d;
 }
 
-// Map extraction function (forward declaration for value_map.h)
-extern ValueMap* as_map(Value v);
-
 // Utility functions for accessing tiny string data within Value
 #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
     #define GET_VALUE_DATA_PTR(v_ptr) ((char*)(v_ptr))
@@ -210,12 +213,6 @@ extern ValueMap* as_map(Value v);
     #define GET_VALUE_DATA_PTR(v_ptr) (((char*)(v_ptr)) + 2)
     #define GET_VALUE_DATA_PTR_CONST(v_ptr) (((const char*)(v_ptr)) + 2)
 #endif
-
-// Forward declarations for string functions (implemented in value_string.h/c)
-extern Value string_concat(Value a, Value b);
-extern Value make_string(const char* str);
-extern const char* get_string_data_zerocopy(const Value* v_ptr, int* out_len);
-extern int string_compare(Value a, Value b);
 
 // Conversion functions
 
@@ -245,12 +242,16 @@ static inline Value value_add(Value a, Value b) {
     }
     
     // Handle string concatenation
-
     if (is_string(a)) {
         if (is_string(b)) return string_concat(a, b);
         if (is_int(b) || is_double(b)) return string_concat(a, to_string(b));
 	} else if (is_string(b)) {
         if (is_int(a) || is_double(a)) return string_concat(to_string(a), b);
+    }
+    
+    // Handle list concatenation
+    if (is_list(a) && is_list(b)) {
+    	return list_concat(a, b);
     }
     
     // For now, return nil for unsupported operations
@@ -285,8 +286,7 @@ static inline Value value_sub(Value a, Value b) {
     return make_null();
 }
 
-// Forward declaration for string equality function
-extern bool string_equals(Value a, Value b);
+
 
 // Most critical comparison function (inlined for performance)
 static inline bool value_lt(Value a, Value b) {
@@ -332,15 +332,15 @@ static inline Value value_mult(Value a, Value b) {
 }
 
 static inline Value value_div(Value a, Value b) {
-    // Handle number/number case
-    if (is_number(a) && is_number(b)) {
-        double da = is_int(a) ? (double)as_int(a) : as_double(a);
-        double db = is_int(b) ? (double)as_int(b) : as_double(b);
-        return make_double(da / db);
-    // Handle string / number
-    } else if (is_string(a) && is_number(b)) {
-    	// We'll just call through to value_mult for this, with a factor of 1/b.
-    	return value_mult_nonnumeric(a, value_div(make_double(1), b));
+	if (is_number(b)) {
+		if (is_number(a)) {	// common number/number case
+			double da = is_int(a) ? (double)as_int(a) : as_double(a);
+			double db = is_int(b) ? (double)as_int(b) : as_double(b);
+			return make_double(da / db);
+		} else { // probably string/number or list/number
+			// We'll just call through to value_mult for this, with a factor of 1/b.
+			return value_mult_nonnumeric(a, value_div(make_double(1), b));
+		}
     }
     return make_null();
 }

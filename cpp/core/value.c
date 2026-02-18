@@ -71,7 +71,27 @@ Value value_mult_nonnumeric(Value a, Value b) {
         return result;
     }
     
-    // For now, return nil for unsupported operations
+    // Handle list replication: list * number
+    if (is_list(a) && is_number(b)) {
+        double factor = is_int(b) ? (double)as_int(b) : as_double(b);
+        int factorClass = fpclassify(factor);
+        if (factorClass == FP_NAN || factorClass == FP_INFINITE) return make_null();
+        int len = list_count(a);
+        if (factor <= 0 || len == 0) return make_list(0);
+        int fullCopies = (int)factor;
+        int extraItems = (int)(len * (factor - fullCopies));
+        Value result = make_list(fullCopies * len + extraItems);
+        for (int c = 0; c < fullCopies; c++) {
+            for (int i = 0; i < len; i++) {
+                list_push(result, list_get(a, i));
+            }
+        }
+        for (int i = 0; i < extraItems; i++) {
+            list_push(result, list_get(a, i));
+        }
+        return result;
+    }
+
     return make_null();
 }
 

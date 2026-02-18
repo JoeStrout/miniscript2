@@ -137,13 +137,32 @@ Token Lexer::NextToken() {
 	if (c == '"') {
 		Advance(); // consume opening quote
 		Int32 start = _position;
-		while (_position < _input.Length() && _input[_position] != '"') {
+		List<String> parts = nullptr;
+		while (_position < _input.Length()) {
+			if (_input[_position] == '"') {
+				// Check for doubled quote (escaped literal quote)
+				if (_position + 1 < _input.Length() && _input[_position + 1] == '"') {
+					if (IsNull(parts)) parts =  List<String>::New();
+					parts.Add(_input.Substring(start, _position - start));
+					parts.Add("\"");
+					Advance(); Advance(); // skip both quotes
+					start = _position;
+					continue;
+				}
+				break; // closing quote
+			}
 			if (_input[_position] == '\\' && _position + 1 < _input.Length()) {
 				Advance(); // skip escape character
 			}
 			Advance();
 		}
-		String text = _input.Substring(start, _position - start);
+		String text;
+		if (IsNull(parts)) {
+			text = _input.Substring(start, _position - start);
+		} else {
+			parts.Add(_input.Substring(start, _position - start));
+			text = String::Join("", parts);
+		}
 		if (Peek() == '"') Advance(); // consume closing quote
 		Token tok = Token(TokenType::STRING, text, startLine, startColumn);
 		tok.AfterSpace = hadWhitespace;

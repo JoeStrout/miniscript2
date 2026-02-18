@@ -323,6 +323,14 @@ public readonly struct Value {
 			double db = b.IsInt ? b.AsInt() : b.AsDouble();
 			return FromDouble(da - db);
 		}
+		if (a.IsString && b.IsString) {
+			string sa = a.IsTiny ? a.ToString() : HandlePool.Get(a.Handle()) as string;
+			string sb = b.IsTiny ? b.ToString() : HandlePool.Get(b.Handle()) as string;
+			if (sb.Length > 0 && sa.EndsWith(sb)) {
+				return FromString(sa.Substring(0, sa.Length - sb.Length));
+			}
+			return a;
+		}
 		return Null();
 	}
 

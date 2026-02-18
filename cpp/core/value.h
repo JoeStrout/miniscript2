@@ -30,6 +30,9 @@ extern "C" {
 
 typedef uint64_t Value;
 
+// Forward declarations of functions implemented elsewhere
+Value string_sub(Value a, Value b);
+
 // Forward declarations for map structures
 typedef struct MapEntry {
     Value key;
@@ -272,6 +275,10 @@ static inline Value value_sub(Value a, Value b) {
         double da = is_int(a) ? (double)as_int(a) : as_double(a);
         double db = is_int(b) ? (double)as_int(b) : as_double(b);
         return make_double(da - db);
+    }
+    
+    if (is_string(a) && is_string(b)) {
+    	return string_sub(a, b);
     }
     
     // Return nil for unsupported operations

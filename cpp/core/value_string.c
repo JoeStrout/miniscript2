@@ -599,6 +599,37 @@ Value string_charAt(Value str, int index) {
     return string_substring(str, index, 1);
 }
 
+Value string_sub(Value a, Value b) {
+	int lenA, lenB;
+	const char* sa = get_string_data_zerocopy(&a, &lenA);
+	const char* sb = get_string_data_zerocopy(&b, &lenB);
+	if (!sa || !sb || lenB == 0 || lenB > lenA) return a;
+	// Check if a ends with b
+	if (memcmp(sa + lenA - lenB, sb, lenB) != 0) return a;
+	// Build result from the prefix
+	int resultLen = lenA - lenB;
+	if (resultLen == 0) return val_empty_string;
+	if (resultLen <= TINY_STRING_MAX_LEN) {
+		char buf[TINY_STRING_MAX_LEN + 1];
+		memcpy(buf, sa, resultLen);
+		buf[resultLen] = '\0';
+		return make_tiny_string(buf, resultLen);
+	}
+	GC_PUSH_SCOPE();
+	Value result;
+	GC_PROTECT(&a);
+	StringStorage* rs = (StringStorage*)gc_allocate(sizeof(StringStorage) + resultLen + 1);
+	rs->lenB = resultLen;
+	rs->lenC = -1;
+	rs->hash = 0;
+	memcpy(rs->data, sa, resultLen);
+	rs->data[resultLen] = '\0';
+	result = STRING_TAG | ((uintptr_t)rs & 0xFFFFFFFFFFFFULL);
+	GC_POP_SCOPE();
+	return result;
+}
+
+
 // Unicode-aware string comparison
 // Returns: < 0 if a < b, 0 if a == b, > 0 if a > b
 int string_compare(Value a, Value b) {

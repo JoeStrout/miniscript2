@@ -36,6 +36,7 @@ Value string_replace(Value source, Value search, Value replacement);
 Value string_split(Value str, Value delimiter);
 Value string_substring(Value str, int startIndex, int len);
 Value string_slice(Value str, int start, int end);
+Value string_sub(Value a, Value b);
 
 // Zero-copy string data access (for performance-critical operations)
 const char* get_string_data_zerocopy(const Value* v_ptr, int* out_len);

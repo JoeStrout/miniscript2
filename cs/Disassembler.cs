@@ -26,6 +26,7 @@ public static class Disassembler {
 			case Opcode.MULT_rA_rB_rC: return "MULT";
 			case Opcode.DIV_rA_rB_rC:  return "DIV";
 			case Opcode.MOD_rA_rB_rC:  return "MOD";
+			case Opcode.POW_rA_rB_rC:  return "POW";
 			case Opcode.AND_rA_rB_rC:  return "AND";
 			case Opcode.OR_rA_rB_rC:   return "OR";
 			case Opcode.NOT_rA_rB:     return "NOT";
@@ -198,6 +199,7 @@ public static class Disassembler {
 			case Opcode.MULT_rA_rB_rC:
 			case Opcode.DIV_rA_rB_rC:
 			case Opcode.MOD_rA_rB_rC:
+			case Opcode.POW_rA_rB_rC:
 			case Opcode.AND_rA_rB_rC:
 			case Opcode.OR_rA_rB_rC:
 			case Opcode.LT_rA_rB_rC:

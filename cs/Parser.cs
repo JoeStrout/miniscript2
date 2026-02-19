@@ -137,7 +137,35 @@ public class Parser : IParser {
 			|| type == TokenType.OR
 			|| type == TokenType.ISA
 			|| type == TokenType.COLON
-			|| type == TokenType.ASSIGN;
+			|| type == TokenType.ASSIGN
+			|| type == TokenType.PLUS_ASSIGN
+			|| type == TokenType.MINUS_ASSIGN
+			|| type == TokenType.TIMES_ASSIGN
+			|| type == TokenType.DIVIDE_ASSIGN
+			|| type == TokenType.MOD_ASSIGN
+			|| type == TokenType.POWER_ASSIGN;
+	}
+
+	// Check if the given token type is any assignment operator (= += -= *= /= %= ^=)
+	private Boolean IsAssignOp(TokenType type) {
+		return type == TokenType.ASSIGN
+			|| type == TokenType.PLUS_ASSIGN
+			|| type == TokenType.MINUS_ASSIGN
+			|| type == TokenType.TIMES_ASSIGN
+			|| type == TokenType.DIVIDE_ASSIGN
+			|| type == TokenType.MOD_ASSIGN
+			|| type == TokenType.POWER_ASSIGN;
+	}
+
+	// Return the binary Op string for a compound assignment token, or null for plain ASSIGN
+	private String CompoundAssignOp(TokenType type) {
+		if (type == TokenType.PLUS_ASSIGN) return Op.PLUS;
+		if (type == TokenType.MINUS_ASSIGN) return Op.MINUS;
+		if (type == TokenType.TIMES_ASSIGN) return Op.TIMES;
+		if (type == TokenType.DIVIDE_ASSIGN) return Op.DIVIDE;
+		if (type == TokenType.MOD_ASSIGN) return Op.MOD;
+		if (type == TokenType.POWER_ASSIGN) return Op.POWER;
+		return null;
 	}
 
 	// Check if current token matches the given type (without consuming)
@@ -295,9 +323,14 @@ public class Parser : IParser {
 			Advance();
 
 			// Check for assignment: identifier '=' expression
-			if (_current.Type == TokenType.ASSIGN) {
-				Advance(); // consume '='
+			// or compound assignment: identifier '+=' expression, etc.
+			if (IsAssignOp(_current.Type)) {
+				String compoundOp = CompoundAssignOp(_current.Type);
+				Advance(); // consume '=' or '+=' etc.
 				ASTNode value = ParseExpression();
+				if (compoundOp != null) {
+					value = new BinaryOpNode(compoundOp, new IdentifierNode(identToken.Text), value);
+				}
 				return new AssignmentNode(identToken.Text, value);
 			}
 
@@ -324,20 +357,28 @@ public class Parser : IParser {
 			ASTNode left = new IdentifierNode(identToken.Text);
 			ASTNode expr = ParseExpressionFrom(left);
 
-			// Check for indexed assignment: expr[index] = value
+			// Check for indexed assignment: expr[index] = value (or compound: expr[index] += value)
 			IndexNode idxNode = expr as IndexNode;
-			if (idxNode != null && _current.Type == TokenType.ASSIGN) {
-				Advance(); // consume '='
+			if (idxNode != null && IsAssignOp(_current.Type)) {
+				String compoundOp = CompoundAssignOp(_current.Type);
+				Advance(); // consume '=' or '+=' etc.
 				ASTNode value = ParseExpression();
+				if (compoundOp != null) {
+					value = new BinaryOpNode(compoundOp, new IndexNode(idxNode.Target, idxNode.Index), value);
+				}
 				return new IndexedAssignmentNode(idxNode.Target, idxNode.Index, value);
 			}
 
-			// Check for member assignment: expr.member = value
+			// Check for member assignment: expr.member = value (or compound: expr.member += value)
 			MemberNode memNode = expr as MemberNode;
-			if (memNode != null && _current.Type == TokenType.ASSIGN) {
-				Advance(); // consume '='
+			if (memNode != null && IsAssignOp(_current.Type)) {
+				String compoundOp = CompoundAssignOp(_current.Type);
+				Advance(); // consume '=' or '+=' etc.
 				ASTNode value = ParseExpression();
 				ASTNode index = new StringNode(memNode.Member);
+				if (compoundOp != null) {
+					value = new BinaryOpNode(compoundOp, new IndexNode(memNode.Target, index), value);
+				}
 				return new IndexedAssignmentNode(memNode.Target, index, value);
 			}
 
@@ -357,16 +398,24 @@ public class Parser : IParser {
 		// Not an identifier - parse as expression statement
 		ASTNode expr2 = ParseExpression();
 		IndexNode idxNode2 = expr2 as IndexNode;
-		if (idxNode2 != null && _current.Type == TokenType.ASSIGN) {
-			Advance(); // consume '='
+		if (idxNode2 != null && IsAssignOp(_current.Type)) {
+			String compoundOp2 = CompoundAssignOp(_current.Type);
+			Advance(); // consume '=' or '+=' etc.
 			ASTNode value = ParseExpression();
+			if (compoundOp2 != null) {
+				value = new BinaryOpNode(compoundOp2, new IndexNode(idxNode2.Target, idxNode2.Index), value);
+			}
 			return new IndexedAssignmentNode(idxNode2.Target, idxNode2.Index, value);
 		}
 		MemberNode memNode2 = expr2 as MemberNode;
-		if (memNode2 != null && _current.Type == TokenType.ASSIGN) {
-			Advance(); // consume '='
+		if (memNode2 != null && IsAssignOp(_current.Type)) {
+			String compoundOp2 = CompoundAssignOp(_current.Type);
+			Advance(); // consume '=' or '+=' etc.
 			ASTNode value = ParseExpression();
 			ASTNode index = new StringNode(memNode2.Member);
+			if (compoundOp2 != null) {
+				value = new BinaryOpNode(compoundOp2, new IndexNode(memNode2.Target, index), value);
+			}
 			return new IndexedAssignmentNode(memNode2.Target, index, value);
 		}
 		return expr2;

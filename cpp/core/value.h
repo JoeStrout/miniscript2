@@ -373,6 +373,19 @@ static inline Value value_mod(Value a, Value b) {
     return make_null();
 }
 
+static inline Value value_pow(Value a, Value b) {
+    if (is_number(a) && is_number(b)) {
+        double da = is_int(a) ? (double)as_int(a) : as_double(a);
+        double db = is_int(b) ? (double)as_int(b) : as_double(b);
+        double result = pow(da, db);
+        if (is_int(a) && is_int(b) && db >= 0 && result == (int32_t)result) {
+            return make_int((int32_t)result);
+        }
+        return make_double(result);
+    }
+    return make_null();
+}
+
 // Value comparison (most critical ones inlined above, others implemented in value.c)
 bool value_equal(Value a, Value b);
 bool value_le(Value a, Value b);

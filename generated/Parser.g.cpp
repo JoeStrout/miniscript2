@@ -101,7 +101,31 @@ Boolean ParserStorage::AllowsLineContinuation(TokenType type) {
 		|| type == TokenType::OR
 		|| type == TokenType::ISA
 		|| type == TokenType::COLON
-		|| type == TokenType::ASSIGN;
+		|| type == TokenType::ASSIGN
+		|| type == TokenType::PLUS_ASSIGN
+		|| type == TokenType::MINUS_ASSIGN
+		|| type == TokenType::TIMES_ASSIGN
+		|| type == TokenType::DIVIDE_ASSIGN
+		|| type == TokenType::MOD_ASSIGN
+		|| type == TokenType::POWER_ASSIGN;
+}
+Boolean ParserStorage::IsAssignOp(TokenType type) {
+	return type == TokenType::ASSIGN
+		|| type == TokenType::PLUS_ASSIGN
+		|| type == TokenType::MINUS_ASSIGN
+		|| type == TokenType::TIMES_ASSIGN
+		|| type == TokenType::DIVIDE_ASSIGN
+		|| type == TokenType::MOD_ASSIGN
+		|| type == TokenType::POWER_ASSIGN;
+}
+String ParserStorage::CompoundAssignOp(TokenType type) {
+	if (type == TokenType::PLUS_ASSIGN) return Op::PLUS;
+	if (type == TokenType::MINUS_ASSIGN) return Op::MINUS;
+	if (type == TokenType::TIMES_ASSIGN) return Op::TIMES;
+	if (type == TokenType::DIVIDE_ASSIGN) return Op::DIVIDE;
+	if (type == TokenType::MOD_ASSIGN) return Op::MOD;
+	if (type == TokenType::POWER_ASSIGN) return Op::POWER;
+	return nullptr;
 }
 Boolean ParserStorage::Check(TokenType type) {
 	return _current.Type == type;
@@ -238,9 +262,14 @@ ASTNode ParserStorage::ParseSimpleStatement() {
 		Advance();
 
 		// Check for assignment: identifier '=' expression
-		if (_current.Type == TokenType::ASSIGN) {
-			Advance(); // consume '='
+		// or compound assignment: identifier '+=' expression, etc.
+		if (IsAssignOp(_current.Type)) {
+			String compoundOp = CompoundAssignOp(_current.Type);
+			Advance(); // consume '=' or '+=' etc.
 			ASTNode value = ParseExpression();
+			if (!IsNull(compoundOp)) {
+				value =  BinaryOpNode::New(compoundOp,  IdentifierNode::New(identToken.Text), value);
+			}
 			return  AssignmentNode::New(identToken.Text, value);
 		}
 
@@ -267,20 +296,28 @@ ASTNode ParserStorage::ParseSimpleStatement() {
 		ASTNode left =  IdentifierNode::New(identToken.Text);
 		ASTNode expr = ParseExpressionFrom(left);
 
-		// Check for indexed assignment: expr[index] = value
+		// Check for indexed assignment: expr[index] = value (or compound: expr[index] += value)
 		IndexNode idxNode = As<IndexNode, IndexNodeStorage>(expr);
-		if (!IsNull(idxNode) && _current.Type == TokenType::ASSIGN) {
-			Advance(); // consume '='
+		if (!IsNull(idxNode) && IsAssignOp(_current.Type)) {
+			String compoundOp = CompoundAssignOp(_current.Type);
+			Advance(); // consume '=' or '+=' etc.
 			ASTNode value = ParseExpression();
+			if (!IsNull(compoundOp)) {
+				value =  BinaryOpNode::New(compoundOp,  IndexNode::New(idxNode.Target(), idxNode.Index()), value);
+			}
 			return  IndexedAssignmentNode::New(idxNode.Target(), idxNode.Index(), value);
 		}
 
-		// Check for member assignment: expr.member = value
+		// Check for member assignment: expr.member = value (or compound: expr.member += value)
 		MemberNode memNode = As<MemberNode, MemberNodeStorage>(expr);
-		if (!IsNull(memNode) && _current.Type == TokenType::ASSIGN) {
-			Advance(); // consume '='
+		if (!IsNull(memNode) && IsAssignOp(_current.Type)) {
+			String compoundOp = CompoundAssignOp(_current.Type);
+			Advance(); // consume '=' or '+=' etc.
 			ASTNode value = ParseExpression();
 			ASTNode index =  StringNode::New(memNode.Member());
+			if (!IsNull(compoundOp)) {
+				value =  BinaryOpNode::New(compoundOp,  IndexNode::New(memNode.Target(), index), value);
+			}
 			return  IndexedAssignmentNode::New(memNode.Target(), index, value);
 		}
 
@@ -300,16 +337,24 @@ ASTNode ParserStorage::ParseSimpleStatement() {
 	// Not an identifier - parse as expression statement
 	ASTNode expr2 = ParseExpression();
 	IndexNode idxNode2 = As<IndexNode, IndexNodeStorage>(expr2);
-	if (!IsNull(idxNode2) && _current.Type == TokenType::ASSIGN) {
-		Advance(); // consume '='
+	if (!IsNull(idxNode2) && IsAssignOp(_current.Type)) {
+		String compoundOp2 = CompoundAssignOp(_current.Type);
+		Advance(); // consume '=' or '+=' etc.
 		ASTNode value = ParseExpression();
+		if (!IsNull(compoundOp2)) {
+			value =  BinaryOpNode::New(compoundOp2,  IndexNode::New(idxNode2.Target(), idxNode2.Index()), value);
+		}
 		return  IndexedAssignmentNode::New(idxNode2.Target(), idxNode2.Index(), value);
 	}
 	MemberNode memNode2 = As<MemberNode, MemberNodeStorage>(expr2);
-	if (!IsNull(memNode2) && _current.Type == TokenType::ASSIGN) {
-		Advance(); // consume '='
+	if (!IsNull(memNode2) && IsAssignOp(_current.Type)) {
+		String compoundOp2 = CompoundAssignOp(_current.Type);
+		Advance(); // consume '=' or '+=' etc.
 		ASTNode value = ParseExpression();
 		ASTNode index =  StringNode::New(memNode2.Member());
+		if (!IsNull(compoundOp2)) {
+			value =  BinaryOpNode::New(compoundOp2,  IndexNode::New(memNode2.Target(), index), value);
+		}
 		return  IndexedAssignmentNode::New(memNode2.Target(), index, value);
 	}
 	return expr2;

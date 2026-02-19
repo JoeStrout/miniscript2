@@ -403,7 +403,7 @@ Taking stock of what's not yet working (or maybe working, but not in the test su
 ✔️7. List + — concatenation ([1,2] + [3,4])
 ✔️8. List * / / — replication/division
 ✔️9. Map + — merging maps
-  10. for over a map — iterating map keys
+✔️10. for over a map — iterating map keys
   11. for over range() — (depends on range intrinsic)
   12. Closures capturing outer variables — non-self outer-scope capture
   13. return with no value — bare return (implicit null)
@@ -424,6 +424,7 @@ Tackling slice syntax today.  This has involved two new opcodes:
 
 That last one is a bit unusual because it requires the slice start and end arguments to be in adjacent registers, similar to a function call.  But we needed 4 arguments total (including the destination register), so there was no simpler way to do it.  In practice it shouldn't be a big deal since we allocate registers sequentially anyway.
 
-Also dealing with string subtraction, and handling of doubled quotes in the lexer.  ...And, list concatenation and replication.  Just checking things off of yesterday's list.
+Also dealing with string subtraction, and handling of doubled quotes in the lexer.  ...And, list concatenation and replication.  Just checking things off of yesterday's list.  Added map addition.
 
+While testing map addition, I noticed something not on our list: math-assignment operators (e.g. `+=`).  And testing _that_ led to realization that we had not yet implemented `^`.  But it's actually great that we're getting down to this level of nitty gritty, because it means all the _big_ features are working!  ...All fixed now.
 

@@ -196,7 +196,25 @@ Token Lexer::NextToken() {
 		return multiTok;
 	}
 
-	// Comments: // to end of line
+	// Compound assignment operators: +=, -=, *=, /=, %=, ^=
+	if (_position + 1 < _input.Length() && _input[_position + 1] == '=') {
+		TokenType compoundType = TokenType::ERROR;
+		String compoundText = "";
+		if (c == '+') { compoundType = TokenType::PLUS_ASSIGN; compoundText = "+="; }
+		else if (c == '-') { compoundType = TokenType::MINUS_ASSIGN; compoundText = "-="; }
+		else if (c == '*') { compoundType = TokenType::TIMES_ASSIGN; compoundText = "*="; }
+		else if (c == '/') { compoundType = TokenType::DIVIDE_ASSIGN; compoundText = "/="; }
+		else if (c == '%') { compoundType = TokenType::MOD_ASSIGN; compoundText = "%="; }
+		else if (c == '^') { compoundType = TokenType::POWER_ASSIGN; compoundText = "^="; }
+		if (compoundType != TokenType::ERROR) {
+			Advance(); Advance();
+			multiTok = Token(compoundType, compoundText, startLine, startColumn);
+			multiTok.AfterSpace = hadWhitespace;
+			return multiTok;
+		}
+	}
+
+	// Comments: // to end of line (must check before /= which is handled below)
 	if (c == '/' && _position + 1 < _input.Length() && _input[_position + 1] == '/') {
 		Int32 start = _position;
 		// Consume until end of line (but not the newline itself)

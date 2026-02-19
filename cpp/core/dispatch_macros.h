@@ -39,6 +39,7 @@
 	X(MULT_rA_rB_rC) \
 	X(DIV_rA_rB_rC) \
 	X(MOD_rA_rB_rC) \
+	X(POW_rA_rB_rC) \
 	X(AND_rA_rB_rC) \
 	X(OR_rA_rB_rC) \
 	X(NOT_rA_rB) \

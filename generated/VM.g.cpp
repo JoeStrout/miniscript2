@@ -555,6 +555,15 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				VM_NEXT();
 			}
 
+			VM_CASE(POW_rA_rB_rC) {
+				// R[A] = R[B] ^ R[C]
+				Byte a = BytecodeUtil::Au(instruction);
+				Byte b = BytecodeUtil::Bu(instruction);
+				Byte c = BytecodeUtil::Cu(instruction);
+				localStack[a] = value_pow(localStack[b], localStack[c]);
+				VM_NEXT();
+			}
+
 			VM_CASE(AND_rA_rB_rC) {
 				// R[A] = R[B] and R[C] (fuzzy logic: AbsClamp01(a * b))
 				Byte a = BytecodeUtil::Au(instruction);

@@ -195,6 +195,25 @@ print 10 % -7
 --------------------------------
 3
 ================================
+==== math-assignment operators
+================================
+score = 0
+score += 12; print score
+score -= 2; print score
+score *= 3; print score
+score /= 5; print score
+score %= 4; print score
+score ^= 3; print score
+// f = function; globals.score += 15; end function
+// f; print score
+----------------------------------------------------------------------
+12
+10
+30
+6
+2
+8
+================================
 ==== Number formatting
 ==== (Matching MiniScript 1.x: 1-6 digits after decimal, exponential for very large/small)
 ================================

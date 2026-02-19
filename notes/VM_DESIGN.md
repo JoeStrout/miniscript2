@@ -37,6 +37,7 @@ Our internal opcode names include a verb/mnemonic, and a description of how the 
 | MULT_rA_rB_rC | R[A] := R[B] * R[C] |
 | DIV_rA_rB_rC | R[A] := R[B] / R[C] |
 | MOD_rA_rB_rC | R[A] := R[B] % R[C] |
+| POW_rA_rB_rC | R[A] := R[B] ^ R[C] (exponentiation) |
 
 ### Logical (Fuzzy Logic)
 

@@ -337,6 +337,19 @@ public readonly struct Value {
 		return Null();
 	}
 
+	public static Value Pow(Value a, Value b) {
+		if ((a.IsInt || a.IsDouble) && (b.IsInt || b.IsDouble)) {
+			double da = a.IsInt ? a.AsInt() : a.AsDouble();
+			double db = b.IsInt ? b.AsInt() : b.AsDouble();
+			double result = Math.Pow(da, db);
+			if (a.IsInt && b.IsInt && db >= 0 && result == (int)result) {
+				return FromInt((int)result);
+			}
+			return FromDouble(result);
+		}
+		return Null();
+	}
+
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value Sub(Value a, Value b) {
 		if (a.IsInt && b.IsInt) {
@@ -828,6 +841,9 @@ public static class ValueHelpers {
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value value_mod(Value a, Value b) => Value.Mod(a, b);
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static Value value_pow(Value a, Value b) => Value.Pow(a, b);
 	
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value value_sub(Value a, Value b) => Value.Sub(a, b);

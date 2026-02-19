@@ -429,9 +429,7 @@ public class CodeGenerator : IASTVisitor {
 			leftReg = rightReg;
 			rightReg = temp;
 		} else if (node.Op == Op.POWER) {
-			// Power requires a function call - not yet implemented
-			// For now, emit a placeholder
-			op = Opcode.NOOP;
+			op = Opcode.POW_rA_rB_rC;
 			opSymbol = "^";
 		} else if (node.Op == Op.AND) {
 			// Fuzzy logic AND: AbsClamp01(a * b)

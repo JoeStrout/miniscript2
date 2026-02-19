@@ -226,6 +226,12 @@ class ParserStorage : public std::enable_shared_from_this<ParserStorage>, public
 	// That is, an EOL following this token should be silently ignored.
 	private: static Boolean AllowsLineContinuation(TokenType type);
 
+	// Check if the given token type is any assignment operator (= += -= *= /= %= ^=)
+	private: Boolean IsAssignOp(TokenType type);
+
+	// Return the binary Op string for a compound assignment token, or null for plain ASSIGN
+	private: String CompoundAssignOp(TokenType type);
+
 	// Check if current token matches the given type (without consuming)
 	public: Boolean Check(TokenType type);
 
@@ -377,6 +383,12 @@ struct Parser : public IParser {
 	// That is, an EOL following this token should be silently ignored.
 	private: static Boolean AllowsLineContinuation(TokenType type) { return ParserStorage::AllowsLineContinuation(type); }
 
+	// Check if the given token type is any assignment operator (= += -= *= /= %= ^=)
+	private: inline Boolean IsAssignOp(TokenType type);
+
+	// Return the binary Op string for a compound assignment token, or null for plain ASSIGN
+	private: inline String CompoundAssignOp(TokenType type);
+
 	// Check if current token matches the given type (without consuming)
 	public: inline Boolean Check(TokenType type);
 
@@ -498,6 +510,8 @@ inline void Parser::RegisterPrefix(TokenType type, PrefixParselet parselet) { re
 inline void Parser::RegisterInfix(TokenType type, InfixParselet parselet) { return get()->RegisterInfix(type, parselet); }
 inline void Parser::Init(String source) { return get()->Init(source); }
 inline void Parser::Advance() { return get()->Advance(); }
+inline Boolean Parser::IsAssignOp(TokenType type) { return get()->IsAssignOp(type); }
+inline String Parser::CompoundAssignOp(TokenType type) { return get()->CompoundAssignOp(type); }
 inline Boolean Parser::Check(TokenType type) { return get()->Check(type); }
 inline Boolean Parser::Match(TokenType type) { return get()->Match(type); }
 inline Token Parser::Consume() { return get()->Consume(); }

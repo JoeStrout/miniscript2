@@ -87,6 +87,7 @@ String BytecodeUtil::ToMnemonic(Opcode opcode) {
 		case Opcode::MULT_rA_rB_rC:  return "MULT_rA_rB_rC";
 		case Opcode::DIV_rA_rB_rC:   return "DIV_rA_rB_rC";
 		case Opcode::MOD_rA_rB_rC:   return "MOD_rA_rB_rC";
+		case Opcode::POW_rA_rB_rC:   return "POW_rA_rB_rC";
 		case Opcode::AND_rA_rB_rC:   return "AND_rA_rB_rC";
 		case Opcode::OR_rA_rB_rC:    return "OR_rA_rB_rC";
 		case Opcode::NOT_rA_rB:      return "NOT_rA_rB";
@@ -166,6 +167,7 @@ Opcode BytecodeUtil::FromMnemonic(String s) {
 	if (s == "MULT_rA_rB_rC")   return Opcode::MULT_rA_rB_rC;
 	if (s == "DIV_rA_rB_rC")    return Opcode::DIV_rA_rB_rC;
 	if (s == "MOD_rA_rB_rC")    return Opcode::MOD_rA_rB_rC;
+	if (s == "POW_rA_rB_rC")    return Opcode::POW_rA_rB_rC;
 	if (s == "AND_rA_rB_rC")    return Opcode::AND_rA_rB_rC;
 	if (s == "OR_rA_rB_rC")     return Opcode::OR_rA_rB_rC;
 	if (s == "NOT_rA_rB")       return Opcode::NOT_rA_rB;

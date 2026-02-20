@@ -15,31 +15,30 @@
 
 namespace MiniScript {
 
-
-Boolean UnitTests::Assert(bool condition, String message) {
+Boolean UnitTests::Assert(bool condition,String message) {
 	if (condition) return Boolean(true);
 	IOHelper::Print( String::New("Unit test failure: ") + message);
 	return Boolean(false);
 }
-Boolean UnitTests::AssertEqual(String actual, String expected) {
+Boolean UnitTests::AssertEqual(String actual,String expected) {
 	if (actual == expected) return Boolean(true);
 	Assert(Boolean(false),  String::New("Unit test failure: expected \"")
 	  + expected + "\" but got \"" + actual + "\"");
 	return Boolean(false);
 }
-Boolean UnitTests::AssertEqual(UInt32 actual, UInt32 expected) {
+Boolean UnitTests::AssertEqual(UInt32 actual,UInt32 expected) {
 	if (actual == expected) return Boolean(true);
 	Assert(Boolean(false),  String::New("Unit test failure: expected 0x")
 	  + StringUtils::ToHex(expected) + "\" but got 0x" + StringUtils::ToHex(actual));
 	return Boolean(false);
 }
-Boolean UnitTests::AssertEqual(Int32 actual, Int32 expected) {
+Boolean UnitTests::AssertEqual(Int32 actual,Int32 expected) {
 	if (actual == expected) return Boolean(true);
 	Assert(Boolean(false), StringUtils::Format("Unit test failure: expected {0} but got {1}",
 			expected, actual));
 	return Boolean(false);
 }
-Boolean UnitTests::AssertEqual(List<String> actual, List<String> expected) {
+Boolean UnitTests::AssertEqual(List<String> actual,List<String> expected) {
 	Boolean ok = Boolean(true);
 	// (no nulls)
 	if (ok && actual.Count() != expected.Count()) ok = Boolean(false);
@@ -315,7 +314,7 @@ Boolean UnitTests::TestValueMap() {
 	GC_POP_SCOPE();
 	return clearOk;
 }
-Boolean UnitTests::CheckParse(Parser parser, String input, String expected) {
+Boolean UnitTests::CheckParse(Parser parser,String input,String expected) {
 	ASTNode ast = parser.Parse(input);
 	if (parser.HadError()) {
 		IOHelper::Print(Interp("Parse error for input: {}", input));
@@ -332,7 +331,7 @@ Boolean UnitTests::CheckParse(Parser parser, String input, String expected) {
 	return Boolean(true);
 }
 Boolean UnitTests::TestParser() {
-	IOHelper::Print("  Testing parser...");
+	//IOHelper.Print("  Testing parser...");
 	Parser parser =  Parser::New();
 	Boolean ok = Boolean(true);
 
@@ -426,13 +425,9 @@ Boolean UnitTests::TestParser() {
 	ok = ok && CheckParse(parser, "x = 5", "x = 5");
 	ok = ok && CheckParse(parser, "y = 2 + 3", "y = 5");
 
-	if (ok) {
-		IOHelper::Print("  All parser tests passed.");
-	}
-
 	return ok;
 }
-Boolean UnitTests::CheckCodeGen(Parser parser, String input, List<String> expectedLines) {
+Boolean UnitTests::CheckCodeGen(Parser parser,String input,List<String> expectedLines) {
 	ASTNode ast = parser.Parse(input);
 	if (parser.HadError()) {
 		IOHelper::Print(Interp("Parse error for input: {}", input));
@@ -472,7 +467,7 @@ Boolean UnitTests::CheckCodeGen(Parser parser, String input, List<String> expect
 
 	return Boolean(true);
 }
-Boolean UnitTests::CheckBytecodeGen(Parser parser, String input, Int32 expectedInstructions, Int32 expectedConstants) {
+Boolean UnitTests::CheckBytecodeGen(Parser parser,String input,Int32 expectedInstructions,Int32 expectedConstants) {
 	ASTNode ast = parser.Parse(input);
 	if (parser.HadError()) {
 		IOHelper::Print(Interp("Parse error for input: {}", input));
@@ -498,7 +493,7 @@ Boolean UnitTests::CheckBytecodeGen(Parser parser, String input, Int32 expectedI
 	return Boolean(true);
 }
 Boolean UnitTests::TestCodeGenerator() {
-	IOHelper::Print("  Testing code generator...");
+	//IOHelper.Print("  Testing code generator...");
 	Parser parser =  Parser::New();
 	Boolean ok = Boolean(true);
 
@@ -628,14 +623,10 @@ Boolean UnitTests::TestCodeGenerator() {
 	// LOAD r2,1; LOAD r3,2; ADD r1,r2,r3; LOAD r3,3; LOAD r4,4; ADD r2,r3,r4; ADD r0,r1,r2; RETURN
 	ok = ok && CheckBytecodeGen(parser, "(1 + 2) + (3 + 4)", 8, 0);
 
-	if (ok) {
-		IOHelper::Print("  All code generator tests passed.");
-	}
-
 	return ok;
 }
 Boolean UnitTests::TestEmitPatternValidation() {
-	IOHelper::Print("  Testing emit pattern validation...");
+	//IOHelper.Print("  Testing emit pattern validation...");
 	Boolean ok = Boolean(true);
 
 	// Test that GetEmitPattern correctly identifies patterns
@@ -658,13 +649,10 @@ Boolean UnitTests::TestEmitPatternValidation() {
 	ok = ok && Assert(BytecodeUtil::GetEmitPattern(Opcode::LT_rA_rB_iC) == EmitPattern::ABC,
 		"LT_rA_rB_iC should be EmitPattern.ABC");
 
-	if (ok) {
-		IOHelper::Print("  All emit pattern validation tests passed.");
-	}
 	return ok;
 }
 Boolean UnitTests::TestLexer() {
-	IOHelper::Print("  Testing lexer...");
+	//IOHelper.Print("  Testing lexer...");
 	Boolean ok = Boolean(true);
 
 	// Helper to check a single token
@@ -756,9 +744,6 @@ Boolean UnitTests::TestLexer() {
 	tok = lexer.NextToken();
 	ok = ok && Assert(tok.Type == TokenType::NUMBER, "Expected NUMBER 2");
 
-	if (ok) {
-		IOHelper::Print("  All lexer tests passed.");
-	}
 	return ok;
 }
 Boolean UnitTests::RunAll() {
@@ -771,6 +756,5 @@ Boolean UnitTests::RunAll() {
 		&& TestCodeGenerator()
 		&& TestEmitPatternValidation();
 }
-
 
 } // end of namespace MiniScript

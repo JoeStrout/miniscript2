@@ -9,7 +9,6 @@
 
 namespace MiniScript {
 
-
 AssemblerStorage::AssemblerStorage() {
 }
 Int32 AssemblerStorage::FindFunctionIndex(String name) {
@@ -84,7 +83,7 @@ List<String> AssemblerStorage::GetTokens(String line) {
 	}
 	return tokens;
 }
-void AssemblerStorage::SetCurrentLine(Int32 lineNumber, String line) {
+void AssemblerStorage::SetCurrentLine(Int32 lineNumber,String line) {
 	CurrentLineNumber = lineNumber;
 	CurrentLine = line;
 }
@@ -105,7 +104,7 @@ void AssemblerStorage::Error(String errMsg) {
 UInt32 AssemblerStorage::AddLine(String line) {
 	return AddLine(line, 0);  // Default line number
 }
-UInt32 AssemblerStorage::AddLine(String line, Int32 lineNumber) {
+UInt32 AssemblerStorage::AddLine(String line,Int32 lineNumber) {
 	SetCurrentLine(lineNumber, line);
 	if (HasError) return 0;  // Don't process more lines if we already have an error
 	// Break into tokens (stripping whitespace, commas, and comments)
@@ -1408,7 +1407,7 @@ void AssemblerStorage::Assemble(List<String> sourceLines) {
 		Current =  FuncDef::New();
 	}
 }
-Int32 AssemblerStorage::AssembleFunction(List<String> sourceLines, Int32 startLine) {
+Int32 AssemblerStorage::AssembleFunction(List<String> sourceLines,Int32 startLine) {
 	// Prepare label names/addresses, just for this function.
 	// (So it's OK to reuse the same label in multiple functions!)
 	_labelNames.Clear();
@@ -1457,6 +1456,5 @@ Int32 AssemblerStorage::AssembleFunction(List<String> sourceLines, Int32 startLi
 	}
 	return endLine;
 }
-
 
 } // end of namespace MiniScript

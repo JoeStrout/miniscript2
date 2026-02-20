@@ -8,7 +8,6 @@
 
 namespace MiniScript {
 
-
 const String Op::PLUS = "PLUS";
 const String Op::MINUS = "MINUS";
 const String Op::TIMES = "TIMES";
@@ -28,11 +27,6 @@ const String Op::NOT = "NOT";
 const String Op::NEW = "NEW";
 const String Op::ISA = "ISA";
 
-
-
-
-
-
 NumberNodeStorage::NumberNodeStorage(Double value) {
 	Value = value;
 }
@@ -47,7 +41,6 @@ Int32 NumberNodeStorage::Accept(IASTVisitor& visitor) {
 	NumberNode _this(std::static_pointer_cast<NumberNodeStorage>(shared_from_this()));
 	return visitor.Visit(_this);
 }
-
 
 StringNodeStorage::StringNodeStorage(String value) {
 	Value = value;
@@ -64,7 +57,6 @@ Int32 StringNodeStorage::Accept(IASTVisitor& visitor) {
 	return visitor.Visit(_this);
 }
 
-
 IdentifierNodeStorage::IdentifierNodeStorage(String name) {
 	Name = name;
 }
@@ -80,8 +72,7 @@ Int32 IdentifierNodeStorage::Accept(IASTVisitor& visitor) {
 	return visitor.Visit(_this);
 }
 
-
-AssignmentNodeStorage::AssignmentNodeStorage(String variable, ASTNode value) {
+AssignmentNodeStorage::AssignmentNodeStorage(String variable,ASTNode value) {
 	Variable = variable;
 	Value = value;
 }
@@ -97,8 +88,7 @@ Int32 AssignmentNodeStorage::Accept(IASTVisitor& visitor) {
 	return visitor.Visit(_this);
 }
 
-
-IndexedAssignmentNodeStorage::IndexedAssignmentNodeStorage(ASTNode target, ASTNode index, ASTNode value) {
+IndexedAssignmentNodeStorage::IndexedAssignmentNodeStorage(ASTNode target,ASTNode index,ASTNode value) {
 	Target = target;
 	Index = index;
 	Value = value;
@@ -114,8 +104,7 @@ Int32 IndexedAssignmentNodeStorage::Accept(IASTVisitor& visitor) {
 	return visitor.Visit(_this);
 }
 
-
-UnaryOpNodeStorage::UnaryOpNodeStorage(String op, ASTNode operand) {
+UnaryOpNodeStorage::UnaryOpNodeStorage(String op,ASTNode operand) {
 	Op = op;
 	Operand = operand;
 }
@@ -144,8 +133,7 @@ Int32 UnaryOpNodeStorage::Accept(IASTVisitor& visitor) {
 	return visitor.Visit(_this);
 }
 
-
-BinaryOpNodeStorage::BinaryOpNodeStorage(String op, ASTNode left, ASTNode right) {
+BinaryOpNodeStorage::BinaryOpNodeStorage(String op,ASTNode left,ASTNode right) {
 	Op = op;
 	Left = left;
 	Right = right;
@@ -207,8 +195,7 @@ Int32 BinaryOpNodeStorage::Accept(IASTVisitor& visitor) {
 	return visitor.Visit(_this);
 }
 
-
-CallNodeStorage::CallNodeStorage(String function, List<ASTNode> arguments) {
+CallNodeStorage::CallNodeStorage(String function,List<ASTNode> arguments) {
 	Function = function;
 	Arguments = arguments;
 }
@@ -237,7 +224,6 @@ Int32 CallNodeStorage::Accept(IASTVisitor& visitor) {
 	return visitor.Visit(_this);
 }
 
-
 GroupNodeStorage::GroupNodeStorage(ASTNode expression) {
 	Expression = expression;
 }
@@ -252,7 +238,6 @@ Int32 GroupNodeStorage::Accept(IASTVisitor& visitor) {
 	GroupNode _this(std::static_pointer_cast<GroupNodeStorage>(shared_from_this()));
 	return visitor.Visit(_this);
 }
-
 
 ListNodeStorage::ListNodeStorage(List<ASTNode> elements) {
 	Elements = elements;
@@ -281,8 +266,7 @@ Int32 ListNodeStorage::Accept(IASTVisitor& visitor) {
 	return visitor.Visit(_this);
 }
 
-
-MapNodeStorage::MapNodeStorage(List<ASTNode> keys, List<ASTNode> values) {
+MapNodeStorage::MapNodeStorage(List<ASTNode> keys,List<ASTNode> values) {
 	Keys = keys;
 	Values = values;
 }
@@ -313,8 +297,7 @@ Int32 MapNodeStorage::Accept(IASTVisitor& visitor) {
 	return visitor.Visit(_this);
 }
 
-
-IndexNodeStorage::IndexNodeStorage(ASTNode target, ASTNode index) {
+IndexNodeStorage::IndexNodeStorage(ASTNode target,ASTNode index) {
 	Target = target;
 	Index = index;
 }
@@ -329,8 +312,7 @@ Int32 IndexNodeStorage::Accept(IASTVisitor& visitor) {
 	return visitor.Visit(_this);
 }
 
-
-SliceNodeStorage::SliceNodeStorage(ASTNode target, ASTNode startIndex, ASTNode endIndex) {
+SliceNodeStorage::SliceNodeStorage(ASTNode target,ASTNode startIndex,ASTNode endIndex) {
 	Target = target;
 	StartIndex = startIndex;
 	EndIndex = endIndex;
@@ -350,8 +332,7 @@ Int32 SliceNodeStorage::Accept(IASTVisitor& visitor) {
 	return visitor.Visit(_this);
 }
 
-
-MemberNodeStorage::MemberNodeStorage(ASTNode target, String member) {
+MemberNodeStorage::MemberNodeStorage(ASTNode target,String member) {
 	Target = target;
 	Member = member;
 }
@@ -366,8 +347,7 @@ Int32 MemberNodeStorage::Accept(IASTVisitor& visitor) {
 	return visitor.Visit(_this);
 }
 
-
-MethodCallNodeStorage::MethodCallNodeStorage(ASTNode target, String method, List<ASTNode> arguments) {
+MethodCallNodeStorage::MethodCallNodeStorage(ASTNode target,String method,List<ASTNode> arguments) {
 	Target = target;
 	Method = method;
 	Arguments = arguments;
@@ -393,8 +373,7 @@ Int32 MethodCallNodeStorage::Accept(IASTVisitor& visitor) {
 	return visitor.Visit(_this);
 }
 
-
-ExprCallNodeStorage::ExprCallNodeStorage(ASTNode function, List<ASTNode> arguments) {
+ExprCallNodeStorage::ExprCallNodeStorage(ASTNode function,List<ASTNode> arguments) {
 	Function = function;
 	Arguments = arguments;
 }
@@ -419,8 +398,7 @@ Int32 ExprCallNodeStorage::Accept(IASTVisitor& visitor) {
 	return visitor.Visit(_this);
 }
 
-
-WhileNodeStorage::WhileNodeStorage(ASTNode condition, List<ASTNode> body) {
+WhileNodeStorage::WhileNodeStorage(ASTNode condition,List<ASTNode> body) {
 	Condition = condition;
 	Body = body;
 }
@@ -445,8 +423,7 @@ Int32 WhileNodeStorage::Accept(IASTVisitor& visitor) {
 	return visitor.Visit(_this);
 }
 
-
-IfNodeStorage::IfNodeStorage(ASTNode condition, List<ASTNode> thenBody, List<ASTNode> elseBody) {
+IfNodeStorage::IfNodeStorage(ASTNode condition,List<ASTNode> thenBody,List<ASTNode> elseBody) {
 	Condition = condition;
 	ThenBody = thenBody;
 	ElseBody = elseBody;
@@ -482,8 +459,7 @@ Int32 IfNodeStorage::Accept(IASTVisitor& visitor) {
 	return visitor.Visit(_this);
 }
 
-
-ForNodeStorage::ForNodeStorage(String variable, ASTNode iterable, List<ASTNode> body) {
+ForNodeStorage::ForNodeStorage(String variable,ASTNode iterable,List<ASTNode> body) {
 	Variable = variable;
 	Iterable = iterable;
 	Body = body;
@@ -509,7 +485,6 @@ Int32 ForNodeStorage::Accept(IASTVisitor& visitor) {
 	return visitor.Visit(_this);
 }
 
-
 BreakNodeStorage::BreakNodeStorage() {
 }
 String BreakNodeStorage::ToStr() {
@@ -523,7 +498,6 @@ Int32 BreakNodeStorage::Accept(IASTVisitor& visitor) {
 	BreakNode _this(std::static_pointer_cast<BreakNodeStorage>(shared_from_this()));
 	return visitor.Visit(_this);
 }
-
 
 ContinueNodeStorage::ContinueNodeStorage() {
 }
@@ -539,8 +513,7 @@ Int32 ContinueNodeStorage::Accept(IASTVisitor& visitor) {
 	return visitor.Visit(_this);
 }
 
-
-FunctionNodeStorage::FunctionNodeStorage(List<String> paramNames, List<ASTNode> paramDefaults, List<ASTNode> body) {
+FunctionNodeStorage::FunctionNodeStorage(List<String> paramNames,List<ASTNode> paramDefaults,List<ASTNode> body) {
 	ParamNames = paramNames;
 	ParamDefaults = paramDefaults;
 	Body = body;
@@ -583,7 +556,6 @@ Int32 FunctionNodeStorage::Accept(IASTVisitor& visitor) {
 	return visitor.Visit(_this);
 }
 
-
 String SelfNodeStorage::ToStr() {
 	return "self";
 }
@@ -596,7 +568,6 @@ Int32 SelfNodeStorage::Accept(IASTVisitor& visitor) {
 	return visitor.Visit(_this);
 }
 
-
 String SuperNodeStorage::ToStr() {
 	return "super";
 }
@@ -608,7 +579,6 @@ Int32 SuperNodeStorage::Accept(IASTVisitor& visitor) {
 	SuperNode _this(std::static_pointer_cast<SuperNodeStorage>(shared_from_this()));
 	return visitor.Visit(_this);
 }
-
 
 ReturnNodeStorage::ReturnNodeStorage(ASTNode value) {
 	Value = value;
@@ -626,6 +596,5 @@ Int32 ReturnNodeStorage::Accept(IASTVisitor& visitor) {
 	ReturnNode _this(std::static_pointer_cast<ReturnNodeStorage>(shared_from_this()));
 	return visitor.Visit(_this);
 }
-
 
 } // end of namespace MiniScript

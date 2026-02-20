@@ -8,7 +8,6 @@
 #include "Bytecode.g.h"
 #include "FuncDef.g.h"
 
-
 namespace MiniScript {
 
 // FORWARD DECLARATIONS
@@ -57,6 +56,8 @@ struct IndexParselet;
 class IndexParseletStorage;
 struct MemberParselet;
 class MemberParseletStorage;
+struct Intrinsic;
+class IntrinsicStorage;
 struct Parser;
 class ParserStorage;
 struct FuncDef;
@@ -115,75 +116,6 @@ struct ReturnNode;
 class ReturnNodeStorage;
 
 // DECLARATIONS
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 class AssemblerStorage : public std::enable_shared_from_this<AssemblerStorage> {
 	friend struct Assembler;
@@ -281,9 +213,7 @@ class AssemblerStorage : public std::enable_shared_from_this<AssemblerStorage> {
 	// Return the line number after this function ends.
 	private: Int32 AssembleFunction(List<String> sourceLines, Int32 startLine);
 
-
 }; // end of class AssemblerStorage
-
 
 struct Assembler {
 	friend class AssemblerStorage;
@@ -294,7 +224,6 @@ struct Assembler {
 	Assembler(std::nullptr_t) : storage(nullptr) {}
 	friend bool IsNull(const Assembler& inst) { return inst.storage == nullptr; }
 	private: AssemblerStorage* get() const;
-
 
 	public: static Assembler New() {
 		return Assembler(std::make_shared<AssemblerStorage>());
@@ -400,7 +329,6 @@ struct Assembler {
 	private: inline Int32 AssembleFunction(List<String> sourceLines, Int32 startLine);
 }; // end of struct Assembler
 
-
 // INLINE METHODS
 
 inline AssemblerStorage* Assembler::get() const { return static_cast<AssemblerStorage*>(storage.get()); }
@@ -423,11 +351,11 @@ inline void Assembler::set_CurrentLine(String _v) { get()->CurrentLine = _v; }
 inline Int32 Assembler::FindFunctionIndex(String name) { return get()->FindFunctionIndex(name); }
 inline FuncDef Assembler::FindFunction(String name) { return get()->FindFunction(name); }
 inline Boolean Assembler::HasFunction(String name) { return get()->HasFunction(name); }
-inline void Assembler::SetCurrentLine(Int32 lineNumber, String line) { return get()->SetCurrentLine(lineNumber, line); }
+inline void Assembler::SetCurrentLine(Int32 lineNumber,String line) { return get()->SetCurrentLine(lineNumber, line); }
 inline void Assembler::ClearError() { return get()->ClearError(); }
 inline void Assembler::Error(String errMsg) { return get()->Error(errMsg); }
 inline UInt32 Assembler::AddLine(String line) { return get()->AddLine(line); }
-inline UInt32 Assembler::AddLine(String line, Int32 lineNumber) { return get()->AddLine(line, lineNumber); }
+inline UInt32 Assembler::AddLine(String line,Int32 lineNumber) { return get()->AddLine(line, lineNumber); }
 inline Byte Assembler::ParseRegister(String reg) { return get()->ParseRegister(reg); }
 inline Byte Assembler::ParseByte(String num) { return get()->ParseByte(num); }
 inline Int16 Assembler::ParseInt16(String num) { return get()->ParseInt16(num); }
@@ -439,6 +367,6 @@ inline Int32 Assembler::AddConstant(Value value) { return get()->AddConstant(val
 inline Value Assembler::ParseAsConstant(String token) { return get()->ParseAsConstant(token); }
 inline Double Assembler::ParseDouble(String str) { return get()->ParseDouble(str); }
 inline void Assembler::Assemble(List<String> sourceLines) { return get()->Assemble(sourceLines); }
-inline Int32 Assembler::AssembleFunction(List<String> sourceLines, Int32 startLine) { return get()->AssembleFunction(sourceLines, startLine); }
+inline Int32 Assembler::AssembleFunction(List<String> sourceLines,Int32 startLine) { return get()->AssembleFunction(sourceLines, startLine); }
 
 } // end of namespace MiniScript

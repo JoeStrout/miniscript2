@@ -7,7 +7,6 @@
 
 namespace MiniScript {
 
-
 CodeGeneratorStorage::CodeGeneratorStorage(CodeEmitterBase emitter) {
 	_emitter = emitter;
 	_regInUse =  List<Boolean>::New();
@@ -100,7 +99,7 @@ Int32 CodeGeneratorStorage::AllocConsecutiveRegs(Int32 count) {
 
 	return startReg;
 }
-Int32 CodeGeneratorStorage::CompileInto(ASTNode node, Int32 targetReg) {
+Int32 CodeGeneratorStorage::CompileInto(ASTNode node,Int32 targetReg) {
 	CodeGenerator _this(std::static_pointer_cast<CodeGeneratorStorage>(shared_from_this()));
 	_targetReg = targetReg;
 	Int32 result = node.Accept(_this);
@@ -136,7 +135,7 @@ void CodeGeneratorStorage::CompileBody(List<ASTNode> body) {
 		body[i].Accept(_this);
 	}
 }
-FuncDef CodeGeneratorStorage::CompileFunction(ASTNode ast, String funcName) {
+FuncDef CodeGeneratorStorage::CompileFunction(ASTNode ast,String funcName) {
 	CodeGenerator _this(std::static_pointer_cast<CodeGeneratorStorage>(shared_from_this()));
 	_regInUse.Clear();
 	_firstAvailable = 0;
@@ -153,7 +152,7 @@ FuncDef CodeGeneratorStorage::CompileFunction(ASTNode ast, String funcName) {
 
 	return _emitter.Finalize(funcName);
 }
-FuncDef CodeGeneratorStorage::CompileProgram(List<ASTNode> statements, String funcName) {
+FuncDef CodeGeneratorStorage::CompileProgram(List<ASTNode> statements,String funcName) {
 	_regInUse.Clear();
 	_firstAvailable = 0;
 	_maxRegUsed = -1;
@@ -195,7 +194,7 @@ Int32 CodeGeneratorStorage::Visit(StringNode node) {
 	_emitter.EmitAB(Opcode::LOAD_rA_kBC, reg, constIdx, Interp("r{} = \"{}\"", reg, node.Value()));
 	return reg;
 }
-Int32 CodeGeneratorStorage::VisitIdentifier(IdentifierNode node, bool addressOf) {
+Int32 CodeGeneratorStorage::VisitIdentifier(IdentifierNode node,bool addressOf) {
 	Int32 resultReg = GetTargetOrAlloc();
 
 	// Handle built-in constants
@@ -409,48 +408,25 @@ Int32 CodeGeneratorStorage::Visit(CallNode node) {
 	Int32 explicitTarget = _targetReg;
 	_targetReg = -1;
 
-	Int32 argCount = node.Arguments().Count();
-
-	// Check if the function is a known variable (user-defined function)
+	// Check if the function is a known local variable
 	Int32 funcVarReg;
 	if (_variableRegs.TryGetValue(node.Function(), &funcVarReg)) {
-		// User-defined function call: ARGBLK + ARGs + CALL_rA_rB_rC
+		// Known local: ARGBLK + ARGs + CALL_rA_rB_rC
 		return CompileUserCall(node, funcVarReg, explicitTarget);
 	}
 
-	// Intrinsic function call: CALLFN
-	// Arguments loaded into consecutive registers starting at baseReg
-	// Return value placed in baseReg after the call
+	// Not a known local — resolve at runtime via LOADV (outer/global/intrinsic).
+	// We use LOADV (not LOADC) to get the funcref without auto-invoking it.
+	Int32 funcReg = AllocReg();
+	Int32 nameIdx = _emitter.AddConstant(make_string(node.Function()));
+	_emitter.EmitABC(Opcode::LOADV_rA_rB_kC, funcReg, 0, nameIdx,
+		Interp("r{} = @{} (runtime lookup)", funcReg, node.Function()));
 
-	// Allocate consecutive registers for arguments
-	// The first register (baseReg) will also hold the return value
-	Int32 baseReg = (argCount > 0) ? AllocConsecutiveRegs(argCount) : AllocReg();
-
-	// Compile each argument directly into its target register
-	for (Int32 i = 0; i < argCount; i++) {
-		CompileInto(node.Arguments()[i], baseReg + i);
-	}
-
-	// Emit the function call
-	// CALLFN_iA_kBC: A = base register, BC = constant index for function name
-	Int32 funcNameIdx = _emitter.AddConstant(make_string(node.Function()));
-	_emitter.EmitAB(Opcode::CALLFN_iA_kBC, baseReg, funcNameIdx, Interp("call {}", node.Function()));
-
-	// Free any extra argument registers (keeping baseReg for return value)
-	for (Int32 i = 1; i < argCount; i++) {
-		FreeReg(baseReg + i);
-	}
-
-	// If an explicit target was requested and it's different, move result there
-	if (explicitTarget >= 0 && explicitTarget != baseReg) {
-		_emitter.EmitABC(Opcode::LOAD_rA_rB, explicitTarget, baseReg, 0, Interp("move Call result to r{}", explicitTarget));
-		FreeReg(baseReg);
-		return explicitTarget;
-	}
-
-	return baseReg;
+	Int32 result = CompileUserCall(node, funcReg, explicitTarget);
+	FreeReg(funcReg);
+	return result;
 }
-Int32 CodeGeneratorStorage::CompileUserCall(CallNode node, Int32 funcVarReg, Int32 explicitTarget) {
+Int32 CodeGeneratorStorage::CompileUserCall(CallNode node,Int32 funcVarReg,Int32 explicitTarget) {
 	CodeGenerator _this(std::static_pointer_cast<CodeGeneratorStorage>(shared_from_this()));
 	Int32 argCount = node.Arguments().Count();
 
@@ -528,7 +504,7 @@ Int32 CodeGeneratorStorage::Visit(MapNode node) {
 Int32 CodeGeneratorStorage::Visit(IndexNode node) {
 	return VisitIndex(node, Boolean(false));
 }
-Int32 CodeGeneratorStorage::VisitIndex(IndexNode node, bool addressOf) {
+Int32 CodeGeneratorStorage::VisitIndex(IndexNode node,bool addressOf) {
 	CodeGenerator _this(std::static_pointer_cast<CodeGeneratorStorage>(shared_from_this()));
 	Int32 resultReg = GetTargetOrAlloc();  // Capture target before any recursive calls
 	Int32 targetReg = node.Target().Accept(_this);
@@ -584,7 +560,7 @@ Int32 CodeGeneratorStorage::Visit(SliceNode node) {
 Int32 CodeGeneratorStorage::Visit(MemberNode node) {
 	return VisitMember(node, Boolean(false));
 }
-Int32 CodeGeneratorStorage::VisitMember(MemberNode node, bool addressOf) {
+Int32 CodeGeneratorStorage::VisitMember(MemberNode node,bool addressOf) {
 	CodeGenerator _this(std::static_pointer_cast<CodeGeneratorStorage>(shared_from_this()));
 	Int32 resultReg = GetTargetOrAlloc();
 	Int32 targetReg = node.Target().Accept(_this);
@@ -912,7 +888,7 @@ Int32 CodeGeneratorStorage::Visit(ContinueNode node) {
 	}
 	return -1;
 }
-Boolean CodeGeneratorStorage::TryEvaluateConstant(ASTNode node, Value* result) {
+Boolean CodeGeneratorStorage::TryEvaluateConstant(ASTNode node,Value* result) {
 	*result = make_null();
 	NumberNode numNode = As<NumberNode, NumberNodeStorage>(node);
 	if (!IsNull(numNode)) {
@@ -1086,7 +1062,7 @@ Int32 CodeGeneratorStorage::Visit(SuperNode node) {
 		Interp("r{} = super", resultReg));
 	return resultReg;
 }
-Int32 CodeGeneratorStorage::EmitMethodCall(Int32 receiverReg, String methodKey, List<ASTNode> arguments, bool preserveSelf) {
+Int32 CodeGeneratorStorage::EmitMethodCall(Int32 receiverReg,String methodKey,List<ASTNode> arguments,bool preserveSelf) {
 	CodeGenerator _this(std::static_pointer_cast<CodeGeneratorStorage>(shared_from_this()));
 	Int32 explicitTarget = _targetReg;
 	_targetReg = -1;
@@ -1146,6 +1122,5 @@ Int32 CodeGeneratorStorage::Visit(ReturnNode node) {
 	_emitter.Emit(Opcode::RETURN, nullptr);
 	return -1;
 }
-
 
 } // end of namespace MiniScript

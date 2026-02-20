@@ -23,7 +23,6 @@
 
 namespace MiniScript {
 
-
 const String VMVis::Esc = "\x1b";
 const String VMVis::Clear = Esc + "]2J";
 const String VMVis::Reset = Esc + "c";
@@ -51,7 +50,7 @@ void VMVis::UpdateScreenSize() {
 		_screenHeight = w.ws_row;
 	#endif
 }
-String VMVis::CursorGoTo(int column, int row) {
+String VMVis::CursorGoTo(int column,int row) {
 	return StringUtils::Format("\x1b[{0};{1}H", row, column);
 }
 void VMVis::Write(String s) {
@@ -61,7 +60,7 @@ void VMVis::ClearScreen() {
 	UpdateScreenSize();
 	Write(Reset + Clear + CursorHome);
 }
-void VMVis::GoTo(int column, int row) {
+void VMVis::GoTo(int column,int row) {
 	Write(CursorGoTo(column, row));
 }
 void VMVis::DrawCodeDisplay() {
@@ -122,7 +121,7 @@ String VMVis::GetVariableNameDisplay(Value nameVal) {
 		return name.Substring(0, 7) + "…"; // 7 chars + ellipsis
 	}
 }
-void VMVis::DrawOneRegister(Int32 stackIndex, String label, Int32 displayRow) {
+void VMVis::DrawOneRegister(Int32 stackIndex,String label,Int32 displayRow) {
 	GC_PUSH_SCOPE();
 	Value val = _vm.GetStackValue(stackIndex); GC_PROTECT(&val);
 	Value nameVal = _vm.GetStackName(stackIndex); GC_PROTECT(&nameVal);
@@ -216,6 +215,5 @@ void VMVis::UpdateDisplay() {
 	DrawCallStack();
 	GoTo(1, _screenHeight - 2);
 }
-
 
 } // end of namespace MiniScript

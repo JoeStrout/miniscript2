@@ -5,7 +5,6 @@
 
 namespace MiniScript {
 
-
 Int32 CodeEmitterBaseStorage::AddConstant(Value value) {
 	List<Value> constants = PendingFunc.Constants();
 	for (Int32 i = 0; i < constants.Count(); i++) {
@@ -23,32 +22,29 @@ FuncDef CodeEmitterBaseStorage::Finalize(String name) {
 	return result;
 }
 
-
-
-
 BytecodeEmitterStorage::BytecodeEmitterStorage() {
 	PendingFunc =  FuncDef::New();
 	_labelAddresses =  Dictionary<Int32, Int32>::New();
 	_labelRefs =  List<LabelRef>::New();
 	_nextLabelId = 0;
 }
-void BytecodeEmitterStorage::Emit(Opcode op, String comment) {
+void BytecodeEmitterStorage::Emit(Opcode op,String comment) {
 	BytecodeUtil::CheckEmitPattern(op, EmitPattern::None);
 	PendingFunc.Code().Add(BytecodeUtil::INS(op));
 }
-void BytecodeEmitterStorage::EmitA(Opcode op, Int32 a, String comment) {
+void BytecodeEmitterStorage::EmitA(Opcode op,Int32 a,String comment) {
 	BytecodeUtil::CheckEmitPattern(op, EmitPattern::A);
 	PendingFunc.Code().Add(BytecodeUtil::INS_A(op, (Byte)a));
 }
-void BytecodeEmitterStorage::EmitAB(Opcode op, Int32 a, Int32 bc, String comment) {
+void BytecodeEmitterStorage::EmitAB(Opcode op,Int32 a,Int32 bc,String comment) {
 	BytecodeUtil::CheckEmitPattern(op, EmitPattern::AB);
 	PendingFunc.Code().Add(BytecodeUtil::INS_AB(op, (Byte)a, (Int16)bc));
 }
-void BytecodeEmitterStorage::EmitBC(Opcode op, Int32 ab, Int32 c, String comment) {
+void BytecodeEmitterStorage::EmitBC(Opcode op,Int32 ab,Int32 c,String comment) {
 	BytecodeUtil::CheckEmitPattern(op, EmitPattern::BC);
 	PendingFunc.Code().Add(BytecodeUtil::INS_BC(op, (Int16)ab, (Byte)c));
 }
-void BytecodeEmitterStorage::EmitABC(Opcode op, Int32 a, Int32 b, Int32 c, String comment) {
+void BytecodeEmitterStorage::EmitABC(Opcode op,Int32 a,Int32 b,Int32 c,String comment) {
 	BytecodeUtil::CheckEmitPattern(op, EmitPattern::ABC);
 	PendingFunc.Code().Add(BytecodeUtil::INS_ABC(op, (Byte)a, (Byte)b, (Byte)c));
 }
@@ -60,7 +56,7 @@ Int32 BytecodeEmitterStorage::CreateLabel() {
 void BytecodeEmitterStorage::PlaceLabel(Int32 labelId) {
 	_labelAddresses[labelId] = PendingFunc.Code().Count();
 }
-void BytecodeEmitterStorage::EmitJump(Opcode op, Int32 labelId, String comment) {
+void BytecodeEmitterStorage::EmitJump(Opcode op,Int32 labelId,String comment) {
 	// Emit placeholder instruction, record for later patching
 	LabelRef labelRef;
 	labelRef.CodeIndex = PendingFunc.Code().Count();
@@ -71,7 +67,7 @@ void BytecodeEmitterStorage::EmitJump(Opcode op, Int32 labelId, String comment) 
 	_labelRefs.Add(labelRef);
 	PendingFunc.Code().Add(BytecodeUtil::INS(op));  // placeholder
 }
-void BytecodeEmitterStorage::EmitBranch(Opcode op, Int32 reg, Int32 labelId, String comment) {
+void BytecodeEmitterStorage::EmitBranch(Opcode op,Int32 reg,Int32 labelId,String comment) {
 	// Emit placeholder instruction for conditional branch, record for later patching
 	LabelRef labelRef;
 	labelRef.CodeIndex = PendingFunc.Code().Count();
@@ -112,26 +108,25 @@ FuncDef BytecodeEmitterStorage::Finalize(String name) {
 	return this->CodeEmitterBaseStorage::Finalize(name); 
 }
 
-
 AssemblyEmitterStorage::AssemblyEmitterStorage() {
 	PendingFunc =  FuncDef::New();
 	_lines =  List<String>::New();
 	_labelNames =  Dictionary<Int32, String>::New();
 	_nextLabelId = 0;
 }
-void AssemblyEmitterStorage::Emit(Opcode op, String comment) {
+void AssemblyEmitterStorage::Emit(Opcode op,String comment) {
 	BytecodeUtil::CheckEmitPattern(op, EmitPattern::None);
 	String line = Interp("  {}", BytecodeUtil::ToMnemonic(op));
 	if (!IsNull(comment)) line += Interp("  ; {}", comment);
 	_lines.Add(line);
 }
-void AssemblyEmitterStorage::EmitA(Opcode op, Int32 a, String comment) {
+void AssemblyEmitterStorage::EmitA(Opcode op,Int32 a,String comment) {
 	BytecodeUtil::CheckEmitPattern(op, EmitPattern::A);
 	String line = Interp("  {} r{}", BytecodeUtil::ToMnemonic(op), a);
 	if (!IsNull(comment)) line += Interp("  ; {}", comment);
 	_lines.Add(line);
 }
-void AssemblyEmitterStorage::EmitAB(Opcode op, Int32 a, Int32 bc, String comment) {
+void AssemblyEmitterStorage::EmitAB(Opcode op,Int32 a,Int32 bc,String comment) {
 	BytecodeUtil::CheckEmitPattern(op, EmitPattern::AB);
 	String mnemonic = BytecodeUtil::ToMnemonic(op);
 	String line;
@@ -145,7 +140,7 @@ void AssemblyEmitterStorage::EmitAB(Opcode op, Int32 a, Int32 bc, String comment
 	if (!IsNull(comment)) line += Interp("  ; {}", comment);
 	_lines.Add(line);
 }
-void AssemblyEmitterStorage::EmitBC(Opcode op, Int32 ab, Int32 c, String comment) {
+void AssemblyEmitterStorage::EmitBC(Opcode op,Int32 ab,Int32 c,String comment) {
 	BytecodeUtil::CheckEmitPattern(op, EmitPattern::BC);
 	String mnemonic = BytecodeUtil::ToMnemonic(op);
 	String line;
@@ -157,7 +152,7 @@ void AssemblyEmitterStorage::EmitBC(Opcode op, Int32 ab, Int32 c, String comment
 	if (!IsNull(comment)) line += Interp("  ; {}", comment);
 	_lines.Add(line);
 }
-void AssemblyEmitterStorage::EmitABC(Opcode op, Int32 a, Int32 b, Int32 c, String comment) {
+void AssemblyEmitterStorage::EmitABC(Opcode op,Int32 a,Int32 b,Int32 c,String comment) {
 	BytecodeUtil::CheckEmitPattern(op, EmitPattern::ABC);
 	String mnemonic = BytecodeUtil::ToMnemonic(op);
 	String line = Interp("  {} r{}, r{}, r{}", mnemonic, a, b, c);
@@ -173,12 +168,12 @@ Int32 AssemblyEmitterStorage::CreateLabel() {
 void AssemblyEmitterStorage::PlaceLabel(Int32 labelId) {
 	_lines.Add(Interp("{}:", _labelNames[labelId]));
 }
-void AssemblyEmitterStorage::EmitJump(Opcode op, Int32 labelId, String comment) {
+void AssemblyEmitterStorage::EmitJump(Opcode op,Int32 labelId,String comment) {
 	String line = Interp("  {} {}", BytecodeUtil::ToMnemonic(op), _labelNames[labelId]);
 	if (!IsNull(comment)) line += Interp("  ; {}", comment);
 	_lines.Add(line);
 }
-void AssemblyEmitterStorage::EmitBranch(Opcode op, Int32 reg, Int32 labelId, String comment) {
+void AssemblyEmitterStorage::EmitBranch(Opcode op,Int32 reg,Int32 labelId,String comment) {
 	String line = Interp("  {} r{}, {}", BytecodeUtil::ToMnemonic(op), reg, _labelNames[labelId]);
 	if (!IsNull(comment)) line += Interp("  ; {}", comment);
 	_lines.Add(line);
@@ -193,6 +188,5 @@ String AssemblyEmitterStorage::GetAssembly() {
 	}
 	return result;
 }
-
 
 } // end of namespace MiniScript

@@ -5,8 +5,6 @@
 #include "core_includes.h"
 #include "VM.g.h"
 
-
-
 namespace MiniScript {
 
 // FORWARD DECLARATIONS
@@ -55,6 +53,8 @@ struct IndexParselet;
 class IndexParseletStorage;
 struct MemberParselet;
 class MemberParseletStorage;
+struct Intrinsic;
+class IntrinsicStorage;
 struct Parser;
 class ParserStorage;
 struct FuncDef;
@@ -114,13 +114,6 @@ class ReturnNodeStorage;
 
 // DECLARATIONS
 
-
-
-
-
-
-
-
 struct VMVis {
 	private: static const String Esc;
 	private: static const String Clear;
@@ -143,7 +136,6 @@ struct VMVis {
 	public: VMVis(VM vm);
 
 	public: void UpdateScreenSize();
-
 
 	public: String CursorGoTo(int column, int row);
 
@@ -170,69 +162,6 @@ struct VMVis {
 
 	public: void UpdateDisplay();
 }; // end of struct VMVis
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 // INLINE METHODS
 

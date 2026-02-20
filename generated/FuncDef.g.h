@@ -7,6 +7,8 @@
 #include "StringUtils.g.h"
 
 namespace MiniScript {
+typedef Value (*NativeCallbackDelegate)(List<Value>, Int32, Int32);
+inline bool IsNull(NativeCallbackDelegate f) { return f == nullptr; }
 
 // FORWARD DECLARATIONS
 
@@ -54,6 +56,8 @@ struct IndexParselet;
 class IndexParseletStorage;
 struct MemberParselet;
 class MemberParseletStorage;
+struct Intrinsic;
+class IntrinsicStorage;
 struct Parser;
 class ParserStorage;
 struct FuncDef;
@@ -113,75 +117,6 @@ class ReturnNodeStorage;
 
 // DECLARATIONS
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 class FuncDefStorage : public std::enable_shared_from_this<FuncDefStorage> {
 	friend struct FuncDef;
 	public: String Name = "";
@@ -192,6 +127,11 @@ class FuncDefStorage : public std::enable_shared_from_this<FuncDefStorage> {
 	public: List<Value> ParamDefaults = List<Value>::New(); // default values for parameters
 	public: Int16 SelfReg = -1; // register for 'self' (-1 if not used)
 	public: Int16 SuperReg = -1; // register for 'super' (-1 if not used)
+	public: NativeCallbackDelegate NativeCallback = null;
+
+	// Native callback for intrinsic functions. When non-null, this FuncDef
+	// represents a built-in function: CALL invokes the callback directly
+	// instead of executing bytecode.  Parameters are in stack[baseIndex+1..].
 
 	public: FuncDefStorage();
 
@@ -207,6 +147,7 @@ class FuncDefStorage : public std::enable_shared_from_this<FuncDefStorage> {
 	// Dunno why, but I guess the author had some things to say.
 }; // end of class FuncDefStorage
 
+// Native callback for intrinsic functions.
 
 // Function definition: code, constants, and how many registers it needs
 struct FuncDef {
@@ -235,6 +176,12 @@ struct FuncDef {
 	public: void set_SelfReg(Int16 _v); // register for 'self' (-1 if not used)
 	public: Int16 SuperReg(); // register for 'super' (-1 if not used)
 	public: void set_SuperReg(Int16 _v); // register for 'super' (-1 if not used)
+	public: NativeCallbackDelegate NativeCallback();
+	public: void set_NativeCallback(NativeCallbackDelegate _v);
+
+	// Native callback for intrinsic functions. When non-null, this FuncDef
+	// represents a built-in function: CALL invokes the callback directly
+	// instead of executing bytecode.  Parameters are in stack[baseIndex+1..].
 
 	public: static FuncDef New() {
 		return FuncDef(std::make_shared<FuncDefStorage>());
@@ -248,7 +195,6 @@ struct FuncDef {
 	// Conversion to bool: returns true if function has a name
 	public: operator bool() const { return (bool)(*get()); }
 }; // end of struct FuncDef
-
 
 // INLINE METHODS
 
@@ -269,6 +215,8 @@ inline Int16 FuncDef::SelfReg() { return get()->SelfReg; } // register for 'self
 inline void FuncDef::set_SelfReg(Int16 _v) { get()->SelfReg = _v; } // register for 'self' (-1 if not used)
 inline Int16 FuncDef::SuperReg() { return get()->SuperReg; } // register for 'super' (-1 if not used)
 inline void FuncDef::set_SuperReg(Int16 _v) { get()->SuperReg = _v; } // register for 'super' (-1 if not used)
+inline NativeCallbackDelegate FuncDef::NativeCallback() { return get()->NativeCallback; }
+inline void FuncDef::set_NativeCallback(NativeCallbackDelegate _v) { get()->NativeCallback = _v; }
 inline void FuncDef::ReserveRegister(Int32 registerNumber) { return get()->ReserveRegister(registerNumber); }
 inline FuncDefStorage::operator bool() const {
 	return Name != "";

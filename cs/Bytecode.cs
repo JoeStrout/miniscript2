@@ -84,7 +84,7 @@ public enum Opcode : Byte {
 	ARG_rA,
 	ARG_iABC,
 	CALLF_iA_iBC,
-	CALLFN_iA_kBC,
+	CALLFN_iA_kBC,		// DEPRECATED: intrinsics are now callable FuncRefs via LOADV + CALL
 	CALL_rA_rB_rC,
 	RETURN,
 	NEW_rA_rB,

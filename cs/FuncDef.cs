@@ -8,6 +8,11 @@ using static MiniScript.ValueHelpers;
 
 namespace MiniScript {
 
+// Native callback for intrinsic functions.
+// H: typedef Value (*NativeCallbackDelegate)(List<Value>, Int32, Int32);
+// H: inline bool IsNull(NativeCallbackDelegate f) { return f == nullptr; }
+public delegate Value NativeCallbackDelegate(List<Value> stack, Int32 baseIndex, Int32 argCount); // CPP:
+
 // Function definition: code, constants, and how many registers it needs
 public class FuncDef {
 	public String Name = "";
@@ -18,6 +23,11 @@ public class FuncDef {
 	public List<Value> ParamDefaults = new List<Value>();  // default values for parameters
 	public Int16 SelfReg = -1;   // register for 'self' (-1 if not used)
 	public Int16 SuperReg = -1;  // register for 'super' (-1 if not used)
+
+	// Native callback for intrinsic functions. When non-null, this FuncDef
+	// represents a built-in function: CALL invokes the callback directly
+	// instead of executing bytecode.  Parameters are in stack[baseIndex+1..].
+	public NativeCallbackDelegate NativeCallback = null;
 
 	public FuncDef() {
 	}

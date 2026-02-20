@@ -8,7 +8,6 @@
 #include "ErrorPool.g.h"
 #include "value_map.h"
 
-
 namespace MiniScript {
 
 // FORWARD DECLARATIONS
@@ -57,6 +56,8 @@ struct IndexParselet;
 class IndexParseletStorage;
 struct MemberParselet;
 class MemberParseletStorage;
+struct Intrinsic;
+class IntrinsicStorage;
 struct Parser;
 class ParserStorage;
 struct FuncDef;
@@ -116,9 +117,6 @@ class ReturnNodeStorage;
 
 // DECLARATIONS
 
-
-
-
 // Call stack frame (return info)
 struct CallInfo {
 	public: Int32 ReturnPC; // where to continue in caller (PC index)
@@ -135,72 +133,6 @@ struct CallInfo {
 	public: Value GetLocalVarMap(List<Value> registers, List<Value> names, int baseIdx, int regCount);
 }; // end of struct CallInfo
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	friend struct VM;
 	public: Boolean DebugMode = false;
@@ -213,6 +145,7 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	private: List<CallInfo> callStack;
 	private: Int32 callStackTop; // Index of next free call stack slot
 	private: List<FuncDef> functions; // functions addressed by CALLF
+	private: Dictionary<String, Value> _intrinsics; // intrinsic name -> FuncRef Value
 	public: Int32 PC;
 	private: Int32 _currentFuncIndex = -1;
 	public: FuncDef CurrentFunction;
@@ -232,8 +165,6 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 
 	// Static callback for C++ (accessible from VM wrapper)
 	// H: public: static std::function<void(const String&)> sPrintCallback;
-
-
 
 	// Execution state (persistent across RunSteps calls)
 
@@ -288,6 +219,14 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	// Note: Parameters start at r1 (r0 is reserved for return value)
 	private: void SetupCallFrame(Int32 argCount, Int32 calleeBase, FuncDef callee);
 
+	// Auto-invoke a zero-arg funcref (used by LOADC and CALLIFREF).
+	// Resolves the funcref, then either:
+	//   - Native callback: invokes it, stores result at stack[baseIndex + resultReg], returns -1.
+	//   - User function: pushes CallInfo and sets up callee frame, returns the callee function index.
+	//     Caller must switch its local execution state (pc, baseIndex, curFunc, etc.).
+	// On error, calls RaiseRuntimeError and returns -1.
+	private: Int32 AutoInvokeFuncRef(Value funcRefVal, Int32 resultReg, Int32 returnPC, Int32 baseIndex, Int32 currentFuncIndex, FuncDef curFunc);
+
 	public: Value Execute(FuncDef entry);
 
 	public: Value Execute(FuncDef entry, UInt32 maxCycles);
@@ -299,19 +238,7 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	private: void EnsureFrame(Int32 baseIndex, UInt16 neededRegs);
 
 	private: Value LookupVariable(Value varName);
-	private: static const Value FuncNamePrint;
-	private: static const Value FuncNameInput;
-	private: static const Value FuncNameVal;
-	private: static const Value FuncNameLen;
-	private: static const Value FuncNameRemove;
-	private: static const Value FuncNameFreeze;
-	private: static const Value FuncNameIsFrozen;
-	private: static const Value FuncNameFrozenCopy;
-	
-	
-	private: void DoIntrinsic(Value funcName, Int32 baseReg);
 }; // end of class VMStorage
-
 
 // VM state
 struct VM {
@@ -336,6 +263,8 @@ struct VM {
 	private: void set_callStackTop(Int32 _v); // Index of next free call stack slot
 	private: List<FuncDef> functions(); // functions addressed by CALLF
 	private: void set_functions(List<FuncDef> _v); // functions addressed by CALLF
+	private: Dictionary<String, Value> _intrinsics(); // intrinsic name -> FuncRef Value
+	private: void set__intrinsics(Dictionary<String, Value> _v); // intrinsic name -> FuncRef Value
 	public: Int32 PC();
 	public: void set_PC(Int32 _v);
 	private: Int32 _currentFuncIndex();
@@ -366,8 +295,6 @@ struct VM {
 
 	// Static callback for C++ (accessible from VM wrapper)
 	// H: public: static std::function<void(const String&)> sPrintCallback;
-
-
 
 	// Execution state (persistent across RunSteps calls)
 
@@ -422,6 +349,14 @@ struct VM {
 	// Note: Parameters start at r1 (r0 is reserved for return value)
 	private: inline void SetupCallFrame(Int32 argCount, Int32 calleeBase, FuncDef callee);
 
+	// Auto-invoke a zero-arg funcref (used by LOADC and CALLIFREF).
+	// Resolves the funcref, then either:
+	//   - Native callback: invokes it, stores result at stack[baseIndex + resultReg], returns -1.
+	//   - User function: pushes CallInfo and sets up callee frame, returns the callee function index.
+	//     Caller must switch its local execution state (pc, baseIndex, curFunc, etc.).
+	// On error, calls RaiseRuntimeError and returns -1.
+	private: inline Int32 AutoInvokeFuncRef(Value funcRefVal, Int32 resultReg, Int32 returnPC, Int32 baseIndex, Int32 currentFuncIndex, FuncDef curFunc);
+
 	public: inline Value Execute(FuncDef entry);
 
 	public: inline Value Execute(FuncDef entry, UInt32 maxCycles);
@@ -433,19 +368,7 @@ struct VM {
 	private: inline void EnsureFrame(Int32 baseIndex, UInt16 neededRegs);
 
 	private: inline Value LookupVariable(Value varName);
-	private: Value FuncNamePrint();
-	private: Value FuncNameInput();
-	private: Value FuncNameVal();
-	private: Value FuncNameLen();
-	private: Value FuncNameRemove();
-	private: Value FuncNameFreeze();
-	private: Value FuncNameIsFrozen();
-	private: Value FuncNameFrozenCopy();
-	
-	
-	private: inline void DoIntrinsic(Value funcName, Int32 baseReg);
 }; // end of struct VM
-
 
 // INLINE METHODS
 
@@ -462,6 +385,8 @@ inline Int32 VM::callStackTop() { return get()->callStackTop; } // Index of next
 inline void VM::set_callStackTop(Int32 _v) { get()->callStackTop = _v; } // Index of next free call stack slot
 inline List<FuncDef> VM::functions() { return get()->functions; } // functions addressed by CALLF
 inline void VM::set_functions(List<FuncDef> _v) { get()->functions = _v; } // functions addressed by CALLF
+inline Dictionary<String, Value> VM::_intrinsics() { return get()->_intrinsics; } // intrinsic name -> FuncRef Value
+inline void VM::set__intrinsics(Dictionary<String, Value> _v) { get()->_intrinsics = _v; } // intrinsic name -> FuncRef Value
 inline Int32 VM::PC() { return get()->PC; }
 inline void VM::set_PC(Int32 _v) { get()->PC = _v; }
 inline Int32 VM::_currentFuncIndex() { return get()->_currentFuncIndex; }
@@ -490,30 +415,22 @@ inline Value VM::GetStackValue(Int32 index) { return get()->GetStackValue(index)
 inline Value VM::GetStackName(Int32 index) { return get()->GetStackName(index); }
 inline CallInfo VM::GetCallStackFrame(Int32 index) { return get()->GetCallStackFrame(index); }
 inline String VM::GetFunctionName(Int32 funcIndex) { return get()->GetFunctionName(funcIndex); }
-inline void VM::InitVM(Int32 stackSlots, Int32 callSlots) { return get()->InitVM(stackSlots, callSlots); }
+inline void VM::InitVM(Int32 stackSlots,Int32 callSlots) { return get()->InitVM(stackSlots, callSlots); }
 inline void VM::CleanupVM() { return get()->CleanupVM(); }
 inline void VM::RegisterFunction(FuncDef funcDef) { return get()->RegisterFunction(funcDef); }
 inline void VM::Reset(List<FuncDef> allFunctions) { return get()->Reset(allFunctions); }
 inline void VM::RaiseRuntimeError(String message) { return get()->RaiseRuntimeError(message); }
 inline bool VM::ReportRuntimeError() { return get()->ReportRuntimeError(); }
-inline Int32 VM::ProcessArguments(Int32 argCount, Int32 startPC, Int32 callerBase, Int32 calleeBase, FuncDef callee, List<UInt32> code) { return get()->ProcessArguments(argCount, startPC, callerBase, calleeBase, callee, code); }
-inline void VM::ApplyPendingContext(Int32 calleeBase, FuncDef callee) { return get()->ApplyPendingContext(calleeBase, callee); }
-inline void VM::SetupCallFrame(Int32 argCount, Int32 calleeBase, FuncDef callee) { return get()->SetupCallFrame(argCount, calleeBase, callee); }
+inline Int32 VM::ProcessArguments(Int32 argCount,Int32 startPC,Int32 callerBase,Int32 calleeBase,FuncDef callee,List<UInt32> code) { return get()->ProcessArguments(argCount, startPC, callerBase, calleeBase, callee, code); }
+inline void VM::ApplyPendingContext(Int32 calleeBase,FuncDef callee) { return get()->ApplyPendingContext(calleeBase, callee); }
+inline void VM::SetupCallFrame(Int32 argCount,Int32 calleeBase,FuncDef callee) { return get()->SetupCallFrame(argCount, calleeBase, callee); }
+inline Int32 VM::AutoInvokeFuncRef(Value funcRefVal,Int32 resultReg,Int32 returnPC,Int32 baseIndex,Int32 currentFuncIndex,FuncDef curFunc) { return get()->AutoInvokeFuncRef(funcRefVal, resultReg, returnPC, baseIndex, currentFuncIndex, curFunc); }
 inline Value VM::Execute(FuncDef entry) { return get()->Execute(entry); }
-inline Value VM::Execute(FuncDef entry, UInt32 maxCycles) { return get()->Execute(entry, maxCycles); }
+inline Value VM::Execute(FuncDef entry,UInt32 maxCycles) { return get()->Execute(entry, maxCycles); }
 inline Value VM::Run(UInt32 maxCycles) { return get()->Run(maxCycles); }
 inline Value VM::RunInner(UInt32 maxCycles) { return get()->RunInner(maxCycles); }
-inline void VM::EnsureFrame(Int32 baseIndex, UInt16 neededRegs) { return get()->EnsureFrame(baseIndex, neededRegs); }
+inline void VM::EnsureFrame(Int32 baseIndex,UInt16 neededRegs) { return get()->EnsureFrame(baseIndex, neededRegs); }
 inline Value VM::LookupVariable(Value varName) { return get()->LookupVariable(varName); }
-inline Value VM::FuncNamePrint() { return get()->FuncNamePrint; }
-inline Value VM::FuncNameInput() { return get()->FuncNameInput; }
-inline Value VM::FuncNameVal() { return get()->FuncNameVal; }
-inline Value VM::FuncNameLen() { return get()->FuncNameLen; }
-inline Value VM::FuncNameRemove() { return get()->FuncNameRemove; }
-inline Value VM::FuncNameFreeze() { return get()->FuncNameFreeze; }
-inline Value VM::FuncNameIsFrozen() { return get()->FuncNameIsFrozen; }
-inline Value VM::FuncNameFrozenCopy() { return get()->FuncNameFrozenCopy; }
-inline void VM::DoIntrinsic(Value funcName, Int32 baseReg) { return get()->DoIntrinsic(funcName, baseReg); }
 
 } // end of namespace MiniScript
 

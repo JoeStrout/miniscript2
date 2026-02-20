@@ -1637,6 +1637,44 @@ print f(5, 20)
 15
 25
 ================================
+==== Bare return (implictly returns null)
+================================
+foo = function; print "foo"; return; end function
+x = foo
+print (x == null)
+--------------------------------
+foo
+1
+================================
+==== No return statement (implictly returns null)
+================================
+foo = function; print "foo"; end function
+x = foo
+print (x == null)
+--------------------------------
+foo
+1
+================================
+==== Recursive function
+================================
+fib = function(n)
+	if n < 3 then return 1
+	return fib(n-1) + fib(n-2)
+end function
+print fib(6)
+--------------------------------
+8
+================================
+==== Function reference (suppress invocation)
+================================
+f = function(times=3); print "Spam" * times; end function
+g = @f
+f
+g 5
+--------------------------------
+SpamSpamSpam
+SpamSpamSpamSpamSpam
+================================
 ==== Default string parameter
 ================================
 f = function(s="hi")

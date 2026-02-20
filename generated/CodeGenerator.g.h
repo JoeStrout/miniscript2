@@ -58,6 +58,8 @@ struct IndexParselet;
 class IndexParseletStorage;
 struct MemberParselet;
 class MemberParseletStorage;
+struct Intrinsic;
+class IntrinsicStorage;
 struct Parser;
 class ParserStorage;
 struct FuncDef;
@@ -116,75 +118,6 @@ struct ReturnNode;
 class ReturnNodeStorage;
 
 // DECLARATIONS
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorStorage>, public IASTVisitor {
 	friend struct CodeGenerator;
@@ -322,8 +255,6 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 
 	public: Int32 Visit(ReturnNode node);
 }; // end of class CodeGeneratorStorage
-
-
 
 // Compiles AST nodes to bytecode
 struct CodeGenerator : public IASTVisitor {
@@ -483,7 +414,6 @@ struct CodeGenerator : public IASTVisitor {
 	public: inline Int32 Visit(ReturnNode node);
 }; // end of struct CodeGenerator
 
-
 // INLINE METHODS
 
 inline CodeGeneratorStorage* CodeGenerator::get() const { return static_cast<CodeGeneratorStorage*>(storage.get()); }
@@ -511,31 +441,31 @@ inline List<FuncDef> CodeGenerator::GetFunctions() { return get()->GetFunctions(
 inline Int32 CodeGenerator::AllocReg() { return get()->AllocReg(); }
 inline void CodeGenerator::FreeReg(Int32 reg) { return get()->FreeReg(reg); }
 inline Int32 CodeGenerator::AllocConsecutiveRegs(Int32 count) { return get()->AllocConsecutiveRegs(count); }
-inline Int32 CodeGenerator::CompileInto(ASTNode node, Int32 targetReg) { return get()->CompileInto(node, targetReg); }
+inline Int32 CodeGenerator::CompileInto(ASTNode node,Int32 targetReg) { return get()->CompileInto(node, targetReg); }
 inline Int32 CodeGenerator::GetTargetOrAlloc() { return get()->GetTargetOrAlloc(); }
 inline Int32 CodeGenerator::Compile(ASTNode ast) { return get()->Compile(ast); }
 inline void CodeGenerator::ResetTempRegisters() { return get()->ResetTempRegisters(); }
 inline void CodeGenerator::CompileBody(List<ASTNode> body) { return get()->CompileBody(body); }
-inline FuncDef CodeGenerator::CompileFunction(ASTNode ast, String funcName) { return get()->CompileFunction(ast, funcName); }
-inline FuncDef CodeGenerator::CompileProgram(List<ASTNode> statements, String funcName) { return get()->CompileProgram(statements, funcName); }
+inline FuncDef CodeGenerator::CompileFunction(ASTNode ast,String funcName) { return get()->CompileFunction(ast, funcName); }
+inline FuncDef CodeGenerator::CompileProgram(List<ASTNode> statements,String funcName) { return get()->CompileProgram(statements, funcName); }
 inline Int32 CodeGenerator::Visit(NumberNode node) { return get()->Visit(node); }
 inline Int32 CodeGenerator::Visit(StringNode node) { return get()->Visit(node); }
-inline Int32 CodeGenerator::VisitIdentifier(IdentifierNode node, bool addressOf) { return get()->VisitIdentifier(node, addressOf); }
+inline Int32 CodeGenerator::VisitIdentifier(IdentifierNode node,bool addressOf) { return get()->VisitIdentifier(node, addressOf); }
 inline Int32 CodeGenerator::Visit(IdentifierNode node) { return get()->Visit(node); }
 inline Int32 CodeGenerator::Visit(AssignmentNode node) { return get()->Visit(node); }
 inline Int32 CodeGenerator::Visit(IndexedAssignmentNode node) { return get()->Visit(node); }
 inline Int32 CodeGenerator::Visit(UnaryOpNode node) { return get()->Visit(node); }
 inline Int32 CodeGenerator::Visit(BinaryOpNode node) { return get()->Visit(node); }
 inline Int32 CodeGenerator::Visit(CallNode node) { return get()->Visit(node); }
-inline Int32 CodeGenerator::CompileUserCall(CallNode node, Int32 funcVarReg, Int32 explicitTarget) { return get()->CompileUserCall(node, funcVarReg, explicitTarget); }
+inline Int32 CodeGenerator::CompileUserCall(CallNode node,Int32 funcVarReg,Int32 explicitTarget) { return get()->CompileUserCall(node, funcVarReg, explicitTarget); }
 inline Int32 CodeGenerator::Visit(GroupNode node) { return get()->Visit(node); }
 inline Int32 CodeGenerator::Visit(ListNode node) { return get()->Visit(node); }
 inline Int32 CodeGenerator::Visit(MapNode node) { return get()->Visit(node); }
 inline Int32 CodeGenerator::Visit(IndexNode node) { return get()->Visit(node); }
-inline Int32 CodeGenerator::VisitIndex(IndexNode node, bool addressOf) { return get()->VisitIndex(node, addressOf); }
+inline Int32 CodeGenerator::VisitIndex(IndexNode node,bool addressOf) { return get()->VisitIndex(node, addressOf); }
 inline Int32 CodeGenerator::Visit(SliceNode node) { return get()->Visit(node); }
 inline Int32 CodeGenerator::Visit(MemberNode node) { return get()->Visit(node); }
-inline Int32 CodeGenerator::VisitMember(MemberNode node, bool addressOf) { return get()->VisitMember(node, addressOf); }
+inline Int32 CodeGenerator::VisitMember(MemberNode node,bool addressOf) { return get()->VisitMember(node, addressOf); }
 inline Int32 CodeGenerator::Visit(ExprCallNode node) { return get()->Visit(node); }
 inline Int32 CodeGenerator::Visit(MethodCallNode node) { return get()->Visit(node); }
 inline Int32 CodeGenerator::Visit(WhileNode node) { return get()->Visit(node); }
@@ -548,7 +478,7 @@ inline Int32 CodeGenerator::GetSelfReg() { return get()->GetSelfReg(); }
 inline Int32 CodeGenerator::GetSuperReg() { return get()->GetSuperReg(); }
 inline Int32 CodeGenerator::Visit(SelfNode node) { return get()->Visit(node); }
 inline Int32 CodeGenerator::Visit(SuperNode node) { return get()->Visit(node); }
-inline Int32 CodeGenerator::EmitMethodCall(Int32 receiverReg, String methodKey, List<ASTNode> arguments, bool preserveSelf) { return get()->EmitMethodCall(receiverReg, methodKey, arguments, preserveSelf); }
+inline Int32 CodeGenerator::EmitMethodCall(Int32 receiverReg,String methodKey,List<ASTNode> arguments,bool preserveSelf) { return get()->EmitMethodCall(receiverReg, methodKey, arguments, preserveSelf); }
 inline Int32 CodeGenerator::Visit(ReturnNode node) { return get()->Visit(node); }
 
 } // end of namespace MiniScript

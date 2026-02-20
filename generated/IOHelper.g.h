@@ -6,7 +6,6 @@
 // IOHelper
 //	This is a simple wrapper for console output on each platform.
 
-
 namespace MiniScript {
 
 // FORWARD DECLARATIONS
@@ -55,6 +54,8 @@ struct IndexParselet;
 class IndexParseletStorage;
 struct MemberParselet;
 class MemberParseletStorage;
+struct Intrinsic;
+class IntrinsicStorage;
 struct Parser;
 class ParserStorage;
 struct FuncDef;
@@ -114,42 +115,6 @@ class ReturnNodeStorage;
 
 // DECLARATIONS
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 class IOHelper {
 
 	public: static void Print(String message);
@@ -159,40 +124,6 @@ class IOHelper {
 	public: static List<String> ReadFile(String filePath);
 	
 }; // end of struct IOHelper
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 // INLINE METHODS
 

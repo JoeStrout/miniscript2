@@ -459,46 +459,23 @@ public class CodeGenerator : IASTVisitor {
 		Int32 explicitTarget = _targetReg;
 		_targetReg = -1;
 
-		Int32 argCount = node.Arguments.Count;
-
-		// Check if the function is a known variable (user-defined function)
+		// Check if the function is a known local variable
 		Int32 funcVarReg;
 		if (_variableRegs.TryGetValue(node.Function, out funcVarReg)) {
-			// User-defined function call: ARGBLK + ARGs + CALL_rA_rB_rC
+			// Known local: ARGBLK + ARGs + CALL_rA_rB_rC
 			return CompileUserCall(node, funcVarReg, explicitTarget);
 		}
 
-		// Intrinsic function call: CALLFN
-		// Arguments loaded into consecutive registers starting at baseReg
-		// Return value placed in baseReg after the call
+		// Not a known local — resolve at runtime via LOADV (outer/global/intrinsic).
+		// We use LOADV (not LOADC) to get the funcref without auto-invoking it.
+		Int32 funcReg = AllocReg();
+		Int32 nameIdx = _emitter.AddConstant(make_string(node.Function));
+		_emitter.EmitABC(Opcode.LOADV_rA_rB_kC, funcReg, 0, nameIdx,
+			$"r{funcReg} = @{node.Function} (runtime lookup)");
 
-		// Allocate consecutive registers for arguments
-		// The first register (baseReg) will also hold the return value
-		Int32 baseReg = (argCount > 0) ? AllocConsecutiveRegs(argCount) : AllocReg();
-
-		// Compile each argument directly into its target register
-		for (Int32 i = 0; i < argCount; i++) {
-			CompileInto(node.Arguments[i], baseReg + i);
-		}
-
-		// Emit the function call
-		// CALLFN_iA_kBC: A = base register, BC = constant index for function name
-		Int32 funcNameIdx = _emitter.AddConstant(make_string(node.Function));
-		_emitter.EmitAB(Opcode.CALLFN_iA_kBC, baseReg, funcNameIdx, $"call {node.Function}");
-
-		// Free any extra argument registers (keeping baseReg for return value)
-		for (Int32 i = 1; i < argCount; i++) {
-			FreeReg(baseReg + i);
-		}
-
-		// If an explicit target was requested and it's different, move result there
-		if (explicitTarget >= 0 && explicitTarget != baseReg) {
-			_emitter.EmitABC(Opcode.LOAD_rA_rB, explicitTarget, baseReg, 0, $"move Call result to r{explicitTarget}");
-			FreeReg(baseReg);
-			return explicitTarget;
-		}
-
-		return baseReg;
+		Int32 result = CompileUserCall(node, funcReg, explicitTarget);
+		FreeReg(funcReg);
+		return result;
 	}
 
 	// Compile a call to a user-defined function (funcref in a register)

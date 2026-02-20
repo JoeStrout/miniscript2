@@ -7,8 +7,7 @@
 
 namespace MiniScript {
 
-
-Token::Token(TokenType type, String text, Int32 line, Int32 column) {
+Token::Token(TokenType type,String text,Int32 line,Int32 column) {
 	Type = type;
 	Text = text;
 	IntValue = 0;
@@ -17,7 +16,6 @@ Token::Token(TokenType type, String text, Int32 line, Int32 column) {
 	Column = column;
 	AfterSpace = Boolean(false);
 }
-
 
 Lexer::Lexer(String source) {
 	_input = source;
@@ -261,6 +259,5 @@ Token Lexer::NextToken() {
 void Lexer::Error(String message) {
 	Errors.Add(StringUtils::Format("Compiler Error: {0} [line {1}]", message, _line));
 }
-
 
 } // end of namespace MiniScript

@@ -87,7 +87,7 @@ Our internal opcode names include a verb/mnemonic, and a description of how the 
 | IFNE_rA_iBC | if R[A] != BC is **false** then PC += 1 |
 | NEXT_rA_rB | R[A] += 1; if R[A] < len(R[B]) then PC += 1 |
 | CALLF_iA_iBC | call funcs[BC] with parameters/return value at register A |
-| CALLFN_iA_kBC | call function named constants[BC] with params/return at rA |
+| CALLFN_iA_kBC | ~~call function named constants[BC] with params/return at rA~~ **(DEPRECATED)** — intrinsics are now callable FuncRefs resolved via LOADV + CALL |
 | CALL_rA_rB_rC | invoke FuncRef in R[C], with stack frame at R[B], result to R[A] |
 | RETURN | return with result in R[0] |
 | NEW_rA_rB | R[A] := new map with __isa set to R[B] |

@@ -58,6 +58,8 @@ struct IndexParselet;
 class IndexParseletStorage;
 struct MemberParselet;
 class MemberParseletStorage;
+struct Intrinsic;
+class IntrinsicStorage;
 struct Parser;
 class ParserStorage;
 struct FuncDef;
@@ -117,22 +119,6 @@ class ReturnNodeStorage;
 
 // DECLARATIONS
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 // IParser interface: defines the methods that parselets need from the parser.
 // This breaks the circular dependency between Parser and Parselet.
 class IParser {
@@ -146,60 +132,6 @@ class IParser {
 	virtual void ReportError(String message) = 0;
 	virtual Boolean CanStartExpression(TokenType type) = 0;
 }; // end of interface IParser
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 // Base class for all parselets
 struct Parselet {
@@ -224,7 +156,6 @@ struct Parselet {
 
 template<typename WrapperType, typename StorageType> WrapperType As(Parselet inst);
 
-
 // PrefixParselet: abstract base for parselets that handle tokens
 // starting an expression (numbers, identifiers, unary operators).
 struct PrefixParselet : public Parselet {
@@ -238,7 +169,6 @@ struct PrefixParselet : public Parselet {
 }; // end of struct PrefixParselet
 
 template<typename WrapperType, typename StorageType> WrapperType As(PrefixParselet inst);
-
 
 // InfixParselet: abstract base for parselets that handle infix operators.
 struct InfixParselet : public Parselet {
@@ -359,7 +289,6 @@ class MemberParseletStorage : public InfixParseletStorage {
 	public: ASTNode Parse(IParser& parser, ASTNode left, Token token);
 }; // end of class MemberParseletStorage
 
-
 // NumberParselet: handles number literals.
 struct NumberParselet : public PrefixParselet {
 	friend class NumberParseletStorage;
@@ -373,7 +302,6 @@ struct NumberParselet : public PrefixParselet {
 	}
 	public: ASTNode Parse(IParser& parser, Token token) { return get()->Parse(parser, token); }
 }; // end of struct NumberParselet
-
 
 // SelfParselet: handles the 'self' keyword.
 struct SelfParselet : public PrefixParselet {
@@ -389,7 +317,6 @@ struct SelfParselet : public PrefixParselet {
 	public: ASTNode Parse(IParser& parser, Token token) { return get()->Parse(parser, token); }
 }; // end of struct SelfParselet
 
-
 // SuperParselet: handles the 'super' keyword.
 struct SuperParselet : public PrefixParselet {
 	friend class SuperParseletStorage;
@@ -404,7 +331,6 @@ struct SuperParselet : public PrefixParselet {
 	public: ASTNode Parse(IParser& parser, Token token) { return get()->Parse(parser, token); }
 }; // end of struct SuperParselet
 
-
 // StringParselet: handles string literals.
 struct StringParselet : public PrefixParselet {
 	friend class StringParseletStorage;
@@ -418,7 +344,6 @@ struct StringParselet : public PrefixParselet {
 	}
 	public: ASTNode Parse(IParser& parser, Token token) { return get()->Parse(parser, token); }
 }; // end of struct StringParselet
-
 
 // IdentifierParselet: handles identifiers, which can be:
 // - Variable lookups
@@ -436,7 +361,6 @@ struct IdentifierParselet : public PrefixParselet {
 	}
 	public: ASTNode Parse(IParser& parser, Token token) { return get()->Parse(parser, token); }
 }; // end of struct IdentifierParselet
-
 
 // UnaryOpParselet: handles prefix unary operators like '-' and 'not'.
 struct UnaryOpParselet : public PrefixParselet {
@@ -456,7 +380,6 @@ struct UnaryOpParselet : public PrefixParselet {
 	public: ASTNode Parse(IParser& parser, Token token) { return get()->Parse(parser, token); }
 }; // end of struct UnaryOpParselet
 
-
 // GroupParselet: handles parenthesized expressions like '(2 + 3)'.
 struct GroupParselet : public PrefixParselet {
 	friend class GroupParseletStorage;
@@ -470,7 +393,6 @@ struct GroupParselet : public PrefixParselet {
 	}
 	public: ASTNode Parse(IParser& parser, Token token) { return get()->Parse(parser, token); }
 }; // end of struct GroupParselet
-
 
 // ListParselet: handles list literals like '[1, 2, 3]'.
 struct ListParselet : public PrefixParselet {
@@ -486,7 +408,6 @@ struct ListParselet : public PrefixParselet {
 	public: ASTNode Parse(IParser& parser, Token token) { return get()->Parse(parser, token); }
 }; // end of struct ListParselet
 
-
 // MapParselet: handles map literals like '{"a": 1}'.
 struct MapParselet : public PrefixParselet {
 	friend class MapParseletStorage;
@@ -500,7 +421,6 @@ struct MapParselet : public PrefixParselet {
 	}
 	public: ASTNode Parse(IParser& parser, Token token) { return get()->Parse(parser, token); }
 }; // end of struct MapParselet
-
 
 // BinaryOpParselet: handles binary operators like '+', '-', '*', etc.
 struct BinaryOpParselet : public InfixParselet {
@@ -526,7 +446,6 @@ struct BinaryOpParselet : public InfixParselet {
 	public: ASTNode Parse(IParser& parser, ASTNode left, Token token) { return get()->Parse(parser, left, token); }
 }; // end of struct BinaryOpParselet
 
-
 // CallParselet: handles function calls like 'foo(x, y)' and method calls like 'obj.method(x)'.
 struct CallParselet : public InfixParselet {
 	friend class CallParseletStorage;
@@ -541,7 +460,6 @@ struct CallParselet : public InfixParselet {
 
 	public: ASTNode Parse(IParser& parser, ASTNode left, Token token) { return get()->Parse(parser, left, token); }
 }; // end of struct CallParselet
-
 
 // IndexParselet: handles index access like 'list[0]' or 'map["key"]'.
 struct IndexParselet : public InfixParselet {
@@ -558,7 +476,6 @@ struct IndexParselet : public InfixParselet {
 	public: ASTNode Parse(IParser& parser, ASTNode left, Token token) { return get()->Parse(parser, left, token); }
 }; // end of struct IndexParselet
 
-
 // MemberParselet: handles member access like 'obj.field'.
 struct MemberParselet : public InfixParselet {
 	friend class MemberParseletStorage;
@@ -574,7 +491,6 @@ struct MemberParselet : public InfixParselet {
 	public: ASTNode Parse(IParser& parser, ASTNode left, Token token) { return get()->Parse(parser, left, token); }
 }; // end of struct MemberParselet
 
-
 // INLINE METHODS
 
 inline ParseletStorage* Parselet::get() const { return static_cast<ParseletStorage*>(storage.get()); }
@@ -583,11 +499,11 @@ inline void Parselet::set_Prec(Precedence _v) { get()->Prec = _v; }
 
 inline PrefixParselet::PrefixParselet(std::shared_ptr<PrefixParseletStorage> stor) : Parselet(stor) {}
 inline PrefixParseletStorage* PrefixParselet::get() const { return static_cast<PrefixParseletStorage*>(storage.get()); }
-inline ASTNode PrefixParselet::Parse(IParser& parser, Token token) { return get()->Parse(parser, token); }
+inline ASTNode PrefixParselet::Parse(IParser& parser,Token token) { return get()->Parse(parser, token); }
 
 inline InfixParselet::InfixParselet(std::shared_ptr<InfixParseletStorage> stor) : Parselet(stor) {}
 inline InfixParseletStorage* InfixParselet::get() const { return static_cast<InfixParseletStorage*>(storage.get()); }
-inline ASTNode InfixParselet::Parse(IParser& parser, ASTNode left, Token token) { return get()->Parse(parser, left, token); }
+inline ASTNode InfixParselet::Parse(IParser& parser,ASTNode left,Token token) { return get()->Parse(parser, left, token); }
 
 inline NumberParselet::NumberParselet(std::shared_ptr<NumberParseletStorage> stor) : PrefixParselet(stor) {}
 inline NumberParseletStorage* NumberParselet::get() const { return static_cast<NumberParseletStorage*>(storage.get()); }

@@ -7,7 +7,6 @@
 
 namespace MiniScript {
 
-
 String Disassembler::AssemOp(Opcode opcode) {
 	switch (opcode) {
 		case Opcode::NOOP:          return "NOOP";
@@ -268,7 +267,7 @@ String Disassembler::ToString(UInt32 instruction) {
 			return  String::New("??? ") + StringUtils::ToHex(instruction);
 	}
 }
-void Disassembler::Disassemble(FuncDef funcDef, List<String> output, Boolean detailed) {
+void Disassembler::Disassemble(FuncDef funcDef,List<String> output,Boolean detailed) {
 	output.Add(StringUtils::Format("Local var registers: {0}", funcDef.MaxRegs()));
 	output.Add(StringUtils::Format("Constants ({0}):", funcDef.Constants().Count()));
 	for (Int32 i = 0; i < funcDef.Constants().Count(); i++) {
@@ -286,7 +285,7 @@ void Disassembler::Disassemble(FuncDef funcDef, List<String> output, Boolean det
 		output.Add(s);
 	}
 }
-List<String> Disassembler::Disassemble(List<FuncDef> functions, Boolean detailed) {
+List<String> Disassembler::Disassemble(List<FuncDef> functions,Boolean detailed) {
 	List<String> result =  List<String>::New();
 	for (Int32 i = 0; i < functions.Count(); i++) {
 		result.Add(StringUtils::Format("{0} [function {1}]:", functions[i].ToString(), i));
@@ -295,6 +294,5 @@ List<String> Disassembler::Disassemble(List<FuncDef> functions, Boolean detailed
 	}
 	return result;
 }
-
 
 } // end of namespace MiniScript

@@ -8,7 +8,6 @@
 
 namespace MiniScript {
 
-
 ParserStorage::ParserStorage() {
 	Errors = ErrorPool();
 	_prefixParselets =  Dictionary<TokenType, PrefixParselet>::New();
@@ -61,10 +60,10 @@ void ParserStorage::RegisterParselets() {
 	RegisterInfix(TokenType::LBRACKET,  IndexParselet::New());
 	RegisterInfix(TokenType::DOT,  MemberParselet::New());
 }
-void ParserStorage::RegisterPrefix(TokenType type, PrefixParselet parselet) {
+void ParserStorage::RegisterPrefix(TokenType type,PrefixParselet parselet) {
 	_prefixParselets[type] = parselet;
 }
-void ParserStorage::RegisterInfix(TokenType type, InfixParselet parselet) {
+void ParserStorage::RegisterInfix(TokenType type,InfixParselet parselet) {
 	_infixParselets[type] = parselet;
 }
 void ParserStorage::Init(String source) {
@@ -142,7 +141,7 @@ Token ParserStorage::Consume() {
 	Advance();
 	return tok;
 }
-Token ParserStorage::Expect(TokenType type, String errorMessage) {
+Token ParserStorage::Expect(TokenType type,String errorMessage) {
 	if (_current.Type == type) {
 		Token tok = _current;
 		Advance();
@@ -359,12 +358,12 @@ ASTNode ParserStorage::ParseSimpleStatement() {
 	}
 	return expr2;
 }
-Boolean ParserStorage::IsBlockTerminator(TokenType t1, TokenType t2) {
+Boolean ParserStorage::IsBlockTerminator(TokenType t1,TokenType t2) {
 	return _current.Type == TokenType::END_OF_INPUT
 		|| _current.Type == t1
 		|| _current.Type == t2;
 }
-List<ASTNode> ParserStorage::ParseBlock(TokenType terminator1, TokenType terminator2) {
+List<ASTNode> ParserStorage::ParseBlock(TokenType terminator1,TokenType terminator2) {
 	List<ASTNode> body =  List<ASTNode>::New();
 
 	while (Boolean(true)) {
@@ -396,7 +395,7 @@ List<ASTNode> ParserStorage::ParseBlock(TokenType terminator1, TokenType termina
 
 	return body;
 }
-void ParserStorage::RequireEndKeyword(TokenType keyword, String keywordName) {
+void ParserStorage::RequireEndKeyword(TokenType keyword,String keywordName) {
 	if (_current.Type != TokenType::END) {
 		ReportError(Interp("Expected 'end {}'", keywordName));
 		return;
@@ -666,6 +665,5 @@ Boolean ParserStorage::HadError() {
 List<String> ParserStorage::GetErrors() {
 	return Errors.GetErrors();
 }
-
 
 } // end of namespace MiniScript

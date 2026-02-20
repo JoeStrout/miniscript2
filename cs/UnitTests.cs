@@ -320,7 +320,7 @@ public static class UnitTests {
 	}
 
 	public static Boolean TestParser() {
-		IOHelper.Print("  Testing parser...");
+		//IOHelper.Print("  Testing parser...");
 		Parser parser = new Parser();
 		Boolean ok = true;
 
@@ -414,10 +414,6 @@ public static class UnitTests {
 		ok = ok && CheckParse(parser, "x = 5", "x = 5");
 		ok = ok && CheckParse(parser, "y = 2 + 3", "y = 5");
 
-		if (ok) {
-			IOHelper.Print("  All parser tests passed.");
-		}
-
 		return ok;
 	}
 
@@ -491,7 +487,7 @@ public static class UnitTests {
 	}
 
 	public static Boolean TestCodeGenerator() {
-		IOHelper.Print("  Testing code generator...");
+		//IOHelper.Print("  Testing code generator...");
 		Parser parser = new Parser();
 		Boolean ok = true;
 
@@ -621,15 +617,11 @@ public static class UnitTests {
 		// LOAD r2,1; LOAD r3,2; ADD r1,r2,r3; LOAD r3,3; LOAD r4,4; ADD r2,r3,r4; ADD r0,r1,r2; RETURN
 		ok = ok && CheckBytecodeGen(parser, "(1 + 2) + (3 + 4)", 8, 0);
 
-		if (ok) {
-			IOHelper.Print("  All code generator tests passed.");
-		}
-
 		return ok;
 	}
 
 	public static Boolean TestEmitPatternValidation() {
-		IOHelper.Print("  Testing emit pattern validation...");
+		//IOHelper.Print("  Testing emit pattern validation...");
 		Boolean ok = true;
 
 		// Test that GetEmitPattern correctly identifies patterns
@@ -652,14 +644,11 @@ public static class UnitTests {
 		ok = ok && Assert(BytecodeUtil.GetEmitPattern(Opcode.LT_rA_rB_iC) == EmitPattern.ABC,
 			"LT_rA_rB_iC should be EmitPattern.ABC");
 
-		if (ok) {
-			IOHelper.Print("  All emit pattern validation tests passed.");
-		}
 		return ok;
 	}
 
 	public static Boolean TestLexer() {
-		IOHelper.Print("  Testing lexer...");
+		//IOHelper.Print("  Testing lexer...");
 		Boolean ok = true;
 
 		// Helper to check a single token
@@ -751,9 +740,6 @@ public static class UnitTests {
 		tok = lexer.NextToken();
 		ok = ok && Assert(tok.Type == TokenType.NUMBER, "Expected NUMBER 2");
 
-		if (ok) {
-			IOHelper.Print("  All lexer tests passed.");
-		}
 		return ok;
 	}
 

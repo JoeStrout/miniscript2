@@ -6,7 +6,6 @@
 // This module gathers together all the unit tests for this prototype.
 // Each test returns true on success, false on failure.
 
-
 namespace MiniScript {
 
 // FORWARD DECLARATIONS
@@ -55,6 +54,8 @@ struct IndexParselet;
 class IndexParseletStorage;
 struct MemberParselet;
 class MemberParseletStorage;
+struct Intrinsic;
+class IntrinsicStorage;
 struct Parser;
 class ParserStorage;
 struct FuncDef;
@@ -114,20 +115,6 @@ class ReturnNodeStorage;
 
 // DECLARATIONS
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 class UnitTests {
 
 	public: static Boolean Assert(bool condition, String message);
@@ -167,62 +154,6 @@ class UnitTests {
 
 	public: static Boolean RunAll();
 }; // end of struct UnitTests
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 // INLINE METHODS
 

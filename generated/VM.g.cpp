@@ -6,6 +6,7 @@
 #include "value_list.h"
 #include "value_string.h"
 #include "Bytecode.g.h"
+#include "Intrinsic.g.h"
 #include "IOHelper.g.h"
 #include "Disassembler.g.h"
 #include "StringUtils.g.h"
@@ -14,8 +15,7 @@
 
 namespace MiniScript {
 
-
-CallInfo::CallInfo(Int32 returnPC, Int32 returnBase, Int32 returnFuncIndex, Int32 copyToReg) {
+CallInfo::CallInfo(Int32 returnPC,Int32 returnBase,Int32 returnFuncIndex,Int32 copyToReg) {
 	ReturnPC = returnPC;
 	ReturnBase = returnBase;
 	ReturnFuncIndex = returnFuncIndex;
@@ -23,7 +23,7 @@ CallInfo::CallInfo(Int32 returnPC, Int32 returnBase, Int32 returnFuncIndex, Int3
 	LocalVarMap = make_null();
 	OuterVarMap = val_null;
 }
-CallInfo::CallInfo(Int32 returnPC, Int32 returnBase, Int32 returnFuncIndex, Int32 copyToReg, Value outerVars) {
+CallInfo::CallInfo(Int32 returnPC,Int32 returnBase,Int32 returnFuncIndex,Int32 copyToReg,Value outerVars) {
 	ReturnPC = returnPC;
 	ReturnBase = returnBase;
 	ReturnFuncIndex = returnFuncIndex;
@@ -31,7 +31,7 @@ CallInfo::CallInfo(Int32 returnPC, Int32 returnBase, Int32 returnFuncIndex, Int3
 	LocalVarMap = make_null();
 	OuterVarMap = outerVars;
 }
-Value CallInfo::GetLocalVarMap(List<Value> registers, List<Value> names, int baseIdx, int regCount) {
+Value CallInfo::GetLocalVarMap(List<Value> registers,List<Value> names,int baseIdx,int regCount) {
 	if (is_null(LocalVarMap)) {
 		// Create a new VarMap with references to VM's stack and names arrays
 		if (regCount == 0) {
@@ -43,7 +43,6 @@ Value CallInfo::GetLocalVarMap(List<Value> registers, List<Value> names, int bas
 	}
 	return LocalVarMap;
 }
-
 
 	std::function<void(const String&)> VMStorage::sPrintCallback;
 	thread_local VM VMStorage::_activeVM;
@@ -72,10 +71,10 @@ String VMStorage::GetFunctionName(Int32 funcIndex) {
 	if (funcIndex < 0 || funcIndex >= functions.Count()) return "???";
 	return functions[funcIndex].Name();
 }
-VMStorage::VMStorage(Int32 stackSlots, Int32 callSlots) {
+VMStorage::VMStorage(Int32 stackSlots,Int32 callSlots) {
 	InitVM(stackSlots, callSlots);
 }
-void VMStorage::InitVM(Int32 stackSlots, Int32 callSlots) {
+void VMStorage::InitVM(Int32 stackSlots,Int32 callSlots) {
 	stack =  List<Value>::New();
 	names =  List<Value>::New();
 	callStack =  List<CallInfo>::New();
@@ -128,6 +127,9 @@ void VMStorage::Reset(List<FuncDef> allFunctions) {
 		if (functions[i].Name() == "@main") mainFunc = functions[i];
 	}
 
+	_intrinsics =  Dictionary<String, Value>::New();
+	Intrinsic::RegisterAll(functions, _intrinsics);
+
 	if (!mainFunc) {
 		IOHelper::Print("ERROR: No @main function found in VM.Reset");
 		return;
@@ -176,7 +178,7 @@ bool VMStorage::ReportRuntimeError() {
 	  RuntimeError, CurrentFunction.Name(), PC - 1));
 	return Boolean(true);
 }
-Int32 VMStorage::ProcessArguments(Int32 argCount, Int32 startPC, Int32 callerBase, Int32 calleeBase, FuncDef callee, List<UInt32> code) {
+Int32 VMStorage::ProcessArguments(Int32 argCount,Int32 startPC,Int32 callerBase,Int32 calleeBase,FuncDef callee,List<UInt32> code) {
 	Int32 paramCount = callee.ParamNames().Count();
 
 	// Step 1: Validate argument count
@@ -221,7 +223,7 @@ Int32 VMStorage::ProcessArguments(Int32 argCount, Int32 startPC, Int32 callerBas
 	GC_POP_SCOPE();
 	return currentPC + 1; // Return PC after the CALL instruction
 }
-void VMStorage::ApplyPendingContext(Int32 calleeBase, FuncDef callee) {
+void VMStorage::ApplyPendingContext(Int32 calleeBase,FuncDef callee) {
 	if (!hasPendingContext) return;
 	if (callee.SelfReg() >= 0) {
 		stack[calleeBase + callee.SelfReg()] = pendingSelf;
@@ -235,7 +237,7 @@ void VMStorage::ApplyPendingContext(Int32 calleeBase, FuncDef callee) {
 	pendingSuper = make_null();
 	hasPendingContext = Boolean(false);
 }
-void VMStorage::SetupCallFrame(Int32 argCount, Int32 calleeBase, FuncDef callee) {
+void VMStorage::SetupCallFrame(Int32 argCount,Int32 calleeBase,FuncDef callee) {
 	Int32 paramCount = callee.ParamNames().Count();
 
 	// Step 4: Set up remaining parameters with default values
@@ -255,10 +257,47 @@ void VMStorage::SetupCallFrame(Int32 argCount, Int32 calleeBase, FuncDef callee)
 
 	// Step 6 is handled by the caller (pushing CallInfo, switching frame, etc.)
 }
+Int32 VMStorage::AutoInvokeFuncRef(Value funcRefVal,Int32 resultReg,Int32 returnPC,Int32 baseIndex,Int32 currentFuncIndex,FuncDef curFunc) {
+	Int32 funcIndex = funcref_index(funcRefVal);
+	if (funcIndex < 0 || funcIndex >= functions.Count()) {
+		RaiseRuntimeError("Auto-invoke: Invalid function index");
+		return -1;
+	}
+
+	FuncDef callee = functions[funcIndex];
+	GC_PUSH_SCOPE();
+	Value outerVars = funcref_outer_vars(funcRefVal); GC_PROTECT(&outerVars);
+
+	Int32 calleeBase = baseIndex + curFunc.MaxRegs();
+
+	// Native intrinsic: invoke callback directly, no frame push
+	if (!IsNull(callee.NativeCallback())) {
+		EnsureFrame(calleeBase, callee.MaxRegs());
+		SetupCallFrame(0, calleeBase, callee);
+		stack[baseIndex + resultReg] = callee.NativeCallback()(stack, calleeBase, 0);
+		GC_POP_SCOPE();
+		return -1;
+	}
+
+	// User function: push CallInfo and set up callee frame
+	if (callStackTop >= callStack.Count()) {
+		RaiseRuntimeError("Call stack overflow");
+		GC_POP_SCOPE();
+		return -1;
+	}
+	callStack[callStackTop] = CallInfo(returnPC, baseIndex, currentFuncIndex, resultReg, outerVars);
+	callStackTop++;
+
+	SetupCallFrame(0, calleeBase, callee);
+	ApplyPendingContext(calleeBase, callee);
+	EnsureFrame(calleeBase, callee.MaxRegs());
+	GC_POP_SCOPE();
+	return funcIndex;
+}
 Value VMStorage::Execute(FuncDef entry) {
 	return Execute(entry, 0);
 }
-Value VMStorage::Execute(FuncDef entry, UInt32 maxCycles) {
+Value VMStorage::Execute(FuncDef entry,UInt32 maxCycles) {
 	// Legacy method - convert to Reset + Run pattern
 	List<FuncDef> singleFunc =  List<FuncDef>::New();
 	singleFunc.Add(entry);
@@ -442,39 +481,18 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 					// Simple case: value is not a funcref, so just copy it
 					localStack[a] = val;
 				} else {
-					// Harder case: value is a funcref, which we must invoke,
-					// and then copy the result into localStack[a] upon return.
-					Int32 funcIndex = funcref_index(val);
-					if (funcIndex < 0 || funcIndex >= functions.Count()) {
-						IOHelper::Print("LOADC to invalid func");
-						GC_POP_SCOPE();
-						return make_null();
+					// Value is a funcref — auto-invoke with zero args
+					Int32 calleeIdx = AutoInvokeFuncRef(val, a, pc, baseIndex, currentFuncIndex, curFunc);
+					if (calleeIdx >= 0) {
+						// Frame was pushed — switch to callee
+						baseIndex += curFunc.MaxRegs();
+						pc = 0;
+						currentFuncIndex = calleeIdx;
+						curFunc = functions[calleeIdx];
+						codeCount = curFunc.Code().Count();
+						curCode = &curFunc.Code()[0];
+						curConstants = &curFunc.Constants()[0];
 					}
-
-					FuncDef callee = functions[funcIndex];
-					outerVars = funcref_outer_vars(val);
-
-					// Push return info with closure context
-					if (callStackTop >= callStack.Count()) {
-						IOHelper::Print("Call stack overflow");
-						GC_POP_SCOPE();
-						return make_null();
-					}
-					callStack[callStackTop] = CallInfo(pc, baseIndex, currentFuncIndex, a, outerVars);
-					callStackTop++;
-
-					// Switch to callee frame: base slides to argument window
-					baseIndex += curFunc.MaxRegs();
-					SetupCallFrame(0, baseIndex, callee);
-					ApplyPendingContext(baseIndex, callee);
-					pc = 0; // Start at beginning of callee code
-					curFunc = callee; // Switch to callee function
-					codeCount = curFunc.Code().Count();
-					curCode = &curFunc.Code()[0];
-					curConstants = &curFunc.Constants()[0];
-					currentFuncIndex = funcIndex; // Switch to callee function index
-
-					EnsureFrame(baseIndex, callee.MaxRegs());
 				}
 				VM_NEXT();
 			}
@@ -1134,6 +1152,14 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				// Set up call frame using helper
 				SetupCallFrame(argCount, calleeBase, callee);
 				ApplyPendingContext(calleeBase, callee);
+				EnsureFrame(calleeBase, callee.MaxRegs());
+
+				// Native intrinsic: invoke callback directly, no frame push
+				if (!IsNull(callee.NativeCallback())) {
+					localStack[resultReg] = callee.NativeCallback()(stack, calleeBase, argCount);
+					pc = nextPC;
+					VM_NEXT();
+				}
 
 				// Now execute the CALL (step 6): push CallInfo and switch to callee
 				if (callStackTop >= callStack.Count()) {
@@ -1214,14 +1240,9 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 			}
 			
 			VM_CASE(CALLFN_iA_kBC) {
-				// Call named (intrinsic?) function kBC,
-				// with parameters/return at register A.
-				Byte a = BytecodeUtil::Au(instruction);
-				UInt16 constIdx = BytecodeUtil::BCu(instruction);
-				funcName = curConstants[constIdx];
-				// For now, we'll only support intrinsics.
-				// ToDo: change this once we have variable look-up.
-				DoIntrinsic(funcName, baseIndex + a);
+				// DEPRECATED: no longer emitted by the compiler.
+				// Intrinsics are now callable FuncRefs resolved via LOADV + CALL.
+				RaiseRuntimeError("CALLFN is no longer supported; use LOADV + CALL instead");
 				VM_NEXT();
 			}
 
@@ -1256,6 +1277,13 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Int32 calleeBase = baseIndex + b;
 				SetupCallFrame(0, calleeBase, callee); // 0 arguments, use all defaults
 				ApplyPendingContext(calleeBase, callee);
+				EnsureFrame(calleeBase, callee.MaxRegs());
+
+				// Native intrinsic: invoke callback directly, no frame push
+				if (!IsNull(callee.NativeCallback())) {
+					localStack[a] = callee.NativeCallback()(stack, calleeBase, 0);
+					VM_NEXT();
+				}
 
 				if (callStackTop >= callStack.Count()) {
 					IOHelper::Print("Call stack overflow");
@@ -1324,7 +1352,6 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				container = localStack[b];
 				indexVal = localStack[c];
 
-
 				if (is_map(container)) {
 					if (!map_lookup_with_origin(container, indexVal, &result, &superVal)) {
 						RaiseRuntimeError(StringUtils::Format("Key Not Found: '{0}' not found in map", indexVal));
@@ -1373,37 +1400,18 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 					VM_NEXT();
 				}
 
-				// Auto-invoke the funcref with pending self/super
-				Int32 funcIdx = funcref_index(val);
-				if (funcIdx < 0 || funcIdx >= functions.Count()) {
-					RaiseRuntimeError("CALLIFREF: Invalid function index");
-					GC_POP_SCOPE();
-					return make_null();
+				// Auto-invoke the funcref with zero args
+				Int32 calleeIdx = AutoInvokeFuncRef(val, a, pc, baseIndex, currentFuncIndex, curFunc);
+				if (calleeIdx >= 0) {
+					// Frame was pushed — switch to callee
+					baseIndex += curFunc.MaxRegs();
+					pc = 0;
+					currentFuncIndex = calleeIdx;
+					curFunc = functions[calleeIdx];
+					codeCount = curFunc.Code().Count();
+					curCode = &curFunc.Code()[0];
+					curConstants = &curFunc.Constants()[0];
 				}
-
-				FuncDef callee = functions[funcIdx];
-				outerVars = funcref_outer_vars(val);
-
-				// Push return info
-				if (callStackTop >= callStack.Count()) {
-					RaiseRuntimeError("Call stack overflow");
-					GC_POP_SCOPE();
-					return make_null();
-				}
-				callStack[callStackTop] = CallInfo(pc, baseIndex, currentFuncIndex, a, outerVars);
-				callStackTop++;
-
-				// Set up callee frame
-				baseIndex += curFunc.MaxRegs();
-				SetupCallFrame(0, baseIndex, callee);
-				ApplyPendingContext(baseIndex, callee);
-				pc = 0;
-				curFunc = callee;
-				codeCount = curFunc.Code().Count();
-				curCode = &curFunc.Code()[0];
-				curConstants = &curFunc.Constants()[0];
-				currentFuncIndex = funcIdx;
-				EnsureFrame(baseIndex, callee.MaxRegs());
 				VM_NEXT();
 			}
 
@@ -1480,7 +1488,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 	GC_POP_SCOPE();
 	return make_null();
 }
-void VMStorage::EnsureFrame(Int32 baseIndex, UInt16 neededRegs) {
+void VMStorage::EnsureFrame(Int32 baseIndex,UInt16 neededRegs) {
 	// Simple implementation - just check bounds
 	if (baseIndex + neededRegs > stack.Count()) {
 		// Simple error handling - just print and continue
@@ -1504,6 +1512,14 @@ Value VMStorage::LookupVariable(Value varName) {
 
 	// ToDo: check globals!
 
+	// Check intrinsics table
+	Value intrinsicRef; GC_PROTECT(&intrinsicRef);
+	String nameStr = as_cstring(varName);
+	if (_intrinsics.TryGetValue(nameStr, &intrinsicRef)) {
+		GC_POP_SCOPE();
+		return intrinsicRef;
+	}
+
 	// self/super return null when not in a method context
 	if (value_equal(varName, val_self) || value_equal(varName, val_super)) {
 		GC_POP_SCOPE();
@@ -1515,89 +1531,5 @@ Value VMStorage::LookupVariable(Value varName) {
 	GC_POP_SCOPE();
 	return make_null();
 }
-const Value VMStorage::FuncNamePrint = make_string("print");
-const Value VMStorage::FuncNameInput = make_string("input");
-const Value VMStorage::FuncNameVal = make_string("val");
-const Value VMStorage::FuncNameLen = make_string("len");
-const Value VMStorage::FuncNameRemove = make_string("remove");
-const Value VMStorage::FuncNameFreeze = make_string("freeze");
-const Value VMStorage::FuncNameIsFrozen = make_string("isFrozen");
-const Value VMStorage::FuncNameFrozenCopy = make_string("frozenCopy");
-void VMStorage::DoIntrinsic(Value funcName, Int32 baseReg) {
-	// Run the named intrinsic, with its parameters and return value
-	// stored in our stack starting at baseReg.
-	
-	// Prototype implementation:
-	
-	GC_PUSH_SCOPE();
-	Value container; GC_PROTECT(&container);
-	if (value_equal(funcName, FuncNamePrint)) {
-		String output = StringUtils::Format("{0}", stack[baseReg]);
-		if (VMStorage::sPrintCallback) {
-			VMStorage::sPrintCallback(output);
-		} else {
-			IOHelper::Print(output);
-		}
-		stack[baseReg] = make_null();
-	
-	} else if (value_equal(funcName, FuncNameInput)) {
-		String prompt =  String::New("");
-		if (!is_null(stack[baseReg])) {
-			prompt = StringUtils::Format("{0}", stack[baseReg]);
-		}
-		String result = IOHelper::Input(prompt);
-		stack[baseReg] = 
-		  make_string(result.c_str());
-	
-	} else if (value_equal(funcName, FuncNameVal)) {
-		stack[baseReg] = to_number(stack[baseReg]);
-	
-	} else if (value_equal(funcName, FuncNameRemove)) {
-		// Remove index r1 from map r0; return (in r0) 1 if successful,
-		// 0 if index not found.
-		container = stack[baseReg];
-		int result = 0;
-		if (is_list(container)) {
-			result = list_remove(container, as_int(stack[baseReg+1])) ? 1 : 0;
-		} else if (is_map(container)) {
-			result = map_remove(container, stack[baseReg+1]) ? 1 : 0;
-		} else {
-			IOHelper::Print("ERROR: `remove` must be called on list or map");
-		}
-		stack[baseReg] = make_int(result);
-	
-	} else if (value_equal(funcName, FuncNameFreeze)) {
-		freeze_value(stack[baseReg]);
-		stack[baseReg] = make_null();
-
-	} else if (value_equal(funcName, FuncNameIsFrozen)) {
-		stack[baseReg] = make_int(is_frozen(stack[baseReg]));
-
-	} else if (value_equal(funcName, FuncNameFrozenCopy)) {
-		stack[baseReg] = frozen_copy(stack[baseReg]);
-
-	} else if (value_equal(funcName, FuncNameLen)) {
-		container = stack[baseReg];
-		if (is_list(container)) {
-			stack[baseReg] = make_int(list_count(container));
-		} else if (is_string(container)) {
-			stack[baseReg] = make_int(string_length(container));
-		} else if (is_map(container)) {
-			stack[baseReg] = make_int(map_count(container));
-		} else {
-			RaiseRuntimeError(StringUtils::Format("Can't get len of {0}", container));
-			stack[baseReg] = make_null();
-		}
-
-	} else {
-		IOHelper::Print(
-		  StringUtils::Format("ERROR: Unknown function '{0}'", funcName)
-		);
-		stack[baseReg] = make_null();
-		// ToDo: put VM in an error state, so it aborts.
-	}
-	GC_POP_SCOPE();
-}
-
 
 } // end of namespace MiniScript

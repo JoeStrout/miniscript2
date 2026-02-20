@@ -17,7 +17,6 @@
 #include "Parselet.g.h"
 #include "ErrorPool.g.h"
 
-
 namespace MiniScript {
 
 // FORWARD DECLARATIONS
@@ -66,6 +65,8 @@ struct IndexParselet;
 class IndexParseletStorage;
 struct MemberParselet;
 class MemberParseletStorage;
+struct Intrinsic;
+class IntrinsicStorage;
 struct Parser;
 class ParserStorage;
 struct FuncDef;
@@ -124,75 +125,6 @@ struct ReturnNode;
 class ReturnNodeStorage;
 
 // DECLARATIONS
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 class ParserStorage : public std::enable_shared_from_this<ParserStorage>, public IParser {
 	friend struct Parser;
@@ -331,7 +263,6 @@ class ParserStorage : public std::enable_shared_from_this<ParserStorage>, public
 	// Get the list of errors
 	public: List<String> GetErrors();
 }; // end of class ParserStorage
-
 
 // Parser: the main parsing engine.
 // Uses a Pratt parser algorithm with parselets to handle operator precedence.
@@ -489,7 +420,6 @@ struct Parser : public IParser {
 	public: inline List<String> GetErrors();
 }; // end of struct Parser
 
-
 // INLINE METHODS
 
 inline ParserStorage* Parser::get() const { return static_cast<ParserStorage*>(storage.get()); }
@@ -506,8 +436,8 @@ inline void Parser::set__prefixParselets(Dictionary<TokenType, PrefixParselet> _
 inline Dictionary<TokenType, InfixParselet> Parser::_infixParselets() { return get()->_infixParselets; }
 inline void Parser::set__infixParselets(Dictionary<TokenType, InfixParselet> _v) { get()->_infixParselets = _v; }
 inline void Parser::RegisterParselets() { return get()->RegisterParselets(); }
-inline void Parser::RegisterPrefix(TokenType type, PrefixParselet parselet) { return get()->RegisterPrefix(type, parselet); }
-inline void Parser::RegisterInfix(TokenType type, InfixParselet parselet) { return get()->RegisterInfix(type, parselet); }
+inline void Parser::RegisterPrefix(TokenType type,PrefixParselet parselet) { return get()->RegisterPrefix(type, parselet); }
+inline void Parser::RegisterInfix(TokenType type,InfixParselet parselet) { return get()->RegisterInfix(type, parselet); }
 inline void Parser::Init(String source) { return get()->Init(source); }
 inline void Parser::Advance() { return get()->Advance(); }
 inline Boolean Parser::IsAssignOp(TokenType type) { return get()->IsAssignOp(type); }
@@ -515,16 +445,16 @@ inline String Parser::CompoundAssignOp(TokenType type) { return get()->CompoundA
 inline Boolean Parser::Check(TokenType type) { return get()->Check(type); }
 inline Boolean Parser::Match(TokenType type) { return get()->Match(type); }
 inline Token Parser::Consume() { return get()->Consume(); }
-inline Token Parser::Expect(TokenType type, String errorMessage) { return get()->Expect(type, errorMessage); }
+inline Token Parser::Expect(TokenType type,String errorMessage) { return get()->Expect(type, errorMessage); }
 inline Precedence Parser::GetPrecedence() { return get()->GetPrecedence(); }
 inline Boolean Parser::CanStartExpression(TokenType type) { return get()->CanStartExpression(type); }
 inline ASTNode Parser::ParseExpression(Precedence minPrecedence) { return get()->ParseExpression(minPrecedence); }
 inline ASTNode Parser::ParseExpression() { return get()->ParseExpression(); }
 inline ASTNode Parser::ParseExpressionFrom(ASTNode left) { return get()->ParseExpressionFrom(left); }
 inline ASTNode Parser::ParseSimpleStatement() { return get()->ParseSimpleStatement(); }
-inline Boolean Parser::IsBlockTerminator(TokenType t1, TokenType t2) { return get()->IsBlockTerminator(t1, t2); }
-inline List<ASTNode> Parser::ParseBlock(TokenType terminator1, TokenType terminator2) { return get()->ParseBlock(terminator1, terminator2); }
-inline void Parser::RequireEndKeyword(TokenType keyword, String keywordName) { return get()->RequireEndKeyword(keyword, keywordName); }
+inline Boolean Parser::IsBlockTerminator(TokenType t1,TokenType t2) { return get()->IsBlockTerminator(t1, t2); }
+inline List<ASTNode> Parser::ParseBlock(TokenType terminator1,TokenType terminator2) { return get()->ParseBlock(terminator1, terminator2); }
+inline void Parser::RequireEndKeyword(TokenType keyword,String keywordName) { return get()->RequireEndKeyword(keyword, keywordName); }
 inline ASTNode Parser::ParseIfStatement() { return get()->ParseIfStatement(); }
 inline List<ASTNode> Parser::ParseElseClause() { return get()->ParseElseClause(); }
 inline ASTNode Parser::ParseSingleLineStatement() { return get()->ParseSingleLineStatement(); }

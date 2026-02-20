@@ -399,16 +399,16 @@ Taking stock of what's not yet working (or maybe working, but not in the test su
 ✔️3. String slicing (s[i:j]) — substring extraction
 ✔️4. List slicing (lst[i:j]) — subset of a list
 ✔️5. Doubled quote for literal quote — "say ""hello""" → say "hello"
-  6. @ operator — function reference without invoking
+✔️6. @ operator — function reference without invoking
 ✔️7. List + — concatenation ([1,2] + [3,4])
 ✔️8. List * / / — replication/division
 ✔️9. Map + — merging maps
 ✔️10. for over a map — iterating map keys
   11. for over range() — (depends on range intrinsic)
   12. Closures capturing outer variables — non-self outer-scope capture
-  13. return with no value — bare return (implicit null)
-  14. Recursive functions
-  15. null in expressions — comparisons like x == null, null arithmetic
+✔️13. return with no value — bare return (implicit null)
+✔️14. Recursive functions
+  15. null in expressions — null arithmetic
   16. true / false as standalone values — beyond just default params
   17. Chained comparisons, e.g. a < b <= c
 
@@ -427,4 +427,18 @@ That last one is a bit unusual because it requires the slice start and end argum
 Also dealing with string subtraction, and handling of doubled quotes in the lexer.  ...And, list concatenation and replication.  Just checking things off of yesterday's list.  Added map addition.
 
 While testing map addition, I noticed something not on our list: math-assignment operators (e.g. `+=`).  And testing _that_ led to realization that we had not yet implemented `^`.  But it's actually great that we're getting down to this level of nitty gritty, because it means all the _big_ features are working!  ...All fixed now.
+
+
+## Feb 19, 2026
+
+Well that's what I get for claiming all the big features were done. 😅  Testing recursive functions led to the realization that the function-call code was only looking for the function name in the local scope... and making it use the usual variable look-up broke intrinsic functions... which led to addressing the total hack that was our approach to intrinsics up to now (a VM.DoIntrinsic method that switched based on the function name).
+
+So, I'm now refactoring intrinsics to be something much more similar to how they work in 1.x: a table of functions, which variable look-up will check after locals, outer, and globals.  And that requires the transpiler to deal with function delegates and lambdas.  This is a lot of work.
+
+## Feb 20, 2026
+
+Finally finished the refactoring of intrinsics, and polished off the rough corners of the transpiler that were exposed thereby.  
+
+So, recursive functions are now working properly.  Next we should implement commonly used intrinsics, especially `range`, so we can start writing `for` loops in a more normal way.
+
 

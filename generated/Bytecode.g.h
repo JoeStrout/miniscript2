@@ -52,6 +52,8 @@ struct IndexParselet;
 class IndexParseletStorage;
 struct MemberParselet;
 class MemberParseletStorage;
+struct Intrinsic;
+class IntrinsicStorage;
 struct Parser;
 class ParserStorage;
 struct FuncDef;
@@ -111,39 +113,6 @@ class ReturnNodeStorage;
 
 // DECLARATIONS
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 // Emit pattern - indicates which INS_ instruction encoding should be used for 
 // an opcode.  Note that EmitABC is also used for opcodes that take two 8-bit
 // operands, e.g. LOAD_rA_rB (the C field in such cases is unused).
@@ -154,7 +123,6 @@ enum class EmitPattern : Byte {
 	BC,     // EmitBC(op, ab, c, comment) - 16-bit AB + 8-bit C (e.g., IFLT_iAB_rC)
 	ABC     // EmitABC(op, a, b, c, comment) - 8-bit A + B + C (e.g., ADD_rA_rB_rC)
 }; // end of enum EmitPattern
-
 
 // Opcodes.  Note that these must have sequential values, starting at 0.
 enum class Opcode : Byte {
@@ -224,7 +192,7 @@ enum class Opcode : Byte {
 	ARG_rA,
 	ARG_iABC,
 	CALLF_iA_iBC,
-	CALLFN_iA_kBC,
+	CALLFN_iA_kBC,		// DEPRECATED: intrinsics are now callable FuncRefs via LOADV + CALL
 	CALL_rA_rB_rC,
 	RETURN,
 	NEW_rA_rB,
@@ -235,7 +203,6 @@ enum class Opcode : Byte {
 	ITERGET_rA_rB_rC,
 	OP__COUNT  // Not an opcode, but rather how many opcodes we have.
 }; // end of enum Opcode
-
 
 class BytecodeUtil {
 	public: static Boolean ValidateOpcodes;
@@ -282,41 +249,6 @@ class BytecodeUtil {
 	
 	public: static Opcode FromMnemonic(String s);
 }; // end of struct BytecodeUtil
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 // INLINE METHODS
 

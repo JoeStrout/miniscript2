@@ -5,7 +5,6 @@
 
 namespace MiniScript {
 
-
 const String StringUtils::hexDigits = "0123456789ABCDEF";
 String StringUtils::ToHex(UInt32 value) {
 	Char hexChars[9]{};
@@ -23,7 +22,7 @@ String StringUtils::ToHex(Byte value) {
 	}
 	return  String::New(hexChars);
 }
-String StringUtils::ZeroPad(Int32 value, Int32 digits ) {
+String StringUtils::ZeroPad(Int32 value,Int32 digits ) {
 	// set width and fill
 	Char format[] = "%05d";
 	format[2] = '0' + digits;
@@ -40,7 +39,7 @@ String StringUtils::Spaces(Int32 count) {
 	free(spaces);
 	return result;
 }
-String StringUtils::SpacePad(String text, Int32 width) {
+String StringUtils::SpacePad(String text,Int32 width) {
 	// (null not possible)
 	if (text.Length() >= width) return text.Substring(0, width);
 	return text + Spaces(width - text.Length());
@@ -98,6 +97,5 @@ String StringUtils::FormatList(const String& fmt, const List<String>& values) {
 
 	return String::Join(String(""), parts);  // join with empty separator
 }
-
 
 } // end of namespace MiniScript

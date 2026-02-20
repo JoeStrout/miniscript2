@@ -6,7 +6,6 @@
 
 namespace MiniScript {
 
-
 FuncDefStorage::FuncDefStorage() {
 }
 void FuncDefStorage::ReserveRegister(Int32 registerNumber) {
@@ -30,6 +29,5 @@ String FuncDefStorage::ToString() {
 	GC_POP_SCOPE();
 	return result;
 }
-
 
 } // end of namespace MiniScript

@@ -53,6 +53,9 @@ using Char    = char;
 using Single  = float;
 using Double  = double;
 
+// And, for where we actually need a null in both C# and C++:
+#define null nullptr
+
 // Boolean wrapper class that adds a user-defined conversion step
 // This makes pointer-to-Boolean conversion (via bool) rank lower than
 // exact matches in overload resolution, preventing ambiguity with String overloads

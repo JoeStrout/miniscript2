@@ -55,6 +55,8 @@ struct IndexParselet;
 class IndexParseletStorage;
 struct MemberParselet;
 class MemberParseletStorage;
+struct Intrinsic;
+class IntrinsicStorage;
 struct Parser;
 class ParserStorage;
 struct FuncDef;
@@ -114,73 +116,6 @@ class ReturnNodeStorage;
 
 // DECLARATIONS
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 struct App {
 	public: static bool debugMode;
 	public: static bool visMode;
@@ -206,9 +141,6 @@ struct App {
 	private: static void RunProgram(List<FuncDef> functions, ErrorPool errors);
 
 }; // end of struct App
-
-
-
 
 // INLINE METHODS
 

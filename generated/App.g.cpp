@@ -21,9 +21,7 @@ for (int i=0; i<argc; i++) args.Add(String(argv[i]));
 MiniScript::App::MainProgram(args);
 }
 
-
 namespace MiniScript {
-
 
 bool App::debugMode = false;
 bool App::visMode = false;
@@ -102,7 +100,7 @@ void App::MainProgram(List<String> args) {
 	
 	IOHelper::Print("All done!");
 }
-List<FuncDef> App::CompileSource(String source, ErrorPool errors, Boolean verbose) {
+List<FuncDef> App::CompileSource(String source,ErrorPool errors,Boolean verbose) {
 	// Parse the source as a program (multiple statements)
 	Parser parser =  Parser::New();
 	parser.set_Errors(errors);
@@ -143,7 +141,7 @@ List<FuncDef> App::CompileSource(String source, ErrorPool errors, Boolean verbos
 
 	return generator.GetFunctions();
 }
-List<FuncDef> App::CompileSourceFile(String filePath, ErrorPool errors) {
+List<FuncDef> App::CompileSourceFile(String filePath,ErrorPool errors) {
 	if (debugMode) IOHelper::Print(StringUtils::Format("Reading source file: {0}", filePath));
 
 	List<String> lines = IOHelper::ReadFile(filePath);
@@ -259,7 +257,7 @@ bool App::RunIntegrationTests(String filePath) {
 
 	return failCount == 0;
 }
-bool App::RunSingleTest(List<String> inputLines, List<String> expectedLines, Int32 lineNum) {
+bool App::RunSingleTest(List<String> inputLines,List<String> expectedLines,Int32 lineNum) {
 	// Join input lines into source code
 	String source = "";
 	for (Int32 i = 0; i < inputLines.Count(); i++) {
@@ -324,7 +322,7 @@ bool App::RunSingleTest(List<String> inputLines, List<String> expectedLines, Int
 
 	return Boolean(true);
 }
-void App::RunProgram(List<FuncDef> functions, ErrorPool errors) {
+void App::RunProgram(List<FuncDef> functions,ErrorPool errors) {
 	// Disassemble and print program (debug only)
 	if (debugMode) {
 		IOHelper::Print("Disassembly:\n");
@@ -395,6 +393,5 @@ void App::RunProgram(List<FuncDef> functions, ErrorPool errors) {
 	}
 	GC_POP_SCOPE();
 }
-
 
 } // end of namespace MiniScript

@@ -1,8 +1,14 @@
 // AUTO-GENERATED FILE.  DO NOT MODIFY.
-// Transpiled from: ValueFuncRef.cs
+// Transpiled from: CoreIntrinsics.cs
 
 #pragma once
 #include "core_includes.h"
+// CoreIntrinsics.cs - Definitions of all built-in intrinsic functions.
+
+#include "value.h"
+#include "Intrinsic.g.h"
+
+namespace MiniScript {
 
 // FORWARD DECLARATIONS
 
@@ -111,5 +117,11 @@ class ReturnNodeStorage;
 
 // DECLARATIONS
 
+class CoreIntrinsics {
+
+	public: static void Init();
+}; // end of struct CoreIntrinsics
+
 // INLINE METHODS
 
+} // end of namespace MiniScript

@@ -7,11 +7,6 @@
 
 namespace MiniScript {
 
-
-
-
-
-
 Boolean BytecodeUtil::ValidateOpcodes = true;
 EmitPattern BytecodeUtil::GetEmitPattern(Opcode opcode) {
 	String mnemonic = ToMnemonic(opcode);
@@ -51,7 +46,7 @@ EmitPattern BytecodeUtil::GetEmitPattern(Opcode opcode) {
 	// No suffix - opcode only (NOOP, RETURN, etc.)
 	return EmitPattern::None;
 }
-Boolean BytecodeUtil::CheckEmitPattern(Opcode opcode, EmitPattern expected) {
+Boolean BytecodeUtil::CheckEmitPattern(Opcode opcode,EmitPattern expected) {
 	if (!ValidateOpcodes) return Boolean(true);
 
 	EmitPattern actual = GetEmitPattern(opcode);
@@ -229,6 +224,5 @@ Opcode BytecodeUtil::FromMnemonic(String s) {
 	if (s == "ITERGET_rA_rB_rC") return Opcode::ITERGET_rA_rB_rC;
 	return Opcode::NOOP;
 }
-
 
 } // end of namespace MiniScript

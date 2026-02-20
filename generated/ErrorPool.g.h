@@ -6,7 +6,6 @@
 // ErrorPool.cs - Simple error collection for MiniScript compilation and execution.
 // Shared across lexer, parser, code generator, and VM stages.
 
-
 namespace MiniScript {
 
 // FORWARD DECLARATIONS
@@ -55,6 +54,8 @@ struct IndexParselet;
 class IndexParseletStorage;
 struct MemberParselet;
 class MemberParseletStorage;
+struct Intrinsic;
+class IntrinsicStorage;
 struct Parser;
 class ParserStorage;
 struct FuncDef;
@@ -114,12 +115,6 @@ class ReturnNodeStorage;
 
 // DECLARATIONS
 
-
-
-
-
-
-
 struct ErrorPool {
 	private: List<String> _errors;
 
@@ -139,70 +134,6 @@ struct ErrorPool {
 
 	public: void Clear();
 }; // end of struct ErrorPool
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 // INLINE METHODS
 

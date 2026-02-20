@@ -560,9 +560,6 @@ public static class ValueHelpers {
 	public static Value make_empty_map() => make_map(8);
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value make_funcref(Int32 funcIndex) => Value.FromFuncRef(new ValueFuncRef(funcIndex));
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value make_funcref(Int32 funcIndex, Value outerVars) => Value.FromFuncRef(new ValueFuncRef(funcIndex, outerVars));
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]

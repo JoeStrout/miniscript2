@@ -6,8 +6,6 @@
 // AST.cs - Abstract Syntax Tree nodes for MiniScript
 // These classes use the smart-pointer-wrapper pattern when transpiled to C++.
 
-
-
 namespace MiniScript {
 
 // FORWARD DECLARATIONS
@@ -56,6 +54,8 @@ struct IndexParselet;
 class IndexParseletStorage;
 struct MemberParselet;
 class MemberParseletStorage;
+struct Intrinsic;
+class IntrinsicStorage;
 struct Parser;
 class ParserStorage;
 struct FuncDef;
@@ -115,45 +115,6 @@ class ReturnNodeStorage;
 
 // DECLARATIONS
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 // Operator constants (stored as strings to ease debugging)
 class Op {
 	public: static const String PLUS;
@@ -175,7 +136,6 @@ class Op {
 	public: static const String NEW;
 	public: static const String ISA;
 }; // end of struct Op
-
 
 // Visitor interface for AST traversal (e.g., code generation)
 class IASTVisitor {
@@ -207,36 +167,6 @@ class IASTVisitor {
 	virtual Int32 Visit(SelfNode node) = 0;
 	virtual Int32 Visit(SuperNode node) = 0;
 }; // end of interface IASTVisitor
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 // Base class for all AST nodes.
 // When transpiled to C++, these become shared_ptr-wrapped classes.
@@ -616,7 +546,6 @@ class ReturnNodeStorage : public ASTNodeStorage {
 	public: Int32 Accept(IASTVisitor& visitor);
 }; // end of class ReturnNodeStorage
 
-
 // Number literal node (e.g., 42, 3.14)
 struct NumberNode : public ASTNode {
 	friend class NumberNodeStorage;
@@ -638,7 +567,6 @@ struct NumberNode : public ASTNode {
 
 	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct NumberNode
-
 
 // String literal node (e.g., "hello")
 struct StringNode : public ASTNode {
@@ -662,7 +590,6 @@ struct StringNode : public ASTNode {
 	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct StringNode
 
-
 // Identifier node (e.g., variable name like "x" or "foo")
 struct IdentifierNode : public ASTNode {
 	friend class IdentifierNodeStorage;
@@ -684,7 +611,6 @@ struct IdentifierNode : public ASTNode {
 
 	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct IdentifierNode
-
 
 // Assignment node (e.g., x = 42, foo = bar + 1)
 struct AssignmentNode : public ASTNode {
@@ -709,7 +635,6 @@ struct AssignmentNode : public ASTNode {
 
 	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct AssignmentNode
-
 
 // Indexed assignment node (e.g., lst[0] = 42, map["key"] = value)
 struct IndexedAssignmentNode : public ASTNode {
@@ -737,7 +662,6 @@ struct IndexedAssignmentNode : public ASTNode {
 	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct IndexedAssignmentNode
 
-
 // Unary operator node (e.g., -x, not flag)
 struct UnaryOpNode : public ASTNode {
 	friend class UnaryOpNodeStorage;
@@ -761,7 +685,6 @@ struct UnaryOpNode : public ASTNode {
 
 	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct UnaryOpNode
-
 
 // Binary operator node (e.g., x + y, a * b)
 struct BinaryOpNode : public ASTNode {
@@ -788,7 +711,6 @@ struct BinaryOpNode : public ASTNode {
 
 	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct BinaryOpNode
-
 
 // Function call node (e.g., sqrt(x), max(a, b))
 struct CallNode : public ASTNode {
@@ -818,7 +740,6 @@ struct CallNode : public ASTNode {
 	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct CallNode
 
-
 // Grouping node (e.g., parenthesized expression like "(x + y)")
 // Useful for preserving structure for pretty-printing or code generation.
 struct GroupNode : public ASTNode {
@@ -841,7 +762,6 @@ struct GroupNode : public ASTNode {
 
 	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct GroupNode
-
 
 // List literal node (e.g., [1, 2, 3])
 struct ListNode : public ASTNode {
@@ -868,7 +788,6 @@ struct ListNode : public ASTNode {
 
 	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct ListNode
-
 
 // Map literal node (e.g., {"a": 1, "b": 2})
 struct MapNode : public ASTNode {
@@ -898,7 +817,6 @@ struct MapNode : public ASTNode {
 	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct MapNode
 
-
 // Index access node (e.g., list[0], map["key"])
 struct IndexNode : public ASTNode {
 	friend class IndexNodeStorage;
@@ -922,7 +840,6 @@ struct IndexNode : public ASTNode {
 
 	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct IndexNode
-
 
 // Slice access node (e.g., list[1:3], str[2:])
 struct SliceNode : public ASTNode {
@@ -950,7 +867,6 @@ struct SliceNode : public ASTNode {
 	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct SliceNode
 
-
 // Member access node (e.g., obj.field)
 struct MemberNode : public ASTNode {
 	friend class MemberNodeStorage;
@@ -974,7 +890,6 @@ struct MemberNode : public ASTNode {
 
 	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct MemberNode
-
 
 // Method call node (e.g., obj.method(x, y))
 // This is distinct from CallNode which handles simple function calls.
@@ -1003,7 +918,6 @@ struct MethodCallNode : public ASTNode {
 	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct MethodCallNode
 
-
 // Expression call node (e.g., funcs[0](10), getFunc()(x))
 // Calls the result of an arbitrary expression, unlike CallNode which
 // calls a named function.
@@ -1030,7 +944,6 @@ struct ExprCallNode : public ASTNode {
 	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct ExprCallNode
 
-
 // While loop node (e.g., while x < 10 ... end while)
 struct WhileNode : public ASTNode {
 	friend class WhileNodeStorage;
@@ -1054,7 +967,6 @@ struct WhileNode : public ASTNode {
 
 	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct WhileNode
-
 
 // If statement node (e.g., if x > 0 then ... else ... end if)
 // Handles both block and single-line forms; else-if chains are represented
@@ -1084,7 +996,6 @@ struct IfNode : public ASTNode {
 	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct IfNode
 
-
 // For loop node (e.g., for i in [1,2,3] ... end for)
 struct ForNode : public ASTNode {
 	friend class ForNodeStorage;
@@ -1111,7 +1022,6 @@ struct ForNode : public ASTNode {
 	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct ForNode
 
-
 // Break statement node - exits the innermost loop
 struct BreakNode : public ASTNode {
 	friend class BreakNodeStorage;
@@ -1131,7 +1041,6 @@ struct BreakNode : public ASTNode {
 	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct BreakNode
 
-
 // Continue statement node - skips to next iteration of innermost loop
 struct ContinueNode : public ASTNode {
 	friend class ContinueNodeStorage;
@@ -1150,7 +1059,6 @@ struct ContinueNode : public ASTNode {
 
 	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct ContinueNode
-
 
 // Function definition expression (e.g., function(x, y) ... end function)
 struct FunctionNode : public ASTNode {
@@ -1178,7 +1086,6 @@ struct FunctionNode : public ASTNode {
 	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct FunctionNode
 
-
 // Self keyword node — refers to the receiver in a method call
 struct SelfNode : public ASTNode {
 	friend class SelfNodeStorage;
@@ -1195,7 +1102,6 @@ struct SelfNode : public ASTNode {
 	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct SelfNode
 
-
 // Super keyword node — refers to the __isa parent of the map where the method was found
 struct SuperNode : public ASTNode {
 	friend class SuperNodeStorage;
@@ -1211,7 +1117,6 @@ struct SuperNode : public ASTNode {
 	public: ASTNode Simplify() { return get()->Simplify(); }
 	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct SuperNode
-
 
 // Return statement node (e.g., return x + 1)
 struct ReturnNode : public ASTNode {
@@ -1234,7 +1139,6 @@ struct ReturnNode : public ASTNode {
 
 	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct ReturnNode
-
 
 // INLINE METHODS
 

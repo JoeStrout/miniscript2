@@ -5,7 +5,6 @@
 
 namespace MiniScript {
 
-
 ErrorPool ErrorPool::Create() {
 	ErrorPool pool = ErrorPool();
 	pool._errors =  List<String>::New();
@@ -33,6 +32,5 @@ void ErrorPool::Clear() {
 	if (!IsNull(_errors)) _errors.Clear();
 	else _errors =  List<String>::New();
 }
-
 
 } // end of namespace MiniScript

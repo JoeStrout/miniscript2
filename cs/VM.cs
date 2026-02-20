@@ -10,6 +10,7 @@ using System.Runtime.InteropServices;
 // CPP: #include "value_list.h"
 // CPP: #include "value_string.h"
 // CPP: #include "Bytecode.g.h"
+// CPP: #include "Intrinsic.g.h"
 // CPP: #include "IOHelper.g.h"
 // CPP: #include "Disassembler.g.h"
 // CPP: #include "StringUtils.g.h"
@@ -85,6 +86,7 @@ public class VM {
 	private Int32 callStackTop;	   // Index of next free call stack slot
 
 	private List<FuncDef> functions; // functions addressed by CALLF
+	private Dictionary<String, Value> _intrinsics; // intrinsic name -> FuncRef Value
 
 	// Execution state (persistent across RunSteps calls)
 	public Int32 PC { get; private set; }
@@ -193,6 +195,7 @@ public class VM {
 		functions.Add(funcDef);
 	}
 
+
 	public void Reset(List<FuncDef> allFunctions) {
 		// Store all functions for CALLF instructions, and find @main
 		FuncDef mainFunc = null;
@@ -201,6 +204,9 @@ public class VM {
 			functions.Add(allFunctions[i]);
 			if (functions[i].Name == "@main") mainFunc = functions[i];
 		}
+
+		_intrinsics = new Dictionary<String, Value>();
+		Intrinsic.RegisterAll(functions, _intrinsics);
 
 		if (!mainFunc) {
 			IOHelper.Print("ERROR: No @main function found in VM.Reset");
@@ -338,6 +344,46 @@ public class VM {
 		}
 
 		// Step 6 is handled by the caller (pushing CallInfo, switching frame, etc.)
+	}
+
+	// Auto-invoke a zero-arg funcref (used by LOADC and CALLIFREF).
+	// Resolves the funcref, then either:
+	//   - Native callback: invokes it, stores result at stack[baseIndex + resultReg], returns -1.
+	//   - User function: pushes CallInfo and sets up callee frame, returns the callee function index.
+	//     Caller must switch its local execution state (pc, baseIndex, curFunc, etc.).
+	// On error, calls RaiseRuntimeError and returns -1.
+	private Int32 AutoInvokeFuncRef(Value funcRefVal, Int32 resultReg, Int32 returnPC, Int32 baseIndex, Int32 currentFuncIndex, FuncDef curFunc) {
+		Int32 funcIndex = funcref_index(funcRefVal);
+		if (funcIndex < 0 || funcIndex >= functions.Count) {
+			RaiseRuntimeError("Auto-invoke: Invalid function index");
+			return -1;
+		}
+
+		FuncDef callee = functions[funcIndex];
+		Value outerVars = funcref_outer_vars(funcRefVal);
+
+		Int32 calleeBase = baseIndex + curFunc.MaxRegs;
+
+		// Native intrinsic: invoke callback directly, no frame push
+		if (callee.NativeCallback != null) {
+			EnsureFrame(calleeBase, callee.MaxRegs);
+			SetupCallFrame(0, calleeBase, callee);
+			stack[baseIndex + resultReg] = callee.NativeCallback(stack, calleeBase, 0);
+			return -1;
+		}
+
+		// User function: push CallInfo and set up callee frame
+		if (callStackTop >= callStack.Count) {
+			RaiseRuntimeError("Call stack overflow");
+			return -1;
+		}
+		callStack[callStackTop] = new CallInfo(returnPC, baseIndex, currentFuncIndex, resultReg, outerVars);
+		callStackTop++;
+
+		SetupCallFrame(0, calleeBase, callee);
+		ApplyPendingContext(calleeBase, callee);
+		EnsureFrame(calleeBase, callee.MaxRegs);
+		return funcIndex;
 	}
 
 	public Value Execute(FuncDef entry) {
@@ -526,37 +572,18 @@ public class VM {
 						// Simple case: value is not a funcref, so just copy it
 						localStack[a] = val;
 					} else {
-						// Harder case: value is a funcref, which we must invoke,
-						// and then copy the result into localStack[a] upon return.
-						Int32 funcIndex = funcref_index(val);
-						if (funcIndex < 0 || funcIndex >= functions.Count) {
-							IOHelper.Print("LOADC to invalid func");
-							return make_null();
+						// Value is a funcref — auto-invoke with zero args
+						Int32 calleeIdx = AutoInvokeFuncRef(val, a, pc, baseIndex, currentFuncIndex, curFunc);
+						if (calleeIdx >= 0) {
+							// Frame was pushed — switch to callee
+							baseIndex += curFunc.MaxRegs;
+							pc = 0;
+							currentFuncIndex = calleeIdx;
+							curFunc = functions[calleeIdx];
+							codeCount = curFunc.Code.Count;
+							curCode = curFunc.Code; // CPP: curCode = &curFunc.Code()[0];
+							curConstants = curFunc.Constants; // CPP: curConstants = &curFunc.Constants()[0];
 						}
-
-						FuncDef callee = functions[funcIndex];
-						outerVars = funcref_outer_vars(val);
-
-						// Push return info with closure context
-						if (callStackTop >= callStack.Count) {
-							IOHelper.Print("Call stack overflow");
-							return make_null();
-						}
-						callStack[callStackTop] = new CallInfo(pc, baseIndex, currentFuncIndex, a, outerVars);
-						callStackTop++;
-
-						// Switch to callee frame: base slides to argument window
-						baseIndex += curFunc.MaxRegs;
-						SetupCallFrame(0, baseIndex, callee);
-						ApplyPendingContext(baseIndex, callee);
-						pc = 0; // Start at beginning of callee code
-						curFunc = callee; // Switch to callee function
-						codeCount = curFunc.Code.Count;
-						curCode = curFunc.Code; // CPP: curCode = &curFunc.Code()[0];
-						curConstants = curFunc.Constants; // CPP: curConstants = &curFunc.Constants()[0];
-						currentFuncIndex = funcIndex; // Switch to callee function index
-
-						EnsureFrame(baseIndex, callee.MaxRegs);
 					}
 					break;
 				}
@@ -1173,7 +1200,7 @@ public class VM {
 					Opcode callOp = (Opcode)BytecodeUtil.OP(callInstruction);
 
 					// Extract call parameters based on opcode type
-					FuncDef callee = null; // CPP: FuncDef callee;
+					FuncDef callee;
 					Int32 calleeBase = 0;
 					Int32 resultReg = -1;
 
@@ -1209,6 +1236,14 @@ public class VM {
 					// Set up call frame using helper
 					SetupCallFrame(argCount, calleeBase, callee);
 					ApplyPendingContext(calleeBase, callee);
+					EnsureFrame(calleeBase, callee.MaxRegs);
+
+					// Native intrinsic: invoke callback directly, no frame push
+					if (callee.NativeCallback != null) {
+						localStack[resultReg] = callee.NativeCallback(stack, calleeBase, argCount);
+						pc = nextPC;
+						break;
+					}
 
 					// Now execute the CALL (step 6): push CallInfo and switch to callee
 					if (callStackTop >= callStack.Count) {
@@ -1284,14 +1319,9 @@ public class VM {
 				}
 				
 				case Opcode.CALLFN_iA_kBC: {
-					// Call named (intrinsic?) function kBC,
-					// with parameters/return at register A.
-					Byte a = BytecodeUtil.Au(instruction);
-					UInt16 constIdx = BytecodeUtil.BCu(instruction);
-					funcName = curConstants[constIdx];
-					// For now, we'll only support intrinsics.
-					// ToDo: change this once we have variable look-up.
-					DoIntrinsic(funcName, baseIndex + a);
+					// DEPRECATED: no longer emitted by the compiler.
+					// Intrinsics are now callable FuncRefs resolved via LOADV + CALL.
+					RaiseRuntimeError("CALLFN is no longer supported; use LOADV + CALL instead");
 					break;
 				}
 
@@ -1325,6 +1355,13 @@ public class VM {
 					Int32 calleeBase = baseIndex + b;
 					SetupCallFrame(0, calleeBase, callee); // 0 arguments, use all defaults
 					ApplyPendingContext(calleeBase, callee);
+					EnsureFrame(calleeBase, callee.MaxRegs);
+
+					// Native intrinsic: invoke callback directly, no frame push
+					if (callee.NativeCallback != null) {
+						localStack[a] = callee.NativeCallback(stack, calleeBase, 0);
+						break;
+					}
 
 					if (callStackTop >= callStack.Count) {
 						IOHelper.Print("Call stack overflow");
@@ -1441,35 +1478,18 @@ public class VM {
 						break; // CPP: VM_NEXT();
 					}
 
-					// Auto-invoke the funcref with pending self/super
-					Int32 funcIdx = funcref_index(val);
-					if (funcIdx < 0 || funcIdx >= functions.Count) {
-						RaiseRuntimeError("CALLIFREF: Invalid function index");
-						return make_null();
+					// Auto-invoke the funcref with zero args
+					Int32 calleeIdx = AutoInvokeFuncRef(val, a, pc, baseIndex, currentFuncIndex, curFunc);
+					if (calleeIdx >= 0) {
+						// Frame was pushed — switch to callee
+						baseIndex += curFunc.MaxRegs;
+						pc = 0;
+						currentFuncIndex = calleeIdx;
+						curFunc = functions[calleeIdx];
+						codeCount = curFunc.Code.Count;
+						curCode = curFunc.Code; // CPP: curCode = &curFunc.Code()[0];
+						curConstants = curFunc.Constants; // CPP: curConstants = &curFunc.Constants()[0];
 					}
-
-					FuncDef callee = functions[funcIdx];
-					outerVars = funcref_outer_vars(val);
-
-					// Push return info
-					if (callStackTop >= callStack.Count) {
-						RaiseRuntimeError("Call stack overflow");
-						return make_null();
-					}
-					callStack[callStackTop] = new CallInfo(pc, baseIndex, currentFuncIndex, a, outerVars);
-					callStackTop++;
-
-					// Set up callee frame
-					baseIndex += curFunc.MaxRegs;
-					SetupCallFrame(0, baseIndex, callee);
-					ApplyPendingContext(baseIndex, callee);
-					pc = 0;
-					curFunc = callee;
-					codeCount = curFunc.Code.Count;
-					curCode = curFunc.Code; // CPP: curCode = &curFunc.Code()[0];
-					curConstants = curFunc.Constants; // CPP: curConstants = &curFunc.Constants()[0];
-					currentFuncIndex = funcIdx;
-					EnsureFrame(baseIndex, callee.MaxRegs);
 					break; // CPP: VM_NEXT();
 				}
 
@@ -1579,6 +1599,13 @@ public class VM {
 
 		// ToDo: check globals!
 
+		// Check intrinsics table
+		Value intrinsicRef;
+		String nameStr = as_cstring(varName);
+		if (_intrinsics.TryGetValue(nameStr, out intrinsicRef)) {
+			return intrinsicRef;
+		}
+
 		// self/super return null when not in a method context
 		if (value_equal(varName, val_self) || value_equal(varName, val_super)) {
 			return make_null();
@@ -1587,89 +1614,6 @@ public class VM {
 		// Variable not found anywhere — raise an error
 		RaiseRuntimeError(StringUtils.Format("Undefined Identifier: '{0}' is unknown in this context", varName));
 		return make_null();
-	}
-	
-	private static readonly Value FuncNamePrint = make_string("print");
-	private static readonly Value FuncNameInput = make_string("input");
-	private static readonly Value FuncNameVal = make_string("val");
-	private static readonly Value FuncNameLen = make_string("len");
-	private static readonly Value FuncNameRemove = make_string("remove");
-	private static readonly Value FuncNameFreeze = make_string("freeze");
-	private static readonly Value FuncNameIsFrozen = make_string("isFrozen");
-	private static readonly Value FuncNameFrozenCopy = make_string("frozenCopy");
-	
-	private void DoIntrinsic(Value funcName, Int32 baseReg) {
-		// Run the named intrinsic, with its parameters and return value
-		// stored in our stack starting at baseReg.
-		
-		// Prototype implementation:
-		
-		Value container;
-		if (value_equal(funcName, FuncNamePrint)) {
-			String output = StringUtils.Format("{0}", stack[baseReg]);
-			if (GetPrintCallback() != null) {  // CPP: if (VMStorage::sPrintCallback) {
-				GetPrintCallback()(output);  // CPP: VMStorage::sPrintCallback(output);
-			} else {
-				IOHelper.Print(output);
-			}
-			stack[baseReg] = make_null();
-		
-		} else if (value_equal(funcName, FuncNameInput)) {
-			String prompt = new String("");
-			if (!is_null(stack[baseReg])) {
-				prompt = StringUtils.Format("{0}", stack[baseReg]);
-			}
-			String result = IOHelper.Input(prompt);
-			stack[baseReg] = 
-			  make_string(result);	// CPP: make_string(result.c_str());
-		
-		} else if (value_equal(funcName, FuncNameVal)) {
-			stack[baseReg] = to_number(stack[baseReg]);
-		
-		} else if (value_equal(funcName, FuncNameRemove)) {
-			// Remove index r1 from map r0; return (in r0) 1 if successful,
-			// 0 if index not found.
-			container = stack[baseReg];
-			int result = 0;
-			if (is_list(container)) {
-				result = list_remove(container, as_int(stack[baseReg+1])) ? 1 : 0;
-			} else if (is_map(container)) {
-				result = map_remove(container, stack[baseReg+1]) ? 1 : 0;
-			} else {
-				IOHelper.Print("ERROR: `remove` must be called on list or map");
-			}
-			stack[baseReg] = make_int(result);
-		
-		} else if (value_equal(funcName, FuncNameFreeze)) {
-			freeze_value(stack[baseReg]);
-			stack[baseReg] = make_null();
-
-		} else if (value_equal(funcName, FuncNameIsFrozen)) {
-			stack[baseReg] = make_int(is_frozen(stack[baseReg]));
-
-		} else if (value_equal(funcName, FuncNameFrozenCopy)) {
-			stack[baseReg] = frozen_copy(stack[baseReg]);
-
-		} else if (value_equal(funcName, FuncNameLen)) {
-			container = stack[baseReg];
-			if (is_list(container)) {
-				stack[baseReg] = make_int(list_count(container));
-			} else if (is_string(container)) {
-				stack[baseReg] = make_int(string_length(container));
-			} else if (is_map(container)) {
-				stack[baseReg] = make_int(map_count(container));
-			} else {
-				RaiseRuntimeError(StringUtils.Format("Can't get len of {0}", container));
-				stack[baseReg] = make_null();
-			}
-
-		} else {
-			IOHelper.Print(
-			  StringUtils.Format("ERROR: Unknown function '{0}'", funcName)
-			);
-			stack[baseReg] = make_null();
-			// ToDo: put VM in an error state, so it aborts.
-		}
 	}
 }
 

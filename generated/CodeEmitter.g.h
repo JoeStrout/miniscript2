@@ -58,6 +58,8 @@ struct IndexParselet;
 class IndexParseletStorage;
 struct MemberParselet;
 class MemberParseletStorage;
+struct Intrinsic;
+class IntrinsicStorage;
 struct Parser;
 class ParserStorage;
 struct FuncDef;
@@ -117,17 +119,6 @@ class ReturnNodeStorage;
 
 // DECLARATIONS
 
-
-
-
-
-
-
-
-
-
-
-
 // Tracks a pending label reference that needs patching
 struct LabelRef {
 	public: Int32 CodeIndex; // index in _code where the instruction is
@@ -136,65 +127,6 @@ struct LabelRef {
 	public: Int32 A; // A operand (for re-encoding)
 	public: Boolean IsABC; // true for 24-bit offset (JUMP), false for 16-bit (BRFALSE/BRTRUE)
 }; // end of struct LabelRef
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 // Abstract base class for emitting code (bytecode or assembly text)
 struct CodeEmitterBase {
@@ -335,8 +267,6 @@ class AssemblyEmitterStorage : public CodeEmitterBaseStorage {
 	public: String GetAssembly();
 }; // end of class AssemblyEmitterStorage
 
-
-
 // Emits directly to bytecode (production use)
 struct BytecodeEmitter : public CodeEmitterBase {
 	friend class BytecodeEmitterStorage;
@@ -376,7 +306,6 @@ struct BytecodeEmitter : public CodeEmitterBase {
 
 	public: FuncDef Finalize(String name) { return get()->Finalize(name); }
 }; // end of struct BytecodeEmitter
-
 
 // Emits assembly text (for debugging and testing)
 struct AssemblyEmitter : public CodeEmitterBase {
@@ -422,22 +351,21 @@ struct AssemblyEmitter : public CodeEmitterBase {
 	public: inline String GetAssembly();
 }; // end of struct AssemblyEmitter
 
-
 // INLINE METHODS
 
 inline CodeEmitterBaseStorage* CodeEmitterBase::get() const { return static_cast<CodeEmitterBaseStorage*>(storage.get()); }
 inline FuncDef CodeEmitterBase::PendingFunc() { return get()->PendingFunc; }
 inline void CodeEmitterBase::set_PendingFunc(FuncDef _v) { get()->PendingFunc = _v; }
-inline void CodeEmitterBase::Emit(Opcode op, String comment) { return get()->Emit(op, comment); } // INS: opcode only
-inline void CodeEmitterBase::EmitA(Opcode op, Int32 a, String comment) { return get()->EmitA(op, a, comment); } // INS_A: 8-bit A field
-inline void CodeEmitterBase::EmitAB(Opcode op, Int32 a, Int32 bc, String comment) { return get()->EmitAB(op, a, bc, comment); } // INS_AB: 8-bit A + 16-bit BC
-inline void CodeEmitterBase::EmitBC(Opcode op, Int32 ab, Int32 c, String comment) { return get()->EmitBC(op, ab, c, comment); } // INS_BC: 16-bit AB + 8-bit C
-inline void CodeEmitterBase::EmitABC(Opcode op, Int32 a, Int32 b, Int32 c, String comment) { return get()->EmitABC(op, a, b, c, comment); } // INS_ABC: 8-bit A + 8-bit B + 8-bit C
+inline void CodeEmitterBase::Emit(Opcode op,String comment) { return get()->Emit(op, comment); } // INS: opcode only
+inline void CodeEmitterBase::EmitA(Opcode op,Int32 a,String comment) { return get()->EmitA(op, a, comment); } // INS_A: 8-bit A field
+inline void CodeEmitterBase::EmitAB(Opcode op,Int32 a,Int32 bc,String comment) { return get()->EmitAB(op, a, bc, comment); } // INS_AB: 8-bit A + 16-bit BC
+inline void CodeEmitterBase::EmitBC(Opcode op,Int32 ab,Int32 c,String comment) { return get()->EmitBC(op, ab, c, comment); } // INS_BC: 16-bit AB + 8-bit C
+inline void CodeEmitterBase::EmitABC(Opcode op,Int32 a,Int32 b,Int32 c,String comment) { return get()->EmitABC(op, a, b, c, comment); } // INS_ABC: 8-bit A + 8-bit B + 8-bit C
 inline Int32 CodeEmitterBase::AddConstant(Value value) { return get()->AddConstant(value); }
 inline Int32 CodeEmitterBase::CreateLabel() { return get()->CreateLabel(); }
 inline void CodeEmitterBase::PlaceLabel(Int32 labelId) { return get()->PlaceLabel(labelId); }
-inline void CodeEmitterBase::EmitJump(Opcode op, Int32 labelId, String comment) { return get()->EmitJump(op, labelId, comment); }
-inline void CodeEmitterBase::EmitBranch(Opcode op, Int32 reg, Int32 labelId, String comment) { return get()->EmitBranch(op, reg, labelId, comment); }
+inline void CodeEmitterBase::EmitJump(Opcode op,Int32 labelId,String comment) { return get()->EmitJump(op, labelId, comment); }
+inline void CodeEmitterBase::EmitBranch(Opcode op,Int32 reg,Int32 labelId,String comment) { return get()->EmitBranch(op, reg, labelId, comment); }
 inline void CodeEmitterBase::ReserveRegister(Int32 registerNumber) { return get()->ReserveRegister(registerNumber); }
 inline FuncDef CodeEmitterBase::Finalize(String name) { return get()->Finalize(name); }
 

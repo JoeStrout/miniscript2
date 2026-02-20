@@ -57,6 +57,8 @@ struct IndexParselet;
 class IndexParseletStorage;
 struct MemberParselet;
 class MemberParseletStorage;
+struct Intrinsic;
+class IntrinsicStorage;
 struct Parser;
 class ParserStorage;
 struct FuncDef;
@@ -116,74 +118,6 @@ class ReturnNodeStorage;
 
 // DECLARATIONS
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 // Represents a single token from the lexer
 struct Token {
 	public: TokenType Type;
@@ -198,7 +132,6 @@ struct Token {
 	// H: public: Token() {}
 	public: Token(TokenType type, String text, Int32 line, Int32 column);
 }; // end of struct Token
-
 
 struct Lexer {
 	private: String _input;
@@ -235,7 +168,6 @@ struct Lexer {
 	// Report an error
 	public: void Error(String message);
 }; // end of struct Lexer
-
 
 // INLINE METHODS
 

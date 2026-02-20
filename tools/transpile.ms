@@ -37,6 +37,7 @@ State.START = "START"			// at start of file, before namespace
 State.NAMESPACE = "NAMESPACE"	// within the namespace, but not in a class/struct/etc.
 State.CLASS = "CLASS"			// within a class definition
 State.METHOD = "METHOD"			// within a function/method definition
+State.LAMBDA = "LAMBDA"			// within a lambda (inline function) definition
 State.DONE = "DONE"				// past the end of the namespace (pretty much done)
 State.CPP_ONLY = "CPPONLY"		// writing embedded C++ code to .cpp file only
 State.H_ONLY = "HONLY"			// writing embedded C++ code to .h file only
@@ -154,6 +155,43 @@ isKeyword = function(word)
 	return _keywords.hasIndex(word)
 end function
 
+splitParams = function(s)
+	// Split the given parameter string into a list of parameters.
+	// Basically split on comma, except for commas inside quotes or < >.
+	result = []
+	depth = 0		// angle bracket nesting depth
+	inQuote = false
+	start = 0
+	i = 0
+	while i < s.len
+		c = s[i]
+		if inQuote then
+			if c == """" then
+				// check for doubled quote (escaped quote)
+				if i + 1 < s.len and s[i+1] == """" then
+					i = i + 1  // skip the second quote
+				else
+					inQuote = false
+				end if
+			end if
+		else if c == """" then
+			inQuote = true
+		else if c == "<" then
+			depth = depth + 1
+		else if c == ">" then
+			depth = depth - 1
+		else if c == "," and depth == 0 then
+			result.push s[start:i].trim
+			start = i + 1
+		end if
+		i = i + 1
+	end while
+	// push the last parameter
+	tail = s[start:].trim
+	if tail then result.push tail
+	return result
+end function
+
 roughTokenize = function(s)
 	// Roughly tokenize the given string, which is mostly about separating
 	// out the identifiers.  Anything that's not an identifier can be lumped
@@ -221,17 +259,11 @@ parameterNames = function(s)
 	// Strip types and default values from the given parameter declaration.
 	if not s then return s
 	result = []
-	//print s.splitQuoted(",")
 	unnamed = 0
-	for param in s.splitQuoted(",")
-		typeAndRest = param.trim.split(" ", 2)
-		if typeAndRest.len == 1 then
-			unnamed += 1
-			nameEtc = ["unnamed_" + unnamed]
-		else
-			nameEtc = typeAndRest[1].split("=", 2)
-		end if
-		result.push nameEtc[0]
+	for param in splitParams(s)
+		param = param.split("=", 2)[0]
+		name = param.split(" ")[-1]
+		result.push name
 	end for
 	return result.join(", ")
 end function
@@ -452,7 +484,7 @@ Transpiler.transformStatement = function(trimmedLine)
 	// non-identifier string.
 	tokens = roughTokenize(trimmedLine)
 	
-	deepDebug = false // trimmedLine.contains("_emitter")
+	deepDebug = false // trimmedLine.contains("intrinsic")
 	ddprint = function(s); if deepDebug then print "====> " + s; end function
 	summarize = function(obj)
 		if obj == null then return "<null>"
@@ -519,7 +551,11 @@ Transpiler.transformStatement = function(trimmedLine)
 					ddprint "Couldn't find " + tokens[i+1] + " in " + summarize(curInfo)
 				end if
 			end if
-			if curInfo == null or rhsStatic then tokens[i] = "::"
+			if curInfo == null or rhsStatic then
+				if curInfo == null then y = "curInfo == null" else y = "rhsStatic == true"
+				ddprint "Because " + y + ", changing token " + i + " to ::"
+				tokens[i] = "::"
+			end if
 			continue
 		else if tokens[i] == "new" then
 			// when `new` is followed by the name of a C# class (which we convert
@@ -657,7 +693,7 @@ end function
 Transpiler.transformParams = function(paramStr)
 	// Fix up any language transformations needed for the given parameters string.
 	result = []
-	for part in paramStr.split(", ")  // note: assumes no commas in string literal defaults!
+	for part in splitParams(paramStr)
 		m = part.match("out ≤type:w≥ ≤whatever≥")
 		if not m then m = part.match("ref ≤type:w≥ ≤whatever≥")
 		if m then
@@ -674,7 +710,7 @@ end function
 Transpiler.parseParams = function(paramStr)
 	// Parse the given parameter string into a list of VariableInfo.
 	result = []
-	for part in paramStr.split(", ")  // note: assumes no commas in string literal defaults!
+	for part in splitParams(paramStr)
 		m = part.match("≤type:w≥")
 		if m then continue  // unnamed (because unused) parameter
 		// standard parameters
@@ -712,7 +748,7 @@ Transpiler.stripDefaultArgs = function
 	// the method declaration).
 	paramStr = self.m.params.trim
 	if not paramStr then return
-	params = paramStr.split(",")
+	params = splitParams(paramStr)
 	for i in params.indexes
 		eqPos = params[i].indexOf("=")
 		if eqPos != null then params[i] = params[i][:eqPos]
@@ -723,8 +759,9 @@ end function
 Transpiler.enterState = function(newState, initAsNew=true)
 	if newState == self.state then return
 	if self.state then self.exitState newState
-	debugPrint "Entering state: " + newState
+	oldState = self.state
 	self.state = newState
+	debugPrint "Entering state: " + newState
 	
 	if newState == State.START then
 		self.preLines = []
@@ -752,7 +789,7 @@ Transpiler.enterState = function(newState, initAsNew=true)
 		self.nextMethodInline = false
 		if self.m and self.m.hasIndex("name") then self.m.className = self.m.name
 
-	else if newState == State.METHOD then
+	else if newState == State.METHOD and oldState != State.LAMBDA then
 		if self.curClass.type == ClassType.CLASS then
 			self.curClass.storageLines += self.preLines
 			self.curClass.wrapperLines += self.preLines
@@ -788,7 +825,7 @@ Transpiler.exitState = function(toNewState)
 	debugPrint "Exiting state: " + self.state
 
 	if self.state == State.METHOD then
-		self.localVars = []
+		if toNewState != State.LAMBDA then self.localVars = []
 		self.inVmCase = 0
 		self.pushedGCScope = false
 	end if
@@ -817,6 +854,15 @@ Transpiler.updateState = function
 		self.updateStateCLASS
 	else if self.state == State.METHOD then
 		self.updateStateMETHOD
+	else if self.state == State.LAMBDA then
+		// Inside a lambda is actually still just inside a method, except we watch
+		// for this one exit condition
+		if self.line.trimmed == "};" then
+			self.curClass.methodLines.push "	});"
+			self.enterState State.METHOD
+		else
+			self.updateStateMETHOD
+		end if
 	else if self.state == State.DONE then
 		self.endLines.push self.line.full	// ToDo: support H: and CPP: comments here?
 	else if self.state == State.CPP_ONLY then
@@ -1105,8 +1151,17 @@ Transpiler.updateStateCLASS = function
 
 		// static field with default value
 		else if self.match("≤scope:w≥ static ≤type:w≥ ≤name:w≥ = ≤value≥;") then
-			self.curClass.declLines.push self.fill("	≤scope≥: static ≤type≥ ≤name≥;")
-			self.curClass.defLines.push self.fill("≤type≥ ≤className≥::≤name≥ = ≤value≥;")
+			if self.curClass.type == ClassType.CLASS then
+				self.curClass.storageLines.push self.fill("	≤scope≥: static ≤type≥ ≤name≥;")
+				self.curClass.defLines.push self.fill("	≤type≥ ≤className≥Storage::≤name≥;")
+				self.curClass.wrapperLines.push self.fill("	≤scope≥: ≤type≥ ≤name≥();")
+				self.curClass.inlineLines.push  self.fill("inline ≤type≥ ≤className≥::≤name≥() { return get()->≤name≥; }")
+				self.curClass.wrapperLines.push self.fill("	≤scope≥: void set_≤name≥(≤type≥ _v);")
+				self.curClass.inlineLines.push  self.fill("inline void ≤className≥::set_≤name≥(≤type≥ _v) { get()->≤name≥ = _v; }")
+			else
+				self.curClass.declLines.push self.fill("	≤scope≥: static ≤type≥ ≤name≥;")
+				self.curClass.defLines.push self.fill("≤type≥ ≤className≥::≤name≥ = ≤value≥;")
+			end if
 			if self.gatherMode then self.curClass.fields.push VariableInfo.Make(self.m.name, self.m.type, self.m.scope, true)
 
 		// thread-local static field
@@ -1325,7 +1380,8 @@ Transpiler.updateStateMETHOD = function
 		if self.m.type == "Value" then
 			// Also, make sure these are not too indented; Value declarations should always
 			// be at the root level of a method (especially, never in a loop).
-			self.assert line.indentation.len < 2, "Value declaration must be at method root"
+			self.assert line.indentation.len < 2 + (self.state == State.LAMBDA), 
+			   "Value declaration must be at method root"
 			// And be sure to call GC_PROTECT before the first such
 			if not self.pushedGCScope then
 				self.curClass.methodLines.push line.indentation + "GC_PUSH_SCOPE();"
@@ -1375,6 +1431,23 @@ Transpiler.updateStateMETHOD = function
 				self.curClass.methodLines.push line.indentation + "GC_POP_SCOPE();"
 			end if
 		end if
+	end if
+	// start of a lambda definition
+	if self.match("≤var≥.≤member≥ = (List<Value> ≤p1≥, Int32 ≤p2≥, Int32 ≤p3≥) => {") then
+		// Special case of a NativeCallbackDelegate, which returns Value
+		self.enterState State.LAMBDA
+		self.curClass.methodLines.push self.fill(
+		  "	≤var≥.set_≤member≥([](List<Value> ≤p1≥, Int32 ≤p2≥, Int32 ≤p3≥) -> Value {")
+		return
+	else if self.match("≤var≥.≤member≥ = (≤params≥) => {") then
+		// More general case: no way to know what it returns.  We'll assume nothing
+		self.enterState State.LAMBDA
+		self.curClass.methodLines.push self.fill(
+		  "	≤var≥.set_≤member≥([](≤params≥) -> {")
+		return
+	else if line.trimmed.endsWith(" => {") then
+		// Super-general case, we have no idea what's going on here.  But it's a lambda.
+		self.enterState State.LAMBDA
 	end if
 	
 	if self.curClass.name == "VM" then
@@ -1481,6 +1554,10 @@ Transpiler.generateOutput = function
 	end for
 	cppLines.push ""
 	cppLines.push "} // end of namespace " + self.namespace
+
+	// Compress runs of blank lines
+	headerLines.compress ""
+	cppLines.compress ""
 
 	headerPath = file.child(self.outputFolder, baseName + ".g.h")
 	cppPath = file.child(self.outputFolder, baseName + ".g.cpp")

@@ -6,7 +6,6 @@
 // Constants used as part of the language definition: token types,
 // operator precedence, that sort of thing.
 
-
 namespace MiniScript {
 
 // FORWARD DECLARATIONS
@@ -55,6 +54,8 @@ struct IndexParselet;
 class IndexParseletStorage;
 struct MemberParselet;
 class MemberParseletStorage;
+struct Intrinsic;
+class IntrinsicStorage;
 struct Parser;
 class ParserStorage;
 struct FuncDef;
@@ -114,14 +115,6 @@ class ReturnNodeStorage;
 
 // DECLARATIONS
 
-
-
-
-
-
-
-
-
 // Precedence levels (higher precedence binds more strongly)
 enum class Precedence : Int32 {
 	NONE = 0,
@@ -139,7 +132,6 @@ enum class Precedence : Int32 {
 	ADDRESS_OF,      // @
 	PRIMARY
 }; // end of enum Precedence
-
 
 // Token types returned by the lexer
 enum class TokenType : Int32 {
@@ -198,67 +190,6 @@ enum class TokenType : Int32 {
 	COMMENT,
 	ERROR
 }; // end of enum TokenType
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 // INLINE METHODS
 

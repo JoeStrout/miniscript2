@@ -7,32 +7,32 @@ namespace MiniScript {
 
 const String StringUtils::hexDigits = "0123456789ABCDEF";
 String StringUtils::ToHex(UInt32 value) {
-	Char hexChars[9]{};
+	char hexChars[9]{};
 	for (Int32 i = 7; i >= 0; i--) {
-		hexChars[i] = hexDigits[(int)(value & 0xF)];
+		hexChars[i] = (char)hexDigits[(int)(value & 0xF)];
 		value >>= 4;
 	}
-	return  String::New(hexChars);
+	return String(hexChars);
 }
 String StringUtils::ToHex(Byte value) {
-	Char hexChars[2];
+	char hexChars[3]{};
 	for (Int32 i = 1; i >= 0; i--) {
-		hexChars[i] = hexDigits[(int)(value & 0xF)];
+		hexChars[i] = (char)hexDigits[(int)(value & 0xF)];
 		value >>= 4;
 	}
-	return  String::New(hexChars);
+	return String(hexChars);
 }
 String StringUtils::ZeroPad(Int32 value,Int32 digits ) {
 	// set width and fill
-	Char format[] = "%05d";
+	char format[] = "%05d";
 	format[2] = '0' + digits;
-	Char buffer[20];
+	char buffer[20];
 	snprintf(buffer, 20, format, value);
 	return String(buffer);
 }
 String StringUtils::Spaces(Int32 count) {
 	if (count < 1) return "";
-	Char* spaces = (Char*)malloc(count + 1);
+	char* spaces = (char*)malloc(count + 1);
 	memset(spaces, ' ', count);
 	spaces[count] = '\0';
 	String result(spaces);

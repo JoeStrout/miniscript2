@@ -49,6 +49,9 @@ inline size_t ss_totalSize(const StringStorage* storage) {
 // Character access (byte-based indexing)
 char ss_charAt(const StringStorage* storage, int byteIndex);
 
+// Character access (character-index-based, returns Unicode code point)
+uint32_t ss_codePointAt(const StringStorage* storage, int charIndex);
+
 // Comparison
 bool ss_equals(const StringStorage* storage, const StringStorage* other);
 int ss_compare(const StringStorage* storage, const StringStorage* other);

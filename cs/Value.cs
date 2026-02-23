@@ -1132,6 +1132,27 @@ public static class ValueHelpers {
 		string result = s.Replace(fromStr, toStr);
 		return make_string(result);
 	}
+
+	public static Value string_upper(Value str) {
+		if (!str.IsString) return str;
+		return make_string(GetStringValue(str).ToUpper());
+	}
+
+	public static Value string_lower(Value str) {
+		if (!str.IsString) return str;
+		return make_string(GetStringValue(str).ToLower());
+	}
+
+	public static Value string_from_code_point(int codePoint) {
+		return make_string(char.ConvertFromUtf32(codePoint));
+	}
+
+	public static int string_code_point(Value str) {
+		if (!str.IsString) return 0;
+		String s = GetStringValue(str);
+		if (s.Length == 0) return 0;
+		return char.ConvertToUtf32(s, 0);
+	}
 }
 
 // A minimal, fast handle table. Stores actual C# objects referenced by Value.

@@ -79,6 +79,14 @@ char ss_charAt(const StringStorage* storage, int byteIndex) {
     return storage->data[byteIndex];
 }
 
+uint32_t ss_codePointAt(const StringStorage* storage, int charIndex) {
+    if (!storage || charIndex < 0) return 0;
+    int byteIndex = UTF8CharIndexToByteIndex(
+        (const unsigned char*)storage->data, charIndex, storage->lenB);
+    if (byteIndex < 0 || byteIndex >= storage->lenB) return 0;
+    return (uint32_t)UTF8Decode((unsigned char*)storage->data + byteIndex);
+}
+
 // Comparison functions
 bool ss_equals(const StringStorage* storage, const StringStorage* other) {
     // NULL represents empty string, so NULL == NULL is true

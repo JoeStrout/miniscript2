@@ -630,6 +630,75 @@ Value string_sub(Value a, Value b) {
 }
 
 
+Value string_upper(Value str) {
+    if (!is_string(str)) return str;
+
+    int lenB = string_lengthB(str);
+    if (lenB == 0) return str;
+
+    char tiny_buffer[TINY_STRING_MAX_LEN + 1];
+    const char* data = get_string_data_nullterm(&str, tiny_buffer);
+    if (!data) return str;
+
+    // Check if string is all ASCII and caseless (common fast path)
+    if (UTF8IsCaseless((unsigned char*)data, lenB)) return str;
+
+    unsigned char* outBuf = NULL;
+    unsigned long outLen = 0;
+    if (!UTF8ToUpper((unsigned char*)data, lenB, &outBuf, &outLen)) return str;
+
+    GC_PUSH_SCOPE();
+    GC_PROTECT(&str);
+    Value result = make_string((const char*)outBuf);
+    free(outBuf);
+    GC_POP_SCOPE();
+    return result;
+}
+
+Value string_lower(Value str) {
+    if (!is_string(str)) return str;
+
+    int lenB = string_lengthB(str);
+    if (lenB == 0) return str;
+
+    char tiny_buffer[TINY_STRING_MAX_LEN + 1];
+    const char* data = get_string_data_nullterm(&str, tiny_buffer);
+    if (!data) return str;
+
+    if (UTF8IsCaseless((unsigned char*)data, lenB)) return str;
+
+    unsigned char* outBuf = NULL;
+    unsigned long outLen = 0;
+    if (!UTF8ToLower((unsigned char*)data, lenB, &outBuf, &outLen)) return str;
+
+    GC_PUSH_SCOPE();
+    GC_PROTECT(&str);
+    Value result = make_string((const char*)outBuf);
+    free(outBuf);
+    GC_POP_SCOPE();
+    return result;
+}
+
+Value string_from_code_point(int codePoint) {
+    unsigned char buf[5];
+    int len = UTF8Encode((unsigned long)codePoint, buf);
+    buf[len] = '\0';
+    return make_string((const char*)buf);
+}
+
+int string_code_point(Value str) {
+    if (!is_string(str)) return 0;
+
+    int lenB = string_lengthB(str);
+    if (lenB == 0) return 0;
+
+    char tiny_buffer[TINY_STRING_MAX_LEN + 1];
+    const char* data = get_string_data_nullterm(&str, tiny_buffer);
+    if (!data) return 0;
+
+    return (int)UTF8Decode((unsigned char*)data);
+}
+
 // Unicode-aware string comparison
 // Returns: < 0 if a < b, 0 if a == b, > 0 if a > b
 int string_compare(Value a, Value b) {

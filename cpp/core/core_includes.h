@@ -49,7 +49,8 @@ using UInt64  = uint64_t;  // ulong
 
 // The following will work with both the shortcut names,
 // and the full System names.
-using Char    = char;
+using Char    = uint32_t;
+using Char8   = char;
 using Single  = float;
 using Double  = double;
 

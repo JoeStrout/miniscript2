@@ -68,18 +68,52 @@ public static class CoreIntrinsics {
 			return make_string(result);
 		};
 
-		// val(x)
+		// val(x=0)
 		f = Intrinsic.Create("val");
-		f.AddParam("x");
+		f.AddParam("x", make_int(0));
 		f.Code = (List<Value> stk, Int32 bi, Int32 ac) => {
-			return to_number(stk[bi + 1]);
+			Value v = stk[bi + 1];
+			if (is_number(v)) return v;
+			if (is_string(v)) return to_number(v);
+			return make_null();
 		};
 
-		// str(x)
+		// str(x="")
 		f = Intrinsic.Create("str");
-		f.AddParam("x");
+		f.AddParam("x", make_string(""));
 		f.Code = (List<Value> stk, Int32 bi, Int32 ac) => {
-			return make_string(StringUtils.Format("{0}", stk[bi + 1]));
+			Value v = stk[bi + 1];
+			if (is_null(v)) return make_string("");
+			return make_string(StringUtils.Format("{0}", v));
+		};
+
+		// upper(self)
+		f = Intrinsic.Create("upper");
+		f.AddParam("self");
+		f.Code = (List<Value> stk, Int32 bi, Int32 ac) => {
+			return string_upper(stk[bi + 1]);
+		};
+
+		// lower(self)
+		f = Intrinsic.Create("lower");
+		f.AddParam("self");
+		f.Code = (List<Value> stk, Int32 bi, Int32 ac) => {
+			return string_lower(stk[bi + 1]);
+		};
+
+		// char(codePoint=65)
+		f = Intrinsic.Create("char");
+		f.AddParam("codePoint", make_int(65));
+		f.Code = (List<Value> stk, Int32 bi, Int32 ac) => {
+			int codePoint = (int)numeric_val(stk[bi + 1]);
+			return string_from_code_point(codePoint);
+		};
+
+		// code(self)
+		f = Intrinsic.Create("code");
+		f.AddParam("self");
+		f.Code = (List<Value> stk, Int32 bi, Int32 ac) => {
+			return make_int(string_code_point(stk[bi + 1]));
 		};
 
 		// len(x)
@@ -218,10 +252,12 @@ public static class CoreIntrinsics {
 			int decimalPlaces = (int)numeric_val(stk[bi + 2]);
 			if (decimalPlaces >= 0) {
 				if (decimalPlaces > 15) decimalPlaces = 15;
-				num = Math.Round(num, decimalPlaces, MidpointRounding.AwayFromZero);
+				num = Math.Round(num, decimalPlaces, MidpointRounding.AwayFromZero); // CPP: num = Math::Round(num, decimalPlaces);
 			} else {
 				double pow10 = Math.Pow(10, -decimalPlaces);
-				num = Math.Round(num / pow10, MidpointRounding.AwayFromZero) * pow10;
+				num /= pow10;
+				num = Math.Round(num, MidpointRounding.AwayFromZero); // CPP: num = Math::Round(num);
+				num *= pow10;
 			}
 			return make_double(num);
 		};

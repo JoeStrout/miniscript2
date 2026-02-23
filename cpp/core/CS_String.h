@@ -10,6 +10,7 @@
 #include <cstring>
 #include <cstdlib>  // For malloc/free
 #include "StringStorage.h"
+#include "unicodeUtil.h"
 #include "CS_List.h"
 #include <cstdio> // for debugging
 #include <stdio.h>
@@ -85,6 +86,14 @@ public:
 	String(char c) {
 		char buf[2] = {c, 0};
 		ref = FindOrCreate(buf);
+	}
+
+	// Construct from a Unicode code point (UTF-8 encodes it)
+	String(uint32_t codePoint) {
+		unsigned char buf[5];
+		int len = UTF8Encode((unsigned long)codePoint, buf);
+		buf[len] = 0;
+		ref = FindOrCreate((const char*)buf);
 	}
 
     // Factory method - allocates empty string (matches C# "new String()")
@@ -220,11 +229,20 @@ public:
     int Length() const { return lengthC(); }
     bool Empty() const { return Length() == 0; }
     
-    // C# String API - Character access
-    char operator[](int index) const {
+    // C# String API - Character access (by character index, returns Unicode code point)
+    uint32_t operator[](int index) const {
         const StringStorage* s = getStorageRaw();
-        return ss_charAt(s, index);
+        return ss_codePointAt(s, index);
     }
+
+    // Byte-level access (by byte index)
+    char AtB(int byteIndex) const {
+        const StringStorage* s = getStorageRaw();
+        return ss_charAt(s, byteIndex);
+    }
+
+    // Public byte-length accessor
+    int LengthB() const { return lengthB(); }
     
     // C# String API - Search methods
     int IndexOf(const String& value) const {

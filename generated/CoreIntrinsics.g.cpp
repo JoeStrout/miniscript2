@@ -49,18 +49,65 @@ void CoreIntrinsics::Init() {
 		return make_string(result);
 	});
 
-	// val(x)
+	// val(x=0)
 	f = Intrinsic::Create("val");
-	f.AddParam("x");
+	f.AddParam("x", make_int(0));
 	f.set_Code([](List<Value> stk, Int32 bi, Int32 ac) -> Value {
-		return to_number(stk[bi + 1]);
+		GC_PUSH_SCOPE();
+		Value v = stk[bi + 1]; GC_PROTECT(&v);
+		if (is_number(v))  {
+			GC_POP_SCOPE();
+			return v;
+		}
+		if (is_string(v))  {
+			GC_POP_SCOPE();
+			return to_number(v);
+		}
+		GC_POP_SCOPE();
+		return make_null();
 	});
 
-	// str(x)
+	// str(x="")
 	f = Intrinsic::Create("str");
-	f.AddParam("x");
+	f.AddParam("x", make_string(""));
 	f.set_Code([](List<Value> stk, Int32 bi, Int32 ac) -> Value {
-		return make_string(StringUtils::Format("{0}", stk[bi + 1]));
+		GC_PUSH_SCOPE();
+		Value v = stk[bi + 1]; GC_PROTECT(&v);
+		if (is_null(v))  {
+			GC_POP_SCOPE();
+			return make_string("");
+		}
+		GC_POP_SCOPE();
+		return make_string(StringUtils::Format("{0}", v));
+	});
+
+	// upper(self)
+	f = Intrinsic::Create("upper");
+	f.AddParam("self");
+	f.set_Code([](List<Value> stk, Int32 bi, Int32 ac) -> Value {
+		return string_upper(stk[bi + 1]);
+	});
+
+	// lower(self)
+	f = Intrinsic::Create("lower");
+	f.AddParam("self");
+	f.set_Code([](List<Value> stk, Int32 bi, Int32 ac) -> Value {
+		return string_lower(stk[bi + 1]);
+	});
+
+	// char(codePoint=65)
+	f = Intrinsic::Create("char");
+	f.AddParam("codePoint", make_int(65));
+	f.set_Code([](List<Value> stk, Int32 bi, Int32 ac) -> Value {
+		int codePoint = (int)numeric_val(stk[bi + 1]);
+		return string_from_code_point(codePoint);
+	});
+
+	// code(self)
+	f = Intrinsic::Create("code");
+	f.AddParam("self");
+	f.set_Code([](List<Value> stk, Int32 bi, Int32 ac) -> Value {
+		return make_int(string_code_point(stk[bi + 1]));
 	});
 
 	// len(x)
@@ -206,7 +253,9 @@ void CoreIntrinsics::Init() {
 			num = Math::Round(num, decimalPlaces);
 		} else {
 			double pow10 = Math::Pow(10, -decimalPlaces);
-			num = Math::Round(num / pow10) * pow10;
+			num /= pow10;
+			num = Math::Round(num);
+			num *= pow10;
 		}
 		return make_double(num);
 	});

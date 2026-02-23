@@ -152,12 +152,11 @@ class StringUtils {
 	inline static String makeString(uint8_t, const String& s) { 
 		return s;
 	}
-	inline static String makeString(const Char* s) {
+	inline static String makeString(const char* s) {
 		return String(s ? s : "");
 	}
 	inline static String makeString(Char c) {
-		Char buf[2] = {c, '\0'};
-		return String(buf);
+		return String(c);  // String(uint32_t) UTF-8 encodes the code point
 	}
 	// Value type support
 	inline static String makeString(Value v) {
@@ -169,7 +168,7 @@ class StringUtils {
 			return String(as_cstring(strVal));
 		}
 		if (is_string(v)) {
-			const Char* str = as_cstring(v);
+			const char* str = as_cstring(v);
 			return str ? String(str) : String("<str?>");
 		}
 		if (is_list(v)) {
@@ -212,7 +211,7 @@ class StringUtils {
 	}
 	inline static String makeRepr(const Value v) {
 		if (is_string(v)) {
-			const Char* str = as_cstring(v);
+			const char* str = as_cstring(v);
 			if (!str) {
 				return String("\"\"");
 			}

@@ -38,6 +38,12 @@ Value string_substring(Value str, int startIndex, int len);
 Value string_slice(Value str, int start, int end);
 Value string_sub(Value a, Value b);
 
+// Case conversion and Unicode code point functions
+Value string_upper(Value str);
+Value string_lower(Value str);
+Value string_from_code_point(int codePoint);
+int string_code_point(Value str);
+
 // Zero-copy string data access (for performance-critical operations)
 const char* get_string_data_zerocopy(const Value* v_ptr, int* out_len);
 

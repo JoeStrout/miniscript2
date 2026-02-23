@@ -845,7 +845,12 @@ public static class ValueHelpers {
 	
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static double as_double(Value v) => v.AsDouble();
-	
+
+	// Get the numeric value as a double, whether stored as int or double.
+	// Returns 0 for non-numeric types (null, string, list, map, etc.).
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static double numeric_val(Value v) => v.IsInt ? v.AsInt() : v.IsDouble ? v.AsDouble() : 0.0;
+
 	// Core type checking functions (matching value.h)
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool is_null(Value v) => v.IsNull;

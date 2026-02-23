@@ -119,7 +119,13 @@ class ReturnNodeStorage;
 
 class CoreIntrinsics {
 
+	// If given a nonzero seed, seed our PRNG accordingly.
+	// Then (in either case), return the next random number drawn
+	// from the range [0, 1) with a uniform distribution.
+	private: static double GetNextRandom(int seed=0);
+
 	public: static void Init();
+
 }; // end of struct CoreIntrinsics
 
 // INLINE METHODS

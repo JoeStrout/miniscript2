@@ -206,6 +206,14 @@ static inline double as_double(Value v) {
     return d;
 }
 
+// Get the numeric value as a double, whether stored as int or double.
+// Returns 0 for non-numeric types (null, string, list, map, etc.).
+static inline double numeric_val(Value v) {
+    if (is_int(v)) return (double)as_int(v);
+    if (is_double(v)) return as_double(v);
+    return 0.0;
+}
+
 // Utility functions for accessing tiny string data within Value
 #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
     #define GET_VALUE_DATA_PTR(v_ptr) ((char*)(v_ptr))

@@ -479,6 +479,66 @@ Value map_nth_entry(Value map_val, int n) {
     return result;
 }
 
+int map_iter_next(Value map_val, int iter) {
+    ValueMap* map = as_map(map_val);
+    if (!map) return MAP_ITER_DONE;
+
+    // Phase 1: VarMap register entries (iter <= -1)
+    if (map->varmap_data != NULL && iter <= -1) {
+        VarMapData* vdata = map->varmap_data;
+        int startIdx = (iter == -1) ? 0 : -(iter) - 2 + 1;
+        for (int i = startIdx; i < vdata->reg_map_count; i++) {
+            int reg_index = vdata->reg_map_indices[i];
+            if (!is_null(vdata->names[reg_index])) {
+                return -(i + 2);
+            }
+        }
+        // Exhausted register entries; reset for phase 2
+        iter = -1;
+    }
+
+    // Phase 2: Regular hash entries - scan for next occupied slot
+    int start = iter + 1;
+    for (int i = start; i < map->capacity; i++) {
+        if (map->entries[i].occupied) {
+            return i;
+        }
+    }
+    return MAP_ITER_DONE;
+}
+
+Value map_iter_entry(Value map_val, int iter) {
+    ValueMap* map = as_map(map_val);
+    if (!map) return make_null();
+
+    Value key, val;
+
+    if (iter < -1 && map->varmap_data != NULL) {
+        // VarMap register entry
+        int regMapIdx = -(iter) - 2;
+        VarMapData* vdata = map->varmap_data;
+        int reg_index = vdata->reg_map_indices[regMapIdx];
+        key = vdata->reg_map_keys[regMapIdx];
+        val = vdata->registers[reg_index];
+    } else if (iter >= 0 && iter < map->capacity && map->entries[iter].occupied) {
+        // Regular hash entry
+        key = map->entries[iter].key;
+        val = map->entries[iter].value;
+    } else {
+        return make_null();
+    }
+
+    // Build {"key": k, "value": v} mini-map
+    GC_PUSH_SCOPE();
+    GC_PROTECT(&key);
+    GC_PROTECT(&val);
+    Value result = make_map(4);
+    map_set(result, make_string("key"), key);
+    map_set(result, make_string("value"), val);
+    GC_POP_SCOPE();
+    return result;
+}
+
 bool map_needs_expansion(Value map_val) {
     ValueMap* map = as_map(map_val);
     if (!map) return false;

@@ -700,6 +700,60 @@ public static class ValueHelpers {
 		return make_null();
 	}
 
+	public const int MAP_ITER_DONE = Int32.MinValue;
+
+	/// <summary>
+	/// Advance a map iterator to the next entry. Returns the new iterator value,
+	/// or MAP_ITER_DONE if there are no more entries.
+	/// Iterator encoding: -1 = not started; values &lt;= -2 encode VarMap register
+	/// entries (reg index i → iter -(i+2)); values &gt;= 0 encode base map entries
+	/// (sequential index for C#).
+	/// </summary>
+	public static int map_iter_next(Value map_val, int iter) {
+		if (!map_val.IsMap) return MAP_ITER_DONE;
+		ValueMap valueMap = HandlePool.Get(map_val.Handle()) as ValueMap;
+		if (valueMap == null) return MAP_ITER_DONE;
+
+		VarMap varMap = valueMap as VarMap;
+
+		// Phase 1: VarMap register entries (iter <= -1)
+		if (varMap != null && iter <= -1) {
+			int startIdx = (iter == -1) ? 0 : -(iter) - 2 + 1;
+			for (int i = startIdx; i < varMap.RegEntryCount; i++) {
+				if (varMap.IsRegEntryAssigned(i)) {
+					return -(i + 2);
+				}
+			}
+			// Exhausted register entries; reset for phase 2
+			iter = -1;
+		}
+
+		// Phase 2: Base map entries (sequential index for C#)
+		iter++;
+		if (iter < valueMap.BaseCount) return iter;
+		return MAP_ITER_DONE;
+	}
+
+	/// <summary>
+	/// Get the entry for a given map iterator value as a {"key":k, "value":v} mini-map.
+	/// </summary>
+	public static Value map_iter_entry(Value map_val, int iter) {
+		if (!map_val.IsMap) return make_null();
+		ValueMap valueMap = HandlePool.Get(map_val.Handle()) as ValueMap;
+		if (valueMap == null) return make_null();
+
+		// Negative iter (< -1) means a VarMap register entry
+		if (iter < -1) {
+			VarMap varMap = valueMap as VarMap;
+			if (varMap == null) return make_null();
+			int regMapIdx = -(iter) - 2;
+			return varMap.GetRegEntry(regMapIdx);
+		}
+
+		// Non-negative iter means a base map entry at sequential index
+		return valueMap.GetNthBaseEntry(iter);
+	}
+
 	public static void varmap_gather(Value map_val) {
 		if (!map_val.IsMap) return;
 		var varMap = HandlePool.Get(map_val.Handle()) as VarMap;
@@ -1157,6 +1211,30 @@ public class ValueMap {
 
 	// For iteration support
 	public virtual IEnumerable<KeyValuePair<Value, Value>> Items => _items;
+
+	/// <summary>
+	/// Get the count of base (non-register) entries only.
+	/// For regular ValueMaps this is the same as Count.
+	/// For VarMaps, this excludes register-mapped entries.
+	/// </summary>
+	public int BaseCount => _items.Count;
+
+	/// <summary>
+	/// Get the Nth base (non-register) entry as a {"key":k, "value":v} mini-map.
+	/// </summary>
+	public Value GetNthBaseEntry(int n) {
+		int i = 0;
+		foreach (var kvp in _items) {
+			if (i == n) {
+				Value result = ValueHelpers.make_map(4);
+				ValueHelpers.map_set(result, ValueHelpers.make_string("key"), kvp.Key);
+				ValueHelpers.map_set(result, ValueHelpers.make_string("value"), kvp.Value);
+				return result;
+			}
+			i++;
+		}
+		return ValueHelpers.val_null;
+	}
 }
 
 }

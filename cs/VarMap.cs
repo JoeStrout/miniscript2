@@ -144,6 +144,41 @@ public class VarMap : ValueMap {
 	}
 
 	/// <summary>
+	/// Number of register mapping slots.
+	/// </summary>
+	public int RegEntryCount => _regMap.Count;
+
+	/// <summary>
+	/// Check if the register mapping at the given enumeration index is assigned.
+	/// Enumerates to position n in _regMap, checking _names for assignment.
+	/// </summary>
+	public bool IsRegEntryAssigned(int n) {
+		int i = 0;
+		foreach (var kvp in _regMap) {
+			if (i == n) return !_names[kvp.Value].IsNull;
+			i++;
+		}
+		return false;
+	}
+
+	/// <summary>
+	/// Get a {"key":k, "value":v} mini-map for the register entry at enumeration index n.
+	/// </summary>
+	public Value GetRegEntry(int n) {
+		int i = 0;
+		foreach (var kvp in _regMap) {
+			if (i == n) {
+				Value result = make_map(4);
+				map_set(result, make_string("key"), kvp.Key);
+				map_set(result, make_string("value"), _registers[kvp.Value]);
+				return result;
+			}
+			i++;
+		}
+		return make_null();
+	}
+
+	/// <summary>
 	/// Enumerate over both register-mapped variables and regular map entries.
 	/// </summary>
 	public override IEnumerable<KeyValuePair<Value, Value>> Items {

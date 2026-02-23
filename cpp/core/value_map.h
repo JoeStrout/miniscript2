@@ -7,6 +7,7 @@
 
 #include "value.h"
 #include <stdbool.h>
+#include <limits.h>
 
 // This module is part of Layer 2A (Runtime Value System + GC)
 #define CORE_LAYER_2A
@@ -58,6 +59,14 @@ typedef struct {
 MapIterator map_iterator(Value map_val);
 bool map_iterator_next(MapIterator* iter, Value* out_key, Value* out_value);
 Value map_nth_entry(Value map_val, int n);
+
+// New iterator functions for for-loop iteration.
+// Iterator encoding: -1 = not started; values <= -2 encode VarMap register
+// entries (reg index i -> iter -(i+2)); values >= 0 are raw indices into
+// the entries array (skipping unoccupied slots).
+#define MAP_ITER_DONE INT32_MIN
+int map_iter_next(Value map_val, int iter);
+Value map_iter_entry(Value map_val, int iter);
 
 // Hash function for maps
 uint32_t map_hash(Value map_val);

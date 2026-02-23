@@ -1161,25 +1161,29 @@ public class VM {
 				}
 
 				case Opcode.NEXT_rA_rB: {
-					// R[A] += 1; if R[A] < len(R[B]) then skip next instruction
-					// Used for for-loops: NEXT followed by JUMP to end. Skip the JUMP
-					// while there are more elements; execute JUMP when done.
+					// Advance iterator R[A] to next entry in collection R[B].
+					// If there is a next entry, skip next instruction (the JUMP to end).
+					// Iterator values are opaque: for lists/strings they are sequential
+					// indices; for maps they encode position via map_iter_next.
 					Byte a = BytecodeUtil.Au(instruction);
 					Byte b = BytecodeUtil.Bu(instruction);
-					Int32 index = as_int(localStack[a]) + 1;
-					localStack[a] = make_int(index);
+					Int32 iter = as_int(localStack[a]);
 					container = localStack[b];
-					Int32 len;
+					bool hasMore;
 					if (is_list(container)) {
-						len = list_count(container);
+						iter++;
+						hasMore = (iter < list_count(container));
 					} else if (is_map(container)) {
-						len = map_count(container);
+						iter = map_iter_next(container, iter);
+						hasMore = (iter != MAP_ITER_DONE);
 					} else if (is_string(container)) {
-						len = string_length(container);
+						iter++;
+						hasMore = (iter < string_length(container));
 					} else {
-						len = 0; // Empty/null collection
+						hasMore = false;
 					}
-					if (index < len) {
+					localStack[a] = make_int(iter);
+					if (hasMore) {
 						pc++; // Skip next instruction (the JUMP to end of loop)
 					}
 					break;
@@ -1531,10 +1535,10 @@ public class VM {
 				}
 
 				case Opcode.ITERGET_rA_rB_rC: {
-					// R[A] = R[B] element at position R[C]
+					// R[A] = entry from R[B] at iterator position R[C]
 					// For lists: same as list[index]
 					// For strings: same as string[index]
-					// For maps: returns {"key":k, "value":v} mini-map for the Nth entry
+					// For maps: returns {"key":k, "value":v} via map_iter_entry
 					Byte a = BytecodeUtil.Au(instruction);
 					Byte b = BytecodeUtil.Bu(instruction);
 					Byte c = BytecodeUtil.Cu(instruction);
@@ -1544,7 +1548,7 @@ public class VM {
 					if (is_list(container)) {
 						localStack[a] = list_get(container, idx);
 					} else if (is_map(container)) {
-						localStack[a] = map_nth_entry(container, idx);
+						localStack[a] = map_iter_entry(container, idx);
 					} else if (is_string(container)) {
 						localStack[a] = string_substring(container, idx, 1);
 					} else {

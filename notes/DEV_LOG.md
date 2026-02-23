@@ -441,4 +441,10 @@ Finally finished the refactoring of intrinsics, and polished off the rough corne
 
 So, recursive functions are now working properly.  Next we should implement commonly used intrinsics, especially `range`, so we can start writing `for` loops in a more normal way.
 
+## Feb 23, 2026
+
+Today I'm going to try to refactor how iteration via a `for` loop works, particularly for maps.  Right now that involves counting all the items, _and_ counting again from the beginning of the map to `i`, on every iteration of the loop.  I think we can do much better: the hidden iteration variable should reference not a 0 to n-1 "index" value, but instead the index into the hash table's `entry` array, automatically skipping over any unoccupied slots.
+
+On the C# side, we can't do that, so I took a different approach: a cache of the key values, lazily obtained from `Dictionary.Keys` when needed by an iterator, and cleared when the map is mutated.  The iterator then just indexes into this list.  When we implement the `indexes` intrinsic, we should make use of this cache as well (a minor optimization but basically free).
+
 

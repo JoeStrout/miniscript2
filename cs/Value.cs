@@ -706,8 +706,8 @@ public static class ValueHelpers {
 	/// Advance a map iterator to the next entry. Returns the new iterator value,
 	/// or MAP_ITER_DONE if there are no more entries.
 	/// Iterator encoding: -1 = not started; values &lt;= -2 encode VarMap register
-	/// entries (reg index i → iter -(i+2)); values &gt;= 0 encode base map entries
-	/// (sequential index for C#).
+	/// entries (reg index i → iter -(i+2)); values &gt;= 0 are indices into the
+	/// key cache for base map entries.
 	/// </summary>
 	public static int map_iter_next(Value map_val, int iter) {
 		if (!map_val.IsMap) return MAP_ITER_DONE;
@@ -728,9 +728,10 @@ public static class ValueHelpers {
 			iter = -1;
 		}
 
-		// Phase 2: Base map entries (sequential index for C#)
+		// Phase 2: Base map entries via key cache
 		iter++;
-		if (iter < valueMap.BaseCount) return iter;
+		List<Value> keys = valueMap.GetKeyCache();
+		if (iter < keys.Count) return iter;
 		return MAP_ITER_DONE;
 	}
 
@@ -750,8 +751,15 @@ public static class ValueHelpers {
 			return varMap.GetRegEntry(regMapIdx);
 		}
 
-		// Non-negative iter means a base map entry at sequential index
-		return valueMap.GetNthBaseEntry(iter);
+		// Non-negative iter: index into key cache, then look up value by key
+		List<Value> keys = valueMap.GetKeyCache();
+		if (iter < 0 || iter >= keys.Count) return make_null();
+		Value key = keys[iter];
+		Value val = valueMap.Get(key);
+		Value result = make_map(4);
+		map_set(result, make_string("key"), key);
+		map_set(result, make_string("value"), val);
+		return result;
 	}
 
 	public static void varmap_gather(Value map_val) {
@@ -1183,6 +1191,10 @@ public class ValueMap {
 	protected Dictionary<Value, Value> _items = new Dictionary<Value, Value>(new ValueEqualityComparer());
 	public bool Frozen;
 
+	// Lazily-populated cache of _items keys for O(1) indexed iteration.
+	// Cleared on any mutation; rebuilt on next iteration access.
+	protected List<Value> _keyCache;
+
 	public virtual int Count => _items.Count;
 
 	public virtual Value Get(Value key) {
@@ -1193,11 +1205,13 @@ public class ValueMap {
 	}
 
 	public virtual bool Set(Value key, Value value) {
+		_keyCache = null;
 		_items[key] = value;
 		return true;
 	}
 
 	public virtual bool Remove(Value key) {
+		_keyCache = null;
 		return _items.Remove(key);
 	}
 
@@ -1206,6 +1220,7 @@ public class ValueMap {
 	}
 
 	public virtual void Clear() {
+		_keyCache = null;
 		_items.Clear();
 	}
 
@@ -1213,27 +1228,13 @@ public class ValueMap {
 	public virtual IEnumerable<KeyValuePair<Value, Value>> Items => _items;
 
 	/// <summary>
-	/// Get the count of base (non-register) entries only.
-	/// For regular ValueMaps this is the same as Count.
-	/// For VarMaps, this excludes register-mapped entries.
+	/// Get or rebuild the key cache for indexed iteration of base entries.
 	/// </summary>
-	public int BaseCount => _items.Count;
-
-	/// <summary>
-	/// Get the Nth base (non-register) entry as a {"key":k, "value":v} mini-map.
-	/// </summary>
-	public Value GetNthBaseEntry(int n) {
-		int i = 0;
-		foreach (var kvp in _items) {
-			if (i == n) {
-				Value result = ValueHelpers.make_map(4);
-				ValueHelpers.map_set(result, ValueHelpers.make_string("key"), kvp.Key);
-				ValueHelpers.map_set(result, ValueHelpers.make_string("value"), kvp.Value);
-				return result;
-			}
-			i++;
+	public List<Value> GetKeyCache() {
+		if (_keyCache == null) {
+			_keyCache = new List<Value>(_items.Keys);
 		}
-		return ValueHelpers.val_null;
+		return _keyCache;
 	}
 }
 

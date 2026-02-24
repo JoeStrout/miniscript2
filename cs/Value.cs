@@ -497,6 +497,9 @@ public static class ValueHelpers {
 	
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value make_string(string str) => Value.FromString(str);
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static String to_String(Value v) => as_cstring(to_string(v));
 	
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value make_list(int initial_capacity) {
@@ -698,6 +701,49 @@ public static class ValueHelpers {
 			i++;
 		}
 		return make_null();
+	}
+
+	// MapIterator: lightweight struct for iterating over map entries.
+	// Mirrors the C++ MapIterator in value_map.h.
+	// In C#, we use an enumerator over the ValueMap.Items dictionary;
+	// the C++ side uses index-based traversal over hash table slots.
+	public struct MapIterator {  // CPP: // (omit)
+		public ValueMap map;         // CPP: // (omit)
+		public IEnumerator<KeyValuePair<Value, Value>> enumerator; // CPP: // (omit)
+		public bool started;         // CPP: // (omit)
+		public Value Key;
+		public Value Val;            // CPP: Value value;
+	}                                // CPP: // (omit)
+
+	public static MapIterator map_iterator(Value map_val) {
+		MapIterator iter = new MapIterator();
+		iter.Key = make_null();
+		iter.Val = make_null();
+		//*** BEGIN CS_ONLY ***
+		if (map_val.IsMap) {
+			ValueMap valueMap = HandlePool.Get(map_val.Handle()) as ValueMap;
+			if (valueMap != null) {
+				iter.map = valueMap;
+				iter.enumerator = valueMap.Items.GetEnumerator();
+			}
+		}
+		//*** END CS_ONLY ***
+		/*** BEGIN CPP_ONLY ***
+		iter.map = as_map(map_val);
+		iter.index = -1;
+		iter.varmap_reg_index = -1;
+		*** END CPP_ONLY ***/
+		return iter;
+	}
+
+	public static bool map_iterator_next(ref MapIterator iter) { // CPP: bool map_iterator_next(MapIterator* iter, Value* out_key, Value* out_value) {
+		//*** BEGIN CS_ONLY ***
+		if (iter.enumerator == null) return false;
+		if (!iter.enumerator.MoveNext()) return false;
+		iter.Key = iter.enumerator.Current.Key;
+		iter.Val = iter.enumerator.Current.Value;
+		return true;
+		//*** END CS_ONLY ***
 	}
 
 	public const int MAP_ITER_DONE = Int32.MinValue;
@@ -1062,6 +1108,53 @@ public static class ValueHelpers {
 		return result;
 	}
 
+	public static void list_insert(Value list_val, int index, Value item) {
+		if (!list_val.IsList) return;
+		var valueList = HandlePool.Get(list_val.Handle()) as ValueList;
+		if (valueList == null) return;
+		if (valueList.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return; }
+		valueList.Insert(index, item);
+	}
+
+	public static Value list_pop(Value list_val) {
+		if (!list_val.IsList) return make_null();
+		var valueList = HandlePool.Get(list_val.Handle()) as ValueList;
+		if (valueList == null) return make_null();
+		if (valueList.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return make_null(); }
+		return valueList.Pop();
+	}
+
+	public static Value list_pull(Value list_val) {
+		if (!list_val.IsList) return make_null();
+		var valueList = HandlePool.Get(list_val.Handle()) as ValueList;
+		if (valueList == null) return make_null();
+		if (valueList.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return make_null(); }
+		return valueList.Pull();
+	}
+
+	public static int list_indexOf(Value list_val, Value item, int afterIdx) {
+		if (!list_val.IsList) return -1;
+		var valueList = HandlePool.Get(list_val.Handle()) as ValueList;
+		if (valueList == null) return -1;
+		return valueList.IndexOf(item, afterIdx);
+	}
+
+	public static void list_sort(Value list_val, bool ascending) {
+		if (!list_val.IsList) return;
+		var valueList = HandlePool.Get(list_val.Handle()) as ValueList;
+		if (valueList == null) return;
+		if (valueList.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return; }
+		valueList.Sort(ascending);
+	}
+
+	public static void list_sort_by_key(Value list_val, Value byKey, bool ascending) {
+		if (!list_val.IsList) return;
+		var valueList = HandlePool.Get(list_val.Handle()) as ValueList;
+		if (valueList == null) return;
+		if (valueList.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return; }
+		valueList.SortByKey(byKey, ascending);
+	}
+
 	public static Value list_concat(Value a, Value b) {
 		int lenA = list_count(a);
 		int lenB = list_count(b);
@@ -1131,6 +1224,85 @@ public static class ValueHelpers {
 		}
 		string result = s.Replace(fromStr, toStr);
 		return make_string(result);
+	}
+
+	public static Value string_insert(Value str, int index, Value value) {
+		if (!str.IsString) return str;
+		string s = GetStringValue(str);
+		string insertStr = value.ToString();
+		if (index < 0) index += s.Length + 1;
+		if (index < 0) index = 0;
+		if (index > s.Length) index = s.Length;
+		return make_string(s.Insert(index, insertStr));
+	}
+
+	public static Value string_split_max(Value str, Value delimiter, int maxCount) {
+		if (!str.IsString || !delimiter.IsString) return val_null;
+
+		string s = GetStringValue(str);
+		string delim = GetStringValue(delimiter);
+
+		Value list = make_list(8);
+
+		if (delim == "") {
+			// Split into characters
+			int count = 0;
+			for (int i = 0; i < s.Length; i++) {
+				if (maxCount > 0 && count >= maxCount - 1) {
+					list_push(list, make_string(s.Substring(i)));
+					return list;
+				}
+				list_push(list, make_string(s[i].ToString()));
+				count++;
+			}
+			return list;
+		}
+
+		int pos = 0;
+		int found = 0;
+		while (pos <= s.Length) {
+			int next = s.IndexOf(delim, pos);
+			if (next < 0 || (maxCount > 0 && found >= maxCount - 1)) {
+				list_push(list, make_string(s.Substring(pos)));
+				break;
+			}
+			list_push(list, make_string(s.Substring(pos, next - pos)));
+			pos = next + delim.Length;
+			found++;
+			if (pos > s.Length) break;
+			if (pos == s.Length) {
+				list_push(list, make_string(""));
+				break;
+			}
+		}
+
+		return list;
+	}
+
+	public static Value string_replace_max(Value str, Value from, Value to, int maxCount) {
+		if (!str.IsString || !from.IsString || !to.IsString) return val_null;
+
+		string s = GetStringValue(str);
+		string fromStr = GetStringValue(from);
+		string toStr = GetStringValue(to);
+
+		if (fromStr == "") return str;
+
+		int pos = 0;
+		int count = 0;
+		System.Text.StringBuilder sb = new System.Text.StringBuilder();
+		while (pos < s.Length) {
+			int next = s.IndexOf(fromStr, pos);
+			if (next < 0 || (maxCount > 0 && count >= maxCount)) {
+				sb.Append(s.Substring(pos));
+				break;
+			}
+			sb.Append(s.Substring(pos, next - pos));
+			sb.Append(toStr);
+			pos = next + fromStr.Length;
+			count++;
+		}
+		return make_string(sb.ToString());
 	}
 
 	public static Value string_upper(Value str) {
@@ -1211,6 +1383,95 @@ public class ValueList {
 		_items.RemoveAt(index);
 		return true;
 	}
+
+	public void Insert(int index, Value item) {
+		if (index < 0) index += _items.Count + 1;
+		if (index < 0) index = 0;
+		if (index > _items.Count) index = _items.Count;
+		_items.Insert(index, item);
+	}
+
+	public Value Pop() {
+		if (_items.Count == 0) return val_null;
+		Value result = _items[_items.Count - 1];
+		_items.RemoveAt(_items.Count - 1);
+		return result;
+	}
+
+	public Value Pull() {
+		if (_items.Count == 0) return val_null;
+		Value result = _items[0];
+		_items.RemoveAt(0);
+		return result;
+	}
+
+	public int IndexOf(Value item, int afterIdx) {
+		for (int i = afterIdx + 1; i < _items.Count; i++) {
+			if (Value.Equal(_items[i], item)) return i;
+		}
+		return -1;
+	}
+
+	public void Sort(bool ascending) {
+		_items.Sort((Value a, Value b) => {
+			int cmp;
+			if (is_number(a) && is_number(b)) {
+				double da = numeric_val(a);
+				double db = numeric_val(b);
+				cmp = da.CompareTo(db);
+			} else if (is_string(a) && is_string(b)) {
+				cmp = string_compare(a, b);
+			} else {
+				// Mixed types: numbers < strings < others
+				int ta = is_number(a) ? 0 : is_string(a) ? 1 : 2;
+				int tb = is_number(b) ? 0 : is_string(b) ? 1 : 2;
+				cmp = ta.CompareTo(tb);
+			}
+			return ascending ? cmp : -cmp;
+		});
+	}
+
+	public void SortByKey(Value byKey, bool ascending) {
+		// Build (sortKey, value) pairs
+		int count = _items.Count;
+		Value[] keys = new Value[count];
+		for (int i = 0; i < count; i++) {
+			Value elem = _items[i];
+			if (is_map(elem)) {
+				keys[i] = map_get(elem, byKey);
+			} else if (is_list(elem) && is_number(byKey)) {
+				int ki = (int)numeric_val(byKey);
+				keys[i] = list_get(elem, ki);
+			} else {
+				keys[i] = val_null;
+			}
+		}
+		// Build index array and sort by keys
+		int[] indices = new int[count];
+		for (int i = 0; i < count; i++) indices[i] = i;
+		Array.Sort(indices, (int ia, int ib) => {
+			Value a = keys[ia];
+			Value b = keys[ib];
+			int cmp;
+			if (is_number(a) && is_number(b)) {
+				double da = numeric_val(a);
+				double db = numeric_val(b);
+				cmp = da.CompareTo(db);
+			} else if (is_string(a) && is_string(b)) {
+				cmp = string_compare(a, b);
+			} else {
+				int ta = is_number(a) ? 0 : is_string(a) ? 1 : 2;
+				int tb = is_number(b) ? 0 : is_string(b) ? 1 : 2;
+				cmp = ta.CompareTo(tb);
+			}
+			return ascending ? cmp : -cmp;
+		});
+		// Rebuild list in sorted order
+		List<Value> sorted = new List<Value>(count);
+		for (int i = 0; i < count; i++) sorted.Add(_items[indices[i]]);
+		_items = sorted;
+	}
+
 }
 
 public class ValueMap {

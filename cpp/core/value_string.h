@@ -33,10 +33,13 @@ int string_compare(Value a, Value b);          // Unicode-aware comparison
 Value string_concat(Value a, Value b);
 int string_indexOf(Value haystack, Value needle, int start_pos);
 Value string_replace(Value source, Value search, Value replacement);
+Value string_replace_max(Value source, Value search, Value replacement, int maxCount);
 Value string_split(Value str, Value delimiter);
+Value string_split_max(Value str, Value delimiter, int maxCount);
 Value string_substring(Value str, int startIndex, int len);
 Value string_slice(Value str, int start, int end);
 Value string_sub(Value a, Value b);
+Value string_insert(Value str, int index, Value value);
 
 // Case conversion and Unicode code point functions
 Value string_upper(Value str);

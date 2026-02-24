@@ -21,6 +21,11 @@ static inline Value make_string(String s) {
     return make_string(s.c_str());
 }
 
+// Convert Value to CS_String (host string)
+static inline String to_String(Value v) {
+    return String(as_cstring(to_string(v)));
+}
+
 #ifdef __cplusplus
 } // extern "C"
 #endif

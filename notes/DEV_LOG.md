@@ -447,4 +447,18 @@ Today I'm going to try to refactor how iteration via a `for` loop works, particu
 
 On the C# side, we can't do that, so I took a different approach: a cache of the key values, lazily obtained from `Dictionary.Keys` when needed by an iterator, and cleared when the map is mutated.  The iterator then just indexes into this list.  When we implement the `indexes` intrinsic, we should make use of this cache as well (a minor optimization but basically free).
 
+Then I turned to intrinsics.  While testing string intrinsics, I realized that I had skimped a bit on Unicode support.  Fixed that by making our CS_String class embrace character-oriented indexing.  The byte-oriented methods are still there and available to C++ code, but transpiled code will naturally use the character-oriented ones, in keeping with how C# works.  This all seems to be working well now.
+
+So most (though not all) core intrinsics are implemented now.  One caveat: we don't yet support dot syntax on these, because I don't have the little type maps that represent intrinsic types, and those are used to look up dot-invoked methods.  So we're testing things with code like `pop(lst)` instead of `lst.pop`.  I'll deal with this soon.
+
+## Feb 24, 2026
+
+Discovered a bit of a misstep: our ValueList struct kept its items at the end of the struct, rather than pointing to a separate place in the heap.  Great for performance, but it makes it impossible to resize a list!
+
+ValueMap was already doing it correctly, but we had prematurely (and incorrectly) optimized ValueList.  Fixing that now.
+
+Also: in developing and testing all these intrinsics, I see that there is some redundancy (and possibly some sub-optimal handling of character vs. byte offsets) in the string code.  We should go through that carefully at some point, DRY it out as much as possible (though keeping in mind that Tiny Strings are a common thing in Value strings), and make sure it's all as efficient as it can be.  This should include optimizing for the case of ASCII strings (where we know it's 1 byte per character).
+
+Finally, the way we handle (internal to our own code) iteration over map values is similar between C# and C++, but just different enough to be annoying.  This needs some creative thinking and/or some transpiler love to make it more seamless.
+
 

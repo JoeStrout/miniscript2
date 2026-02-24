@@ -266,9 +266,17 @@ void gc_mark_list(ValueList* list) {
 
     obj->marked = true;
 
-    // Mark all items in the list
-    for (int i = 0; i < list->count; i++) {
-        gc_mark_value(list->items[i]);
+    // Mark the items array (separately GC-allocated)
+    if (list->items) {
+        GCObject* items_obj = (GCObject*)((char*)list->items - sizeof(GCObject));
+        if (!items_obj->marked) {
+            items_obj->marked = true;
+        }
+
+        // Mark all Values in the items array
+        for (int i = 0; i < list->count; i++) {
+            gc_mark_value(list->items[i]);
+        }
     }
 }
 

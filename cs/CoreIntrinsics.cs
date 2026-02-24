@@ -13,12 +13,15 @@ using static MiniScript.ValueHelpers;
 // CPP: #include "StringUtils.g.h"
 // CPP: #include "VM.g.h"
 // CPP: #include "CS_Math.h"
+// CPP: #include "CS_value_util.h"
 // CPP: #include <random>
 
 namespace MiniScript {
 
 public static class CoreIntrinsics {
 
+	static Random _random;  // CPP: 
+	
 	// If given a nonzero seed, seed our PRNG accordingly.
 	// Then (in either case), return the next random number drawn
 	// from the range [0, 1) with a uniform distribution.
@@ -41,6 +44,15 @@ public static class CoreIntrinsics {
 
 	public static void Init() {
 		Intrinsic f;
+
+		// Garbace collection (GC) note:
+		// The transpiler sees a bunch of Values below and figures that it
+		// needs to do a GC_PUSH_SCOPE... but in fact those are all inside
+		// lambda functions; there is no Value usage here in Init() itself.
+		// The transpiler will emit a GC_POP_SCOPE at the end of this method,
+		// and we can't easily prevent that.  But we can balance it with:
+		// CPP: GC_PUSH_SCOPE();
+		// ...and yes, this is a bit of a hack.  TODO: make transpiler smarter.
 
 		// print(s="")
 		f = Intrinsic.Create("print");
@@ -297,9 +309,423 @@ public static class CoreIntrinsics {
 		f.Code = (List<Value> stk, Int32 bi, Int32 ac) => {
 			return make_double(Math.Tan(numeric_val(stk[bi + 1])));
 		};
+		// push(self, value)
+		f = Intrinsic.Create("push");
+		f.AddParam("self");
+		f.AddParam("value");
+		f.Code = (List<Value> stk, Int32 bi, Int32 ac) => {
+			Value self = stk[bi + 1];
+			Value value = stk[bi + 2];
+			if (is_list(self)) {
+				list_push(self, value);
+				return self;
+			} else if (is_map(self)) {
+				map_set(self, value, make_int(1));
+				return self;
+			}
+			return make_null();
+		};
+
+		// pop(self)
+		f = Intrinsic.Create("pop");
+		f.AddParam("self");
+		f.Code = (List<Value> stk, Int32 bi, Int32 ac) => {
+			Value self = stk[bi + 1];
+			Value result = make_null();
+			if (is_list(self)) {
+				result = list_pop(self);
+			} else if (is_map(self)) {
+				if (map_count(self) == 0) return make_null();
+				MapIterator iter = map_iterator(self);
+				if (map_iterator_next(ref iter)) { // CPP: if (map_iterator_next(&iter, &result, nullptr)) {
+					result = iter.Key;             // CPP: // remove key that was found
+					map_remove(self, result);
+				}
+			}
+			return result;
+		};
+
+		// pull(self)
+		f = Intrinsic.Create("pull");
+		f.AddParam("self");
+		f.Code = (List<Value> stk, Int32 bi, Int32 ac) => {
+			Value self = stk[bi + 1];
+			Value result = make_null();
+			if (is_list(self)) {
+				result = list_pull(self);
+			} else if (is_map(self)) {
+				if (map_count(self) == 0) return make_null();
+				MapIterator iter = map_iterator(self);
+				if (map_iterator_next(ref iter)) { // CPP: if (map_iterator_next(&iter, &result, nullptr)) {
+					result = iter.Key;             // CPP: // remove key that was found
+					map_remove(self, result);
+				}
+			}
+			return result;
+		};
+
+		// insert(self, index, value)
+		f = Intrinsic.Create("insert");
+		f.AddParam("self");
+		f.AddParam("index");
+		f.AddParam("value");
+		f.Code = (List<Value> stk, Int32 bi, Int32 ac) => {
+			Value self = stk[bi + 1];
+			int index = (int)numeric_val(stk[bi + 2]);
+			Value value = stk[bi + 3];
+			if (is_list(self)) {
+				list_insert(self, index, value);
+				return self;
+			} else if (is_string(self)) {
+				return string_insert(self, index, value);
+			}
+			return make_null();
+		};
+
+		// indexOf(self, value, after=null)
+		f = Intrinsic.Create("indexOf");
+		f.AddParam("self");
+		f.AddParam("value");
+		f.AddParam("after");
+		f.Code = (List<Value> stk, Int32 bi, Int32 ac) => {
+			Value self = stk[bi + 1];
+			Value value = stk[bi + 2];
+			Value after = stk[bi + 3];
+			Value result = make_null();
+			// CPP: Value iterKey, iterVal; GC_PROTECT(&iterKey); GC_PROTECT(&iterVal);
+			if (is_list(self)) {
+				int afterIdx = -1;
+				if (!is_null(after)) {
+					afterIdx = (int)numeric_val(after);
+					if (afterIdx < -1) afterIdx += list_count(self);
+				}
+				int idx = list_indexOf(self, value, afterIdx);
+				if (idx >= 0) result = make_int(idx);
+			} else if (is_string(self)) {
+				if (!is_string(value)) return make_null();
+				int afterIdx = -1;
+				if (!is_null(after)) {
+					afterIdx = (int)numeric_val(after);
+					if (afterIdx < -1) afterIdx += string_length(self);
+				}
+				int idx = string_indexOf(self, value, afterIdx + 1);
+				if (idx >= 0) result = make_int(idx);
+			} else if (is_map(self)) {
+				// Find key where value matches
+				bool pastAfter = is_null(after);
+				MapIterator iter = map_iterator(self);
+				while (map_iterator_next(ref iter)) { // CPP: while (map_iterator_next(&iter, &iterKey, &iterVal)) {
+					if (!pastAfter) {
+						if (value_equal(iter.Key, after)) { // CPP: if (value_equal(iterKey, after)) {
+							pastAfter = true;
+						}
+						continue;
+					}
+					if (value_equal(iter.Val, value)) {  // CPP: if (value_equal(iterVal, value)) {
+						result = iter.Key; // CPP: result = iterKey;
+						break;
+					}
+				}
+			}
+			return result;
+		};
+
+		// sort(self, byKey=null, ascending=1)
+		f = Intrinsic.Create("sort");
+		f.AddParam("self");
+		f.AddParam("byKey");
+		f.AddParam("ascending", make_int(1));
+		f.Code = (List<Value> stk, Int32 bi, Int32 ac) => {
+			Value self = stk[bi + 1];
+			Value byKey = stk[bi + 2];
+			bool ascending = numeric_val(stk[bi + 3]) != 0;
+			if (!is_list(self)) return self;
+			if (list_count(self) < 2) return self;
+			if (is_null(byKey)) {
+				list_sort(self, ascending);
+			} else {
+				list_sort_by_key(self, byKey, ascending);
+			}
+			return self;
+		};
+
+		// shuffle(self)
+		f = Intrinsic.Create("shuffle");
+		f.AddParam("self");
+		f.Code = (List<Value> stk, Int32 bi, Int32 ac) => {
+			Value self = stk[bi + 1];
+			Value temp;
+			// CPP: Value iterKey, iterVal; GC_PROTECT(&iterKey); GC_PROTECT(&iterVal);
+			if (is_list(self)) {
+				if (is_frozen(self)) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return make_null(); }
+				int count = list_count(self);
+				for (int i = count - 1; i > 0; i--) {
+					int j = (int)(GetNextRandom() * (i + 1));
+					temp = list_get(self, i);
+					list_set(self, i, list_get(self, j));
+					list_set(self, j, temp);
+				}
+			} else if (is_map(self)) {
+				if (is_frozen(self)) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen map"); return make_null(); }
+				// Collect keys and values
+				int count = map_count(self);
+				List<Value> keys = new List<Value>(count);
+				List<Value> vals = new List<Value>(count);
+				MapIterator iter = map_iterator(self);
+				while (map_iterator_next(ref iter)) { // CPP: while (map_iterator_next(&iter, &iterKey, &iterVal)) {
+					keys.Add(iter.Key);               // CPP: vals.Add(iterKey);
+					vals.Add(iter.Val);               // CPP: vals.Add(iterVal);
+				}
+				// Fisher-Yates shuffle on values
+				for (int i = count - 1; i > 0; i--) {
+					int j = (int)(GetNextRandom() * (i + 1));
+					temp = vals[i];
+					vals[i] = vals[j];
+					vals[j] = temp;
+				}
+				for (int i = 0; i < count; i++) {
+					map_set(self, keys[i], vals[i]);
+				}
+			}
+			return make_null();
+		};
+
+		// join(self, delimiter=" ")
+		f = Intrinsic.Create("join");
+		f.AddParam("self");
+		f.AddParam("delimiter", make_string(" "));
+		f.Code = (List<Value> stk, Int32 bi, Int32 ac) => {
+			Value self = stk[bi + 1];
+			if (!is_list(self)) return self;
+			Value delim = stk[bi + 2];
+			String delimStr = is_null(delim) ? " " : to_String(delim);
+			int count = list_count(self);
+			List<String> parts = new List<String>(count);
+			for (int i = 0; i < count; i++) {
+				parts.Add(to_String(list_get(self, i)));
+			}
+			return make_string(String.Join(delimStr, parts));
+		};
+
+		// split(self, delimiter=" ", maxCount=-1)
+		f = Intrinsic.Create("split");
+		f.AddParam("self");
+		f.AddParam("delimiter", make_string(" "));
+		f.AddParam("maxCount", make_int(-1));
+		f.Code = (List<Value> stk, Int32 bi, Int32 ac) => {
+			Value self = stk[bi + 1];
+			if (!is_string(self)) return make_null();
+			Value delim = stk[bi + 2];
+			int maxCount = (int)numeric_val(stk[bi + 3]);
+			return string_split_max(self, delim, maxCount);
+		};
+
+		// replace(self, oldval, newval, maxCount=null)
+		f = Intrinsic.Create("replace");
+		f.AddParam("self");
+		f.AddParam("oldval");
+		f.AddParam("newval");
+		f.AddParam("maxCount");
+		f.Code = (List<Value> stk, Int32 bi, Int32 ac) => {
+			Value self = stk[bi + 1];
+			Value oldVal = stk[bi + 2];
+			Value newVal = stk[bi + 3];
+			// CPP: Value iterKey, iterVal; GC_PROTECT(&iterKey); GC_PROTECT(&iterVal);
+			int maxCount = is_null(stk[bi + 4]) ? -1 : (int)numeric_val(stk[bi + 4]);
+			if (is_list(self)) {
+				int count = list_count(self);
+				int found = 0;
+				for (int i = 0; i < count; i++) {
+					if (value_equal(list_get(self, i), oldVal)) {
+						list_set(self, i, newVal);
+						found++;
+						if (maxCount > 0 && found >= maxCount) break;
+					}
+				}
+				return self;
+			} else if (is_map(self)) {
+				// Collect keys whose values match
+				List<Value> keysToChange = new List<Value>();
+				MapIterator iter = map_iterator(self);
+				while (map_iterator_next(ref iter)) { // CPP: while (map_iterator_next(&iter, &iterKey, &iterVal)) {
+					if (value_equal(iter.Val, oldVal)) { // CPP: if (value_equal(iterVal, oldVal)) {
+						keysToChange.Add(iter.Key);  // CPP: keysToChange.Add(iterKey);
+						if (maxCount > 0 && keysToChange.Count >= maxCount) break;
+					}
+				}
+				for (int i = 0; i < keysToChange.Count; i++) {
+					map_set(self, keysToChange[i], newVal);
+				}
+				return self;
+			} else if (is_string(self)) {
+				return string_replace_max(self, oldVal, newVal, maxCount);
+			}
+			return make_null();
+		};
+
+		// sum(self)
+		f = Intrinsic.Create("sum");
+		f.AddParam("self");
+		f.Code = (List<Value> stk, Int32 bi, Int32 ac) => {
+			Value self = stk[bi + 1];
+			// CPP: Value iterVal; GC_PROTECT(&iterVal);
+			double total = 0;
+			if (is_list(self)) {
+				int count = list_count(self);
+				for (int i = 0; i < count; i++) {
+					total += numeric_val(list_get(self, i));
+				}
+			} else if (is_map(self)) {
+				MapIterator iter = map_iterator(self);
+				while (map_iterator_next(ref iter)) { // CPP: while (map_iterator_next(&iter, nullptr, &iterVal)) {
+					total += numeric_val(iter.Val);   // CPP: total += numeric_val(iterVal);
+				}
+			} else {
+				return make_int(0);
+			}
+			if (total == (int)total && total >= Int32.MinValue && total <= Int32.MaxValue) {
+				return make_int((int)total);
+			}
+			return make_double(total);
+		};
+
+		// slice(seq, from=0, to=null)
+		f = Intrinsic.Create("slice");
+		f.AddParam("seq");
+		f.AddParam("from", make_int(0));
+		f.AddParam("to");
+		f.Code = (List<Value> stk, Int32 bi, Int32 ac) => {
+			Value seq = stk[bi + 1];
+			int fromIdx = (int)numeric_val(stk[bi + 2]);
+			if (is_list(seq)) {
+				int count = list_count(seq);
+				int toIdx = is_null(stk[bi + 3]) ? count : (int)numeric_val(stk[bi + 3]);
+				return list_slice(seq, fromIdx, toIdx);
+			} else if (is_string(seq)) {
+				int slen = string_length(seq);
+				int toIdx = is_null(stk[bi + 3]) ? slen : (int)numeric_val(stk[bi + 3]);
+				return string_slice(seq, fromIdx, toIdx);
+			}
+			return make_null();
+		};
+
+		// indexes(self)
+		f = Intrinsic.Create("indexes");
+		f.AddParam("self");
+		f.Code = (List<Value> stk, Int32 bi, Int32 ac) => {
+			Value self = stk[bi + 1];
+			Value result = make_null();
+			// CPP: Value iterKey; GC_PROTECT(&iterKey);
+			if (is_list(self)) {
+				int count = list_count(self);
+				result = make_list(count);
+				for (int i = 0; i < count; i++) {
+					list_push(result, make_int(i));
+				}
+				return result;
+			} else if (is_string(self)) {
+				int slen = string_length(self);
+				result = make_list(slen);
+				for (int i = 0; i < slen; i++) {
+					list_push(result, make_int(i));
+				}
+				return result;
+			} else if (is_map(self)) {
+				result = make_list(map_count(self));
+				MapIterator iter = map_iterator(self);
+				while (map_iterator_next(ref iter)) { // CPP: while (map_iterator_next(&iter, &iterKey, nullptr)) {
+					list_push(result, iter.Key);  // CPP: list_push(result, iterKey);
+				}
+			}
+			return result;
+		};
+
+		// hasIndex(self, index)
+		f = Intrinsic.Create("hasIndex");
+		f.AddParam("self");
+		f.AddParam("index");
+		f.Code = (List<Value> stk, Int32 bi, Int32 ac) => {
+			Value self = stk[bi + 1];
+			Value index = stk[bi + 2];
+			if (is_list(self)) {
+				if (!is_number(index)) return make_int(0);
+				int i = (int)numeric_val(index);
+				int count = list_count(self);
+				return make_int((i >= -count && i < count) ? 1 : 0);
+			} else if (is_string(self)) {
+				if (!is_number(index)) return make_int(0);
+				int i = (int)numeric_val(index);
+				int slen = string_length(self);
+				return make_int((i >= -slen && i < slen) ? 1 : 0);
+			} else if (is_map(self)) {
+				return make_int(map_has_key(self, index) ? 1 : 0);
+			}
+			return make_null();
+		};
+
+		// values(self)
+		f = Intrinsic.Create("values");
+		f.AddParam("self");
+		f.Code = (List<Value> stk, Int32 bi, Int32 ac) => {
+			Value self = stk[bi + 1];
+			Value result = self;
+			// CPP: Value iterVal; GC_PROTECT(&iterVal);
+			if (is_map(self)) {
+				result = make_list(map_count(self));
+				MapIterator iter = map_iterator(self);
+				while (map_iterator_next(ref iter)) { // CPP: while (map_iterator_next(&iter, nullptr, &iterVal)) {
+					list_push(result, iter.Val);      // CPP: list_push(result, iterVal);
+				}
+			} else if (is_string(self)) {
+				int slen = string_length(self);
+				result = make_list(slen);
+				for (int i = 0; i < slen; i++) {
+					list_push(result, string_substring(self, i, 1));
+				}
+			}
+			return result;
+		};
+
+		// range(from=0, to=0, step=null)
+		f = Intrinsic.Create("range");
+		f.AddParam("from", make_int(0));
+		f.AddParam("to", make_int(0));
+		f.AddParam("step");
+		f.Code = (List<Value> stk, Int32 bi, Int32 ac) => {
+			double fromVal = numeric_val(stk[bi + 1]);
+			double toVal = numeric_val(stk[bi + 2]);
+			double step;
+			if (is_null(stk[bi + 3]) || !is_number(stk[bi + 3])) {
+				step = (toVal >= fromVal) ? 1 : -1;
+			} else {
+				step = numeric_val(stk[bi + 3]);
+			}
+			if (step == 0) {
+				IOHelper.Print("ERROR: range() step must not be 0");
+				return make_null();
+			}
+			int count = (int)((toVal - fromVal) / step) + 1;
+			if (count < 0) count = 0;
+			if (count > 1000000) count = 1000000;  // safety limit
+			Value result = make_list(count);
+			double v = fromVal;
+			if (step > 0) {
+				while (v <= toVal) {
+					if (v == (int)v) list_push(result, make_int((int)v));
+					else list_push(result, make_double(v));
+					v += step;
+				}
+			} else {
+				while (v >= toVal) {
+					if (v == (int)v) list_push(result, make_int((int)v));
+					else list_push(result, make_double(v));
+					v += step;
+				}
+			}
+			return result;
+		};
 	}
 
-	static Random _random;  // CPP: // (omit)
 }
 
 }

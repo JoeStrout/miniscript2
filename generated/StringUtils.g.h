@@ -152,11 +152,13 @@ class StringUtils {
 	inline static String makeString(uint8_t, const String& s) { 
 		return s;
 	}
-	inline static String makeString(const char* s) {
-		return String(s ? s : "");
+	inline static String makeString(const Char* s) {
+		if (s) return String(s);
+		return "";
 	}
 	inline static String makeString(Char c) {
-		return String(c);  // String(uint32_t) UTF-8 encodes the code point
+		Char buf[2] = {c, '\0'};
+		return String(buf);
 	}
 	// Value type support
 	inline static String makeString(Value v) {

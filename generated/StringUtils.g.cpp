@@ -9,18 +9,18 @@ const String StringUtils::hexDigits = "0123456789ABCDEF";
 String StringUtils::ToHex(UInt32 value) {
 	char hexChars[9]{};
 	for (Int32 i = 7; i >= 0; i--) {
-		hexChars[i] = (char)hexDigits[(int)(value & 0xF)];
+		hexChars[i] = hexDigits[(int)(value & 0xF)];
 		value >>= 4;
 	}
-	return String(hexChars);
+	return  String::New(hexChars);
 }
 String StringUtils::ToHex(Byte value) {
 	char hexChars[3]{};
 	for (Int32 i = 1; i >= 0; i--) {
-		hexChars[i] = (char)hexDigits[(int)(value & 0xF)];
+		hexChars[i] = hexDigits[(int)(value & 0xF)];
 		value >>= 4;
 	}
-	return String(hexChars);
+	return  String::New(hexChars);
 }
 String StringUtils::ZeroPad(Int32 value,Int32 digits ) {
 	// set width and fill

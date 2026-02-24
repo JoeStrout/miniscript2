@@ -170,6 +170,25 @@ bool value_equal(Value a, Value b) {
     return false;
 }
 
+// General-purpose comparison: returns <0 if a<b, 0 if a==b, >0 if a>b.
+// Numbers sort before strings; strings sort before other types.
+int value_compare(Value a, Value b) {
+	if (is_number(a) && is_number(b)) {
+		double da = numeric_val(a);
+		double db = numeric_val(b);
+		if (da < db) return -1;
+		if (da > db) return 1;
+		return 0;
+	}
+	if (is_string(a) && is_string(b)) {
+		return string_compare(a, b);
+	}
+	// Mixed types: numbers < strings < others
+	int ta = is_number(a) ? 0 : is_string(a) ? 1 : 2;
+	int tb = is_number(b) ? 0 : is_string(b) ? 1 : 2;
+	return (ta < tb) ? -1 : (ta > tb) ? 1 : 0;
+}
+
 // ToDo: make all the bitwise ops work with doubles, too (as in MiniScript)
 // (or really todo: eliminate these, they should be intrinsics)
 

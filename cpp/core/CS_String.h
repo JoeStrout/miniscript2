@@ -21,6 +21,8 @@
 // This module is part of Layer 2B (Host C# Compatibility Layer)
 #define CORE_LAYER_2B
 
+using Char = uint32_t;
+
 // Forward declaration to avoid circular dependency
 template<typename T> class List;
 
@@ -94,6 +96,27 @@ public:
 		int len = UTF8Encode((unsigned long)codePoint, buf);
 		buf[len] = 0;
 		ref = FindOrCreate((const char*)buf);
+	}
+
+	// Construct from a null-terminated array of Char (Unicode code points).
+	// Each code point is UTF-8 encoded into the resulting string.
+	String(const Char* codePoints) {
+		if (!codePoints || codePoints[0] == 0) return;
+		// First pass: compute total UTF-8 byte length
+		int totalBytes = 0;
+		for (const Char* p = codePoints; *p; p++) {
+			unsigned char tmp[4];
+			totalBytes += UTF8Encode((unsigned long)*p, tmp);
+		}
+		// Second pass: encode into buffer
+		char* buf = (char*)malloc(totalBytes + 1);
+		int pos = 0;
+		for (const Char* p = codePoints; *p; p++) {
+			pos += UTF8Encode((unsigned long)*p, (unsigned char*)(buf + pos));
+		}
+		buf[totalBytes] = 0;
+		ref = FindOrCreate(buf, totalBytes);
+		::free(buf);
 	}
 
     // Factory method - allocates empty string (matches C# "new String()")

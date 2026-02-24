@@ -399,6 +399,7 @@ bool value_equal(Value a, Value b);
 bool value_le(Value a, Value b);
 static inline bool value_gt(Value a, Value b) { return !value_le(a, b); }
 static inline bool value_ge(Value a, Value b) { return !value_lt(a, b); }
+int value_compare(Value a, Value b);  // <0 if a<b, 0 if a==b, >0 if a>b
 
 // Helper methods
 static inline double ToFuzzyBool(Value v) {

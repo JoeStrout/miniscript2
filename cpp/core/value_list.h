@@ -21,7 +21,7 @@ typedef struct {
     int count;       // Number of elements
     int capacity;    // Allocated capacity
     bool frozen;     // If true, mutations are disallowed
-    Value items[];   // Array of Values
+    Value* items;    // Separately GC-allocated array of Values
 } ValueList;
 
 // List creation and management
@@ -38,11 +38,12 @@ Value list_get(Value list_val, int index);
 void list_set(Value list_val, int index, Value item);
 void list_push(Value list_val, Value item);
 Value list_pop(Value list_val);
+Value list_pull(Value list_val);
 void list_insert(Value list_val, int index, Value item);
 bool list_remove(Value list_val, int index);
 
 // List searching
-int list_indexOf(Value list_val, Value item, int start_pos);
+int list_indexOf(Value list_val, Value item, int afterIdx);
 bool list_contains(Value list_val, Value item);
 
 // List utilities
@@ -50,11 +51,10 @@ void list_clear(Value list_val);
 Value list_copy(Value list_val);
 Value list_slice(Value list_val, int start, int end);
 Value list_concat(Value a, Value b);
-void list_resize(Value list_val, int new_capacity);
 
-// Capacity management utilities
-bool list_needs_expansion(Value list_val);
-Value list_with_expanded_capacity(Value list_val);
+// List sorting
+void list_sort(Value list_val, bool ascending);
+void list_sort_by_key(Value list_val, Value byKey, bool ascending);
 
 // Hash function for lists
 uint32_t list_hash(Value list_val);

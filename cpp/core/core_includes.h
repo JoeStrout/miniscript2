@@ -49,7 +49,7 @@ using UInt64  = uint64_t;  // ulong
 
 // The following will work with both the shortcut names,
 // and the full System names.
-using Char    = uint32_t;
+// Char is defined in CS_String.h (included above)
 using Char8   = char;
 using Single  = float;
 using Double  = double;

@@ -10,10 +10,12 @@
 #include "StringUtils.g.h"
 #include "VM.g.h"
 #include "CS_Math.h"
+#include "CS_value_util.h"
 #include <random>
 
 namespace MiniScript {
 
+	
 double CoreIntrinsics::GetNextRandom(int seed) {
 	static std::mt19937 gen(std::random_device{}());
 	static std::uniform_real_distribution<double> dist(0.0, 1.0);
@@ -22,6 +24,15 @@ double CoreIntrinsics::GetNextRandom(int seed) {
 }
 void CoreIntrinsics::Init() {
 	Intrinsic f;
+
+	// Garbace collection (GC) note:
+	// The transpiler sees a bunch of Values below and figures that it
+	// needs to do a GC_PUSH_SCOPE... but in fact those are all inside
+	// lambda functions; there is no Value usage here in Init() itself.
+	// The transpiler will emit a GC_POP_SCOPE at the end of this method,
+	// and we can't easily prevent that.  But we can balance it with:
+	GC_PUSH_SCOPE();
+	// ...and yes, this is a bit of a hack.  TODO: make transpiler smarter.
 
 	// print(s="")
 	f = Intrinsic::Create("print");
@@ -295,7 +306,503 @@ void CoreIntrinsics::Init() {
 	f.set_Code([](List<Value> stk, Int32 bi, Int32 ac) -> Value {
 		return make_double(Math::Tan(numeric_val(stk[bi + 1])));
 	});
+	// push(self, value)
+	f = Intrinsic::Create("push");
+	f.AddParam("self");
+	f.AddParam("value");
+	f.set_Code([](List<Value> stk, Int32 bi, Int32 ac) -> Value {
+		GC_PUSH_SCOPE();
+		Value self = stk[bi + 1]; GC_PROTECT(&self);
+		Value value = stk[bi + 2]; GC_PROTECT(&value);
+		if (is_list(self)) {
+			list_push(self, value);
+			GC_POP_SCOPE();
+			return self;
+		} else if (is_map(self)) {
+			map_set(self, value, make_int(1));
+			GC_POP_SCOPE();
+			return self;
+		}
+		GC_POP_SCOPE();
+		return make_null();
+	});
+
+	// pop(self)
+	f = Intrinsic::Create("pop");
+	f.AddParam("self");
+	f.set_Code([](List<Value> stk, Int32 bi, Int32 ac) -> Value {
+		GC_PUSH_SCOPE();
+		Value self = stk[bi + 1]; GC_PROTECT(&self);
+		Value result = make_null(); GC_PROTECT(&result);
+		if (is_list(self)) {
+			result = list_pop(self);
+		} else if (is_map(self)) {
+			if (map_count(self) == 0)  {
+				GC_POP_SCOPE();
+				return make_null();
+			}
+			MapIterator iter = map_iterator(self);
+			if (map_iterator_next(&iter, &result, nullptr)) {
+				// remove key that was found
+				map_remove(self, result);
+			}
+		}
+		GC_POP_SCOPE();
+		return result;
+	});
+
+	// pull(self)
+	f = Intrinsic::Create("pull");
+	f.AddParam("self");
+	f.set_Code([](List<Value> stk, Int32 bi, Int32 ac) -> Value {
+		GC_PUSH_SCOPE();
+		Value self = stk[bi + 1]; GC_PROTECT(&self);
+		Value result = make_null(); GC_PROTECT(&result);
+		if (is_list(self)) {
+			result = list_pull(self);
+		} else if (is_map(self)) {
+			if (map_count(self) == 0)  {
+				GC_POP_SCOPE();
+				return make_null();
+			}
+			MapIterator iter = map_iterator(self);
+			if (map_iterator_next(&iter, &result, nullptr)) {
+				// remove key that was found
+				map_remove(self, result);
+			}
+		}
+		GC_POP_SCOPE();
+		return result;
+	});
+
+	// insert(self, index, value)
+	f = Intrinsic::Create("insert");
+	f.AddParam("self");
+	f.AddParam("index");
+	f.AddParam("value");
+	f.set_Code([](List<Value> stk, Int32 bi, Int32 ac) -> Value {
+		GC_PUSH_SCOPE();
+		Value self = stk[bi + 1]; GC_PROTECT(&self);
+		int index = (int)numeric_val(stk[bi + 2]);
+		Value value = stk[bi + 3]; GC_PROTECT(&value);
+		if (is_list(self)) {
+			list_insert(self, index, value);
+			GC_POP_SCOPE();
+			return self;
+		} else if (is_string(self)) {
+			GC_POP_SCOPE();
+			return string_insert(self, index, value);
+		}
+		GC_POP_SCOPE();
+		return make_null();
+	});
+
+	// indexOf(self, value, after=null)
+	f = Intrinsic::Create("indexOf");
+	f.AddParam("self");
+	f.AddParam("value");
+	f.AddParam("after");
+	f.set_Code([](List<Value> stk, Int32 bi, Int32 ac) -> Value {
+		GC_PUSH_SCOPE();
+		Value self = stk[bi + 1]; GC_PROTECT(&self);
+		Value value = stk[bi + 2]; GC_PROTECT(&value);
+		Value after = stk[bi + 3]; GC_PROTECT(&after);
+		Value result = make_null(); GC_PROTECT(&result);
+		Value iterKey, iterVal; GC_PROTECT(&iterKey); GC_PROTECT(&iterVal);
+		if (is_list(self)) {
+			int afterIdx = -1;
+			if (!is_null(after)) {
+				afterIdx = (int)numeric_val(after);
+				if (afterIdx < -1) afterIdx += list_count(self);
+			}
+			int idx = list_indexOf(self, value, afterIdx);
+			if (idx >= 0) result = make_int(idx);
+		} else if (is_string(self)) {
+			if (!is_string(value))  {
+				GC_POP_SCOPE();
+				return make_null();
+			}
+			int afterIdx = -1;
+			if (!is_null(after)) {
+				afterIdx = (int)numeric_val(after);
+				if (afterIdx < -1) afterIdx += string_length(self);
+			}
+			int idx = string_indexOf(self, value, afterIdx + 1);
+			if (idx >= 0) result = make_int(idx);
+		} else if (is_map(self)) {
+			// Find key where value matches
+			bool pastAfter = is_null(after);
+			MapIterator iter = map_iterator(self);
+			while (map_iterator_next(&iter, &iterKey, &iterVal)) {
+				if (!pastAfter) {
+					if (value_equal(iterKey, after)) {
+						pastAfter = Boolean(true);
+					}
+					continue;
+				}
+				if (value_equal(iterVal, value)) {
+					result = iterKey;
+					break;
+				}
+			}
+		}
+		GC_POP_SCOPE();
+		return result;
+	});
+
+	// sort(self, byKey=null, ascending=1)
+	f = Intrinsic::Create("sort");
+	f.AddParam("self");
+	f.AddParam("byKey");
+	f.AddParam("ascending", make_int(1));
+	f.set_Code([](List<Value> stk, Int32 bi, Int32 ac) -> Value {
+		GC_PUSH_SCOPE();
+		Value self = stk[bi + 1]; GC_PROTECT(&self);
+		Value byKey = stk[bi + 2]; GC_PROTECT(&byKey);
+		bool ascending = numeric_val(stk[bi + 3]) != 0;
+		if (!is_list(self))  {
+			GC_POP_SCOPE();
+			return self;
+		}
+		if (list_count(self) < 2)  {
+			GC_POP_SCOPE();
+			return self;
+		}
+		if (is_null(byKey)) {
+			list_sort(self, ascending);
+		} else {
+			list_sort_by_key(self, byKey, ascending);
+		}
+		GC_POP_SCOPE();
+		return self;
+	});
+
+	// shuffle(self)
+	f = Intrinsic::Create("shuffle");
+	f.AddParam("self");
+	f.set_Code([](List<Value> stk, Int32 bi, Int32 ac) -> Value {
+		GC_PUSH_SCOPE();
+		Value self = stk[bi + 1]; GC_PROTECT(&self);
+		Value temp; GC_PROTECT(&temp);
+		Value iterKey, iterVal; GC_PROTECT(&iterKey); GC_PROTECT(&iterVal);
+		if (is_list(self)) {
+			if (is_frozen(self)) { VM::ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list");  {
+				GC_POP_SCOPE();
+				return make_null(); }
+			}
+			int count = list_count(self);
+			for (int i = count - 1; i > 0; i--) {
+				int j = (int)(GetNextRandom() * (i + 1));
+				temp = list_get(self, i);
+				list_set(self, i, list_get(self, j));
+				list_set(self, j, temp);
+			}
+		} else if (is_map(self)) {
+			if (is_frozen(self)) { VM::ActiveVM().RaiseRuntimeError("Attempt to modify a frozen map");  {
+				GC_POP_SCOPE();
+				return make_null(); }
+			}
+			// Collect keys and values
+			int count = map_count(self);
+			List<Value> keys =  List<Value>::New(count);
+			List<Value> vals =  List<Value>::New(count);
+			MapIterator iter = map_iterator(self);
+			while (map_iterator_next(&iter, &iterKey, &iterVal)) {
+				vals.Add(iterKey);
+				vals.Add(iterVal);
+			}
+			// Fisher-Yates shuffle on values
+			for (int i = count - 1; i > 0; i--) {
+				int j = (int)(GetNextRandom() * (i + 1));
+				temp = vals[i];
+				vals[i] = vals[j];
+				vals[j] = temp;
+			}
+			for (int i = 0; i < count; i++) {
+				map_set(self, keys[i], vals[i]);
+			}
+		}
+		GC_POP_SCOPE();
+		return make_null();
+	});
+
+	// join(self, delimiter=" ")
+	f = Intrinsic::Create("join");
+	f.AddParam("self");
+	f.AddParam("delimiter", make_string(" "));
+	f.set_Code([](List<Value> stk, Int32 bi, Int32 ac) -> Value {
+		GC_PUSH_SCOPE();
+		Value self = stk[bi + 1]; GC_PROTECT(&self);
+		if (!is_list(self))  {
+			GC_POP_SCOPE();
+			return self;
+		}
+		Value delim = stk[bi + 2]; GC_PROTECT(&delim);
+		String delimStr = is_null(delim) ? " " : to_String(delim);
+		int count = list_count(self);
+		List<String> parts =  List<String>::New(count);
+		for (int i = 0; i < count; i++) {
+			parts.Add(to_String(list_get(self, i)));
+		}
+		GC_POP_SCOPE();
+		return make_string(String::Join(delimStr, parts));
+	});
+
+	// split(self, delimiter=" ", maxCount=-1)
+	f = Intrinsic::Create("split");
+	f.AddParam("self");
+	f.AddParam("delimiter", make_string(" "));
+	f.AddParam("maxCount", make_int(-1));
+	f.set_Code([](List<Value> stk, Int32 bi, Int32 ac) -> Value {
+		GC_PUSH_SCOPE();
+		Value self = stk[bi + 1]; GC_PROTECT(&self);
+		if (!is_string(self))  {
+			GC_POP_SCOPE();
+			return make_null();
+		}
+		Value delim = stk[bi + 2]; GC_PROTECT(&delim);
+		int maxCount = (int)numeric_val(stk[bi + 3]);
+		GC_POP_SCOPE();
+		return string_split_max(self, delim, maxCount);
+	});
+
+	// replace(self, oldval, newval, maxCount=null)
+	f = Intrinsic::Create("replace");
+	f.AddParam("self");
+	f.AddParam("oldval");
+	f.AddParam("newval");
+	f.AddParam("maxCount");
+	f.set_Code([](List<Value> stk, Int32 bi, Int32 ac) -> Value {
+		GC_PUSH_SCOPE();
+		Value self = stk[bi + 1]; GC_PROTECT(&self);
+		Value oldVal = stk[bi + 2]; GC_PROTECT(&oldVal);
+		Value newVal = stk[bi + 3]; GC_PROTECT(&newVal);
+		Value iterKey, iterVal; GC_PROTECT(&iterKey); GC_PROTECT(&iterVal);
+		int maxCount = is_null(stk[bi + 4]) ? -1 : (int)numeric_val(stk[bi + 4]);
+		if (is_list(self)) {
+			int count = list_count(self);
+			int found = 0;
+			for (int i = 0; i < count; i++) {
+				if (value_equal(list_get(self, i), oldVal)) {
+					list_set(self, i, newVal);
+					found++;
+					if (maxCount > 0 && found >= maxCount) break;
+				}
+			}
+			GC_POP_SCOPE();
+			return self;
+		} else if (is_map(self)) {
+			// Collect keys whose values match
+			List<Value> keysToChange =  List<Value>::New();
+			MapIterator iter = map_iterator(self);
+			while (map_iterator_next(&iter, &iterKey, &iterVal)) {
+				if (value_equal(iterVal, oldVal)) {
+					keysToChange.Add(iterKey);
+					if (maxCount > 0 && keysToChange.Count() >= maxCount) break;
+				}
+			}
+			for (int i = 0; i < keysToChange.Count(); i++) {
+				map_set(self, keysToChange[i], newVal);
+			}
+			GC_POP_SCOPE();
+			return self;
+		} else if (is_string(self)) {
+			GC_POP_SCOPE();
+			return string_replace_max(self, oldVal, newVal, maxCount);
+		}
+		GC_POP_SCOPE();
+		return make_null();
+	});
+
+	// sum(self)
+	f = Intrinsic::Create("sum");
+	f.AddParam("self");
+	f.set_Code([](List<Value> stk, Int32 bi, Int32 ac) -> Value {
+		GC_PUSH_SCOPE();
+		Value self = stk[bi + 1]; GC_PROTECT(&self);
+		Value iterVal; GC_PROTECT(&iterVal);
+		double total = 0;
+		if (is_list(self)) {
+			int count = list_count(self);
+			for (int i = 0; i < count; i++) {
+				total += numeric_val(list_get(self, i));
+			}
+		} else if (is_map(self)) {
+			MapIterator iter = map_iterator(self);
+			while (map_iterator_next(&iter, nullptr, &iterVal)) {
+				total += numeric_val(iterVal);
+			}
+		} else {
+			GC_POP_SCOPE();
+			return make_int(0);
+		}
+		if (total == (int)total && total >= Int32MinValue && total <= Int32MaxValue) {
+			GC_POP_SCOPE();
+			return make_int((int)total);
+		}
+		GC_POP_SCOPE();
+		return make_double(total);
+	});
+
+	// slice(seq, from=0, to=null)
+	f = Intrinsic::Create("slice");
+	f.AddParam("seq");
+	f.AddParam("from", make_int(0));
+	f.AddParam("to");
+	f.set_Code([](List<Value> stk, Int32 bi, Int32 ac) -> Value {
+		GC_PUSH_SCOPE();
+		Value seq = stk[bi + 1]; GC_PROTECT(&seq);
+		int fromIdx = (int)numeric_val(stk[bi + 2]);
+		if (is_list(seq)) {
+			int count = list_count(seq);
+			int toIdx = is_null(stk[bi + 3]) ? count : (int)numeric_val(stk[bi + 3]);
+			GC_POP_SCOPE();
+			return list_slice(seq, fromIdx, toIdx);
+		} else if (is_string(seq)) {
+			int slen = string_length(seq);
+			int toIdx = is_null(stk[bi + 3]) ? slen : (int)numeric_val(stk[bi + 3]);
+			GC_POP_SCOPE();
+			return string_slice(seq, fromIdx, toIdx);
+		}
+		GC_POP_SCOPE();
+		return make_null();
+	});
+
+	// indexes(self)
+	f = Intrinsic::Create("indexes");
+	f.AddParam("self");
+	f.set_Code([](List<Value> stk, Int32 bi, Int32 ac) -> Value {
+		GC_PUSH_SCOPE();
+		Value self = stk[bi + 1]; GC_PROTECT(&self);
+		Value result = make_null(); GC_PROTECT(&result);
+		Value iterKey; GC_PROTECT(&iterKey);
+		if (is_list(self)) {
+			int count = list_count(self);
+			result = make_list(count);
+			for (int i = 0; i < count; i++) {
+				list_push(result, make_int(i));
+			}
+			GC_POP_SCOPE();
+			return result;
+		} else if (is_string(self)) {
+			int slen = string_length(self);
+			result = make_list(slen);
+			for (int i = 0; i < slen; i++) {
+				list_push(result, make_int(i));
+			}
+			GC_POP_SCOPE();
+			return result;
+		} else if (is_map(self)) {
+			result = make_list(map_count(self));
+			MapIterator iter = map_iterator(self);
+			while (map_iterator_next(&iter, &iterKey, nullptr)) {
+				list_push(result, iterKey);
+			}
+		}
+		GC_POP_SCOPE();
+		return result;
+	});
+
+	// hasIndex(self, index)
+	f = Intrinsic::Create("hasIndex");
+	f.AddParam("self");
+	f.AddParam("index");
+	f.set_Code([](List<Value> stk, Int32 bi, Int32 ac) -> Value {
+		GC_PUSH_SCOPE();
+		Value self = stk[bi + 1]; GC_PROTECT(&self);
+		Value index = stk[bi + 2]; GC_PROTECT(&index);
+		if (is_list(self)) {
+			if (!is_number(index))  {
+				GC_POP_SCOPE();
+				return make_int(0);
+			}
+			int i = (int)numeric_val(index);
+			int count = list_count(self);
+			GC_POP_SCOPE();
+			return make_int((i >= -count && i < count) ? 1 : 0);
+		} else if (is_string(self)) {
+			if (!is_number(index))  {
+				GC_POP_SCOPE();
+				return make_int(0);
+			}
+			int i = (int)numeric_val(index);
+			int slen = string_length(self);
+			GC_POP_SCOPE();
+			return make_int((i >= -slen && i < slen) ? 1 : 0);
+		} else if (is_map(self)) {
+			GC_POP_SCOPE();
+			return make_int(map_has_key(self, index) ? 1 : 0);
+		}
+		GC_POP_SCOPE();
+		return make_null();
+	});
+
+	// values(self)
+	f = Intrinsic::Create("values");
+	f.AddParam("self");
+	f.set_Code([](List<Value> stk, Int32 bi, Int32 ac) -> Value {
+		GC_PUSH_SCOPE();
+		Value self = stk[bi + 1]; GC_PROTECT(&self);
+		Value result = self; GC_PROTECT(&result);
+		Value iterVal; GC_PROTECT(&iterVal);
+		if (is_map(self)) {
+			result = make_list(map_count(self));
+			MapIterator iter = map_iterator(self);
+			while (map_iterator_next(&iter, nullptr, &iterVal)) {
+				list_push(result, iterVal);
+			}
+		} else if (is_string(self)) {
+			int slen = string_length(self);
+			result = make_list(slen);
+			for (int i = 0; i < slen; i++) {
+				list_push(result, string_substring(self, i, 1));
+			}
+		}
+		GC_POP_SCOPE();
+		return result;
+	});
+
+	// range(from=0, to=0, step=null)
+	f = Intrinsic::Create("range");
+	f.AddParam("from", make_int(0));
+	f.AddParam("to", make_int(0));
+	f.AddParam("step");
+	f.set_Code([](List<Value> stk, Int32 bi, Int32 ac) -> Value {
+		double fromVal = numeric_val(stk[bi + 1]);
+		double toVal = numeric_val(stk[bi + 2]);
+		double step;
+		if (is_null(stk[bi + 3]) || !is_number(stk[bi + 3])) {
+			step = (toVal >= fromVal) ? 1 : -1;
+		} else {
+			step = numeric_val(stk[bi + 3]);
+		}
+		if (step == 0) {
+			IOHelper::Print("ERROR: range() step must not be 0");
+			return make_null();
+		}
+		int count = (int)((toVal - fromVal) / step) + 1;
+		if (count < 0) count = 0;
+		if (count > 1000000) count = 1000000;  // safety limit
+		GC_PUSH_SCOPE();
+		Value result = make_list(count); GC_PROTECT(&result);
+		double v = fromVal;
+		if (step > 0) {
+			while (v <= toVal) {
+				if (v == (int)v) list_push(result, make_int((int)v));
+				else list_push(result, make_double(v));
+				v += step;
+			}
+		} else {
+			while (v >= toVal) {
+				if (v == (int)v) list_push(result, make_int((int)v));
+				else list_push(result, make_double(v));
+				v += step;
+			}
+		}
+		GC_POP_SCOPE();
+		return result;
+	});
+	GC_POP_SCOPE();
 }
-	// (omit)
 
 } // end of namespace MiniScript

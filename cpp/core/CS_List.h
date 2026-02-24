@@ -37,7 +37,15 @@ public:
         return result;
     }
 
-    // Factory method with initializer list (matches C# "new List<T> { items... }")
+    // Factory method with capacity (matches C# "new List<T>(n)")
+    static List<T> New(int capacity) {
+        List<T> result;
+        result.data = std::make_shared<std::vector<T>>();
+        result.data->reserve(capacity);
+        return result;
+    }
+
+    // Factory method with initializer list (matches C# `new List<T> { items... }`)
     static List<T> New(std::initializer_list<T> items) {
         List<T> result;
         result.data = std::make_shared<std::vector<T>>(items);

@@ -270,6 +270,36 @@ bool string_equals(Value a, Value b) {
 }
 
 
+int string_indexOf(Value haystack, Value needle, int start_pos) {
+    if (!is_string(haystack) || !is_string(needle)) return -1;
+
+    int h_lenB, n_lenB;
+    const char* h = get_string_data_zerocopy(&haystack, &h_lenB);
+    const char* n = get_string_data_zerocopy(&needle, &n_lenB);
+    if (!h || h_lenB == 0) return -1;
+    if (n_lenB == 0) return start_pos;
+
+    // Walk forward character-by-character, counting as we go
+    unsigned char* ptr = (unsigned char*)h;
+    const unsigned char* end = ptr + h_lenB;
+    int charIdx = 0;
+
+    // Skip past start_pos characters
+    if (start_pos > 0) {
+        AdvanceUTF8(&ptr, end, start_pos);
+        charIdx = start_pos;
+    }
+
+    // Search: at each character boundary, check for a byte match
+    while (ptr + n_lenB <= end) {
+        if (memcmp(ptr, n, n_lenB) == 0) return charIdx;
+        AdvanceUTF8(&ptr, end, 1);
+        charIdx++;
+    }
+
+    return -1;
+}
+
 Value string_concat(Value a, Value b) {
     GC_PUSH_SCOPE();
     
@@ -313,215 +343,212 @@ Value string_concat(Value a, Value b) {
     return result;
 }
 
-Value string_replace(Value str, Value from, Value to) {
+// Helper: make a Value string from a pointer and byte length
+static Value make_string_from_bytes(const char* data, int lenB) {
+    char static_buf[256];
+    char* buf;
+    if (lenB < (int)sizeof(static_buf)) {
+        buf = static_buf;
+    } else {
+        buf = (char*)malloc(lenB + 1);
+    }
+    memcpy(buf, data, lenB);
+    buf[lenB] = '\0';
+    Value result = make_string(buf);
+    if (buf != static_buf) free(buf);
+    return result;
+}
+
+Value string_replace_max(Value str, Value from, Value to, int maxCount) {
     GC_PUSH_SCOPE();
-    
+
     Value result = make_null();
     GC_PROTECT(&str);
     GC_PROTECT(&from);
     GC_PROTECT(&to);
     GC_PROTECT(&result);
-    
+
     int from_lenB = string_lengthB(from);
     int to_lenB = string_lengthB(to);
     int str_lenB = string_lengthB(str);
-    
+
     if (from_lenB == 0 || str_lenB == 0) {
         GC_POP_SCOPE();
-        return str; // Can't replace empty string, or nothing to replace in empty string
+        return str;
     }
-    
-    // Get null-terminated versions of the strings
+
     char tiny_buffer_s[TINY_STRING_MAX_LEN + 1];
-    char tiny_buffer_f[TINY_STRING_MAX_LEN + 1];  
+    char tiny_buffer_f[TINY_STRING_MAX_LEN + 1];
     char tiny_buffer_t[TINY_STRING_MAX_LEN + 1];
-    
+
     const char* s = get_string_data_nullterm(&str, tiny_buffer_s);
     const char* f = get_string_data_nullterm(&from, tiny_buffer_f);
     const char* t = get_string_data_nullterm(&to, tiny_buffer_t);
-    
+
     if (!s || !f || !t) {
         GC_POP_SCOPE();
         return make_null();
     }
-    
-    // Count occurrences to calculate final length
+
+    // Count occurrences (up to maxCount) to calculate final length
     int count = 0;
     const char* temp = s;
     while ((temp = strstr(temp, f)) != NULL) {
         count++;
         temp += from_lenB;
+        if (maxCount > 0 && count >= maxCount) break;
     }
-    
+
     if (count == 0) {
         GC_POP_SCOPE();
-        return str; // Return original if not found
+        return str;
     }
-    
-    // Calculate new byte length
+
     int new_lenB = str_lenB + count * (to_lenB - from_lenB);
-    
-    // Use static buffer for small results, heap for larger ones
+
     char static_buffer[256];
     char* temp_result;
     bool use_static = ((size_t)new_lenB < sizeof(static_buffer));
-    
+
     if (use_static) {
         temp_result = static_buffer;
     } else {
-        temp_result = malloc(new_lenB + 1);
+        temp_result = (char*)malloc(new_lenB + 1);
     }
-    
-    // Build the result string
+
     char* dest = temp_result;
     const char* src = s;
-    
+    int replaced = 0;
+
     while (*src) {
-        const char* found = strstr(src, f);
+        const char* found = (maxCount > 0 && replaced >= maxCount) ? NULL : strstr(src, f);
         if (found == NULL) {
             strcpy(dest, src);
             break;
         }
-        
-        // Copy text before the match
+
         int before_len = found - src;
-        strncpy(dest, src, before_len);
+        memcpy(dest, src, before_len);
         dest += before_len;
-        
-        // Copy replacement text
-        strcpy(dest, t);
+
+        memcpy(dest, t, to_lenB);
         dest += to_lenB;
-        
-        // Move source pointer past the match
+
         src = found + from_lenB;
+        replaced++;
     }
-    
+
     result = make_string(temp_result);
-    
-    // Clean up heap allocation if used
+
     if (!use_static) {
         free(temp_result);
     }
-    
+
     GC_POP_SCOPE();
     return result;
 }
 
-Value string_split(Value str, Value delimiter) {
+Value string_replace(Value str, Value from, Value to) {
+    return string_replace_max(str, from, to, -1);
+}
+
+Value string_split_max(Value str, Value delimiter, int maxCount) {
     GC_PUSH_SCOPE();
-    
+
     Value result = make_null();
     GC_PROTECT(&str);
     GC_PROTECT(&delimiter);
     GC_PROTECT(&result);
-    
+
     int str_lenB = string_lengthB(str);
     int delim_lenB = string_lengthB(delimiter);
-    
+
     if (str_lenB == 0) {
         result = make_list(0);
         GC_POP_SCOPE();
         return result;
     }
-    
-    // Get string data
+
     char tiny_buffer_s[TINY_STRING_MAX_LEN + 1];
     const char* s = get_string_data_nullterm(&str, tiny_buffer_s);
     if (!s) {
         GC_POP_SCOPE();
         return make_null();
     }
-    
-    bool has_delimiter = (delim_lenB > 0);
-    const char* delim = NULL;
-    char tiny_buffer_delim[TINY_STRING_MAX_LEN + 1];
-    
-    if (has_delimiter) {
-        delim = get_string_data_nullterm(&delimiter, tiny_buffer_delim);
-        if (!delim) {
-            GC_POP_SCOPE();
-            return make_null();
-        }
-    }
-    
+
     // Handle empty delimiter (split into characters)
-    if (!has_delimiter || strlen(delim) == 0) {
-        int charCount = string_length(str);  // Use optimized character count
+    if (delim_lenB == 0) {
+        int charCount = string_length(str);
         result = make_list(charCount);
-        
+
         unsigned char* ptr = (unsigned char*)s;
         unsigned char* end = ptr + str_lenB;
-        
+        int count = 0;
+
         while (ptr < end) {
+            if (maxCount > 0 && count >= maxCount - 1) {
+                // Put the rest into one final element
+                int remainB = end - ptr;
+                Value rest = make_string_from_bytes((const char*)ptr, remainB);
+                list_push(result, rest);
+                break;
+            }
             unsigned char* charStart = ptr;
-            UTF8DecodeAndAdvance(&ptr);
-            
-            // Create string from this character
+            AdvanceUTF8(&ptr, end, 1);
+
             int charLenB = ptr - charStart;
-            char charBuffer[5];  // Max UTF-8 character is 4 bytes + null
+            char charBuffer[5];
             memcpy(charBuffer, charStart, charLenB);
             charBuffer[charLenB] = '\0';
-            
+
             Value char_val = make_string(charBuffer);
             list_push(result, char_val);
+            count++;
+        }
+
+        GC_POP_SCOPE();
+        return result;
+    }
+
+    // General case: split on delimiter string
+    char tiny_buffer_d[TINY_STRING_MAX_LEN + 1];
+    const char* d = get_string_data_nullterm(&delimiter, tiny_buffer_d);
+    if (!d) {
+        GC_POP_SCOPE();
+        return make_null();
+    }
+
+    result = make_list(8);
+    const char* pos = s;
+    const char* s_end = s + str_lenB;
+    int found = 0;
+
+    while (pos <= s_end) {
+        const char* next = (pos <= s_end - delim_lenB) ? strstr(pos, d) : NULL;
+        if (next == NULL || (maxCount > 0 && found >= maxCount - 1)) {
+            // Push remainder
+            Value token = make_string_from_bytes(pos, s_end - pos);
+            list_push(result, token);
+            break;
+        }
+        Value token = make_string_from_bytes(pos, next - pos);
+        list_push(result, token);
+        pos = next + delim_lenB;
+        found++;
+        if (pos > s_end) break;
+        if (pos == s_end) {
+            // Delimiter was at the very end; push empty string
+            list_push(result, val_empty_string);
+            break;
         }
     }
-    // Handle space delimiter as special case - manual split to preserve empty tokens
-    else if (strcmp(delim, " ") == 0) {
-        result = make_list(100); // Rough estimate
-        int start = 0;
-        
-        for (int i = 0; i <= str_lenB; i++) {
-            if (i == str_lenB || s[i] == ' ') {
-                // Found delimiter or end of string
-                int token_len = i - start;
-                char token_buffer[256];
-                if ((size_t)token_len < sizeof(token_buffer)) {
-                    strncpy(token_buffer, s + start, token_len);
-                    token_buffer[token_len] = '\0';
-                    Value token_val = make_string(token_buffer);
-                    list_push(result, token_val);
-                } else {
-                    char* token = malloc(token_len + 1);
-                    strncpy(token, s + start, token_len);
-                    token[token_len] = '\0';
-                    Value token_val = make_string(token);
-                    list_push(result, token_val);
-                    free(token);
-                }
-                start = i + 1;
-            }
-        }
-    }
-    // General case: split on specific delimiter
-    else {
-        result = make_list(50); // Rough estimate
-        char s_buffer[256];
-        char* s_copy;
-        bool use_static = ((size_t)str_lenB < sizeof(s_buffer));
-        
-        if (use_static) {
-            strcpy(s_buffer, s);
-            s_copy = s_buffer;
-        } else {
-            s_copy = malloc(str_lenB + 1);
-            strcpy(s_copy, s);
-        }
-        
-        char* token = strtok(s_copy, delim);
-        while (token != NULL) {
-            Value token_val = make_string(token);
-            list_push(result, token_val);
-            token = strtok(NULL, delim);
-        }
-        
-        if (!use_static) {
-            free(s_copy);
-        }
-    }
-    
+
     GC_POP_SCOPE();
     return result;
+}
+
+Value string_split(Value str, Value delimiter) {
+    return string_split_max(str, delimiter, -1);
 }
 
 Value string_substring(Value str, int startIndex, int len) {
@@ -629,6 +656,66 @@ Value string_sub(Value a, Value b) {
 	return result;
 }
 
+
+Value string_insert(Value str, int index, Value value) {
+    GC_PUSH_SCOPE();
+
+    Value result = make_null();
+    GC_PROTECT(&str);
+    GC_PROTECT(&value);
+    GC_PROTECT(&result);
+
+    if (!is_string(str)) {
+        GC_POP_SCOPE();
+        return str;
+    }
+
+    // Convert the value to insert into a string
+    Value insertVal = to_string(value);
+    GC_PROTECT(&insertVal);
+
+    int strLenB = string_lengthB(str);
+    int strLenC = string_length(str);
+    int insertLenB = string_lengthB(insertVal);
+
+    // Handle negative index
+    if (index < 0) index += strLenC + 1;
+    if (index < 0) index = 0;
+    if (index > strLenC) index = strLenC;
+
+    if (insertLenB == 0) {
+        GC_POP_SCOPE();
+        return str;
+    }
+
+    // Get string data
+    char tiny_buf_s[TINY_STRING_MAX_LEN + 1];
+    char tiny_buf_i[TINY_STRING_MAX_LEN + 1];
+    const char* sData = get_string_data_nullterm(&str, tiny_buf_s);
+    const char* iData = get_string_data_nullterm(&insertVal, tiny_buf_i);
+    if (!sData || !iData) {
+        GC_POP_SCOPE();
+        return str;
+    }
+
+    // Convert character index to byte index
+    int byteIdx = UTF8CharIndexToByteIndex((const unsigned char*)sData, index, strLenB);
+    if (byteIdx < 0) byteIdx = strLenB;
+
+    // Build the result: prefix + insert + suffix
+    int totalLenB = strLenB + insertLenB;
+    char* buf = (char*)malloc(totalLenB + 1);
+    memcpy(buf, sData, byteIdx);
+    memcpy(buf + byteIdx, iData, insertLenB);
+    memcpy(buf + byteIdx + insertLenB, sData + byteIdx, strLenB - byteIdx);
+    buf[totalLenB] = '\0';
+
+    result = make_string(buf);
+    free(buf);
+
+    GC_POP_SCOPE();
+    return result;
+}
 
 Value string_upper(Value str) {
     if (!is_string(str)) return str;

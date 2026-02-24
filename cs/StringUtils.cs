@@ -19,7 +19,7 @@ public static class StringUtils {
 	public const String hexDigits = "0123456789ABCDEF";
 	
 	public static String ToHex(UInt32 value) {
-		Char[] hexChars = new Char[8]; // CPP: Char hexChars[9]{};
+		Char[] hexChars = new Char[8]; // CPP: char hexChars[9]{};
 		for (Int32 i = 7; i >= 0; i--) {
 			hexChars[i] = hexDigits[(int)(value & 0xF)];
 			value >>= 4;
@@ -28,7 +28,7 @@ public static class StringUtils {
 	}
 	
 	public static String ToHex(Byte value) {
-		Char[] hexChars = new Char[2];
+		Char[] hexChars = new Char[2]; // CPP: char hexChars[3]{};
 		for (Int32 i = 1; i >= 0; i--) {
 			hexChars[i] = hexDigits[(int)(value & 0xF)];
 			value >>= 4;
@@ -49,9 +49,9 @@ public static class StringUtils {
 	public static String ZeroPad(Int32 value, Int32 digits = 5) {
 		return value.ToString("D" + digits.ToString()); // CPP: // set width and fill
 		/*** BEGIN CPP_ONLY ***
-		Char format[] = "%05d";
+		char format[] = "%05d";
 		format[2] = '0' + digits;
-		Char buffer[20];
+		char buffer[20];
 		snprintf(buffer, 20, format, value);
 		return String(buffer);
 		*** END CPP_ONLY ***/
@@ -61,7 +61,7 @@ public static class StringUtils {
 		if (count < 1) return "";
 		return new String(' ', count); // CPP:
 		/*** BEGIN CPP_ONLY ***
-		Char* spaces = (Char*)malloc(count + 1);
+		char* spaces = (char*)malloc(count + 1);
 		memset(spaces, ' ', count);
 		spaces[count] = '\0';
 		String result(spaces);
@@ -163,7 +163,8 @@ public static class StringUtils {
 		return s;
 	}
 	inline static String makeString(const Char* s) {
-		return String(s ? s : "");
+		if (s) return String(s);
+		return "";
 	}
 	inline static String makeString(Char c) {
 		Char buf[2] = {c, '\0'};
@@ -179,7 +180,7 @@ public static class StringUtils {
 			return String(as_cstring(strVal));
 		}
 		if (is_string(v)) {
-			const Char* str = as_cstring(v);
+			const char* str = as_cstring(v);
 			return str ? String(str) : String("<str?>");
 		}
 		if (is_list(v)) {
@@ -222,7 +223,7 @@ public static class StringUtils {
 	}
 	inline static String makeRepr(const Value v) {
 		if (is_string(v)) {
-			const Char* str = as_cstring(v);
+			const char* str = as_cstring(v);
 			if (!str) {
 				return String("\"\"");
 			}

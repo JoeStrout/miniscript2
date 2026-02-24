@@ -118,19 +118,26 @@ int ss_indexOfFrom(const StringStorage* storage, const StringStorage* needle, in
     if (!storage || !needle) return -1;
     if (startIndex < 0 || startIndex >= ss_lengthC(storage)) return -1;
     if (ss_isEmpty(needle)) return startIndex;
-    
-    // Convert character index to byte index
-    int startByteIndex = UTF8CharIndexToByteIndex(
-        (const unsigned char*)storage->data, startIndex, storage->lenB);
-    if (startByteIndex < 0) return -1;
-    
-    const char* found = strstr(storage->data + startByteIndex, needle->data);
-    if (!found) return -1;
-    
-    // Convert back to character index
-    int foundByteIndex = found - storage->data;
-    return UTF8ByteIndexToCharIndex(
-        (const unsigned char*)storage->data, foundByteIndex, storage->lenB);
+
+    int n_lenB = needle->lenB;
+    unsigned char* ptr = (unsigned char*)storage->data;
+    const unsigned char* end = ptr + storage->lenB;
+    int charIdx = 0;
+
+    // Skip past startIndex characters
+    if (startIndex > 0) {
+        AdvanceUTF8(&ptr, end, startIndex);
+        charIdx = startIndex;
+    }
+
+    // Search: at each character boundary, check for a byte match
+    while (ptr + n_lenB <= end) {
+        if (memcmp(ptr, needle->data, n_lenB) == 0) return charIdx;
+        AdvanceUTF8(&ptr, end, 1);
+        charIdx++;
+    }
+
+    return -1;
 }
 
 int ss_indexOfChar(const StringStorage* storage, char ch) {

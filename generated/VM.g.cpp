@@ -1377,6 +1377,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 						RaiseRuntimeError(StringUtils::Format("Can't index into {0}", container));
 						localStack[a] = make_null();
 					}
+					hasPendingContext = Boolean(true);
 				}
 				VM_NEXT();
 			}

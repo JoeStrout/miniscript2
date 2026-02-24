@@ -84,6 +84,11 @@ ClassInfo.summary = function
 	return "CLASS: " + self.type + " " + self.name
 end function
 
+ClassInfo.hasLines = function
+	return self.declLines or self.wrapperLines or self.storageLines or 
+	  self.inlineLines or self.defLines
+end function
+
 //--------------------------------------------------------------------------------
 globals.VariableInfo = {}				// used for fields, parameters, and local vars
 VariableInfo.name = ""

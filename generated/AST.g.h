@@ -48,6 +48,8 @@ struct MapParselet;
 class MapParseletStorage;
 struct BinaryOpParselet;
 class BinaryOpParseletStorage;
+struct ComparisonParselet;
+class ComparisonParseletStorage;
 struct CallParselet;
 class CallParseletStorage;
 struct IndexParselet;
@@ -76,6 +78,8 @@ struct UnaryOpNode;
 class UnaryOpNodeStorage;
 struct BinaryOpNode;
 class BinaryOpNodeStorage;
+struct ComparisonChainNode;
+class ComparisonChainNodeStorage;
 struct CallNode;
 class CallNodeStorage;
 struct GroupNode;
@@ -166,6 +170,7 @@ class IASTVisitor {
 	virtual Int32 Visit(IndexedAssignmentNode node) = 0;
 	virtual Int32 Visit(SelfNode node) = 0;
 	virtual Int32 Visit(SuperNode node) = 0;
+	virtual Int32 Visit(ComparisonChainNode node) = 0;
 }; // end of interface IASTVisitor
 
 // Base class for all AST nodes.
@@ -303,6 +308,20 @@ class BinaryOpNodeStorage : public ASTNodeStorage {
 
 	public: Int32 Accept(IASTVisitor& visitor);
 }; // end of class BinaryOpNodeStorage
+
+class ComparisonChainNodeStorage : public ASTNodeStorage {
+	friend struct ComparisonChainNode;
+	public: List<ASTNode> Operands; // N+1 operands for N operators
+	public: List<String> Operators; // comparison operators (Op.LESS_THAN, etc.)
+
+	public: ComparisonChainNodeStorage(List<ASTNode> operands, List<String> operators);
+
+	public: String ToStr();
+
+	public: ASTNode Simplify();
+
+	public: Int32 Accept(IASTVisitor& visitor);
+}; // end of class ComparisonChainNodeStorage
 
 class CallNodeStorage : public ASTNodeStorage {
 	friend struct CallNode;
@@ -711,6 +730,31 @@ struct BinaryOpNode : public ASTNode {
 
 	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct BinaryOpNode
+
+// Chained comparison node (e.g., a < b <= c means (a < b) and (b <= c))
+// Each operand is evaluated exactly once; results are combined via multiply.
+struct ComparisonChainNode : public ASTNode {
+	friend class ComparisonChainNodeStorage;
+	ComparisonChainNode(std::shared_ptr<ComparisonChainNodeStorage> stor);
+	ComparisonChainNode() : ASTNode() {}
+	ComparisonChainNode(std::nullptr_t) : ASTNode(nullptr) {}
+	private: ComparisonChainNodeStorage* get() const;
+
+	public: List<ASTNode> Operands(); // N+1 operands for N operators
+	public: void set_Operands(List<ASTNode> _v); // N+1 operands for N operators
+	public: List<String> Operators(); // comparison operators (Op.LESS_THAN, etc.)
+	public: void set_Operators(List<String> _v); // comparison operators (Op.LESS_THAN, etc.)
+
+	public: static ComparisonChainNode New(List<ASTNode> operands, List<String> operators) {
+		return ComparisonChainNode(std::make_shared<ComparisonChainNodeStorage>(operands, operators));
+	}
+
+	public: String ToStr() { return get()->ToStr(); }
+
+	public: ASTNode Simplify() { return get()->Simplify(); }
+
+	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
+}; // end of struct ComparisonChainNode
 
 // Function call node (e.g., sqrt(x), max(a, b))
 struct CallNode : public ASTNode {
@@ -1193,6 +1237,13 @@ inline ASTNode BinaryOpNode::Left() { return get()->Left; } // left operand
 inline void BinaryOpNode::set_Left(ASTNode _v) { get()->Left = _v; } // left operand
 inline ASTNode BinaryOpNode::Right() { return get()->Right; } // right operand
 inline void BinaryOpNode::set_Right(ASTNode _v) { get()->Right = _v; } // right operand
+
+inline ComparisonChainNode::ComparisonChainNode(std::shared_ptr<ComparisonChainNodeStorage> stor) : ASTNode(stor) {}
+inline ComparisonChainNodeStorage* ComparisonChainNode::get() const { return static_cast<ComparisonChainNodeStorage*>(storage.get()); }
+inline List<ASTNode> ComparisonChainNode::Operands() { return get()->Operands; } // N+1 operands for N operators
+inline void ComparisonChainNode::set_Operands(List<ASTNode> _v) { get()->Operands = _v; } // N+1 operands for N operators
+inline List<String> ComparisonChainNode::Operators() { return get()->Operators; } // comparison operators (Op.LESS_THAN, etc.)
+inline void ComparisonChainNode::set_Operators(List<String> _v) { get()->Operators = _v; } // comparison operators (Op.LESS_THAN, etc.)
 
 inline CallNode::CallNode(std::shared_ptr<CallNodeStorage> stor) : ASTNode(stor) {}
 inline CallNodeStorage* CallNode::get() const { return static_cast<CallNodeStorage*>(storage.get()); }

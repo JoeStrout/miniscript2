@@ -195,6 +195,29 @@ Int32 BinaryOpNodeStorage::Accept(IASTVisitor& visitor) {
 	return visitor.Visit(_this);
 }
 
+ComparisonChainNodeStorage::ComparisonChainNodeStorage(List<ASTNode> operands,List<String> operators) {
+	Operands = operands;
+	Operators = operators;
+}
+String ComparisonChainNodeStorage::ToStr() {
+	String result = Operands[0].ToStr();
+	for (Int32 i = 0; i < Operators.Count(); i++) {
+		result = result + " " + Operators[i] + " " + Operands[i + 1].ToStr();
+	}
+	return result;
+}
+ASTNode ComparisonChainNodeStorage::Simplify() {
+	List<ASTNode> simplifiedOperands =  List<ASTNode>::New();
+	for (Int32 i = 0; i < Operands.Count(); i++) {
+		simplifiedOperands.Add(Operands[i].Simplify());
+	}
+	return  ComparisonChainNode::New(simplifiedOperands, Operators);
+}
+Int32 ComparisonChainNodeStorage::Accept(IASTVisitor& visitor) {
+	ComparisonChainNode _this(std::static_pointer_cast<ComparisonChainNodeStorage>(shared_from_this()));
+	return visitor.Visit(_this);
+}
+
 CallNodeStorage::CallNodeStorage(String function,List<ASTNode> arguments) {
 	Function = function;
 	Arguments = arguments;

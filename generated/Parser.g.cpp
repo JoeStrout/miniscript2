@@ -40,13 +40,13 @@ void ParserStorage::RegisterParselets() {
 	RegisterInfix(TokenType::MOD,  BinaryOpParselet::New(Op::MOD, Precedence::PRODUCT));
 	RegisterInfix(TokenType::CARET,  BinaryOpParselet::New(Op::POWER, Precedence::POWER, Boolean(true))); // right-assoc
 
-	// Comparison operators
-	RegisterInfix(TokenType::EQUALS,  BinaryOpParselet::New(Op::EQUALS, Precedence::EQUALITY));
-	RegisterInfix(TokenType::NOT_EQUAL,  BinaryOpParselet::New(Op::NOT_EQUAL, Precedence::EQUALITY));
-	RegisterInfix(TokenType::LESS_THAN,  BinaryOpParselet::New(Op::LESS_THAN, Precedence::COMPARISON));
-	RegisterInfix(TokenType::GREATER_THAN,  BinaryOpParselet::New(Op::GREATER_THAN, Precedence::COMPARISON));
-	RegisterInfix(TokenType::LESS_EQUAL,  BinaryOpParselet::New(Op::LESS_EQUAL, Precedence::COMPARISON));
-	RegisterInfix(TokenType::GREATER_EQUAL,  BinaryOpParselet::New(Op::GREATER_EQUAL, Precedence::COMPARISON));
+	// Comparison operators (all at same precedence, with chaining support)
+	RegisterInfix(TokenType::EQUALS,  ComparisonParselet::New(Op::EQUALS, Precedence::COMPARISON));
+	RegisterInfix(TokenType::NOT_EQUAL,  ComparisonParselet::New(Op::NOT_EQUAL, Precedence::COMPARISON));
+	RegisterInfix(TokenType::LESS_THAN,  ComparisonParselet::New(Op::LESS_THAN, Precedence::COMPARISON));
+	RegisterInfix(TokenType::GREATER_THAN,  ComparisonParselet::New(Op::GREATER_THAN, Precedence::COMPARISON));
+	RegisterInfix(TokenType::LESS_EQUAL,  ComparisonParselet::New(Op::LESS_EQUAL, Precedence::COMPARISON));
+	RegisterInfix(TokenType::GREATER_EQUAL,  ComparisonParselet::New(Op::GREATER_EQUAL, Precedence::COMPARISON));
 
 	// Logical operators
 	RegisterInfix(TokenType::AND,  BinaryOpParselet::New(Op::AND, Precedence::AND));

@@ -707,19 +707,18 @@ public static class ValueHelpers {
 	// Mirrors the C++ MapIterator in value_map.h.
 	// In C#, we use an enumerator over the ValueMap.Items dictionary;
 	// the C++ side uses index-based traversal over hash table slots.
-	public struct MapIterator {  // CPP: // (omit)
-		public ValueMap map;         // CPP: // (omit)
-		public IEnumerator<KeyValuePair<Value, Value>> enumerator; // CPP: // (omit)
-		public bool started;         // CPP: // (omit)
+	public struct MapIterator {
+		public ValueMap map;
+		public IEnumerator<KeyValuePair<Value, Value>> enumerator;
+		public bool started;
 		public Value Key;
-		public Value Val;            // CPP: Value value;
-	}                                // CPP: // (omit)
+		public Value Val;
+	}
 
 	public static MapIterator map_iterator(Value map_val) {
 		MapIterator iter = new MapIterator();
 		iter.Key = make_null();
 		iter.Val = make_null();
-		//*** BEGIN CS_ONLY ***
 		if (map_val.IsMap) {
 			ValueMap valueMap = HandlePool.Get(map_val.Handle()) as ValueMap;
 			if (valueMap != null) {
@@ -727,23 +726,15 @@ public static class ValueHelpers {
 				iter.enumerator = valueMap.Items.GetEnumerator();
 			}
 		}
-		//*** END CS_ONLY ***
-		/*** BEGIN CPP_ONLY ***
-		iter.map = as_map(map_val);
-		iter.index = -1;
-		iter.varmap_reg_index = -1;
-		*** END CPP_ONLY ***/
 		return iter;
 	}
 
-	public static bool map_iterator_next(ref MapIterator iter) { // CPP: bool map_iterator_next(MapIterator* iter, Value* out_key, Value* out_value) {
-		//*** BEGIN CS_ONLY ***
+	public static bool map_iterator_next(ref MapIterator iter) {
 		if (iter.enumerator == null) return false;
 		if (!iter.enumerator.MoveNext()) return false;
 		iter.Key = iter.enumerator.Current.Key;
 		iter.Val = iter.enumerator.Current.Value;
 		return true;
-		//*** END CS_ONLY ***
 	}
 
 	public const int MAP_ITER_DONE = Int32.MinValue;

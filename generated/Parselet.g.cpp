@@ -98,6 +98,54 @@ ASTNode BinaryOpParseletStorage::Parse(IParser& parser,ASTNode left,Token token)
 	return  BinaryOpNode::New(_op, left, right);
 }
 
+ComparisonParseletStorage::ComparisonParseletStorage(String op,Precedence prec) {
+	_op = op;
+	Prec = prec;
+}
+ASTNode ComparisonParseletStorage::Parse(IParser& parser,ASTNode left,Token token) {
+	// Parse RHS at our precedence (same-precedence ops won't be consumed)
+	ASTNode right = parser.ParseExpression(Prec);
+
+	// Check if next token is another comparison operator
+	if (!IsComparisonToken(parser)) {
+		return  BinaryOpNode::New(_op, left, right);
+	}
+
+	// Chain detected - collect all operands and operators
+	List<ASTNode> operands =  List<ASTNode>::New();
+	List<String> operators =  List<String>::New();
+	operands.Add(left);
+	operands.Add(right);
+	operators.Add(_op);
+
+	while (IsComparisonToken(parser)) {
+		Token nextToken = parser.Consume();
+		String nextOp = TokenToComparisonOp(nextToken.Type);
+		ASTNode nextRhs = parser.ParseExpression(Prec);
+		operands.Add(nextRhs);
+		operators.Add(nextOp);
+	}
+
+	return  ComparisonChainNode::New(operands, operators);
+}
+Boolean ComparisonParseletStorage::IsComparisonToken(IParser& parser) {
+	return parser.Check(TokenType::LESS_THAN)
+		|| parser.Check(TokenType::GREATER_THAN)
+		|| parser.Check(TokenType::LESS_EQUAL)
+		|| parser.Check(TokenType::GREATER_EQUAL)
+		|| parser.Check(TokenType::EQUALS)
+		|| parser.Check(TokenType::NOT_EQUAL);
+}
+String ComparisonParseletStorage::TokenToComparisonOp(TokenType type) {
+	if (type == TokenType::LESS_THAN) return Op::LESS_THAN;
+	if (type == TokenType::GREATER_THAN) return Op::GREATER_THAN;
+	if (type == TokenType::LESS_EQUAL) return Op::LESS_EQUAL;
+	if (type == TokenType::GREATER_EQUAL) return Op::GREATER_EQUAL;
+	if (type == TokenType::EQUALS) return Op::EQUALS;
+	if (type == TokenType::NOT_EQUAL) return Op::NOT_EQUAL;
+	return Op::EQUALS;
+}
+
 CallParseletStorage::CallParseletStorage() {
 	Prec = Precedence::CALL;
 }

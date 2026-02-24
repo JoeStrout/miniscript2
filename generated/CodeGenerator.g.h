@@ -52,6 +52,8 @@ struct MapParselet;
 class MapParseletStorage;
 struct BinaryOpParselet;
 class BinaryOpParseletStorage;
+struct ComparisonParselet;
+class ComparisonParseletStorage;
 struct CallParselet;
 class CallParseletStorage;
 struct IndexParselet;
@@ -80,6 +82,8 @@ struct UnaryOpNode;
 class UnaryOpNodeStorage;
 struct BinaryOpNode;
 class BinaryOpNodeStorage;
+struct ComparisonChainNode;
+class ComparisonChainNodeStorage;
 struct CallNode;
 class CallNodeStorage;
 struct GroupNode;
@@ -190,6 +194,11 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 	public: Int32 Visit(UnaryOpNode node);
 
 	public: Int32 Visit(BinaryOpNode node);
+
+	public: Int32 Visit(ComparisonChainNode node);
+
+	// Emit a single comparison opcode into destReg
+	private: void EmitComparison(String op, Int32 destReg, Int32 leftReg, Int32 rightReg);
 
 	public: Int32 Visit(CallNode node);
 
@@ -349,6 +358,11 @@ struct CodeGenerator : public IASTVisitor {
 
 	public: inline Int32 Visit(BinaryOpNode node);
 
+	public: inline Int32 Visit(ComparisonChainNode node);
+
+	// Emit a single comparison opcode into destReg
+	private: inline void EmitComparison(String op, Int32 destReg, Int32 leftReg, Int32 rightReg);
+
 	public: inline Int32 Visit(CallNode node);
 
 	// Compile a call to a user-defined function (funcref in a register)
@@ -456,6 +470,8 @@ inline Int32 CodeGenerator::Visit(AssignmentNode node) { return get()->Visit(nod
 inline Int32 CodeGenerator::Visit(IndexedAssignmentNode node) { return get()->Visit(node); }
 inline Int32 CodeGenerator::Visit(UnaryOpNode node) { return get()->Visit(node); }
 inline Int32 CodeGenerator::Visit(BinaryOpNode node) { return get()->Visit(node); }
+inline Int32 CodeGenerator::Visit(ComparisonChainNode node) { return get()->Visit(node); }
+inline void CodeGenerator::EmitComparison(String op,Int32 destReg,Int32 leftReg,Int32 rightReg) { return get()->EmitComparison(op, destReg, leftReg, rightReg); }
 inline Int32 CodeGenerator::Visit(CallNode node) { return get()->Visit(node); }
 inline Int32 CodeGenerator::CompileUserCall(CallNode node,Int32 funcVarReg,Int32 explicitTarget) { return get()->CompileUserCall(node, funcVarReg, explicitTarget); }
 inline Int32 CodeGenerator::Visit(GroupNode node) { return get()->Visit(node); }

@@ -66,13 +66,13 @@ public class Parser : IParser {
 		RegisterInfix(TokenType.MOD, new BinaryOpParselet(Op.MOD, Precedence.PRODUCT));
 		RegisterInfix(TokenType.CARET, new BinaryOpParselet(Op.POWER, Precedence.POWER, true)); // right-assoc
 
-		// Comparison operators
-		RegisterInfix(TokenType.EQUALS, new BinaryOpParselet(Op.EQUALS, Precedence.EQUALITY));
-		RegisterInfix(TokenType.NOT_EQUAL, new BinaryOpParselet(Op.NOT_EQUAL, Precedence.EQUALITY));
-		RegisterInfix(TokenType.LESS_THAN, new BinaryOpParselet(Op.LESS_THAN, Precedence.COMPARISON));
-		RegisterInfix(TokenType.GREATER_THAN, new BinaryOpParselet(Op.GREATER_THAN, Precedence.COMPARISON));
-		RegisterInfix(TokenType.LESS_EQUAL, new BinaryOpParselet(Op.LESS_EQUAL, Precedence.COMPARISON));
-		RegisterInfix(TokenType.GREATER_EQUAL, new BinaryOpParselet(Op.GREATER_EQUAL, Precedence.COMPARISON));
+		// Comparison operators (all at same precedence, with chaining support)
+		RegisterInfix(TokenType.EQUALS, new ComparisonParselet(Op.EQUALS, Precedence.COMPARISON));
+		RegisterInfix(TokenType.NOT_EQUAL, new ComparisonParselet(Op.NOT_EQUAL, Precedence.COMPARISON));
+		RegisterInfix(TokenType.LESS_THAN, new ComparisonParselet(Op.LESS_THAN, Precedence.COMPARISON));
+		RegisterInfix(TokenType.GREATER_THAN, new ComparisonParselet(Op.GREATER_THAN, Precedence.COMPARISON));
+		RegisterInfix(TokenType.LESS_EQUAL, new ComparisonParselet(Op.LESS_EQUAL, Precedence.COMPARISON));
+		RegisterInfix(TokenType.GREATER_EQUAL, new ComparisonParselet(Op.GREATER_EQUAL, Precedence.COMPARISON));
 
 		// Logical operators
 		RegisterInfix(TokenType.AND, new BinaryOpParselet(Op.AND, Precedence.AND));

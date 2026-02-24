@@ -52,6 +52,8 @@ struct MapParselet;
 class MapParseletStorage;
 struct BinaryOpParselet;
 class BinaryOpParseletStorage;
+struct ComparisonParselet;
+class ComparisonParseletStorage;
 struct CallParselet;
 class CallParseletStorage;
 struct IndexParselet;
@@ -80,6 +82,8 @@ struct UnaryOpNode;
 class UnaryOpNodeStorage;
 struct BinaryOpNode;
 class BinaryOpNodeStorage;
+struct ComparisonChainNode;
+class ComparisonChainNodeStorage;
 struct CallNode;
 class CallNodeStorage;
 struct GroupNode;
@@ -268,6 +272,19 @@ class BinaryOpParseletStorage : public InfixParseletStorage {
 	public: ASTNode Parse(IParser& parser, ASTNode left, Token token);
 }; // end of class BinaryOpParseletStorage
 
+class ComparisonParseletStorage : public InfixParseletStorage {
+	friend struct ComparisonParselet;
+	private: String _op;
+
+	public: ComparisonParseletStorage(String op, Precedence prec);
+
+	public: ASTNode Parse(IParser& parser, ASTNode left, Token token);
+
+	private: static Boolean IsComparisonToken(IParser& parser);
+
+	private: static String TokenToComparisonOp(TokenType type);
+}; // end of class ComparisonParseletStorage
+
 class CallParseletStorage : public InfixParseletStorage {
 	friend struct CallParselet;
 	public: CallParseletStorage();
@@ -446,6 +463,29 @@ struct BinaryOpParselet : public InfixParselet {
 	public: ASTNode Parse(IParser& parser, ASTNode left, Token token) { return get()->Parse(parser, left, token); }
 }; // end of struct BinaryOpParselet
 
+// ComparisonParselet: handles comparison operators with Python-style chaining.
+// If only one comparison, returns BinaryOpNode; if chained, returns ComparisonChainNode.
+struct ComparisonParselet : public InfixParselet {
+	friend class ComparisonParseletStorage;
+	ComparisonParselet(std::shared_ptr<ComparisonParseletStorage> stor);
+	ComparisonParselet() : InfixParselet() {}
+	ComparisonParselet(std::nullptr_t) : InfixParselet(nullptr) {}
+	private: ComparisonParseletStorage* get() const;
+
+	private: String _op();
+	private: void set__op(String _v);
+
+	public: static ComparisonParselet New(String op, Precedence prec) {
+		return ComparisonParselet(std::make_shared<ComparisonParseletStorage>(op, prec));
+	}
+
+	public: ASTNode Parse(IParser& parser, ASTNode left, Token token) { return get()->Parse(parser, left, token); }
+
+	private: static Boolean IsComparisonToken(IParser& parser) { return ComparisonParseletStorage::IsComparisonToken(parser); }
+
+	private: static String TokenToComparisonOp(TokenType type) { return ComparisonParseletStorage::TokenToComparisonOp(type); }
+}; // end of struct ComparisonParselet
+
 // CallParselet: handles function calls like 'foo(x, y)' and method calls like 'obj.method(x)'.
 struct CallParselet : public InfixParselet {
 	friend class CallParseletStorage;
@@ -540,6 +580,11 @@ inline String BinaryOpParselet::_op() { return get()->_op; }
 inline void BinaryOpParselet::set__op(String _v) { get()->_op = _v; }
 inline Boolean BinaryOpParselet::_rightAssoc() { return get()->_rightAssoc; }
 inline void BinaryOpParselet::set__rightAssoc(Boolean _v) { get()->_rightAssoc = _v; }
+
+inline ComparisonParselet::ComparisonParselet(std::shared_ptr<ComparisonParseletStorage> stor) : InfixParselet(stor) {}
+inline ComparisonParseletStorage* ComparisonParselet::get() const { return static_cast<ComparisonParseletStorage*>(storage.get()); }
+inline String ComparisonParselet::_op() { return get()->_op; }
+inline void ComparisonParselet::set__op(String _v) { get()->_op = _v; }
 
 inline CallParselet::CallParselet(std::shared_ptr<CallParseletStorage> stor) : InfixParselet(stor) {}
 inline CallParseletStorage* CallParselet::get() const { return static_cast<CallParseletStorage*>(storage.get()); }

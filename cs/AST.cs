@@ -60,6 +60,7 @@ public interface IASTVisitor {
 	Int32 Visit(IndexedAssignmentNode node);
 	Int32 Visit(SelfNode node);
 	Int32 Visit(SuperNode node);
+	Int32 Visit(ComparisonChainNode node);
 }
 
 // Base class for all AST nodes.
@@ -289,6 +290,38 @@ public class BinaryOpNode : ASTNode {
 
 		// Otherwise return binary op with simplified operands
 		return new BinaryOpNode(Op, simplifiedLeft, simplifiedRight);
+	}
+
+	public override Int32 Accept(IASTVisitor visitor) {
+		return visitor.Visit(this);
+	}
+}
+
+// Chained comparison node (e.g., a < b <= c means (a < b) and (b <= c))
+// Each operand is evaluated exactly once; results are combined via multiply.
+public class ComparisonChainNode : ASTNode {
+	public List<ASTNode> Operands;      // N+1 operands for N operators
+	public List<String> Operators;      // comparison operators (Op.LESS_THAN, etc.)
+
+	public ComparisonChainNode(List<ASTNode> operands, List<String> operators) {
+		Operands = operands;
+		Operators = operators;
+	}
+
+	public override String ToStr() {
+		String result = Operands[0].ToStr();
+		for (Int32 i = 0; i < Operators.Count; i++) {
+			result = result + " " + Operators[i] + " " + Operands[i + 1].ToStr();
+		}
+		return result;
+	}
+
+	public override ASTNode Simplify() {
+		List<ASTNode> simplifiedOperands = new List<ASTNode>();
+		for (Int32 i = 0; i < Operands.Count; i++) {
+			simplifiedOperands.Add(Operands[i].Simplify());
+		}
+		return new ComparisonChainNode(simplifiedOperands, Operators);
 	}
 
 	public override Int32 Accept(IASTVisitor visitor) {

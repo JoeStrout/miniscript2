@@ -454,6 +454,51 @@ public class CodeGenerator : IASTVisitor {
 		return resultReg;
 	}
 
+	public Int32 Visit(ComparisonChainNode node) {
+		Int32 resultReg = GetTargetOrAlloc();
+
+		// Evaluate ALL operands first (each exactly once)
+		List<Int32> valueRegs = new List<Int32>();
+		for (Int32 i = 0; i < node.Operands.Count; i++) {
+			valueRegs.Add(node.Operands[i].Accept(this));
+		}
+
+		// First comparison → resultReg
+		EmitComparison(node.Operators[0], resultReg, valueRegs[0], valueRegs[1]);
+
+		// Each subsequent comparison: compute into tempReg, multiply with resultReg
+		for (Int32 i = 1; i < node.Operators.Count; i++) {
+			Int32 tempReg = AllocReg();
+			EmitComparison(node.Operators[i], tempReg, valueRegs[i], valueRegs[i + 1]);
+			_emitter.EmitABC(Opcode.MULT_rA_rB_rC, resultReg, resultReg, tempReg, "chain AND");
+			FreeReg(tempReg);
+		}
+
+		// Free operand registers
+		for (Int32 i = 0; i < valueRegs.Count; i++) {
+			FreeReg(valueRegs[i]);
+		}
+
+		return resultReg;
+	}
+
+	// Emit a single comparison opcode into destReg
+	private void EmitComparison(String op, Int32 destReg, Int32 leftReg, Int32 rightReg) {
+		if (op == Op.LESS_THAN) {
+			_emitter.EmitABC(Opcode.LT_rA_rB_rC, destReg, leftReg, rightReg, "chain <");
+		} else if (op == Op.LESS_EQUAL) {
+			_emitter.EmitABC(Opcode.LE_rA_rB_rC, destReg, leftReg, rightReg, "chain <=");
+		} else if (op == Op.GREATER_THAN) {
+			_emitter.EmitABC(Opcode.LT_rA_rB_rC, destReg, rightReg, leftReg, "chain >");
+		} else if (op == Op.GREATER_EQUAL) {
+			_emitter.EmitABC(Opcode.LE_rA_rB_rC, destReg, rightReg, leftReg, "chain >=");
+		} else if (op == Op.EQUALS) {
+			_emitter.EmitABC(Opcode.EQ_rA_rB_rC, destReg, leftReg, rightReg, "chain ==");
+		} else if (op == Op.NOT_EQUAL) {
+			_emitter.EmitABC(Opcode.NE_rA_rB_rC, destReg, leftReg, rightReg, "chain !=");
+		}
+	}
+
 	public Int32 Visit(CallNode node) {
 		// Capture target register if one was specified (don't allocate yet)
 		Int32 explicitTarget = _targetReg;

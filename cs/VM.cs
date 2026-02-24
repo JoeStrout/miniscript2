@@ -1455,6 +1455,7 @@ public class VM {
 							RaiseRuntimeError(StringUtils.Format("Can't index into {0}", container));
 							localStack[a] = make_null();
 						}
+						hasPendingContext = true;
 					}
 					break; // CPP: VM_NEXT();
 				}

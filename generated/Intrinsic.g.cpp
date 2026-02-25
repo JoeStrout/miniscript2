@@ -24,6 +24,15 @@ void IntrinsicStorage::AddParam(String name,Value defaultValue) {
 	_paramNames.Add(name);
 	_paramDefaults.Add(defaultValue);
 }
+Intrinsic IntrinsicStorage::GetByName(String name) {
+	for (Int32 i = 0; i < _all.Count(); i++) {
+		if (_all[i].Name() == name) return _all[i];
+	}
+	return nullptr;
+}
+Value IntrinsicStorage::GetFunc() {
+	return make_funcref(_funcIndex, val_null);
+}
 FuncDef IntrinsicStorage::BuildFuncDef() {
 	FuncDef def =  FuncDef::New();
 	def.set_Name(Name);
@@ -45,6 +54,7 @@ void IntrinsicStorage::RegisterAll(List<FuncDef> functions,Dictionary<String, Va
 		Intrinsic intr = _all[i];
 		FuncDef def = intr.BuildFuncDef();
 		Int32 funcIndex = functions.Count();
+		intr.set__funcIndex(funcIndex);
 		functions.Add(def);
 		intrinsics[intr.Name()] = make_funcref(funcIndex, val_null);
 	}

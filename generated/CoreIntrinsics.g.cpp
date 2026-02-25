@@ -22,6 +22,36 @@ double CoreIntrinsics::GetNextRandom(int seed) {
 	if (seed != 0) gen.seed(static_cast<unsigned int>(seed));
 	return dist(gen);
 }
+Value CoreIntrinsics::_listType = val_null;
+void CoreIntrinsics::AddIntrinsicToMap(Value map,String methodName) {
+	Intrinsic intr = Intrinsic::GetByName(methodName);
+	if (!IsNull(intr)) {
+		map_set(_listType, make_string(methodName), intr.GetFunc());
+	} else {
+		IOHelper::Print(StringUtils::Format("Intrinsic not found: {0}", methodName));
+	}
+}
+Value CoreIntrinsics::ListType() {
+	if (is_null(_listType)) {
+		_listType = make_map(16);
+		AddIntrinsicToMap(_listType, "hasIndex");
+		AddIntrinsicToMap(_listType, "indexes");
+		AddIntrinsicToMap(_listType, "indexOf");
+		AddIntrinsicToMap(_listType, "insert");
+		AddIntrinsicToMap(_listType, "join");
+		AddIntrinsicToMap(_listType, "len");
+		AddIntrinsicToMap(_listType, "pop");
+		AddIntrinsicToMap(_listType, "pull");
+		AddIntrinsicToMap(_listType, "push");
+		AddIntrinsicToMap(_listType, "shuffle");
+		AddIntrinsicToMap(_listType, "sort");
+		AddIntrinsicToMap(_listType, "sum");
+		AddIntrinsicToMap(_listType, "remove");
+		AddIntrinsicToMap(_listType, "replace");
+		AddIntrinsicToMap(_listType, "values");
+	}
+	return _listType;
+}
 void CoreIntrinsics::Init() {
 	Intrinsic f;
 
@@ -123,7 +153,7 @@ void CoreIntrinsics::Init() {
 
 	// len(x)
 	f = Intrinsic::Create("len");
-	f.AddParam("x");
+	f.AddParam("self");
 	f.set_Code([](List<Value> stk, Int32 bi, Int32 ac) -> Value {
 		GC_PUSH_SCOPE();
 		Value container = stk[bi + 1]; GC_PROTECT(&container);
@@ -802,7 +832,16 @@ void CoreIntrinsics::Init() {
 		GC_POP_SCOPE();
 		return result;
 	});
-	GC_POP_SCOPE();
+
+	// list
+	//    Returns a map that represents the list datatype in
+	//    MiniScript's core type system.  This can be used with `isa`
+	//    to check whether a variable refers to a list.  You can also
+	//    assign new methods here to make them available to all lists.
+	f = Intrinsic::Create("list");
+	f.set_Code([](List<Value> stk, Int32 bi, Int32 ac) -> Value {
+		return ListType();
+	});
 }
 
 } // end of namespace MiniScript

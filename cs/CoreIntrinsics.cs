@@ -42,6 +42,39 @@ public static class CoreIntrinsics {
 		*** END CPP_ONLY ***/
 	}
 
+	private static Value _listType = val_null;
+
+	private static void AddIntrinsicToMap(Value map, String methodName) {
+		Intrinsic intr = Intrinsic.GetByName(methodName);
+		if (intr != null) {
+			map_set(_listType, make_string(methodName), intr.GetFunc());
+		} else {
+			IOHelper.Print(StringUtils.Format("Intrinsic not found: {0}", methodName));
+		}
+	}
+
+	public static Value ListType() {
+		if (is_null(_listType)) {
+			_listType = make_map(16);
+			AddIntrinsicToMap(_listType, "hasIndex");
+			AddIntrinsicToMap(_listType, "indexes");
+			AddIntrinsicToMap(_listType, "indexOf");
+			AddIntrinsicToMap(_listType, "insert");
+			AddIntrinsicToMap(_listType, "join");
+			AddIntrinsicToMap(_listType, "len");
+			AddIntrinsicToMap(_listType, "pop");
+			AddIntrinsicToMap(_listType, "pull");
+			AddIntrinsicToMap(_listType, "push");
+			AddIntrinsicToMap(_listType, "shuffle");
+			AddIntrinsicToMap(_listType, "sort");
+			AddIntrinsicToMap(_listType, "sum");
+			AddIntrinsicToMap(_listType, "remove");
+			AddIntrinsicToMap(_listType, "replace");
+			AddIntrinsicToMap(_listType, "values");
+		}
+		return _listType;
+	}
+
 	public static void Init() {
 		Intrinsic f;
 
@@ -130,7 +163,7 @@ public static class CoreIntrinsics {
 
 		// len(x)
 		f = Intrinsic.Create("len");
-		f.AddParam("x");
+		f.AddParam("self");
 		f.Code = (List<Value> stk, Int32 bi, Int32 ac) => {
 			Value container = stk[bi + 1];
 			Value result = make_null();
@@ -723,6 +756,16 @@ public static class CoreIntrinsics {
 				}
 			}
 			return result;
+		};
+
+		// list
+		//    Returns a map that represents the list datatype in
+		//    MiniScript's core type system.  This can be used with `isa`
+		//    to check whether a variable refers to a list.  You can also
+		//    assign new methods here to make them available to all lists.
+		f = Intrinsic.Create("list");
+		f.Code = (List<Value> stk, Int32 bi, Int32 ac) => {
+			return ListType();
 		};
 	}
 

@@ -17,9 +17,10 @@ public class Intrinsic {
 	public String Name;
 
 	public NativeCallbackDelegate Code;
-	
+
 	private List<String> _paramNames;
 	private List<Value> _paramDefaults;
+	private Int32 _funcIndex = -1;
 
 	private static List<Intrinsic> _all = new List<Intrinsic>();
 	private static Boolean _initialized = false;
@@ -43,6 +44,17 @@ public class Intrinsic {
 	public void AddParam(String name, Value defaultValue) {
 		_paramNames.Add(name);
 		_paramDefaults.Add(defaultValue);
+	}
+
+	public static Intrinsic GetByName(String name) {
+		for (Int32 i = 0; i < _all.Count; i++) {
+			if (_all[i].Name == name) return _all[i];
+		}
+		return null;
+	}
+
+	public Value GetFunc() {
+		return make_funcref(_funcIndex, val_null);
 	}
 
 	// Build a FuncDef from this intrinsic's definition.
@@ -70,6 +82,7 @@ public class Intrinsic {
 			Intrinsic intr = _all[i];
 			FuncDef def = intr.BuildFuncDef();
 			Int32 funcIndex = functions.Count;
+			intr._funcIndex = funcIndex;
 			functions.Add(def);
 			intrinsics[intr.Name] = make_funcref(funcIndex, val_null);
 		}

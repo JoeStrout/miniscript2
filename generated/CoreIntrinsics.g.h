@@ -128,6 +128,11 @@ class CoreIntrinsics {
 	// Then (in either case), return the next random number drawn
 	// from the range [0, 1) with a uniform distribution.
 	private: static double GetNextRandom(int seed=0);
+	private: static Value _listType;
+
+	private: static void AddIntrinsicToMap(Value map, String methodName);
+
+	public: static Value ListType();
 
 	public: static void Init();
 

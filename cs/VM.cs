@@ -11,6 +11,7 @@ using System.Runtime.InteropServices;
 // CPP: #include "value_string.h"
 // CPP: #include "Bytecode.g.h"
 // CPP: #include "Intrinsic.g.h"
+// CPP: #include "CoreIntrinsics.g.h"
 // CPP: #include "IOHelper.g.h"
 // CPP: #include "Disassembler.g.h"
 // CPP: #include "StringUtils.g.h"
@@ -262,18 +263,28 @@ public class VM {
 	// Helper for argument processing (FUNCTION_CALLS.md steps 1-3):
 	// Process ARG instructions, validate argument count, and set up parameter registers.
 	// Returns the PC after the CALL instruction, or -1 on error.
-	private Int32 ProcessArguments(Int32 argCount, Int32 startPC, Int32 callerBase, Int32 calleeBase, FuncDef callee, List<UInt32> code) {
+	// Check whether pendingSelf should be injected as the first parameter.
+	// Returns 1 if the callee's first param is named "self" and we have pending context, else 0.
+	private Int32 SelfParamOffset(FuncDef callee) {
+		if (hasPendingContext && callee.ParamNames.Count > 0 && value_equal(callee.ParamNames[0], val_self)) {
+			return 1;
+		}
+		return 0;
+	}
+
+	private Int32 ProcessArguments(Int32 argCount, Int32 selfParam, Int32 startPC, Int32 callerBase, Int32 calleeBase, FuncDef callee, List<UInt32> code) {
 		Int32 paramCount = callee.ParamNames.Count;
 
-		// Step 1: Validate argument count
-		if (argCount > paramCount) {
+		// Step 1: Validate argument count (selfParam accounts for the injected self)
+		if (argCount + selfParam > paramCount) {
 			RaiseRuntimeError(StringUtils.Format("Too many arguments: got {0}, expected {1}",
-							  argCount, paramCount));
+							  argCount + selfParam, paramCount));
 			return -1;
 		}
 
 		// Step 2-3: Process ARG instructions, copying values to parameter registers
 		// Note: Parameters start at r1 (r0 is reserved for return value)
+		// selfParam offsets explicit args so they go after the injected self parameter
 		Int32 currentPC = startPC;
 		Value argValue = make_null();  // Declared outside loop for GC safety
 		for (Int32 i = 0; i < argCount; i++) {
@@ -295,9 +306,9 @@ public class VM {
 			}
 
 			// Copy argument value to callee's parameter register and assign name
-			// Parameters start at r1, so offset by 1
-			stack[calleeBase + 1 + i] = argValue;
-			names[calleeBase + 1 + i] = callee.ParamNames[i];
+			// Parameters start at r1, so offset by 1, plus selfParam
+			stack[calleeBase + 1 + selfParam + i] = argValue;
+			names[calleeBase + 1 + selfParam + i] = callee.ParamNames[selfParam + i];
 
 			currentPC++;
 		}
@@ -325,12 +336,13 @@ public class VM {
 	// Helper for call setup (FUNCTION_CALLS.md steps 4-6):
 	// Initialize remaining parameters with defaults and clear callee's registers.
 	// Note: Parameters start at r1 (r0 is reserved for return value)
-	private void SetupCallFrame(Int32 argCount, Int32 calleeBase, FuncDef callee) {
+	// selfParam is 1 if pendingSelf was injected as the first arg, else 0.
+	private void SetupCallFrame(Int32 argCount, Int32 selfParam, Int32 calleeBase, FuncDef callee) {
 		Int32 paramCount = callee.ParamNames.Count;
 
 		// Step 4: Set up remaining parameters with default values
 		// Parameters start at r1, so offset by 1
-		for (Int32 i = argCount; i < paramCount; i++) {
+		for (Int32 i = argCount + selfParam; i < paramCount; i++) {
 			stack[calleeBase + 1 + i] = callee.ParamDefaults[i];
 			names[calleeBase + 1 + i] = callee.ParamNames[i];
 		}
@@ -364,11 +376,19 @@ public class VM {
 
 		Int32 calleeBase = baseIndex + curFunc.MaxRegs;
 
+		Int32 selfParam = SelfParamOffset(callee);
+
 		// Native intrinsic: invoke callback directly, no frame push
 		if (callee.NativeCallback != null) {
 			EnsureFrame(calleeBase, callee.MaxRegs);
-			SetupCallFrame(0, calleeBase, callee);
-			stack[baseIndex + resultReg] = callee.NativeCallback(stack, calleeBase, 0);
+			SetupCallFrame(0, selfParam, calleeBase, callee);
+			if (selfParam > 0) {
+				stack[calleeBase + 1] = pendingSelf;
+				names[calleeBase + 1] = val_self;
+				pendingSelf = make_null();
+				hasPendingContext = false;
+			}
+			stack[baseIndex + resultReg] = callee.NativeCallback(stack, calleeBase, selfParam);
 			return -1;
 		}
 
@@ -380,7 +400,11 @@ public class VM {
 		callStack[callStackTop] = new CallInfo(returnPC, baseIndex, currentFuncIndex, resultReg, outerVars);
 		callStackTop++;
 
-		SetupCallFrame(0, calleeBase, callee);
+		if (selfParam > 0) {
+			stack[calleeBase + 1] = pendingSelf;
+			names[calleeBase + 1] = val_self;
+		}
+		SetupCallFrame(0, selfParam, calleeBase, callee);
 		ApplyPendingContext(calleeBase, callee);
 		EnsureFrame(calleeBase, callee.MaxRegs);
 		return funcIndex;
@@ -445,6 +469,7 @@ public class VM {
 		Value superVal;
 		Value startVal;
 		Value endVal;
+		Value typeMap;
 
 /*** BEGIN CPP_ONLY ***
 		Value* stackPtr = &stack[0];
@@ -1233,18 +1258,24 @@ public class VM {
 						return make_null();
 					}
 
-					// Process arguments using helper
-					Int32 nextPC = ProcessArguments(argCount, pc, baseIndex, calleeBase, callee, curFunc.Code);
+					// Check for self-injection: if pending context and first param is "self",
+					// inject pendingSelf as the first argument
+					Int32 selfParam = SelfParamOffset(callee);
+					Int32 nextPC = ProcessArguments(argCount, selfParam, pc, baseIndex, calleeBase, callee, curFunc.Code);
 					if (nextPC < 0) return make_null(); // Error already raised
+					if (selfParam > 0) {
+						stack[calleeBase + 1] = pendingSelf;
+						names[calleeBase + 1] = val_self;
+					}
 
 					// Set up call frame using helper
-					SetupCallFrame(argCount, calleeBase, callee);
+					SetupCallFrame(argCount, selfParam, calleeBase, callee);
 					ApplyPendingContext(calleeBase, callee);
 					EnsureFrame(calleeBase, callee.MaxRegs);
 
 					// Native intrinsic: invoke callback directly, no frame push
 					if (callee.NativeCallback != null) {
-						localStack[resultReg] = callee.NativeCallback(stack, calleeBase, argCount);
+						localStack[resultReg] = callee.NativeCallback(stack, calleeBase, argCount + selfParam);
 						pc = nextPC;
 						break;
 					}
@@ -1357,13 +1388,18 @@ public class VM {
 
 					// For naked CALL (without ARGBLK): set up parameters with defaults
 					Int32 calleeBase = baseIndex + b;
-					SetupCallFrame(0, calleeBase, callee); // 0 arguments, use all defaults
+					Int32 selfParam = SelfParamOffset(callee);
+					SetupCallFrame(0, selfParam, calleeBase, callee);
+					if (selfParam > 0) {
+						stack[calleeBase + 1] = pendingSelf;
+						names[calleeBase + 1] = val_self;
+					}
 					ApplyPendingContext(calleeBase, callee);
 					EnsureFrame(calleeBase, callee.MaxRegs);
 
 					// Native intrinsic: invoke callback directly, no frame push
 					if (callee.NativeCallback != null) {
-						localStack[a] = callee.NativeCallback(stack, calleeBase, 0);
+						localStack[a] = callee.NativeCallback(stack, calleeBase, selfParam);
 						break;
 					}
 
@@ -1445,8 +1481,16 @@ public class VM {
 						pendingSuper = superVal;
 						hasPendingContext = true;
 					} else {
-						// Not a map — fall back to regular index behavior
+						// Not a map — check type maps, then fall back to index behavior
 						if (is_list(container)) {
+							typeMap = CoreIntrinsics.ListType();
+							if (map_try_get(typeMap, indexVal, out result)) {
+								localStack[a] = result;
+								pendingSelf = container;
+								pendingSuper = make_null();
+								hasPendingContext = true;
+								break; // CPP: VM_NEXT();
+							}
 							localStack[a] = list_get(container, as_int(indexVal));
 						} else if (is_string(container)) {
 							Int32 idx = as_int(indexVal);

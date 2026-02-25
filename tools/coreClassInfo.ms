@@ -8,7 +8,8 @@ ensureImport "symbolInfo"
 
 String = ClassInfo.Make("String")
 String.fields.push VariableInfo.Make("Length", "UInt32")
-String.methods.push MethodInfo.Make("[]", false, "char")
+String.methods.push MethodInfo.Make("[]", false, "Char")
+String.methods.push MethodInfo.Make("Split", false, "String[]")
 String.methods.push MethodInfo.Make("Substring", false, "String")
 String.methods.push MethodInfo.Make("Left", false, "String")
 String.methods.push MethodInfo.Make("Right", false, "String")

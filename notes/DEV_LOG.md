@@ -467,7 +467,7 @@ From last week's to-do list, here's what is left:
 ✔️12. Closures capturing outer variables — non-self outer-scope capture
 ✔️15. null in expressions — null arithmetic
 ✔️16. true / false as standalone values — beyond just default params
-  17. Chained comparisons, e.g. a < b <= c
+✔️17. Chained comparisons, e.g. a < b <= c
 
 The only one that took significant development was the last one, chained comparisons.  These required a fancier parselet and code generator.  Note that I decided to keep the MiniScript 1.x behavior, and not short-circuit when the expression has become false; this should actually be more performant in common cases, and is certainly simpler.
 

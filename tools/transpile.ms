@@ -484,7 +484,7 @@ Transpiler.transformStatement = function(trimmedLine)
 	// non-identifier string.
 	tokens = roughTokenize(trimmedLine)
 	
-	deepDebug = false // trimmedLine.contains("intrinsic")
+	deepDebug = trimmedLine.contains("String[]")
 	ddprint = function(s); if deepDebug then print "====> " + s; end function
 	summarize = function(obj)
 		if obj == null then return "<null>"

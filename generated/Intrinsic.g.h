@@ -131,17 +131,20 @@ class IntrinsicStorage : public std::enable_shared_from_this<IntrinsicStorage> {
 	public: NativeCallbackDelegate Code;
 	private: List<String> _paramNames;
 	private: List<Value> _paramDefaults;
+	private: Int32 _funcIndex = -1;
 	private: static List<Intrinsic> _all;
 	private: static Boolean _initialized;
 	public: IntrinsicStorage() {}
-
-	
 
 	public: static Intrinsic Create(String name);
 
 	public: void AddParam(String name);
 
 	public: void AddParam(String name, Value defaultValue);
+
+	public: static Intrinsic GetByName(String name);
+
+	public: Value GetFunc();
 
 	// Build a FuncDef from this intrinsic's definition.
 	public: FuncDef BuildFuncDef();
@@ -169,6 +172,8 @@ struct Intrinsic {
 	private: void set__paramNames(List<String> _v);
 	private: List<Value> _paramDefaults();
 	private: void set__paramDefaults(List<Value> _v);
+	private: Int32 _funcIndex();
+	private: void set__funcIndex(Int32 _v);
 	private: List<Intrinsic> _all();
 	private: void set__all(List<Intrinsic> _v);
 	private: Boolean _initialized();
@@ -177,13 +182,15 @@ struct Intrinsic {
 		return Intrinsic(std::make_shared<IntrinsicStorage>());
 	}
 
-	
-
 	public: static Intrinsic Create(String name) { return IntrinsicStorage::Create(name); }
 
 	public: inline void AddParam(String name);
 
 	public: inline void AddParam(String name, Value defaultValue);
+
+	public: static Intrinsic GetByName(String name) { return IntrinsicStorage::GetByName(name); }
+
+	public: inline Value GetFunc();
 
 	// Build a FuncDef from this intrinsic's definition.
 	public: inline FuncDef BuildFuncDef();
@@ -204,12 +211,15 @@ inline List<String> Intrinsic::_paramNames() { return get()->_paramNames; }
 inline void Intrinsic::set__paramNames(List<String> _v) { get()->_paramNames = _v; }
 inline List<Value> Intrinsic::_paramDefaults() { return get()->_paramDefaults; }
 inline void Intrinsic::set__paramDefaults(List<Value> _v) { get()->_paramDefaults = _v; }
+inline Int32 Intrinsic::_funcIndex() { return get()->_funcIndex; }
+inline void Intrinsic::set__funcIndex(Int32 _v) { get()->_funcIndex = _v; }
 inline List<Intrinsic> Intrinsic::_all() { return get()->_all; }
 inline void Intrinsic::set__all(List<Intrinsic> _v) { get()->_all = _v; }
 inline Boolean Intrinsic::_initialized() { return get()->_initialized; }
 inline void Intrinsic::set__initialized(Boolean _v) { get()->_initialized = _v; }
 inline void Intrinsic::AddParam(String name) { return get()->AddParam(name); }
 inline void Intrinsic::AddParam(String name,Value defaultValue) { return get()->AddParam(name, defaultValue); }
+inline Value Intrinsic::GetFunc() { return get()->GetFunc(); }
 inline FuncDef Intrinsic::BuildFuncDef() { return get()->BuildFuncDef(); }
 
 } // end of namespace MiniScript

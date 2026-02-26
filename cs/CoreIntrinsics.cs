@@ -177,9 +177,9 @@ public static class CoreIntrinsics {
 			return make_string(result);
 		};
 
-		// val(x=0)
+		// val(self=0)
 		f = Intrinsic.Create("val");
-		f.AddParam("x", make_int(0));
+		f.AddParam("self", make_int(0));
 		f.Code = (List<Value> stk, Int32 bi, Int32 ac) => {
 			Value v = stk[bi + 1];
 			if (is_number(v)) return v;

@@ -932,7 +932,7 @@ Int32 CodeGeneratorStorage::Visit(ContinueNode node) {
 	return -1;
 }
 Boolean CodeGeneratorStorage::TryEvaluateConstant(ASTNode node,Value* result) {
-	*result = make_null();
+	*result = val_null;
 	NumberNode numNode = As<NumberNode, NumberNodeStorage>(node);
 	if (!IsNull(numNode)) {
 		*result = make_double(numNode.Value());
@@ -945,7 +945,7 @@ Boolean CodeGeneratorStorage::TryEvaluateConstant(ASTNode node,Value* result) {
 	}
 	IdentifierNode idNode = As<IdentifierNode, IdentifierNodeStorage>(node);
 	if (!IsNull(idNode)) {
-		if (idNode.Name() == "null") { *result = make_null(); return Boolean(true); }
+		if (idNode.Name() == "null") { *result = val_null; return Boolean(true); }
 		if (idNode.Name() == "true") { *result = make_double(1); return Boolean(true); }
 		if (idNode.Name() == "false") { *result = make_double(0); return Boolean(true); }
 		return Boolean(false);
@@ -1046,10 +1046,10 @@ Int32 CodeGeneratorStorage::Visit(FunctionNode node) {
 				funcDef.ParamDefaults().Add(defaultVal);
 			} else {
 				Errors.Add(StringUtils::Format("Default value for parameter '{0}' must be a constant", node.ParamNames()[i]));
-				funcDef.ParamDefaults().Add(make_null());
+				funcDef.ParamDefaults().Add(val_null);
 			}
 		} else {
-			funcDef.ParamDefaults().Add(make_null());
+			funcDef.ParamDefaults().Add(val_null);
 		}
 	}
 

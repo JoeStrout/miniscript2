@@ -53,7 +53,7 @@ list = make_list(5);
 
 For more than 8 variables, you can use GC_LOCALS multiple times.  Or, for individual protection of a single variable at a time, you can use GC_PROTECT:
 ```c
-Value my_var = make_null();
+Value my_var = val_null;
 GC_PROTECT(&my_var);  // Pass pointer to the variable
 ```
 
@@ -125,8 +125,8 @@ int main() {
 void large_function() {
     GC_PUSH_SCOPE();
     
-    Value var17 = make_null();
-    Value var18 = make_null(); 
+    Value var17 = val_null;
+    Value var18 = val_null; 
     GC_PROTECT(&var17);
     GC_PROTECT(&var18);
     
@@ -225,7 +225,7 @@ Value risky_function(int x) {
     GC_LOCALS(result);
 
     if (x < 0) {
-        return make_null();  // GC_POP_SCOPE not called!
+        return val_null;  // GC_POP_SCOPE not called!
     }
 
     result = make_string("ok");
@@ -239,7 +239,7 @@ Value safe_function(int x) {
     GC_LOCALS(result);
 
     if (x < 0) {
-        result = make_null();
+        result = val_null;
     } else {
         result = make_string("ok");
     }

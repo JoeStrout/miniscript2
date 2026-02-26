@@ -152,7 +152,7 @@ public class Assembler {
 		String mnemonic = parts[0];
 		UInt32 instruction = 0;
 		Value constantValue;
-		Value defaultValue = make_null();
+		Value defaultValue = val_null;
 
 		// Handle .param directive (not an instruction, but a function parameter definition)
 		if (mnemonic == ".param") {

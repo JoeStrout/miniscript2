@@ -58,7 +58,7 @@ Value value_mult_nonnumeric(Value a, Value b) {
         int extraChars = 0;
         double factor = as_double(b);
         int factorClass = fpclassify(factor);
-        if (factorClass == FP_NAN || factorClass == FP_INFINITE) return make_null();
+        if (factorClass == FP_NAN || factorClass == FP_INFINITE) return val_null;
         if (factorClass <= 0) return val_empty_string;
 
         repeats = (int)factor;
@@ -75,7 +75,7 @@ Value value_mult_nonnumeric(Value a, Value b) {
     if (is_list(a) && is_number(b)) {
         double factor = is_int(b) ? (double)as_int(b) : as_double(b);
         int factorClass = fpclassify(factor);
-        if (factorClass == FP_NAN || factorClass == FP_INFINITE) return make_null();
+        if (factorClass == FP_NAN || factorClass == FP_INFINITE) return val_null;
         int len = list_count(a);
         if (factor <= 0 || len == 0) return make_list(0);
         int fullCopies = (int)factor;
@@ -92,7 +92,7 @@ Value value_mult_nonnumeric(Value a, Value b) {
         return result;
     }
 
-    return make_null();
+    return val_null;
 }
 
 // Note: value_lt() is now inlined in value.h
@@ -197,7 +197,7 @@ Value value_xor(Value a, Value b) {
     if (is_int(a) && is_int(b)) {
         return make_int(as_int(a) ^ as_int(b));
     }
-    return make_null();
+    return val_null;
 }
 
 // Bitwise NOT (unary)
@@ -205,13 +205,13 @@ Value value_unary(Value a) {
     if (is_int(a)) {
         return make_int(~as_int(a));
     }
-    return make_null();
+    return val_null;
 }
 
 // Shift Right
 Value value_shr(Value v, int shift) {
     if (!is_int(v)) {
-        return make_null();
+        return val_null;
     }
 
     // Logical shift for unsigned behavior
@@ -221,7 +221,7 @@ Value value_shr(Value v, int shift) {
 Value value_shl(Value v, int shift) {
     if (!is_int(v)) {
         // Unsupported type for shift-left
-        return make_null();
+        return val_null;
     }
 
     int64_t result = (int64_t)as_int(v) << shift;

@@ -128,11 +128,35 @@ class CoreIntrinsics {
 	// Then (in either case), return the next random number drawn
 	// from the range [0, 1) with a uniform distribution.
 	private: static double GetNextRandom(int seed=0);
-	private: static Value _listType;
 
 	private: static void AddIntrinsicToMap(Value map, String methodName);
 
+	/// <summary>
+	/// ListType: a static map that represents the List type, and provides
+	/// intrinsic methods that can be invoked on it via dot syntax.
+	/// </summary>
 	public: static Value ListType();
+	private: static Value _listType;
+
+	/// <summary>
+	/// StringType: a static map that represents the String type, and provides
+	/// intrinsic methods that can be invoked on it via dot syntax.
+	/// </summary>
+	public: static Value StringType();
+	private: static Value _stringType;
+
+	/// <summary>
+	/// MapType: a static map that represents the Map type, and provides
+	/// intrinsic methods that can be invoked on it via dot syntax.
+	/// </summary>
+	public: static Value MapType();
+	private: static Value _mapType;
+	
+	/// <summary>
+	/// NumberType: a static map that represents the Number type.
+	/// </summary>
+	public: static Value NumberType();
+	private: static Value _numberType;
 
 	public: static void Init();
 

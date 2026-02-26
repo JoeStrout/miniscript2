@@ -367,7 +367,7 @@ public struct App {
 		VM vm = new VM();
 		vm.Errors = errors;
 		vm.Reset(functions);
-		Value result = make_null();
+		Value result = val_null;
 
 		if (visMode) {
 			VMVis vis = new VMVis(vm);

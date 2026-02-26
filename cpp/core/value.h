@@ -183,7 +183,7 @@ static inline int32_t funcref_index(Value v) {
 
 static inline Value funcref_outer_vars(Value v) {
     ValueFuncRef* funcRefObj = as_funcref(v);
-    return funcRefObj ? funcRefObj->outerVars : make_null();
+    return funcRefObj ? funcRefObj->outerVars : val_null;
 }
 
 // FuncRef creation function
@@ -269,7 +269,7 @@ static inline Value value_add(Value a, Value b) {
     }
 
     // For now, return nil for unsupported operations
-    return make_null();
+    return val_null;
 }
 
 static inline Value value_sub(Value a, Value b) {
@@ -297,7 +297,7 @@ static inline Value value_sub(Value a, Value b) {
     }
     
     // Return nil for unsupported operations
-    return make_null();
+    return val_null;
 }
 
 
@@ -356,7 +356,7 @@ static inline Value value_div(Value a, Value b) {
 			return value_mult_nonnumeric(a, value_div(make_double(1), b));
 		}
     }
-    return make_null();
+    return val_null;
 }
 
 static inline Value value_mod(Value a, Value b) {
@@ -378,7 +378,7 @@ static inline Value value_mod(Value a, Value b) {
         double db = is_int(b) ? (double)as_int(b) : as_double(b);
         return make_double(fmod(da, db));
     }
-    return make_null();
+    return val_null;
 }
 
 static inline Value value_pow(Value a, Value b) {
@@ -391,7 +391,7 @@ static inline Value value_pow(Value a, Value b) {
         }
         return make_double(result);
     }
-    return make_null();
+    return val_null;
 }
 
 // Value comparison (most critical ones inlined above, others implemented in value.c)

@@ -42,17 +42,20 @@ public static class CoreIntrinsics {
 		*** END CPP_ONLY ***/
 	}
 
-	private static Value _listType = val_null;
 
 	private static void AddIntrinsicToMap(Value map, String methodName) {
 		Intrinsic intr = Intrinsic.GetByName(methodName);
 		if (intr != null) {
-			map_set(_listType, make_string(methodName), intr.GetFunc());
+			map_set(map, make_string(methodName), intr.GetFunc());
 		} else {
 			IOHelper.Print(StringUtils.Format("Intrinsic not found: {0}", methodName));
 		}
 	}
 
+	/// <summary>
+	/// ListType: a static map that represents the List type, and provides
+	/// intrinsic methods that can be invoked on it via dot syntax.
+	/// </summary>
 	public static Value ListType() {
 		if (is_null(_listType)) {
 			_listType = make_map(16);
@@ -74,6 +77,67 @@ public static class CoreIntrinsics {
 		}
 		return _listType;
 	}
+	private static Value _listType = val_null;
+
+	/// <summary>
+	/// StringType: a static map that represents the String type, and provides
+	/// intrinsic methods that can be invoked on it via dot syntax.
+	/// </summary>
+	public static Value StringType() {
+		if (is_null(_stringType)) {
+			_stringType = make_map(16);
+			AddIntrinsicToMap(_stringType, "hasIndex");
+			AddIntrinsicToMap(_stringType, "indexes");
+			AddIntrinsicToMap(_stringType, "indexOf");
+			AddIntrinsicToMap(_stringType, "insert");
+			AddIntrinsicToMap(_stringType, "code");
+			AddIntrinsicToMap(_stringType, "len");
+			AddIntrinsicToMap(_stringType, "lower");
+			AddIntrinsicToMap(_stringType, "val");
+			AddIntrinsicToMap(_stringType, "remove");
+			AddIntrinsicToMap(_stringType, "replace");
+			AddIntrinsicToMap(_stringType, "split");
+			AddIntrinsicToMap(_stringType, "upper");
+			AddIntrinsicToMap(_stringType, "values");
+		}
+		return _stringType;
+	}
+	private static Value _stringType = val_null;
+
+	/// <summary>
+	/// MapType: a static map that represents the Map type, and provides
+	/// intrinsic methods that can be invoked on it via dot syntax.
+	/// </summary>
+	public static Value MapType() {
+		if (is_null(_mapType)) {
+			_mapType = make_map(16);
+			AddIntrinsicToMap(_mapType, "hasIndex");
+			AddIntrinsicToMap(_mapType, "indexes");
+			AddIntrinsicToMap(_mapType, "indexOf");
+			AddIntrinsicToMap(_mapType, "len");
+			AddIntrinsicToMap(_mapType, "pop");
+			AddIntrinsicToMap(_mapType, "push");
+			AddIntrinsicToMap(_mapType, "pull");
+			AddIntrinsicToMap(_mapType, "shuffle");
+			AddIntrinsicToMap(_mapType, "sum");
+			AddIntrinsicToMap(_mapType, "remove");
+			AddIntrinsicToMap(_mapType, "replace");
+			AddIntrinsicToMap(_mapType, "values");
+		}
+		return _mapType;
+	}
+	private static Value _mapType = val_null;
+	
+	/// <summary>
+	/// NumberType: a static map that represents the Number type.
+	/// </summary>
+	public static Value NumberType() {
+		if (is_null(_numberType)) {
+			_numberType = make_map(4);
+		}
+		return _numberType;
+	}
+	private static Value _numberType = val_null;	
 
 	public static void Init() {
 		Intrinsic f;
@@ -98,7 +162,7 @@ public static class CoreIntrinsics {
 			} else {
 				IOHelper.Print(output);
 			}
-			return make_null();
+			return val_null;
 		};
 
 		// input(prompt=null)
@@ -120,7 +184,7 @@ public static class CoreIntrinsics {
 			Value v = stk[bi + 1];
 			if (is_number(v)) return v;
 			if (is_string(v)) return to_number(v);
-			return make_null();
+			return val_null;
 		};
 
 		// str(x="")
@@ -166,7 +230,7 @@ public static class CoreIntrinsics {
 		f.AddParam("self");
 		f.Code = (List<Value> stk, Int32 bi, Int32 ac) => {
 			Value container = stk[bi + 1];
-			Value result = make_null();
+			Value result = val_null;
 			if (is_list(container)) {
 				result = make_int(list_count(container));
 			} else if (is_string(container)) {
@@ -199,7 +263,7 @@ public static class CoreIntrinsics {
 		f.AddParam("x");
 		f.Code = (List<Value> stk, Int32 bi, Int32 ac) => {
 			freeze_value(stk[bi + 1]);
-			return make_null();
+			return val_null;
 		};
 
 		// isFrozen(x)
@@ -356,7 +420,7 @@ public static class CoreIntrinsics {
 				map_set(self, value, make_int(1));
 				return self;
 			}
-			return make_null();
+			return val_null;
 		};
 
 		// pop(self)
@@ -364,11 +428,11 @@ public static class CoreIntrinsics {
 		f.AddParam("self");
 		f.Code = (List<Value> stk, Int32 bi, Int32 ac) => {
 			Value self = stk[bi + 1];
-			Value result = make_null();
+			Value result = val_null;
 			if (is_list(self)) {
 				result = list_pop(self);
 			} else if (is_map(self)) {
-				if (map_count(self) == 0) return make_null();
+				if (map_count(self) == 0) return val_null;
 				MapIterator iter = map_iterator(self);
 				if (map_iterator_next(ref iter)) { // CPP: if (map_iterator_next(&iter, &result, nullptr)) {
 					result = iter.Key;             // CPP: // remove key that was found
@@ -383,11 +447,11 @@ public static class CoreIntrinsics {
 		f.AddParam("self");
 		f.Code = (List<Value> stk, Int32 bi, Int32 ac) => {
 			Value self = stk[bi + 1];
-			Value result = make_null();
+			Value result = val_null;
 			if (is_list(self)) {
 				result = list_pull(self);
 			} else if (is_map(self)) {
-				if (map_count(self) == 0) return make_null();
+				if (map_count(self) == 0) return val_null;
 				MapIterator iter = map_iterator(self);
 				if (map_iterator_next(ref iter)) { // CPP: if (map_iterator_next(&iter, &result, nullptr)) {
 					result = iter.Key;             // CPP: // remove key that was found
@@ -412,7 +476,7 @@ public static class CoreIntrinsics {
 			} else if (is_string(self)) {
 				return string_insert(self, index, value);
 			}
-			return make_null();
+			return val_null;
 		};
 
 		// indexOf(self, value, after=null)
@@ -424,7 +488,7 @@ public static class CoreIntrinsics {
 			Value self = stk[bi + 1];
 			Value value = stk[bi + 2];
 			Value after = stk[bi + 3];
-			Value result = make_null();
+			Value result = val_null;
 			// CPP: Value iterKey, iterVal; GC_PROTECT(&iterKey); GC_PROTECT(&iterVal);
 			if (is_list(self)) {
 				int afterIdx = -1;
@@ -435,7 +499,7 @@ public static class CoreIntrinsics {
 				int idx = list_indexOf(self, value, afterIdx);
 				if (idx >= 0) result = make_int(idx);
 			} else if (is_string(self)) {
-				if (!is_string(value)) return make_null();
+				if (!is_string(value)) return val_null;
 				int afterIdx = -1;
 				if (!is_null(after)) {
 					afterIdx = (int)numeric_val(after);
@@ -490,7 +554,7 @@ public static class CoreIntrinsics {
 			Value temp;
 			// CPP: Value iterKey, iterVal; GC_PROTECT(&iterKey); GC_PROTECT(&iterVal);
 			if (is_list(self)) {
-				if (is_frozen(self)) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return make_null(); }
+				if (is_frozen(self)) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return val_null; }
 				int count = list_count(self);
 				for (int i = count - 1; i > 0; i--) {
 					int j = (int)(GetNextRandom() * (i + 1));
@@ -499,7 +563,7 @@ public static class CoreIntrinsics {
 					list_set(self, j, temp);
 				}
 			} else if (is_map(self)) {
-				if (is_frozen(self)) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen map"); return make_null(); }
+				if (is_frozen(self)) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen map"); return val_null; }
 				// Collect keys and values
 				int count = map_count(self);
 				List<Value> keys = new List<Value>(count);
@@ -520,7 +584,7 @@ public static class CoreIntrinsics {
 					map_set(self, keys[i], vals[i]);
 				}
 			}
-			return make_null();
+			return val_null;
 		};
 
 		// join(self, delimiter=" ")
@@ -547,7 +611,7 @@ public static class CoreIntrinsics {
 		f.AddParam("maxCount", make_int(-1));
 		f.Code = (List<Value> stk, Int32 bi, Int32 ac) => {
 			Value self = stk[bi + 1];
-			if (!is_string(self)) return make_null();
+			if (!is_string(self)) return val_null;
 			Value delim = stk[bi + 2];
 			int maxCount = (int)numeric_val(stk[bi + 3]);
 			return string_split_max(self, delim, maxCount);
@@ -593,7 +657,7 @@ public static class CoreIntrinsics {
 			} else if (is_string(self)) {
 				return string_replace_max(self, oldVal, newVal, maxCount);
 			}
-			return make_null();
+			return val_null;
 		};
 
 		// sum(self)
@@ -639,7 +703,7 @@ public static class CoreIntrinsics {
 				int toIdx = is_null(stk[bi + 3]) ? slen : (int)numeric_val(stk[bi + 3]);
 				return string_slice(seq, fromIdx, toIdx);
 			}
-			return make_null();
+			return val_null;
 		};
 
 		// indexes(self)
@@ -647,7 +711,7 @@ public static class CoreIntrinsics {
 		f.AddParam("self");
 		f.Code = (List<Value> stk, Int32 bi, Int32 ac) => {
 			Value self = stk[bi + 1];
-			Value result = make_null();
+			Value result = val_null;
 			// CPP: Value iterKey; GC_PROTECT(&iterKey);
 			if (is_list(self)) {
 				int count = list_count(self);
@@ -693,7 +757,7 @@ public static class CoreIntrinsics {
 			} else if (is_map(self)) {
 				return make_int(map_has_key(self, index) ? 1 : 0);
 			}
-			return make_null();
+			return val_null;
 		};
 
 		// values(self)
@@ -735,7 +799,7 @@ public static class CoreIntrinsics {
 			}
 			if (step == 0) {
 				IOHelper.Print("ERROR: range() step must not be 0");
-				return make_null();
+				return val_null;
 			}
 			int count = (int)((toVal - fromVal) / step) + 1;
 			if (count < 0) count = 0;
@@ -762,11 +826,33 @@ public static class CoreIntrinsics {
 		//    Returns a map that represents the list datatype in
 		//    MiniScript's core type system.  This can be used with `isa`
 		//    to check whether a variable refers to a list.  You can also
-		//    assign new methods here to make them available to all lists.
+		//    assign new methods here to make them available on all lists.
 		f = Intrinsic.Create("list");
 		f.Code = (List<Value> stk, Int32 bi, Int32 ac) => {
 			return ListType();
 		};
+
+		// string
+		//    Returns a map that represents the string datatype in
+		//    MiniScript's core type system.  This can be used with `isa`
+		//    to check whether a variable refers to a string.  You can also
+		//    assign new methods here to make them available on all strings.
+		f = Intrinsic.Create("string");
+		f.Code = (List<Value> stk, Int32 bi, Int32 ac) => {
+			return StringType();
+		};
+
+		// map
+		//    Returns a map that represents the map datatype in
+		//    MiniScript's core type system.  This can be used with `isa`
+		//    to check whether a variable refers to a map.  You can also
+		//    assign new methods here to make them available on all maps.
+		f = Intrinsic.Create("map");
+		f.Code = (List<Value> stk, Int32 bi, Int32 ac) => {
+			return MapType();
+		};
+
+
 	}
 
 }

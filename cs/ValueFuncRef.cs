@@ -22,7 +22,7 @@ namespace MiniScript {
 
 		public ValueFuncRef(Int32 funcIndex) {
 			FuncIndex = funcIndex;
-			OuterVars = make_null();
+			OuterVars = val_null;
 		}
 
 		public ValueFuncRef(Int32 funcIndex, Value outerVars) {

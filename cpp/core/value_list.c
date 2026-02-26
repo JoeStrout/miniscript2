@@ -80,12 +80,12 @@ int list_capacity(Value list_val) {
 // List element operations
 Value list_get(Value list_val, int index) {
     ValueList* list = as_list(list_val);
-    if (!list) return make_null();
+    if (!list) return val_null;
     if (index < 0) index += list->count;
     if (index >= 0 && index < list->count) {
         return list->items[index];
     }
-    return make_null();
+    return val_null;
 }
 
 void list_set(Value list_val, int index, Value item) {
@@ -109,16 +109,16 @@ void list_push(Value list_val, Value item) {
 
 Value list_pop(Value list_val) {
     ValueList* list = as_list(list_val);
-    if (!list || list->count <= 0) return make_null();
-    if (list->frozen) { vm_raise_runtime_error("Attempt to modify a frozen list"); return make_null(); }
+    if (!list || list->count <= 0) return val_null;
+    if (list->frozen) { vm_raise_runtime_error("Attempt to modify a frozen list"); return val_null; }
 
     return list->items[--list->count];
 }
 
 Value list_pull(Value list_val) {
     ValueList* list = as_list(list_val);
-    if (!list || list->count <= 0) return make_null();
-    if (list->frozen) { vm_raise_runtime_error("Attempt to modify a frozen list"); return make_null(); }
+    if (!list || list->count <= 0) return val_null;
+    if (list->frozen) { vm_raise_runtime_error("Attempt to modify a frozen list"); return val_null; }
 
     Value result = list->items[0];
     for (int i = 0; i < list->count - 1; i++) {
@@ -192,7 +192,7 @@ void list_clear(Value list_val) {
 Value list_slice(Value list_val, int start, int end) {
     GC_PUSH_SCOPE();
 
-    Value result = make_null();
+    Value result = val_null;
     GC_PROTECT(&list_val);
     GC_PROTECT(&result);
 
@@ -230,7 +230,7 @@ Value list_slice(Value list_val, int start, int end) {
 Value list_concat(Value a, Value b) {
     GC_PUSH_SCOPE();
 
-    Value result = make_null();
+    Value result = val_null;
     GC_PROTECT(&a);
     GC_PROTECT(&b);
     GC_PROTECT(&result);
@@ -259,7 +259,7 @@ Value list_concat(Value a, Value b) {
 
 Value list_copy(Value list_val) {
     ValueList* src = as_list(list_val);
-    if (!src) return make_null();
+    if (!src) return val_null;
     
     Value new_list = make_list(src->capacity);
     ValueList* dst = as_list(new_list);
@@ -341,7 +341,7 @@ void list_sort_by_key(Value list_val, Value byKey, bool ascending) {
             int ki = (int)numeric_val(byKey);
             keys[i] = list_get(elem, ki);
         } else {
-            keys[i] = make_null();
+            keys[i] = val_null;
         }
     }
 

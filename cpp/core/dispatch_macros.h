@@ -122,7 +122,7 @@
 		switch (opcode) {
 	#define VM_CASE(OP)        case Opcode::OP:
 	#define VM_NEXT()          break;
-	#define VM_DISPATCH_END()  default: IOHelper::Print("unknown opcode"); return make_null(); }
+	#define VM_DISPATCH_END()  default: IOHelper::Print("unknown opcode"); return val_null; }
 	#define VM_DISPATCH_BOTTOM()
 #endif
 

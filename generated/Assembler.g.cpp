@@ -120,7 +120,7 @@ UInt32 AssemblerStorage::AddLine(String line,Int32 lineNumber) {
 	UInt32 instruction = 0;
 	GC_PUSH_SCOPE();
 	Value constantValue; GC_PROTECT(&constantValue);
-	Value defaultValue = make_null(); GC_PROTECT(&defaultValue);
+	Value defaultValue = val_null; GC_PROTECT(&defaultValue);
 
 	// Handle .param directive (not an instruction, but a function parameter definition)
 	if (mnemonic == ".param") {

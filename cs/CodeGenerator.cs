@@ -997,7 +997,7 @@ public class CodeGenerator : IASTVisitor {
 	// Handles: numbers, strings, null/true/false, unary minus, list/map literals.
 	// Lists and maps are automatically frozen (immutable).
 	public static Boolean TryEvaluateConstant(ASTNode node, out Value result) {
-		result = make_null();
+		result = val_null;
 		NumberNode numNode = node as NumberNode;
 		if (numNode != null) {
 			result = make_double(numNode.Value);
@@ -1010,7 +1010,7 @@ public class CodeGenerator : IASTVisitor {
 		}
 		IdentifierNode idNode = node as IdentifierNode;
 		if (idNode != null) {
-			if (idNode.Name == "null") { result = make_null(); return true; }
+			if (idNode.Name == "null") { result = val_null; return true; }
 			if (idNode.Name == "true") { result = make_double(1); return true; }
 			if (idNode.Name == "false") { result = make_double(0); return true; }
 			return false;
@@ -1098,10 +1098,10 @@ public class CodeGenerator : IASTVisitor {
 					funcDef.ParamDefaults.Add(defaultVal);
 				} else {
 					Errors.Add(StringUtils.Format("Default value for parameter '{0}' must be a constant", node.ParamNames[i]));
-					funcDef.ParamDefaults.Add(make_null());
+					funcDef.ParamDefaults.Add(val_null);
 				}
 			} else {
-				funcDef.ParamDefaults.Add(make_null());
+				funcDef.ParamDefaults.Add(val_null);
 			}
 		}
 

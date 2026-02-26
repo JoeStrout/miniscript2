@@ -1476,16 +1476,12 @@ Transpiler.updateStateMETHOD = function
 end function
 
 Transpiler.generateOutput = function
-	print "self.headerLines: " + self.headerLines.len
-	print "self.cppLines: " + self.cppLines.len
-
 	headerLines = []
 	cppLines = []
 	baseName = self.sourceName - ".cs"
 
 	nonemptyCount = 0
 	for c in self.allClasses; if c.hasLines then nonemptyCount += 1; end for
-	print "nonempty classes: " + nonemptyCount
 	
 	if not self.headerLines and not self.cppLines and not nonemptyCount then
 		print "Empty (probably C#-only); skipping."

@@ -348,7 +348,7 @@ void App::RunProgram(List<FuncDef> functions,ErrorPool errors) {
 	vm.set_Errors(errors);
 	vm.Reset(functions);
 	GC_PUSH_SCOPE();
-	Value result = make_null(); GC_PROTECT(&result);
+	Value result = val_null; GC_PROTECT(&result);
 
 	if (visMode) {
 		VMVis vis = VMVis(vm);

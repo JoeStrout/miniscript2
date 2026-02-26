@@ -88,7 +88,7 @@ public class VarMap : ValueMap {
 	public override bool Remove(Value key) {
 		if (is_string(key) && _regMap.TryGetValue(key, out int regIndex)) {
 			// Clear assignment by setting name to null
-			_names[regIndex] = make_null();
+			_names[regIndex] = val_null;
 			return true;
 		}
 
@@ -175,7 +175,7 @@ public class VarMap : ValueMap {
 			}
 			i++;
 		}
-		return make_null();
+		return val_null;
 	}
 
 	/// <summary>

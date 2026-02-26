@@ -52,40 +52,40 @@ void gc_mark_value(Value v);
 // Protect multiple local variables at once (up to 8)
 // These macros both declare and protect the variables
 #define GC_LOCALS_1(v1) \
-    Value v1 = make_null(); gc_protect_value(&v1)
+    Value v1 = val_null; gc_protect_value(&v1)
 
 #define GC_LOCALS_2(v1, v2) \
-    Value v1 = make_null(), v2 = make_null(); \
+    Value v1 = val_null, v2 = val_null; \
     gc_protect_value(&v1); gc_protect_value(&v2)
 
 #define GC_LOCALS_3(v1, v2, v3) \
-    Value v1 = make_null(), v2 = make_null(), v3 = make_null(); \
+    Value v1 = val_null, v2 = val_null, v3 = val_null; \
     gc_protect_value(&v1); gc_protect_value(&v2); gc_protect_value(&v3)
 
 #define GC_LOCALS_4(v1, v2, v3, v4) \
-    Value v1 = make_null(), v2 = make_null(), v3 = make_null(), v4 = make_null(); \
+    Value v1 = val_null, v2 = val_null, v3 = val_null, v4 = val_null; \
     gc_protect_value(&v1); gc_protect_value(&v2); gc_protect_value(&v3); gc_protect_value(&v4)
 
 #define GC_LOCALS_5(v1, v2, v3, v4, v5) \
-    Value v1 = make_null(), v2 = make_null(), v3 = make_null(), v4 = make_null(), v5 = make_null(); \
+    Value v1 = val_null, v2 = val_null, v3 = val_null, v4 = val_null, v5 = val_null; \
     gc_protect_value(&v1); gc_protect_value(&v2); gc_protect_value(&v3); gc_protect_value(&v4); \
     gc_protect_value(&v5)
 
 #define GC_LOCALS_6(v1, v2, v3, v4, v5, v6) \
-    Value v1 = make_null(), v2 = make_null(), v3 = make_null(), v4 = make_null(), v5 = make_null(), \
-    v6 = make_null(); \
+    Value v1 = val_null, v2 = val_null, v3 = val_null, v4 = val_null, v5 = val_null, \
+    v6 = val_null; \
     gc_protect_value(&v1); gc_protect_value(&v2); gc_protect_value(&v3); gc_protect_value(&v4); \
     gc_protect_value(&v5); gc_protect_value(&v6)
 
 #define GC_LOCALS_7(v1, v2, v3, v4, v5, v6, v7) \
-    Value v1 = make_null(), v2 = make_null(), v3 = make_null(), v4 = make_null(), v5 = make_null(), \
-    v6 = make_null(), v7 = make_null(); \
+    Value v1 = val_null, v2 = val_null, v3 = val_null, v4 = val_null, v5 = val_null, \
+    v6 = val_null, v7 = val_null; \
     gc_protect_value(&v1); gc_protect_value(&v2); gc_protect_value(&v3); gc_protect_value(&v4); \
     gc_protect_value(&v5); gc_protect_value(&v6); gc_protect_value(&v7)
 
 #define GC_LOCALS_8(v1, v2, v3, v4, v5, v6, v7, v8) \
-    Value v1 = make_null(), v2 = make_null(), v3 = make_null(), v4 = make_null(), v5 = make_null(), \
-    v6 = make_null(), v7 = make_null(), v8 = make_null(); \
+    Value v1 = val_null, v2 = val_null, v3 = val_null, v4 = val_null, v5 = val_null, \
+    v6 = val_null, v7 = val_null, v8 = val_null; \
     gc_protect_value(&v1); gc_protect_value(&v2); gc_protect_value(&v3); gc_protect_value(&v4); \
     gc_protect_value(&v5); gc_protect_value(&v6); gc_protect_value(&v7); gc_protect_value(&v8)
 

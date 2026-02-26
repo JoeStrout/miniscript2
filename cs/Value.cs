@@ -484,9 +484,6 @@ public static class ValueHelpers {
 
 	// Core value creation functions (matching value.h)
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value make_null() => val_null;
-	
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value make_int(int i) => Value.FromInt(i);
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -520,9 +517,9 @@ public static class ValueHelpers {
 	
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value list_get(Value list_val, int index) {
-		if (!list_val.IsList) return make_null();
+		if (!list_val.IsList) return val_null;
 		var valueList = HandlePool.Get(list_val.Handle()) as ValueList;
-		return valueList?.Get(index) ?? make_null();
+		return valueList?.Get(index) ?? val_null;
 	}
 	
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -574,7 +571,7 @@ public static class ValueHelpers {
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value funcref_outer_vars(Value v) {
 		var funcRefObj = v.AsFuncRefObject();
-		return funcRefObj?.OuterVars ?? make_null();
+		return funcRefObj?.OuterVars ?? val_null;
 	}
 
 	public static int map_count(Value map_val) {
@@ -584,15 +581,15 @@ public static class ValueHelpers {
 	}
 
 	public static Value map_get(Value map_val, Value key) {
-		if (!map_val.IsMap) return make_null();
+		if (!map_val.IsMap) return val_null;
 		var valueMap = HandlePool.Get(map_val.Handle()) as ValueMap;
-		return valueMap?.Get(key) ?? make_null();
+		return valueMap?.Get(key) ?? val_null;
 	}
 
 	// Look up a key directly in map_val only (not walking the __isa chain).
 	// Returns true if found (with value in out parameter), false otherwise.
 	public static bool map_try_get(Value map_val, Value key, out Value value) {
-		value = make_null();
+		value = val_null;
 		if (!map_val.IsMap) return false;
 		var valueMap = HandlePool.Get(map_val.Handle()) as ValueMap;
 		if (valueMap == null) return false;
@@ -607,7 +604,7 @@ public static class ValueHelpers {
 	// Look up a key in a map, walking the __isa chain if needed.
 	// Returns true if found (with value in out parameter), false otherwise.
 	public static bool map_lookup(Value map_val, Value key, out Value value) {
-		value = make_null();
+		value = val_null;
 		Value isaKey = val_isa_key;
 		Value current = map_val;
 		for (Int32 depth = 0; depth < 256; depth++) {
@@ -629,8 +626,8 @@ public static class ValueHelpers {
 	// of the map where the key was found (for computing 'super').
 	// Returns true if found, false otherwise.
 	public static bool map_lookup_with_origin(Value map_val, Value key, out Value value, out Value superVal) {
-		value = make_null();
-		superVal = make_null();
+		value = val_null;
+		superVal = val_null;
 		Value isaKey = val_isa_key;
 		Value current = map_val;
 		for (Int32 depth = 0; depth < 256; depth++) {
@@ -687,9 +684,9 @@ public static class ValueHelpers {
 	// iteration O(n^2) for large maps. We may want to optimize this later, e.g.
 	// by caching an iterator or using an ordered backing store.
 	public static Value map_nth_entry(Value map_val, int n) {
-		if (!map_val.IsMap) return make_null();
+		if (!map_val.IsMap) return val_null;
 		var valueMap = HandlePool.Get(map_val.Handle()) as ValueMap;
-		if (valueMap == null) return make_null();
+		if (valueMap == null) return val_null;
 		int i = 0;
 		foreach (var kvp in valueMap.Items) {
 			if (i == n) {
@@ -700,7 +697,7 @@ public static class ValueHelpers {
 			}
 			i++;
 		}
-		return make_null();
+		return val_null;
 	}
 
 	// MapIterator: lightweight struct for iterating over map entries.
@@ -717,8 +714,8 @@ public static class ValueHelpers {
 
 	public static MapIterator map_iterator(Value map_val) {
 		MapIterator iter = new MapIterator();
-		iter.Key = make_null();
-		iter.Val = make_null();
+		iter.Key = val_null;
+		iter.Val = val_null;
 		if (map_val.IsMap) {
 			ValueMap valueMap = HandlePool.Get(map_val.Handle()) as ValueMap;
 			if (valueMap != null) {
@@ -776,21 +773,21 @@ public static class ValueHelpers {
 	/// Get the entry for a given map iterator value as a {"key":k, "value":v} mini-map.
 	/// </summary>
 	public static Value map_iter_entry(Value map_val, int iter) {
-		if (!map_val.IsMap) return make_null();
+		if (!map_val.IsMap) return val_null;
 		ValueMap valueMap = HandlePool.Get(map_val.Handle()) as ValueMap;
-		if (valueMap == null) return make_null();
+		if (valueMap == null) return val_null;
 
 		// Negative iter (< -1) means a VarMap register entry
 		if (iter < -1) {
 			VarMap varMap = valueMap as VarMap;
-			if (varMap == null) return make_null();
+			if (varMap == null) return val_null;
 			int regMapIdx = -(iter) - 2;
 			return varMap.GetRegEntry(regMapIdx);
 		}
 
 		// Non-negative iter: index into key cache, then look up value by key
 		List<Value> keys = valueMap.GetKeyCache();
-		if (iter < 0 || iter >= keys.Count) return make_null();
+		if (iter < 0 || iter >= keys.Count) return val_null;
 		Value key = keys[iter];
 		Value val = valueMap.Get(key);
 		Value result = make_map(4);
@@ -1108,18 +1105,18 @@ public static class ValueHelpers {
 	}
 
 	public static Value list_pop(Value list_val) {
-		if (!list_val.IsList) return make_null();
+		if (!list_val.IsList) return val_null;
 		var valueList = HandlePool.Get(list_val.Handle()) as ValueList;
-		if (valueList == null) return make_null();
-		if (valueList.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return make_null(); }
+		if (valueList == null) return val_null;
+		if (valueList.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return val_null; }
 		return valueList.Pop();
 	}
 
 	public static Value list_pull(Value list_val) {
-		if (!list_val.IsList) return make_null();
+		if (!list_val.IsList) return val_null;
 		var valueList = HandlePool.Get(list_val.Handle()) as ValueList;
-		if (valueList == null) return make_null();
-		if (valueList.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return make_null(); }
+		if (valueList == null) return val_null;
+		if (valueList.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return val_null; }
 		return valueList.Pull();
 	}
 

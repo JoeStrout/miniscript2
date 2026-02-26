@@ -38,7 +38,7 @@ public class Intrinsic {
 
 	public void AddParam(String name) {
 		_paramNames.Add(name);
-		_paramDefaults.Add(make_null());
+		_paramDefaults.Add(val_null);
 	}
 
 	public void AddParam(String name, Value defaultValue) {

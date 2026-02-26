@@ -15,7 +15,7 @@ namespace MiniScript {
 
 Boolean ValueTest::TestNullValue() {
 	GC_PUSH_SCOPE();
-	Value v = make_null(); GC_PROTECT(&v);
+	Value v = val_null; GC_PROTECT(&v);
 	Boolean ok = true;
 	ok = TestFramework::Assert(is_null(v), "make_null creates null value") && ok;
 	ok = TestFramework::Assert(!is_int(v), "null is not int") && ok;
@@ -154,7 +154,7 @@ Boolean ValueTest::TestTruthiness() {
 	Boolean ok = true;
 
 	// Null is falsy
-	ok = TestFramework::Assert(!is_truthy(make_null()), "null is falsy") && ok;
+	ok = TestFramework::Assert(!is_truthy(val_null), "null is falsy") && ok;
 
 	// Zero is falsy
 	ok = TestFramework::Assert(!is_truthy(make_int(0)), "0 is falsy") && ok;

@@ -180,7 +180,7 @@ static Value find_interned_string(const char* data, int lenB, uint32_t hash) {
         entry = entry->next;
     }
     
-    return make_null();  // Not found
+    return val_null;  // Not found
 }
 
 // Add a string to the intern table
@@ -205,7 +205,7 @@ static void intern_string(Value string_value) {
 // Make a Value string from a const char *.  This will create a tiny string,
 // an interned string, or a GC heap-allocated string, depending on the length.
 Value make_string(const char* str) {
-    if (str == NULL) return make_null();
+    if (str == NULL) return val_null;
     int lenB = strlen(str);
     
     // Use tiny string for very short strings
@@ -303,7 +303,7 @@ int string_indexOf(Value haystack, Value needle, int start_pos) {
 Value string_concat(Value a, Value b) {
     GC_PUSH_SCOPE();
     
-    Value result = make_null();
+    Value result = val_null;
     GC_PROTECT(&a);
     GC_PROTECT(&b);
     GC_PROTECT(&result);
@@ -315,7 +315,7 @@ Value string_concat(Value a, Value b) {
     
     if (!sa || !sb) {
         GC_POP_SCOPE();
-        return make_null();
+        return val_null;
     }
     
     int total_lenB = lenB_a + lenB_b;
@@ -362,7 +362,7 @@ static Value make_string_from_bytes(const char* data, int lenB) {
 Value string_replace_max(Value str, Value from, Value to, int maxCount) {
     GC_PUSH_SCOPE();
 
-    Value result = make_null();
+    Value result = val_null;
     GC_PROTECT(&str);
     GC_PROTECT(&from);
     GC_PROTECT(&to);
@@ -387,7 +387,7 @@ Value string_replace_max(Value str, Value from, Value to, int maxCount) {
 
     if (!s || !f || !t) {
         GC_POP_SCOPE();
-        return make_null();
+        return val_null;
     }
 
     // Count occurrences (up to maxCount) to calculate final length
@@ -455,7 +455,7 @@ Value string_replace(Value str, Value from, Value to) {
 Value string_split_max(Value str, Value delimiter, int maxCount) {
     GC_PUSH_SCOPE();
 
-    Value result = make_null();
+    Value result = val_null;
     GC_PROTECT(&str);
     GC_PROTECT(&delimiter);
     GC_PROTECT(&result);
@@ -473,7 +473,7 @@ Value string_split_max(Value str, Value delimiter, int maxCount) {
     const char* s = get_string_data_nullterm(&str, tiny_buffer_s);
     if (!s) {
         GC_POP_SCOPE();
-        return make_null();
+        return val_null;
     }
 
     // Handle empty delimiter (split into characters)
@@ -515,7 +515,7 @@ Value string_split_max(Value str, Value delimiter, int maxCount) {
     const char* d = get_string_data_nullterm(&delimiter, tiny_buffer_d);
     if (!d) {
         GC_POP_SCOPE();
-        return make_null();
+        return val_null;
     }
 
     result = make_list(8);
@@ -554,13 +554,13 @@ Value string_split(Value str, Value delimiter) {
 Value string_substring(Value str, int startIndex, int len) {
     GC_PUSH_SCOPE();
     
-    Value result = make_null();
+    Value result = val_null;
     GC_PROTECT(&str);
     GC_PROTECT(&result);
     
     if (!is_string(str) || len < 0) {
         GC_POP_SCOPE();
-        return make_null();
+        return val_null;
     }
     
     int strLenB = string_lengthB(str);
@@ -575,7 +575,7 @@ Value string_substring(Value str, int startIndex, int len) {
     const char* data = get_string_data_nullterm(&str, tiny_buffer);
     if (!data) {
         GC_POP_SCOPE();
-        return make_null();
+        return val_null;
     }
     
     // Handle negative index
@@ -660,7 +660,7 @@ Value string_sub(Value a, Value b) {
 Value string_insert(Value str, int index, Value value) {
     GC_PUSH_SCOPE();
 
-    Value result = make_null();
+    Value result = val_null;
     GC_PROTECT(&str);
     GC_PROTECT(&value);
     GC_PROTECT(&result);
@@ -847,7 +847,7 @@ void* value_string_get_next_intern_entry(void* entry) {
 }
 
 Value value_string_get_entry_value(void* entry) {
-    if (!entry) return make_null();
+    if (!entry) return val_null;
     return ((InternEntry*)entry)->string_value;
 }
 

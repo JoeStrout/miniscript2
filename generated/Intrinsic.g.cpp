@@ -18,7 +18,7 @@ Intrinsic IntrinsicStorage::Create(String name) {
 }
 void IntrinsicStorage::AddParam(String name) {
 	_paramNames.Add(name);
-	_paramDefaults.Add(make_null());
+	_paramDefaults.Add(val_null);
 }
 void IntrinsicStorage::AddParam(String name,Value defaultValue) {
 	_paramNames.Add(name);

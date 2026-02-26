@@ -44,8 +44,8 @@ Value make_map(int initial_capacity) {
     // Initialize all entries as unoccupied
     for (int i = 0; i < initial_capacity; i++) {
         map->entries[i].occupied = false;
-        map->entries[i].key = make_null();
-        map->entries[i].value = make_null();
+        map->entries[i].key = val_null;
+        map->entries[i].value = val_null;
         map->entries[i].hash = 0;
     }
 
@@ -119,7 +119,7 @@ static int find_entry(ValueMap* map, Value key, uint32_t hash) {
 // Map operations
 Value map_get(Value map_val, Value key) {
     ValueMap* map = as_map(map_val);
-    if (!map) return make_null();
+    if (!map) return val_null;
 
     // VarMap check - zero overhead for regular maps
     if (map->varmap_data != NULL) {
@@ -131,7 +131,7 @@ Value map_get(Value map_val, Value key) {
                 if (!is_null(vdata->names[reg_index])) {
                     return vdata->registers[reg_index];
                 }
-                return make_null(); // Unassigned register
+                return val_null; // Unassigned register
             }
         }
         // Fall through to regular map lookup
@@ -144,13 +144,13 @@ Value map_get(Value map_val, Value key) {
         return map->entries[index].value;
     }
 
-    return make_null();
+    return val_null;
 }
 
 bool map_try_get(Value map_val, Value key, Value* out_value) {
     ValueMap* map = as_map(map_val);
     if (!map) {
-        if (out_value) *out_value = make_null();
+        if (out_value) *out_value = val_null;
         return false;
     }
 
@@ -166,7 +166,7 @@ bool map_try_get(Value map_val, Value key, Value* out_value) {
                     return true;
                 }
                 // Unassigned register means key doesn't exist
-                if (out_value) *out_value = make_null();
+                if (out_value) *out_value = val_null;
                 return false;
             }
         }
@@ -181,7 +181,7 @@ bool map_try_get(Value map_val, Value key, Value* out_value) {
         return true;
     }
 
-    if (out_value) *out_value = make_null();
+    if (out_value) *out_value = val_null;
     return false;
 }
 
@@ -189,7 +189,7 @@ bool map_lookup(Value map_val, Value key, Value* out_value) {
     Value current = map_val;
     for (int depth = 0; depth < 256; depth++) {
         if (!is_map(current)) {
-            if (out_value) *out_value = make_null();
+            if (out_value) *out_value = val_null;
             return false;
         }
         if (map_try_get(current, key, out_value)) {
@@ -198,18 +198,18 @@ bool map_lookup(Value map_val, Value key, Value* out_value) {
         // Walk up __isa chain
         Value isa;
         if (!map_try_get(current, val_isa_key, &isa)) {
-            if (out_value) *out_value = make_null();
+            if (out_value) *out_value = val_null;
             return false;
         }
         current = isa;
     }
-    if (out_value) *out_value = make_null();
+    if (out_value) *out_value = val_null;
     return false;
 }
 
 bool map_lookup_with_origin(Value map_val, Value key, Value* out_value, Value* out_super) {
-    if (out_value) *out_value = make_null();
-    if (out_super) *out_super = make_null();
+    if (out_value) *out_value = val_null;
+    if (out_super) *out_super = val_null;
     Value current = map_val;
     Value isa;
     for (int depth = 0; depth < 256; depth++) {
@@ -314,7 +314,7 @@ bool map_remove(Value map_val, Value key) {
             if (value_equal(vdata->reg_map_keys[i], key)) {
                 int reg_index = vdata->reg_map_indices[i];
                 // Clear assignment by setting name to null
-                vdata->names[reg_index] = make_null();
+                vdata->names[reg_index] = val_null;
                 return true;
             }
         }
@@ -327,8 +327,8 @@ bool map_remove(Value map_val, Value key) {
     if (index >= 0 && map->entries[index].occupied) {
         MapEntry* entry = &map->entries[index];
         entry->occupied = false;
-        entry->key = make_null();
-        entry->value = make_null();
+        entry->key = val_null;
+        entry->value = val_null;
         entry->hash = 0;
         map->count--;
 
@@ -383,8 +383,8 @@ void map_clear(Value map_val) {
 
     for (int i = 0; i < map->capacity; i++) {
         map->entries[i].occupied = false;
-        map->entries[i].key = make_null();
-        map->entries[i].value = make_null();
+        map->entries[i].key = val_null;
+        map->entries[i].value = val_null;
         map->entries[i].hash = 0;
     }
     map->count = 0;
@@ -448,15 +448,15 @@ Value map_concat(Value a, Value b) {
 // should take n by reference, and update it with the next index to check.
 Value map_nth_entry(Value map_val, int n) {
     ValueMap* map = as_map(map_val);
-    if (!map) return make_null();
+    if (!map) return val_null;
 
     GC_PUSH_SCOPE();
     GC_PROTECT(&map_val);
 
     // Walk occupied entries to find the Nth one
     int count = 0;
-    Value key = make_null();
-    Value val = make_null();
+    Value key = val_null;
+    Value val = val_null;
     for (int i = 0; i < map->capacity; i++) {
         if (map->entries[i].occupied) {
             if (count == n) {
@@ -509,7 +509,7 @@ int map_iter_next(Value map_val, int iter) {
 
 Value map_iter_entry(Value map_val, int iter) {
     ValueMap* map = as_map(map_val);
-    if (!map) return make_null();
+    if (!map) return val_null;
 
     Value key, val;
 
@@ -525,7 +525,7 @@ Value map_iter_entry(Value map_val, int iter) {
         key = map->entries[iter].key;
         val = map->entries[iter].value;
     } else {
-        return make_null();
+        return val_null;
     }
 
     // Build {"key": k, "value": v} mini-map
@@ -574,8 +574,8 @@ bool map_expand_capacity(Value map_val) {
     // Initialize new entries
     for (int i = 0; i < new_capacity; i++) {
         new_entries[i].occupied = false;
-        new_entries[i].key = make_null();
-        new_entries[i].value = make_null();
+        new_entries[i].key = val_null;
+        new_entries[i].value = val_null;
         new_entries[i].hash = 0;
     }
 
@@ -761,8 +761,8 @@ Value make_varmap(Value* registers, Value* names, int firstIndex, int count) {
     // Initialize map entries
     for (int i = 0; i < 8; i++) {
         map->entries[i].occupied = false;
-        map->entries[i].key = make_null();
-        map->entries[i].value = make_null();
+        map->entries[i].key = val_null;
+        map->entries[i].value = val_null;
         map->entries[i].hash = 0;
     }
     

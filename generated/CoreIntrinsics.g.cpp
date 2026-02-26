@@ -22,11 +22,10 @@ double CoreIntrinsics::GetNextRandom(int seed) {
 	if (seed != 0) gen.seed(static_cast<unsigned int>(seed));
 	return dist(gen);
 }
-Value CoreIntrinsics::_listType = val_null;
 void CoreIntrinsics::AddIntrinsicToMap(Value map,String methodName) {
 	Intrinsic intr = Intrinsic::GetByName(methodName);
 	if (!IsNull(intr)) {
-		map_set(_listType, make_string(methodName), intr.GetFunc());
+		map_set(map, make_string(methodName), intr.GetFunc());
 	} else {
 		IOHelper::Print(StringUtils::Format("Intrinsic not found: {0}", methodName));
 	}
@@ -52,6 +51,53 @@ Value CoreIntrinsics::ListType() {
 	}
 	return _listType;
 }
+Value CoreIntrinsics::_listType = val_null;
+Value CoreIntrinsics::StringType() {
+	if (is_null(_stringType)) {
+		_stringType = make_map(16);
+		AddIntrinsicToMap(_stringType, "hasIndex");
+		AddIntrinsicToMap(_stringType, "indexes");
+		AddIntrinsicToMap(_stringType, "indexOf");
+		AddIntrinsicToMap(_stringType, "insert");
+		AddIntrinsicToMap(_stringType, "code");
+		AddIntrinsicToMap(_stringType, "len");
+		AddIntrinsicToMap(_stringType, "lower");
+		AddIntrinsicToMap(_stringType, "val");
+		AddIntrinsicToMap(_stringType, "remove");
+		AddIntrinsicToMap(_stringType, "replace");
+		AddIntrinsicToMap(_stringType, "split");
+		AddIntrinsicToMap(_stringType, "upper");
+		AddIntrinsicToMap(_stringType, "values");
+	}
+	return _stringType;
+}
+Value CoreIntrinsics::_stringType = val_null;
+Value CoreIntrinsics::MapType() {
+	if (is_null(_mapType)) {
+		_mapType = make_map(16);
+		AddIntrinsicToMap(_mapType, "hasIndex");
+		AddIntrinsicToMap(_mapType, "indexes");
+		AddIntrinsicToMap(_mapType, "indexOf");
+		AddIntrinsicToMap(_mapType, "len");
+		AddIntrinsicToMap(_mapType, "pop");
+		AddIntrinsicToMap(_mapType, "push");
+		AddIntrinsicToMap(_mapType, "pull");
+		AddIntrinsicToMap(_mapType, "shuffle");
+		AddIntrinsicToMap(_mapType, "sum");
+		AddIntrinsicToMap(_mapType, "remove");
+		AddIntrinsicToMap(_mapType, "replace");
+		AddIntrinsicToMap(_mapType, "values");
+	}
+	return _mapType;
+}
+Value CoreIntrinsics::_mapType = val_null;
+Value CoreIntrinsics::NumberType() {
+	if (is_null(_numberType)) {
+		_numberType = make_map(4);
+	}
+	return _numberType;
+}
+Value CoreIntrinsics::_numberType = val_null;
 void CoreIntrinsics::Init() {
 	Intrinsic f;
 
@@ -75,7 +121,7 @@ void CoreIntrinsics::Init() {
 		} else {
 			IOHelper::Print(output);
 		}
-		return make_null();
+		return val_null;
 	});
 
 	// input(prompt=null)
@@ -105,7 +151,7 @@ void CoreIntrinsics::Init() {
 			return to_number(v);
 		}
 		GC_POP_SCOPE();
-		return make_null();
+		return val_null;
 	});
 
 	// str(x="")
@@ -157,7 +203,7 @@ void CoreIntrinsics::Init() {
 	f.set_Code([](List<Value> stk, Int32 bi, Int32 ac) -> Value {
 		GC_PUSH_SCOPE();
 		Value container = stk[bi + 1]; GC_PROTECT(&container);
-		Value result = make_null(); GC_PROTECT(&result);
+		Value result = val_null; GC_PROTECT(&result);
 		if (is_list(container)) {
 			result = make_int(list_count(container));
 		} else if (is_string(container)) {
@@ -193,7 +239,7 @@ void CoreIntrinsics::Init() {
 	f.AddParam("x");
 	f.set_Code([](List<Value> stk, Int32 bi, Int32 ac) -> Value {
 		freeze_value(stk[bi + 1]);
-		return make_null();
+		return val_null;
 	});
 
 	// isFrozen(x)
@@ -354,7 +400,7 @@ void CoreIntrinsics::Init() {
 			return self;
 		}
 		GC_POP_SCOPE();
-		return make_null();
+		return val_null;
 	});
 
 	// pop(self)
@@ -363,13 +409,13 @@ void CoreIntrinsics::Init() {
 	f.set_Code([](List<Value> stk, Int32 bi, Int32 ac) -> Value {
 		GC_PUSH_SCOPE();
 		Value self = stk[bi + 1]; GC_PROTECT(&self);
-		Value result = make_null(); GC_PROTECT(&result);
+		Value result = val_null; GC_PROTECT(&result);
 		if (is_list(self)) {
 			result = list_pop(self);
 		} else if (is_map(self)) {
 			if (map_count(self) == 0)  {
 				GC_POP_SCOPE();
-				return make_null();
+				return val_null;
 			}
 			MapIterator iter = map_iterator(self);
 			if (map_iterator_next(&iter, &result, nullptr)) {
@@ -387,13 +433,13 @@ void CoreIntrinsics::Init() {
 	f.set_Code([](List<Value> stk, Int32 bi, Int32 ac) -> Value {
 		GC_PUSH_SCOPE();
 		Value self = stk[bi + 1]; GC_PROTECT(&self);
-		Value result = make_null(); GC_PROTECT(&result);
+		Value result = val_null; GC_PROTECT(&result);
 		if (is_list(self)) {
 			result = list_pull(self);
 		} else if (is_map(self)) {
 			if (map_count(self) == 0)  {
 				GC_POP_SCOPE();
-				return make_null();
+				return val_null;
 			}
 			MapIterator iter = map_iterator(self);
 			if (map_iterator_next(&iter, &result, nullptr)) {
@@ -424,7 +470,7 @@ void CoreIntrinsics::Init() {
 			return string_insert(self, index, value);
 		}
 		GC_POP_SCOPE();
-		return make_null();
+		return val_null;
 	});
 
 	// indexOf(self, value, after=null)
@@ -437,7 +483,7 @@ void CoreIntrinsics::Init() {
 		Value self = stk[bi + 1]; GC_PROTECT(&self);
 		Value value = stk[bi + 2]; GC_PROTECT(&value);
 		Value after = stk[bi + 3]; GC_PROTECT(&after);
-		Value result = make_null(); GC_PROTECT(&result);
+		Value result = val_null; GC_PROTECT(&result);
 		Value iterKey, iterVal; GC_PROTECT(&iterKey); GC_PROTECT(&iterVal);
 		if (is_list(self)) {
 			int afterIdx = -1;
@@ -450,7 +496,7 @@ void CoreIntrinsics::Init() {
 		} else if (is_string(self)) {
 			if (!is_string(value))  {
 				GC_POP_SCOPE();
-				return make_null();
+				return val_null;
 			}
 			int afterIdx = -1;
 			if (!is_null(after)) {
@@ -518,7 +564,7 @@ void CoreIntrinsics::Init() {
 		if (is_list(self)) {
 			if (is_frozen(self)) { VM::ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list");  {
 				GC_POP_SCOPE();
-				return make_null(); }
+				return val_null; }
 			}
 			int count = list_count(self);
 			for (int i = count - 1; i > 0; i--) {
@@ -530,7 +576,7 @@ void CoreIntrinsics::Init() {
 		} else if (is_map(self)) {
 			if (is_frozen(self)) { VM::ActiveVM().RaiseRuntimeError("Attempt to modify a frozen map");  {
 				GC_POP_SCOPE();
-				return make_null(); }
+				return val_null; }
 			}
 			// Collect keys and values
 			int count = map_count(self);
@@ -553,7 +599,7 @@ void CoreIntrinsics::Init() {
 			}
 		}
 		GC_POP_SCOPE();
-		return make_null();
+		return val_null;
 	});
 
 	// join(self, delimiter=" ")
@@ -588,7 +634,7 @@ void CoreIntrinsics::Init() {
 		Value self = stk[bi + 1]; GC_PROTECT(&self);
 		if (!is_string(self))  {
 			GC_POP_SCOPE();
-			return make_null();
+			return val_null;
 		}
 		Value delim = stk[bi + 2]; GC_PROTECT(&delim);
 		int maxCount = (int)numeric_val(stk[bi + 3]);
@@ -641,7 +687,7 @@ void CoreIntrinsics::Init() {
 			return string_replace_max(self, oldVal, newVal, maxCount);
 		}
 		GC_POP_SCOPE();
-		return make_null();
+		return val_null;
 	});
 
 	// sum(self)
@@ -695,7 +741,7 @@ void CoreIntrinsics::Init() {
 			return string_slice(seq, fromIdx, toIdx);
 		}
 		GC_POP_SCOPE();
-		return make_null();
+		return val_null;
 	});
 
 	// indexes(self)
@@ -704,7 +750,7 @@ void CoreIntrinsics::Init() {
 	f.set_Code([](List<Value> stk, Int32 bi, Int32 ac) -> Value {
 		GC_PUSH_SCOPE();
 		Value self = stk[bi + 1]; GC_PROTECT(&self);
-		Value result = make_null(); GC_PROTECT(&result);
+		Value result = val_null; GC_PROTECT(&result);
 		Value iterKey; GC_PROTECT(&iterKey);
 		if (is_list(self)) {
 			int count = list_count(self);
@@ -764,7 +810,7 @@ void CoreIntrinsics::Init() {
 			return make_int(map_has_key(self, index) ? 1 : 0);
 		}
 		GC_POP_SCOPE();
-		return make_null();
+		return val_null;
 	});
 
 	// values(self)
@@ -808,7 +854,7 @@ void CoreIntrinsics::Init() {
 		}
 		if (step == 0) {
 			IOHelper::Print("ERROR: range() step must not be 0");
-			return make_null();
+			return val_null;
 		}
 		int count = (int)((toVal - fromVal) / step) + 1;
 		if (count < 0) count = 0;
@@ -837,11 +883,32 @@ void CoreIntrinsics::Init() {
 	//    Returns a map that represents the list datatype in
 	//    MiniScript's core type system.  This can be used with `isa`
 	//    to check whether a variable refers to a list.  You can also
-	//    assign new methods here to make them available to all lists.
+	//    assign new methods here to make them available on all lists.
 	f = Intrinsic::Create("list");
 	f.set_Code([](List<Value> stk, Int32 bi, Int32 ac) -> Value {
 		return ListType();
 	});
+
+	// string
+	//    Returns a map that represents the string datatype in
+	//    MiniScript's core type system.  This can be used with `isa`
+	//    to check whether a variable refers to a string.  You can also
+	//    assign new methods here to make them available on all strings.
+	f = Intrinsic::Create("string");
+	f.set_Code([](List<Value> stk, Int32 bi, Int32 ac) -> Value {
+		return StringType();
+	});
+
+	// map
+	//    Returns a map that represents the map datatype in
+	//    MiniScript's core type system.  This can be used with `isa`
+	//    to check whether a variable refers to a map.  You can also
+	//    assign new methods here to make them available on all maps.
+	f = Intrinsic::Create("map");
+	f.set_Code([](List<Value> stk, Int32 bi, Int32 ac) -> Value {
+		return MapType();
+	});
+
 }
 
 } // end of namespace MiniScript

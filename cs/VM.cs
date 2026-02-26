@@ -36,7 +36,7 @@ public struct CallInfo {
 		ReturnBase = returnBase;
 		ReturnFuncIndex = returnFuncIndex;
 		CopyResultToReg = copyToReg;
-		LocalVarMap = make_null();
+		LocalVarMap = val_null;
 		OuterVarMap = val_null;
 	}
 
@@ -45,7 +45,7 @@ public struct CallInfo {
 		ReturnBase = returnBase;
 		ReturnFuncIndex = returnFuncIndex;
 		CopyResultToReg = copyToReg;
-		LocalVarMap = make_null();
+		LocalVarMap = val_null;
 		OuterVarMap = outerVars;
 	}
 
@@ -119,12 +119,12 @@ public class VM {
 	}
 
 	public Value GetStackValue(Int32 index) {
-		if (index < 0 || index >= stack.Count) return make_null();
+		if (index < 0 || index >= stack.Count) return val_null;
 		return stack[index];
 	}
 
 	public Value GetStackName(Int32 index) {
-		if (index < 0 || index >= names.Count) return make_null();
+		if (index < 0 || index >= names.Count) return val_null;
 		return names[index];
 	}
 
@@ -152,8 +152,8 @@ public class VM {
 
 		// Initialize stack with null values
 		for (Int32 i = 0; i < stackSlots; i++) {
-			stack.Add(make_null());
-			names.Add(make_null());		// No variable name initially
+			stack.Add(val_null);
+			names.Add(val_null);		// No variable name initially
 		}
 		
 		
@@ -236,8 +236,8 @@ public class VM {
 		IsRunning = true;
 		callStackTop = 0;
 		RuntimeError = "";
-		pendingSelf = make_null();
-		pendingSuper = make_null();
+		pendingSelf = val_null;
+		pendingSuper = val_null;
 		hasPendingContext = false;
 
 		EnsureFrame(BaseIndex, CurrentFunction.MaxRegs);
@@ -286,12 +286,12 @@ public class VM {
 		// Note: Parameters start at r1 (r0 is reserved for return value)
 		// selfParam offsets explicit args so they go after the injected self parameter
 		Int32 currentPC = startPC;
-		Value argValue = make_null();  // Declared outside loop for GC safety
+		Value argValue = val_null;  // Declared outside loop for GC safety
 		for (Int32 i = 0; i < argCount; i++) {
 			UInt32 argInstruction = code[currentPC];
 			Opcode argOp = (Opcode)BytecodeUtil.OP(argInstruction);
 
-			argValue = make_null();
+			argValue = val_null;
 			if (argOp == Opcode.ARG_rA) {
 				// Argument from register
 				Byte srcReg = BytecodeUtil.Au(argInstruction);
@@ -328,8 +328,8 @@ public class VM {
 			stack[calleeBase + callee.SuperReg] = pendingSuper;
 			names[calleeBase + callee.SuperReg] = val_super;
 		}
-		pendingSelf = make_null();
-		pendingSuper = make_null();
+		pendingSelf = val_null;
+		pendingSuper = val_null;
 		hasPendingContext = false;
 	}
 
@@ -348,11 +348,11 @@ public class VM {
 		}
 
 		// Step 5: Clear remaining registers (r0, and any beyond parameters)
-		stack[calleeBase] = make_null();
-		names[calleeBase] = make_null();
+		stack[calleeBase] = val_null;
+		names[calleeBase] = val_null;
 		for (Int32 i = paramCount + 1; i < callee.MaxRegs; i++) {
-			stack[calleeBase + i] = make_null();
-			names[calleeBase + i] = make_null();
+			stack[calleeBase + i] = val_null;
+			names[calleeBase + i] = val_null;
 		}
 
 		// Step 6 is handled by the caller (pushing CallInfo, switching frame, etc.)
@@ -385,7 +385,7 @@ public class VM {
 			if (selfParam > 0) {
 				stack[calleeBase + 1] = pendingSelf;
 				names[calleeBase + 1] = val_self;
-				pendingSelf = make_null();
+				pendingSelf = val_null;
 				hasPendingContext = false;
 			}
 			stack[baseIndex + resultReg] = callee.NativeCallback(stack, calleeBase, selfParam);
@@ -424,7 +424,7 @@ public class VM {
 
 	public Value Run(UInt32 maxCycles=0) {
 		if (!IsRunning || !CurrentFunction) {
-			return make_null();
+			return val_null;
 		}
 
 		// Set thread-local active VM (save/restore for nested calls)
@@ -451,17 +451,17 @@ public class VM {
 
 		// Reusable Value variables (declared outside loop for GC safety in C++)
 		// ToDo: see if we can reduce these to a more reasonable number.
-		Value val = make_null();
-		Value outerVars = make_null();
-		Value container = make_null();
-		Value indexVal = make_null();
-		Value result = make_null();
-		Value valueArg = make_null();
-		Value funcRefValue = make_null();
-		Value funcName = make_null();
-		Value expectedName = make_null();
-		Value actualName = make_null();
-		Value locals = make_null();
+		Value val = val_null;
+		Value outerVars = val_null;
+		Value container = val_null;
+		Value indexVal = val_null;
+		Value result = val_null;
+		Value valueArg = val_null;
+		Value funcRefValue = val_null;
+		Value funcName = val_null;
+		Value expectedName = val_null;
+		Value actualName = val_null;
+		Value locals = val_null;
 		Value lhs;
 		Value rhs;
 		Value current;
@@ -489,7 +489,7 @@ public class VM {
 				BaseIndex = baseIndex;
 				_currentFuncIndex = currentFuncIndex;
 				CurrentFunction = curFunc;
-				return make_null();
+				return val_null;
 			}
 			cyclesLeft--;
 
@@ -501,7 +501,7 @@ public class VM {
 				BaseIndex = baseIndex;
 				_currentFuncIndex = currentFuncIndex;
 				CurrentFunction = curFunc;
-				return make_null();
+				return val_null;
 			}
 
 			UInt32 instruction = curCode[pc++];
@@ -554,7 +554,7 @@ public class VM {
 				case Opcode.LOADNULL_rA: {
 					// R[A] = null
 					Byte a = BytecodeUtil.Au(instruction);
-					localStack[a] = make_null();
+					localStack[a] = val_null;
 					break;
 				}
 
@@ -769,7 +769,7 @@ public class VM {
 						localStack[a] = string_substring(container, idx, 1);
 					} else {
 						RaiseRuntimeError(StringUtils.Format("Can't index into {0}", container));
-						localStack[a] = make_null();
+						localStack[a] = val_null;
 					}
 					break;
 				}
@@ -814,7 +814,7 @@ public class VM {
 						localStack[a] = list_slice(container, startIdx, endIdx);
 					} else {
 						RaiseRuntimeError(StringUtils.Format("Can't slice {0}", container));
-						localStack[a] = make_null();
+						localStack[a] = val_null;
 					}
 					break;
 				}
@@ -826,7 +826,7 @@ public class VM {
 					CallInfo frame = callStack[callStackTop];
 					localStack[a] = frame.GetLocalVarMap(stack, names, baseIndex, curFunc.MaxRegs);
 					callStack[callStackTop] = frame;  // write back (CallInfo is a struct)
-					names[baseIndex+a] = make_null();
+					names[baseIndex+a] = val_null;
 					break;
 				}
 
@@ -836,7 +836,7 @@ public class VM {
 					Byte a = BytecodeUtil.Au(instruction);
 					CallInfo frame = callStack[callStackTop - 1];
 					localStack[a] = frame.OuterVarMap;
-					names[baseIndex+a] = make_null();
+					names[baseIndex+a] = val_null;
 					break;
 				}
 
@@ -846,7 +846,7 @@ public class VM {
 					Byte a = BytecodeUtil.Au(instruction);
 					Int32 globalRegCount = functions[callStack[0].ReturnFuncIndex].MaxRegs;
 					localStack[a] = callStack[0].GetLocalVarMap(stack, names, 0, globalRegCount);
-					names[baseIndex+a] = make_null();
+					names[baseIndex+a] = val_null;
 					break;
 				}
 
@@ -1223,7 +1223,7 @@ public class VM {
 					Int32 callPC = pc + argCount;
 					if (callPC >= codeCount) {
 						RaiseRuntimeError("ARGBLK: CALL instruction out of range");
-						return make_null();
+						return val_null;
 					}
 					UInt32 callInstruction = curCode[callPC];
 					Opcode callOp = (Opcode)BytecodeUtil.OP(callInstruction);
@@ -1242,27 +1242,27 @@ public class VM {
 						funcRefValue = localStack[c];
 						if (!is_funcref(funcRefValue)) {
 							RaiseRuntimeError("ARGBLK/CALL: Not a function reference");
-							return make_null();
+							return val_null;
 						}
 
 						Int32 funcIndex = funcref_index(funcRefValue);
 						if (funcIndex < 0 || funcIndex >= functions.Count) {
 							RaiseRuntimeError("ARGBLK/CALL: Invalid function index");
-							return make_null();
+							return val_null;
 						}
 						callee = functions[funcIndex];
 						calleeBase = baseIndex + b;
 						resultReg = a;
 					} else {
 						RaiseRuntimeError("ARGBLK must be followed by CALL");
-						return make_null();
+						return val_null;
 					}
 
 					// Check for self-injection: if pending context and first param is "self",
 					// inject pendingSelf as the first argument
 					Int32 selfParam = SelfParamOffset(callee);
 					Int32 nextPC = ProcessArguments(argCount, selfParam, pc, baseIndex, calleeBase, callee, curFunc.Code);
-					if (nextPC < 0) return make_null(); // Error already raised
+					if (nextPC < 0) return val_null; // Error already raised
 					if (selfParam > 0) {
 						stack[calleeBase + 1] = pendingSelf;
 						names[calleeBase + 1] = val_self;
@@ -1283,7 +1283,7 @@ public class VM {
 					// Now execute the CALL (step 6): push CallInfo and switch to callee
 					if (callStackTop >= callStack.Count) {
 						RaiseRuntimeError("Call stack overflow");
-						return make_null();
+						return val_null;
 					}
 
 					Int32 funcIndex2 = funcref_index(localStack[BytecodeUtil.Cu(callInstruction)]);
@@ -1307,7 +1307,7 @@ public class VM {
 					// be processed as part of the ARGBLK opcode.  So if we get
 					// here, it's an error.
 					RaiseRuntimeError("Internal error: ARG without ARGBLK");
-					return make_null();
+					return val_null;
 				}
 
 				case Opcode.ARG_iABC: {
@@ -1315,7 +1315,7 @@ public class VM {
 					// be processed as part of the ARGBLK opcode.  So if we get
 					// here, it's an error.
 					RaiseRuntimeError("Internal error: ARG without ARGBLK");
-					return make_null();
+					return val_null;
 				}
 
 				case Opcode.CALLF_iA_iBC: {
@@ -1326,7 +1326,7 @@ public class VM {
 					
 					if (funcIndex >= functions.Count) {
 						IOHelper.Print("CALLF to invalid func");
-						return make_null();
+						return val_null;
 					}
 					
 					FuncDef callee = functions[funcIndex];
@@ -1334,7 +1334,7 @@ public class VM {
 					// Push return info
 					if (callStackTop >= callStack.Count) {
 						IOHelper.Print("Call stack overflow");
-						return make_null();
+						return val_null;
 					}
 					callStack[callStackTop] = new CallInfo(pc, baseIndex, currentFuncIndex);
 					callStackTop++;
@@ -1381,7 +1381,7 @@ public class VM {
 					Int32 funcIndex = funcref_index(funcRefValue);
 					if (funcIndex < 0 || funcIndex >= functions.Count) {
 						IOHelper.Print("CALL: Invalid function index in FuncRef");
-						return make_null();
+						return val_null;
 					}
 					FuncDef callee = functions[funcIndex];
 					outerVars = funcref_outer_vars(funcRefValue);
@@ -1405,7 +1405,7 @@ public class VM {
 
 					if (callStackTop >= callStack.Count) {
 						IOHelper.Print("Call stack overflow");
-						return make_null();
+						return val_null;
 					}
 					callStack[callStackTop] = new CallInfo(pc, baseIndex, currentFuncIndex, a, outerVars);
 					callStackTop++;
@@ -1468,39 +1468,52 @@ public class VM {
 					Byte c = BytecodeUtil.Cu(instruction);
 					container = localStack[b];
 					indexVal = localStack[c];
-
-
+					typeMap = val_null;
+					
 					if (is_map(container)) {
-						if (!map_lookup_with_origin(container, indexVal, out result, out superVal)) {
-							RaiseRuntimeError(StringUtils.Format("Key Not Found: '{0}' not found in map", indexVal));
-							localStack[a] = make_null();
+						// For maps: first do lookup in the map itself, with inheritance
+						if (map_lookup_with_origin(container, indexVal, out result, out superVal)) {
+							localStack[a] = result;
+							pendingSelf = container;
+							pendingSuper = superVal;
+							hasPendingContext = true;
 							break; // CPP: VM_NEXT();
 						}
+						// ...falling back on the map type map
+						typeMap = CoreIntrinsics.MapType();
+					} else if (is_list(container)) {
+						typeMap = CoreIntrinsics.ListType();
+					} else if (is_string(container)) {
+						typeMap = CoreIntrinsics.StringType();
+					} else if (is_number(container)) {
+						typeMap = CoreIntrinsics.NumberType();
+					}
+					if (is_null(typeMap)) {
+						// If we didn't get a type map, then user is trying to index
+						// into something not indexable
+						RaiseRuntimeError(StringUtils.Format("Can't index into {0}", container));
+						localStack[a] = val_null;
+					} else if (map_try_get(typeMap, indexVal, out result)) {
+						// found what we're looking for in the type map
 						localStack[a] = result;
 						pendingSelf = container;
-						pendingSuper = superVal;
-						hasPendingContext = true;
-					} else {
-						// Not a map — check type maps, then fall back to index behavior
+						pendingSuper = val_null;
+					} else if (is_number(indexVal)) {
+						// try indexing numerically
+						int index = as_int(indexVal);
 						if (is_list(container)) {
-							typeMap = CoreIntrinsics.ListType();
-							if (map_try_get(typeMap, indexVal, out result)) {
-								localStack[a] = result;
-								pendingSelf = container;
-								pendingSuper = make_null();
-								hasPendingContext = true;
-								break; // CPP: VM_NEXT();
-							}
-							localStack[a] = list_get(container, as_int(indexVal));
+							localStack[a] = list_get(container, index);
 						} else if (is_string(container)) {
-							Int32 idx = as_int(indexVal);
-							localStack[a] = string_substring(container, idx, 1);
+							localStack[a] = string_substring(container, index, 1);
 						} else {
 							RaiseRuntimeError(StringUtils.Format("Can't index into {0}", container));
-							localStack[a] = make_null();
+							localStack[a] = val_null;
 						}
-						hasPendingContext = true;
+					} else {
+						RaiseRuntimeError(StringUtils.Format("Key Not Found: '{0}' not found in map", indexVal));
+						localStack[a] = val_null;
 					}
+					hasPendingContext = true;
 					break; // CPP: VM_NEXT();
 				}
 
@@ -1522,8 +1535,8 @@ public class VM {
 					if (!is_funcref(val) || !hasPendingContext) {
 						// Not a funcref or no context — clear pending state and leave value as-is
 						hasPendingContext = false;
-						pendingSelf = make_null();
-						pendingSuper = make_null();
+						pendingSelf = val_null;
+						pendingSuper = val_null;
 						break; // CPP: VM_NEXT();
 					}
 
@@ -1559,7 +1572,7 @@ public class VM {
 					CallInfo frame = callStack[callStackTop];
 					if (!is_null(frame.LocalVarMap)) {
 						varmap_gather(frame.LocalVarMap);
-						frame.LocalVarMap = make_null();  // then clear from call frame
+						frame.LocalVarMap = val_null;  // then clear from call frame
 					}
 
 					// Pop call stack
@@ -1597,7 +1610,7 @@ public class VM {
 					} else if (is_string(container)) {
 						localStack[a] = string_substring(container, idx, 1);
 					} else {
-						localStack[a] = make_null();
+						localStack[a] = val_null;
 					}
 					break;
 				}
@@ -1611,7 +1624,7 @@ public class VM {
 					BaseIndex = baseIndex;
 					_currentFuncIndex = currentFuncIndex;
 					CurrentFunction = curFunc;
-					return make_null();
+					return val_null;
 			}
 //*** END CS_ONLY ***
 		}
@@ -1622,7 +1635,7 @@ public class VM {
 		BaseIndex = baseIndex;
 		_currentFuncIndex = currentFuncIndex;
 		CurrentFunction = curFunc;
-		return make_null();
+		return val_null;
 	}
 
 	private void EnsureFrame(Int32 baseIndex, UInt16 neededRegs) {
@@ -1657,12 +1670,12 @@ public class VM {
 
 		// self/super return null when not in a method context
 		if (value_equal(varName, val_self) || value_equal(varName, val_super)) {
-			return make_null();
+			return val_null;
 		}
 
 		// Variable not found anywhere — raise an error
 		RaiseRuntimeError(StringUtils.Format("Undefined Identifier: '{0}' is unknown in this context", varName));
-		return make_null();
+		return val_null;
 	}
 }
 

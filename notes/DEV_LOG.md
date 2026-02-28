@@ -475,4 +475,9 @@ The only one that took significant development was the last one, chained compari
 
 Rounded out support for 'isa' with our new type intrinsics, so you can say "42 isa number" (etc.) now.
 
-But we forgot to mark the new type maps as roots in the GC system, so while it's working perfectly in C#, it soon fails in C++.  That should be an easy fix.
+But we forgot to mark the new type maps as roots in the GC system, so while it's working perfectly in C#, it soon fails in C++.  That should be an easy fix, but it led to a somewhat thorny issue: the function indexes for our intrinsic functions need to be kept separate from the compiled functions.  The solution, for now, is to invalidate the type maps when we re-register all the intrinsic functions, which happens for each VM.  But this won't work when there are multiple VMs sharing the intrinsics.  I've added a note to POTENTIAL_ISSUES.md.
+
+In addition to the type maps, we also have to mark everything in the _intrinsics dictionary.  GC systems are super annoying this way: if you miss any roots, you will eventually free something you didn't mean to, and cause failures later on.  So far our test suite has proven to be a pretty good way to trigger these failures, but we should think about doing something more systematic, like triggering aggressive GC and garbage-overwrite on a regular basis.
+
+
+

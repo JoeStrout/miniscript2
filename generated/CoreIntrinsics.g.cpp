@@ -544,7 +544,7 @@ void CoreIntrinsics::Init() {
 		GC_PUSH_SCOPE();
 		Value self = stk[bi + 1]; GC_PROTECT(&self);
 		Value byKey = stk[bi + 2]; GC_PROTECT(&byKey);
-		bool ascending = numeric_val(stk[bi + 3]) != 0;
+		bool ascending = is_truthy(stk[bi + 3]);
 		if (!is_list(self))  {
 			GC_POP_SCOPE();
 			return self;

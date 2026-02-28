@@ -240,6 +240,16 @@ void gc_mark_value(Value v) {
     } else if (is_map(v)) {
         ValueMap* map = as_map(v);
         if (map) gc_mark_map(map);
+    } else if (is_funcref(v)) {
+        ValueFuncRef* fr = as_funcref(v);
+        if (fr) {
+            GCObject* obj = (GCObject*)((char*)fr - sizeof(GCObject));
+            if (!obj->marked) {
+                obj->marked = true;
+                // Also mark the outerVars if present
+                gc_mark_value(fr->outerVars);
+            }
+        }
     }
     // Numbers, ints, nil don't need marking
 }

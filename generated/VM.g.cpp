@@ -115,7 +115,13 @@ void VMStorage::MarkRoots(void* user_data) {
 		gc_mark_value(vm->stack[i]);
 		gc_mark_value(vm->names[i]);
 	}
-}	
+	// Mark intrinsics dictionary values (funcrefs are GC-allocated)
+	if (!IsNull(vm->_intrinsics)) {
+		for (Value val : vm->_intrinsics.GetValues()) {
+			gc_mark_value(val);
+		}
+	}
+}
 void VMStorage::RegisterFunction(FuncDef funcDef) {
 	functions.Add(funcDef);
 }

@@ -3433,7 +3433,8 @@ x = [1, 2, 3]; print x.sum
 --------------------------------
 6
 ================================
-x = [10, 30, 20]; x.sort; print x
+x = [10, 30, 20]; x.sort
+print x
 --------------------------------
 [10, 20, 30]
 ================================
@@ -3572,7 +3573,10 @@ m = {"a": 1}; print m.indexOf(99)
 --------------------------------
 null
 ================================
-m = {"a": 10, "b": 20}; print m.values
+m = {"a": 10, "b": 20}
+vals = m.values
+vals.sort
+print vals
 --------------------------------
 [10, 20]
 ================================
@@ -3599,6 +3603,78 @@ m = {"x": 1, "y": 2}
 idx = m.indexes
 print idx.indexOf("x") != null
 print idx.indexOf("y") != null
+--------------------------------
+1
+1
+================================
+================================================================================
+==== SECTION: ISA OPERATOR
+================================================================================
+==== isa with built-in types
+================================
+print 42 isa number
+print "hello" isa string
+print [1,2,3] isa list
+print {"a":1} isa map
+print (@print) isa funcRef
+print 42 isa string
+print "foo" isa number
+print [1,2,3] isa map
+print {"a":1} isa list
+--------------------------------
+1
+1
+1
+1
+1
+0
+0
+0
+0
+================================
+==== isa with non-matching types
+================================
+print 42 isa string
+print "hello" isa number
+print [1,2,3] isa map
+print {"a":1} isa list
+--------------------------------
+0
+0
+0
+0
+================================
+==== isa with null
+================================
+print null isa null
+print null isa number
+print 42 isa null
+--------------------------------
+1
+0
+0
+================================
+==== isa with user-defined types (new)
+================================
+Animal = {"name": "generic"}
+Dog = new Animal
+Dog.name = "dog"
+fido = new Dog
+print fido isa Dog
+print fido isa Animal
+print fido isa map
+print fido isa number
+--------------------------------
+1
+1
+1
+0
+================================
+==== isa precedence (between not and ==)
+================================
+x = 42
+print not x isa string
+print x isa number == 1
 --------------------------------
 1
 1

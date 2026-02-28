@@ -26,7 +26,7 @@ void ParserStorage::RegisterParselets() {
 
 	// Unary operators
 	RegisterPrefix(TokenType::MINUS,  UnaryOpParselet::New(Op::MINUS, Precedence::UNARY_MINUS));
-	RegisterPrefix(TokenType::NOT,  UnaryOpParselet::New(Op::NOT, Precedence::UNARY_MINUS));
+	RegisterPrefix(TokenType::NOT,  UnaryOpParselet::New(Op::NOT, Precedence::NOT));
 	RegisterPrefix(TokenType::ADDRESS_OF,  UnaryOpParselet::New(Op::ADDRESS_OF, Precedence::ADDRESS_OF));
 	RegisterPrefix(TokenType::NEW,  UnaryOpParselet::New(Op::NEW, Precedence::UNARY_MINUS));
 	RegisterPrefix(TokenType::SELF,  SelfParselet::New());
@@ -53,7 +53,7 @@ void ParserStorage::RegisterParselets() {
 	RegisterInfix(TokenType::OR,  BinaryOpParselet::New(Op::OR, Precedence::OR));
 
 	// Type-checking operator
-	RegisterInfix(TokenType::ISA,  BinaryOpParselet::New(Op::ISA, Precedence::EQUALITY));
+	RegisterInfix(TokenType::ISA,  BinaryOpParselet::New(Op::ISA, Precedence::ISA));
 
 	// Call and index operators
 	RegisterInfix(TokenType::LPAREN,  CallParselet::New());

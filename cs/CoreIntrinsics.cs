@@ -53,7 +53,7 @@ public static class CoreIntrinsics {
 	}
 
 	/// <summary>
-	/// ListType: a static map that represents the List type, and provides
+	/// ListType: a static map that represents the `list` type, and provides
 	/// intrinsic methods that can be invoked on it via dot syntax.
 	/// </summary>
 	public static Value ListType() {
@@ -80,7 +80,7 @@ public static class CoreIntrinsics {
 	private static Value _listType = val_null;
 
 	/// <summary>
-	/// StringType: a static map that represents the String type, and provides
+	/// StringType: a static map that represents the `string` type, and provides
 	/// intrinsic methods that can be invoked on it via dot syntax.
 	/// </summary>
 	public static Value StringType() {
@@ -105,7 +105,7 @@ public static class CoreIntrinsics {
 	private static Value _stringType = val_null;
 
 	/// <summary>
-	/// MapType: a static map that represents the Map type, and provides
+	/// MapType: a static map that represents the `map` type, and provides
 	/// intrinsic methods that can be invoked on it via dot syntax.
 	/// </summary>
 	public static Value MapType() {
@@ -129,7 +129,7 @@ public static class CoreIntrinsics {
 	private static Value _mapType = val_null;
 	
 	/// <summary>
-	/// NumberType: a static map that represents the Number type.
+	/// NumberType: a static map that represents the `number` type.
 	/// </summary>
 	public static Value NumberType() {
 		if (is_null(_numberType)) {
@@ -139,7 +139,22 @@ public static class CoreIntrinsics {
 	}
 	private static Value _numberType = val_null;	
 
+	/// <summary>
+	/// FunctionType: a static map that represents the `funcRef` type.
+	/// </summary>
+	public static Value FunctionType() {
+		if (is_null(_functionType)) {
+			_functionType = make_map(4);
+		}
+		return _functionType;
+	}
+	private static Value _functionType = val_null;	
+
+	// H: static void MarkRoots(void* user_data);
+
 	public static void Init() {
+		// CPP: gc_register_mark_callback(CoreIntrinsics::MarkRoots, nullptr);
+
 		Intrinsic f;
 
 		// Garbace collection (GC) note:
@@ -535,7 +550,7 @@ public static class CoreIntrinsics {
 		f.Code = (List<Value> stk, Int32 bi, Int32 ac) => {
 			Value self = stk[bi + 1];
 			Value byKey = stk[bi + 2];
-			bool ascending = numeric_val(stk[bi + 3]) != 0;
+			bool ascending = is_truthy(stk[bi + 3]);
 			if (!is_list(self)) return self;
 			if (list_count(self) < 2) return self;
 			if (is_null(byKey)) {
@@ -852,8 +867,47 @@ public static class CoreIntrinsics {
 			return MapType();
 		};
 
+		// number
+		//    Returns a map that represents the number datatype in
+		//    MiniScript's core type system.  This can be used with `isa`
+		//    to check whether a variable contains a number.
+		f = Intrinsic.Create("number");
+		f.Code = (List<Value> stk, Int32 bi, Int32 ac) => {
+			return NumberType();
+		};
+
+		// funcRef
+		//    Returns a map that represents the funcRef datatype in
+		//    MiniScript's core type system.  This can be used with `isa`
+		//    to check whether a variable refers to a function.
+		//    (Remember to use @ to avoid invoking the function!)
+		f = Intrinsic.Create("funcRef");
+		f.Code = (List<Value> stk, Int32 bi, Int32 ac) => {
+			return FunctionType();
+		};
+
 
 	}
+
+	public static void InvalidateTypeMaps() {
+		_listType = val_null;
+		_stringType = val_null;
+		_mapType = val_null;
+		_numberType = val_null;
+		_functionType = val_null;
+	}
+
+	/*** BEGIN CPP_ONLY ***
+	// GC mark callback to protect our static type maps from collection.
+	void CoreIntrinsics::MarkRoots(void* user_data) {
+		(void)user_data;
+		gc_mark_value(_listType);
+		gc_mark_value(_stringType);
+		gc_mark_value(_mapType);
+		gc_mark_value(_numberType);
+		gc_mark_value(_functionType);
+	}
+	*** END CPP_ONLY ***/
 
 }
 

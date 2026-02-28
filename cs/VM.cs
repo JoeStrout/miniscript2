@@ -1434,25 +1434,47 @@ public class VM {
 
 				case Opcode.ISA_rA_rB_rC: { // CPP: VM_CASE(ISA_rA_rB_rC) {
 					// R[A] = (R[B] isa R[C])
-					// True if R[B] and R[C] are the same reference, or if R[C]
-					// appears anywhere in R[B]'s __isa chain.
+					// True if:
+					//   1. both are null
+					//   2. R[C] is a built-in type map matching the type of R[B]
+					//   3. R[B] and R[C] are the same map reference, or R[C]
+					//      appears anywhere in R[B]'s __isa chain
 					Byte a = BytecodeUtil.Au(instruction);
 					Byte b = BytecodeUtil.Bu(instruction);
 					Byte c = BytecodeUtil.Cu(instruction);
 					lhs = localStack[b];
 					rhs = localStack[c];
 					Int32 isaResult = 0;
-					if (value_identical(lhs, rhs)) {
+					if (is_null(lhs) && is_null(rhs)) {
 						isaResult = 1;
-					} else {
-						current = lhs;
-						for (Int32 depth = 0; depth < 256; depth++) {
-							if (!map_try_get(current, val_isa_key, out next)) break;
-							if (value_identical(next, rhs)) {
-								isaResult = 1;
-								break;
+					} else if (value_identical(lhs, rhs)) {
+						isaResult = 1;
+					} else if (is_map(rhs)) {
+						// Walk lhs's __isa chain looking for rhs
+						if (is_map(lhs)) {
+							current = lhs;
+							for (Int32 depth = 0; depth < 256; depth++) {
+								if (!map_try_get(current, val_isa_key, out next)) break;
+								if (value_identical(next, rhs)) {
+									isaResult = 1;
+									break;
+								}
+								current = next;
 							}
-							current = next;
+						}
+						// If not found via __isa chain, check built-in type maps
+						if (isaResult == 0) {
+							if (is_number(lhs) && value_identical(rhs, CoreIntrinsics.NumberType())) {
+								isaResult = 1;
+							} else if (is_string(lhs) && value_identical(rhs, CoreIntrinsics.StringType())) {
+								isaResult = 1;
+							} else if (is_list(lhs) && value_identical(rhs, CoreIntrinsics.ListType())) {
+								isaResult = 1;
+							} else if (is_map(lhs) && value_identical(rhs, CoreIntrinsics.MapType())) {
+								isaResult = 1;
+							} else if (is_funcref(lhs) && value_identical(rhs, CoreIntrinsics.FunctionType())) {
+								isaResult = 1;
+							}
 						}
 					}
 					localStack[a] = make_int(isaResult);
@@ -1639,10 +1661,8 @@ public class VM {
 	}
 
 	private void EnsureFrame(Int32 baseIndex, UInt16 neededRegs) {
-		// Simple implementation - just check bounds
 		if (baseIndex + neededRegs > stack.Count) {
-			// Simple error handling - just print and continue
-			IOHelper.Print("Stack overflow error");
+			RaiseRuntimeError("Stack Overflow");
 		}
 	}
 

@@ -132,33 +132,44 @@ class CoreIntrinsics {
 	private: static void AddIntrinsicToMap(Value map, String methodName);
 
 	/// <summary>
-	/// ListType: a static map that represents the List type, and provides
+	/// ListType: a static map that represents the `list` type, and provides
 	/// intrinsic methods that can be invoked on it via dot syntax.
 	/// </summary>
 	public: static Value ListType();
 	private: static Value _listType;
 
 	/// <summary>
-	/// StringType: a static map that represents the String type, and provides
+	/// StringType: a static map that represents the `string` type, and provides
 	/// intrinsic methods that can be invoked on it via dot syntax.
 	/// </summary>
 	public: static Value StringType();
 	private: static Value _stringType;
 
 	/// <summary>
-	/// MapType: a static map that represents the Map type, and provides
+	/// MapType: a static map that represents the `map` type, and provides
 	/// intrinsic methods that can be invoked on it via dot syntax.
 	/// </summary>
 	public: static Value MapType();
 	private: static Value _mapType;
 	
 	/// <summary>
-	/// NumberType: a static map that represents the Number type.
+	/// NumberType: a static map that represents the `number` type.
 	/// </summary>
 	public: static Value NumberType();
 	private: static Value _numberType;
 
+	/// <summary>
+	/// FunctionType: a static map that represents the `funcRef` type.
+	/// </summary>
+	public: static Value FunctionType();
+	private: static Value _functionType;
+	static void MarkRoots(void* user_data);
+
+	// H: static void MarkRoots(void* user_data);
+
 	public: static void Init();
+
+	public: static void InvalidateTypeMaps();
 
 }; // end of struct CoreIntrinsics
 

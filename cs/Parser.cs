@@ -52,7 +52,7 @@ public class Parser : IParser {
 
 		// Unary operators
 		RegisterPrefix(TokenType.MINUS, new UnaryOpParselet(Op.MINUS, Precedence.UNARY_MINUS));
-		RegisterPrefix(TokenType.NOT, new UnaryOpParselet(Op.NOT, Precedence.UNARY_MINUS));
+		RegisterPrefix(TokenType.NOT, new UnaryOpParselet(Op.NOT, Precedence.NOT));
 		RegisterPrefix(TokenType.ADDRESS_OF, new UnaryOpParselet(Op.ADDRESS_OF, Precedence.ADDRESS_OF));
 		RegisterPrefix(TokenType.NEW, new UnaryOpParselet(Op.NEW, Precedence.UNARY_MINUS));
 		RegisterPrefix(TokenType.SELF, new SelfParselet());
@@ -79,7 +79,7 @@ public class Parser : IParser {
 		RegisterInfix(TokenType.OR, new BinaryOpParselet(Op.OR, Precedence.OR));
 
 		// Type-checking operator
-		RegisterInfix(TokenType.ISA, new BinaryOpParselet(Op.ISA, Precedence.EQUALITY));
+		RegisterInfix(TokenType.ISA, new BinaryOpParselet(Op.ISA, Precedence.ISA));
 
 		// Call and index operators
 		RegisterInfix(TokenType.LPAREN, new CallParselet());

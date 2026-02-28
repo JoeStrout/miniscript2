@@ -128,6 +128,7 @@ enum class Precedence : Int32 {
 	NOT,
 	EQUALITY,        // == !=
 	COMPARISON,      // < > <= >=
+	ISA,             // isa
 	SUM,             // + -
 	PRODUCT,         // * / %
 	UNARY_MINUS,     // -

@@ -86,6 +86,8 @@ public class Intrinsic {
 			functions.Add(def);
 			intrinsics[intr.Name] = make_funcref(funcIndex, val_null);
 		}
+		// Invalidate type maps so they get rebuilt with current function indices
+		CoreIntrinsics.InvalidateTypeMaps();
 	}
 }
 

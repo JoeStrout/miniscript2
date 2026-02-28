@@ -471,3 +471,8 @@ From last week's to-do list, here's what is left:
 
 The only one that took significant development was the last one, chained comparisons.  These required a fancier parselet and code generator.  Note that I decided to keep the MiniScript 1.x behavior, and not short-circuit when the expression has become false; this should actually be more performant in common cases, and is certainly simpler.
 
+## Feb 27, 2026
+
+Rounded out support for 'isa' with our new type intrinsics, so you can say "42 isa number" (etc.) now.
+
+But we forgot to mark the new type maps as roots in the GC system, so while it's working perfectly in C#, it soon fails in C++.  That should be an easy fix.

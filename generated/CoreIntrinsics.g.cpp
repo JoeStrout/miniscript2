@@ -98,7 +98,16 @@ Value CoreIntrinsics::NumberType() {
 	return _numberType;
 }
 Value CoreIntrinsics::_numberType = val_null;
+Value CoreIntrinsics::FunctionType() {
+	if (is_null(_functionType)) {
+		_functionType = make_map(4);
+	}
+	return _functionType;
+}
+Value CoreIntrinsics::_functionType = val_null;
 void CoreIntrinsics::Init() {
+	gc_register_mark_callback(CoreIntrinsics::MarkRoots, nullptr);
+
 	Intrinsic f;
 
 	// Garbace collection (GC) note:
@@ -136,9 +145,9 @@ void CoreIntrinsics::Init() {
 		return make_string(result);
 	});
 
-	// val(x=0)
+	// val(self=0)
 	f = Intrinsic::Create("val");
-	f.AddParam("x", make_int(0));
+	f.AddParam("self", make_int(0));
 	f.set_Code([](List<Value> stk, Int32 bi, Int32 ac) -> Value {
 		GC_PUSH_SCOPE();
 		Value v = stk[bi + 1]; GC_PROTECT(&v);
@@ -909,6 +918,41 @@ void CoreIntrinsics::Init() {
 		return MapType();
 	});
 
+	// number
+	//    Returns a map that represents the number datatype in
+	//    MiniScript's core type system.  This can be used with `isa`
+	//    to check whether a variable contains a number.
+	f = Intrinsic::Create("number");
+	f.set_Code([](List<Value> stk, Int32 bi, Int32 ac) -> Value {
+		return NumberType();
+	});
+
+	// funcRef
+	//    Returns a map that represents the funcRef datatype in
+	//    MiniScript's core type system.  This can be used with `isa`
+	//    to check whether a variable refers to a function.
+	//    (Remember to use @ to avoid invoking the function!)
+	f = Intrinsic::Create("funcRef");
+	f.set_Code([](List<Value> stk, Int32 bi, Int32 ac) -> Value {
+		return FunctionType();
+	});
+
+}
+void CoreIntrinsics::InvalidateTypeMaps() {
+	_listType = val_null;
+	_stringType = val_null;
+	_mapType = val_null;
+	_numberType = val_null;
+	_functionType = val_null;
+}
+// GC mark callback to protect our static type maps from collection.
+void CoreIntrinsics::MarkRoots(void* user_data) {
+	(void)user_data;
+	gc_mark_value(_listType);
+	gc_mark_value(_stringType);
+	gc_mark_value(_mapType);
+	gc_mark_value(_numberType);
+	gc_mark_value(_functionType);
 }
 
 } // end of namespace MiniScript

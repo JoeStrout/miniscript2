@@ -67,7 +67,7 @@ class DictionaryStorage {
 	DictionaryStorage() : count(0), freeCount(0) {}
   private:
 	std::vector<int> buckets;
-	std::vector<DictEntry<TKey, TValue>> entries;
+	std::vector<DictEntry<TKey, TValue> > entries;
 	int count;      // high-water mark: next free index in entries[]
 	int freeCount;  // number of removed entries (holes)
 
@@ -85,7 +85,7 @@ class DictionaryStorage {
 		if (newCapacity < 4) newCapacity = 4;
 
 		std::vector<int> newBuckets(newCapacity, -1);
-		std::vector<DictEntry<TKey, TValue>> newEntries(newCapacity);
+		std::vector<DictEntry<TKey, TValue> > newEntries(newCapacity);
 
 		// Rehash entries in index order to preserve insertion order
 		int newIndex = 0;
@@ -126,11 +126,11 @@ class DictionaryStorage {
 template<typename TKey, typename TValue>
 class Dictionary {
 private:
-	std::shared_ptr<DictionaryStorage<TKey, TValue>> data;
+	std::shared_ptr<DictionaryStorage<TKey, TValue> > data;
 
 	void ensureData() {
 		if (!data) {
-			data = std::make_shared<DictionaryStorage<TKey, TValue>>();
+			data = std::make_shared<DictionaryStorage<TKey, TValue> >();
 			data->createStorage(4);
 		} else if (data->buckets.empty()) {
 			data->createStorage(4);
@@ -144,7 +144,7 @@ public:
     // Factory method - allocates (matches C# "new Dictionary<K,V>()")
     static Dictionary<TKey, TValue> New() {
         Dictionary<TKey, TValue> result;
-        result.data = std::make_shared<DictionaryStorage<TKey, TValue>>();
+        result.data = std::make_shared<DictionaryStorage<TKey, TValue> >();
         result.data->createStorage(4);
         return result;
     }

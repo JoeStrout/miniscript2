@@ -361,10 +361,16 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 	Int32 baseIndex = BaseIndex;
 	Int32 currentFuncIndex = _currentFuncIndex;
 
+	Value* stackPtr = &stack[0];
+	// Note: CollectionsMarshal.AsSpan requires .NET 5+; not compatible with Mono.
+	// This gives us direct array access without copying, for performance.
+	// ----- Change call frame to currentFuncIndex -----
 	FuncDefStorage* curFuncRaw = CurrentFunction.get_storage();
 	Int32 codeCount = curFuncRaw->Code.Count();
 	UInt32* curCode = &curFuncRaw->Code[0];
 	Value* curConstants = &curFuncRaw->Constants[0];
+	Value* localStack = stackPtr + baseIndex;
+	// -----------------------------------------------
 
 	UInt32 cyclesLeft = maxCycles;
 	if (maxCycles == 0) cyclesLeft--;  // wraps to MAX_UINT32
@@ -392,7 +398,6 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 	Value endVal; GC_PROTECT(&endVal);
 	Value typeMap; GC_PROTECT(&typeMap);
 
-	Value* stackPtr = &stack[0];
 #if VM_USE_COMPUTED_GOTO
 	static void* const vm_labels[(int)Opcode::OP__COUNT] = { VM_OPCODES(VM_LABEL_LIST) };
 	if (DebugMode) IOHelper::Print("(Running with computed-goto dispatch)");
@@ -426,9 +431,6 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 		}
 
 		UInt32 instruction = curCode[pc++];
-		// Note: CollectionsMarshal.AsSpan requires .NET 5+; not compatible with Mono.
-		// This gives us direct array access without copying, for performance.
-		Value* localStack = stackPtr + baseIndex;
 
 		if (DebugMode) {
 			// Debug output disabled for C++ transpilation
@@ -525,10 +527,13 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 						baseIndex += curFuncRaw->MaxRegs;
 						pc = 0;
 						currentFuncIndex = calleeIdx;
+						// ----- Change call frame to currentFuncIndex -----
 						curFuncRaw = functions[currentFuncIndex].get_storage();
 						codeCount = curFuncRaw->Code.Count();
 						curCode = &curFuncRaw->Code[0];
 						curConstants = &curFuncRaw->Constants[0];
+						localStack = stackPtr + baseIndex;
+						// -----------------------------------------------
 					}
 				}
 				VM_NEXT();
@@ -1243,10 +1248,13 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				baseIndex = calleeBase;
 				currentFuncIndex = funcIndex2; // Switch to callee function
 				pc = 0; // Start at beginning of callee code
+				// ----- Change call frame to currentFuncIndex -----
 				curFuncRaw = functions[currentFuncIndex].get_storage();
 				codeCount = curFuncRaw->Code.Count();
 				curCode = &curFuncRaw->Code[0];
 				curConstants = &curFuncRaw->Constants[0];
+				localStack = stackPtr + baseIndex;
+				// -----------------------------------------------
 				EnsureFrame(baseIndex, callee.MaxRegs());
 				VM_NEXT();
 			}
@@ -1297,10 +1305,13 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				// Note: ApplyPendingContext skipped for CALLF (only needed for method dispatch via CALL)
 				pc = 0; // Start at beginning of callee code
 				currentFuncIndex = funcIndex; // Switch to callee function
+				// ----- Change call frame to currentFuncIndex -----
 				curFuncRaw = functions[currentFuncIndex].get_storage();
 				codeCount = curFuncRaw->Code.Count();
 				curCode = &curFuncRaw->Code[0];
 				curConstants = &curFuncRaw->Constants[0];
+				localStack = stackPtr + baseIndex;
+				// -----------------------------------------------
 
 				EnsureFrame(baseIndex, callee.MaxRegs());
 				VM_NEXT();
@@ -1369,10 +1380,13 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				baseIndex = calleeBase;
 				pc = 0; // Start at beginning of callee code
 				currentFuncIndex = funcIndex; // Switch to callee function
+				// ----- Change call frame to currentFuncIndex -----
 				curFuncRaw = functions[currentFuncIndex].get_storage();
 				codeCount = curFuncRaw->Code.Count();
 				curCode = &curFuncRaw->Code[0];
 				curConstants = &curFuncRaw->Constants[0];
+				localStack = stackPtr + baseIndex;
+				// -----------------------------------------------
 				EnsureFrame(baseIndex, callee.MaxRegs());
 				VM_NEXT();
 			}
@@ -1524,10 +1538,13 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 					baseIndex += curFuncRaw->MaxRegs;
 					pc = 0;
 					currentFuncIndex = calleeIdx;
+					// ----- Change call frame to currentFuncIndex -----
 					curFuncRaw = functions[calleeIdx].get_storage();
 					codeCount = curFuncRaw->Code.Count();
 					curCode = &curFuncRaw->Code[0];
 					curConstants = &curFuncRaw->Constants[0];
+					localStack = stackPtr + baseIndex;
+					// -----------------------------------------------
 				}
 				VM_NEXT();
 			}
@@ -1559,10 +1576,13 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				pc = callInfo.ReturnPC;
 				baseIndex = callInfo.ReturnBase;
 				currentFuncIndex = callInfo.ReturnFuncIndex; // Restore the caller's function
+				// ----- Change call frame to currentFuncIndex -----
 				curFuncRaw = functions[currentFuncIndex].get_storage();
 				codeCount = curFuncRaw->Code.Count();
 				curCode = &curFuncRaw->Code[0];
 				curConstants = &curFuncRaw->Constants[0];
+				localStack = stackPtr + baseIndex;
+				// -----------------------------------------------
 				
 				if (callInfo.CopyResultToReg >= 0) {
 					stack[baseIndex + callInfo.CopyResultToReg] = result;

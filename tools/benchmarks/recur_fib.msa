@@ -20,6 +20,6 @@ done:
 
 
 @main:
-	LOAD r0, 33				# Fibonacci number to find
+	LOAD r0, 35				# Fibonacci number to find
 	CALLF 0, @fib			# r0 = fib(r0)
 	RETURN					# return r0

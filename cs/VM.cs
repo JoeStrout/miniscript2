@@ -468,10 +468,16 @@ public class VM {
 		Int32 baseIndex = BaseIndex;
 		Int32 currentFuncIndex = _currentFuncIndex;
 
+		// CPP: Value* stackPtr = &stack[0];
+		// Note: CollectionsMarshal.AsSpan requires .NET 5+; not compatible with Mono.
+		// This gives us direct array access without copying, for performance.
+		// ----- Change call frame to currentFuncIndex -----
 		FuncDef curFunc = CurrentFunction; // CPP: FuncDefStorage* curFuncRaw = CurrentFunction.get_storage();
 		Int32 codeCount = curFunc.Code.Count; // CPP: Int32 codeCount = curFuncRaw->Code.Count();
 		var curCode = curFunc.Code; // CPP: UInt32* curCode = &curFuncRaw->Code[0];
 		var curConstants = curFunc.Constants; // CPP: Value* curConstants = &curFuncRaw->Constants[0];
+		Span<Value> localStack = CollectionsMarshal.AsSpan(stack).Slice(baseIndex); // CPP: Value* localStack = stackPtr + baseIndex;
+		// -----------------------------------------------
 
 		UInt32 cyclesLeft = maxCycles;
 		if (maxCycles == 0) cyclesLeft--;  // wraps to MAX_UINT32
@@ -499,7 +505,6 @@ public class VM {
 		Value typeMap;
 
 /*** BEGIN CPP_ONLY ***
-		Value* stackPtr = &stack[0];
 #if VM_USE_COMPUTED_GOTO
 		static void* const vm_labels[(int)Opcode::OP__COUNT] = { VM_OPCODES(VM_LABEL_LIST) };
 		if (DebugMode) IOHelper::Print("(Running with computed-goto dispatch)");
@@ -532,9 +537,6 @@ public class VM {
 			}
 
 			UInt32 instruction = curCode[pc++];
-			// Note: CollectionsMarshal.AsSpan requires .NET 5+; not compatible with Mono.
-			// This gives us direct array access without copying, for performance.
-			Span<Value> localStack = CollectionsMarshal.AsSpan(stack).Slice(baseIndex); // CPP: Value* localStack = stackPtr + baseIndex;
 
 			if (DebugMode) {
 				// Debug output disabled for C++ transpilation
@@ -631,10 +633,13 @@ public class VM {
 							baseIndex += curFunc.MaxRegs; // CPP: baseIndex += curFuncRaw->MaxRegs;
 							pc = 0;
 							currentFuncIndex = calleeIdx;
+							// ----- Change call frame to currentFuncIndex -----
 							curFunc = functions[calleeIdx];	// CPP: curFuncRaw = functions[currentFuncIndex].get_storage();
 							codeCount = curFunc.Code.Count; // CPP: codeCount = curFuncRaw->Code.Count();
 							curCode = curFunc.Code; // CPP: curCode = &curFuncRaw->Code[0];
 							curConstants = curFunc.Constants; // CPP: curConstants = &curFuncRaw->Constants[0];
+							localStack = CollectionsMarshal.AsSpan(stack).Slice(baseIndex); // CPP: localStack = stackPtr + baseIndex;
+							// -----------------------------------------------
 						}
 					}
 					break;
@@ -1341,10 +1346,13 @@ public class VM {
 					baseIndex = calleeBase;
 					currentFuncIndex = funcIndex2; // Switch to callee function
 					pc = 0; // Start at beginning of callee code
+					// ----- Change call frame to currentFuncIndex -----
 					curFunc = callee; // CPP: curFuncRaw = functions[currentFuncIndex].get_storage();
 					codeCount = curFunc.Code.Count; // CPP: codeCount = curFuncRaw->Code.Count();
 					curCode = curFunc.Code; // CPP: curCode = &curFuncRaw->Code[0];
 					curConstants = curFunc.Constants; // CPP: curConstants = &curFuncRaw->Constants[0];
+					localStack = CollectionsMarshal.AsSpan(stack).Slice(baseIndex); // CPP: localStack = stackPtr + baseIndex;
+					// -----------------------------------------------
 					EnsureFrame(baseIndex, callee.MaxRegs);
 					break;
 				}
@@ -1391,10 +1399,13 @@ public class VM {
 					// Note: ApplyPendingContext skipped for CALLF (only needed for method dispatch via CALL)
 					pc = 0; // Start at beginning of callee code
 					currentFuncIndex = funcIndex; // Switch to callee function
+					// ----- Change call frame to currentFuncIndex -----
 					curFunc = callee; // CPP: curFuncRaw = functions[currentFuncIndex].get_storage();
 					codeCount = curFunc.Code.Count; // CPP: codeCount = curFuncRaw->Code.Count();
 					curCode = curFunc.Code; // CPP: curCode = &curFuncRaw->Code[0];
 					curConstants = curFunc.Constants; // CPP: curConstants = &curFuncRaw->Constants[0];
+					localStack = CollectionsMarshal.AsSpan(stack).Slice(baseIndex); // CPP: localStack = stackPtr + baseIndex;
+					// -----------------------------------------------
 
 					EnsureFrame(baseIndex, callee.MaxRegs);
 					break;
@@ -1461,10 +1472,13 @@ public class VM {
 					baseIndex = calleeBase;
 					pc = 0; // Start at beginning of callee code
 					currentFuncIndex = funcIndex; // Switch to callee function
+					// ----- Change call frame to currentFuncIndex -----
 					curFunc = callee; // CPP: curFuncRaw = functions[currentFuncIndex].get_storage();
 					codeCount = curFunc.Code.Count; // CPP: codeCount = curFuncRaw->Code.Count();
 					curCode = curFunc.Code; // CPP: curCode = &curFuncRaw->Code[0];
 					curConstants = curFunc.Constants; // CPP: curConstants = &curFuncRaw->Constants[0];
+					localStack = CollectionsMarshal.AsSpan(stack).Slice(baseIndex); // CPP: localStack = stackPtr + baseIndex;
+					// -----------------------------------------------
 					EnsureFrame(baseIndex, callee.MaxRegs);
 					break;
 				}
@@ -1616,10 +1630,13 @@ public class VM {
 						baseIndex += curFunc.MaxRegs; // CPP: baseIndex += curFuncRaw->MaxRegs;
 						pc = 0;
 						currentFuncIndex = calleeIdx;
+						// ----- Change call frame to currentFuncIndex -----
 						curFunc = functions[calleeIdx]; // CPP: curFuncRaw = functions[calleeIdx].get_storage();
 						codeCount = curFunc.Code.Count; // CPP: codeCount = curFuncRaw->Code.Count();
 						curCode = curFunc.Code; // CPP: curCode = &curFuncRaw->Code[0];
 						curConstants = curFunc.Constants; // CPP: curConstants = &curFuncRaw->Constants[0];
+						localStack = CollectionsMarshal.AsSpan(stack).Slice(baseIndex); // CPP: localStack = stackPtr + baseIndex;
+						// -----------------------------------------------
 					}
 					break; // CPP: VM_NEXT();
 				}
@@ -1650,10 +1667,13 @@ public class VM {
 					pc = callInfo.ReturnPC;
 					baseIndex = callInfo.ReturnBase;
 					currentFuncIndex = callInfo.ReturnFuncIndex; // Restore the caller's function
+					// ----- Change call frame to currentFuncIndex -----
 					curFunc = functions[currentFuncIndex]; // CPP: curFuncRaw = functions[currentFuncIndex].get_storage();
 					codeCount = curFunc.Code.Count; // CPP: codeCount = curFuncRaw->Code.Count();
 					curCode = curFunc.Code; // CPP: curCode = &curFuncRaw->Code[0];
 					curConstants = curFunc.Constants; // CPP: curConstants = &curFuncRaw->Constants[0];
+					localStack = CollectionsMarshal.AsSpan(stack).Slice(baseIndex); // CPP: localStack = stackPtr + baseIndex;
+					// -----------------------------------------------
 					
 					if (callInfo.CopyResultToReg >= 0) {
 						stack[baseIndex + callInfo.CopyResultToReg] = result;

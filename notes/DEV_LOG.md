@@ -544,4 +544,20 @@ A major goal for MS2 was to bring our call overhead down.  Comparing to MiniScri
 
 We spent most of the day trying a major refactoring, eliminating the CallInfo stack and moving that data (as four Values) into the regular value stack.  But this produced very minor benefits at best, and actually made the goto-src case slightly slower.  So I've reverted it.  We're going to keep some minor optimizations, but I think the next step is probably to get this running with the Apple Profiler and see where the time is going.
 
+## Mar 10, 2026
 
+So, profiling.  The first step is to build with debug symbols:
+
+	cd cpp && make clean && make OPT_FLAGS="-O3 -DNDEBUG -g"
+
+Then, I can run with `sample` and write the output to a file:
+
+	build/cpp/miniscript2 tools/benchmarks/recur_fib.msa & sample $! 5 -file profile.txt
+
+This profile.txt can be loaded in Instruments, or just read as a text file.  (I had to increase the size of the Fibonacci number in recur_fib.msa in order to get a good-sized sample.)  The results show that it's spending most of its time incrementing and decrementing reference counts in the smart pointers, inside VM::RunInner.
+
+Also note that while trying things, you can get a quick check by timing a single run:
+
+	time build/cpp/miniscript2 tools/benchmarks/recur_fib.msa 
+
+This morning, that's reporting 3.75s for my modified recur_fib.msa script before any refactoring.  After replacing `curFunc` (a FuncDef that wraps a smart pointer) with `curFuncRaw` (a FuncDefStorage dumb pointer) in the CPP code, the same test takes 1.4 seconds.  A substantial improvement!

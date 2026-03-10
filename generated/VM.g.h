@@ -7,8 +7,10 @@
 #include "FuncDef.g.h"
 #include "ErrorPool.g.h"
 #include "value_map.h"
+#include <vector>
 
 namespace MiniScript {
+typedef const FuncDefStorage& FuncDefRef;
 
 // FORWARD DECLARATIONS
 
@@ -153,6 +155,7 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	private: List<CallInfo> callStack;
 	private: Int32 callStackTop; // Index of next free call stack slot
 	private: List<FuncDef> functions; // functions addressed by CALLF
+	private: std::vector<FuncDefStorage*> functionsRaw;
 	private: Dictionary<String, Value> _intrinsics; // intrinsic name -> FuncRef Value
 	public: Int32 PC;
 	private: Int32 _currentFuncIndex = -1;
@@ -173,6 +176,8 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 
 	// Static callback for C++ (accessible from VM wrapper)
 	// H: public: static std::function<void(const String&)> sPrintCallback;
+
+	
 
 	// Execution state (persistent across RunSteps calls)
 
@@ -223,19 +228,19 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	// Returns the PC after the CALL instruction, or -1 on error.
 	// Check whether pendingSelf should be injected as the first parameter.
 	// Returns 1 if the callee's first param is named "self" and we have pending context, else 0.
-	private: Int32 SelfParamOffset(FuncDef callee);
+	private: Int32 SelfParamOffset(FuncDefRef callee);
 
-	private: Int32 ProcessArguments(Int32 argCount, Int32 selfParam, Int32 startPC, Int32 callerBase, Int32 calleeBase, FuncDef callee, List<UInt32> code);
+	private: Int32 ProcessArguments(Int32 argCount, Int32 selfParam, Int32 startPC, Int32 callerBase, Int32 calleeBase, FuncDefRef callee, List<UInt32> code);
 
 	// Apply pending self/super context to a callee's frame, if any.
 	// Called after SetupCallFrame to populate the callee's self/super registers.
-	private: void ApplyPendingContext(Int32 calleeBase, FuncDef callee);
+	private: void ApplyPendingContext(Int32 calleeBase, FuncDefRef callee);
 
 	// Helper for call setup (FUNCTION_CALLS.md steps 4-6):
 	// Initialize remaining parameters with defaults and clear callee's registers.
 	// Note: Parameters start at r1 (r0 is reserved for return value)
 	// selfParam is 1 if pendingSelf was injected as the first arg, else 0.
-	private: void SetupCallFrame(Int32 argCount, Int32 selfParam, Int32 calleeBase, FuncDef callee);
+	private: void SetupCallFrame(Int32 argCount, Int32 selfParam, Int32 calleeBase, FuncDefRef callee);
 
 	// Auto-invoke a zero-arg funcref (used by LOADC and CALLIFREF).
 	// Resolves the funcref, then either:
@@ -243,7 +248,7 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	//   - User function: pushes CallInfo and sets up callee frame, returns the callee function index.
 	//     Caller must switch its local execution state (pc, baseIndex, curFunc, etc.).
 	// On error, calls RaiseRuntimeError and returns -1.
-	private: Int32 AutoInvokeFuncRef(Value funcRefVal, Int32 resultReg, Int32 returnPC, Int32 baseIndex, Int32 currentFuncIndex, FuncDef curFunc);
+	private: Int32 AutoInvokeFuncRef(Value funcRefVal, Int32 resultReg, Int32 returnPC, Int32 baseIndex, Int32 currentFuncIndex, FuncDefRef curFunc);
 
 	public: Value Execute(FuncDef entry);
 
@@ -312,6 +317,8 @@ struct VM {
 	// Static callback for C++ (accessible from VM wrapper)
 	// H: public: static std::function<void(const String&)> sPrintCallback;
 
+	
+
 	// Execution state (persistent across RunSteps calls)
 
 	// Pending self/super for method calls, set by METHFIND/SETSELF,
@@ -362,19 +369,19 @@ struct VM {
 	// Returns the PC after the CALL instruction, or -1 on error.
 	// Check whether pendingSelf should be injected as the first parameter.
 	// Returns 1 if the callee's first param is named "self" and we have pending context, else 0.
-	private: inline Int32 SelfParamOffset(FuncDef callee);
+	private: inline Int32 SelfParamOffset(FuncDefRef callee);
 
-	private: inline Int32 ProcessArguments(Int32 argCount, Int32 selfParam, Int32 startPC, Int32 callerBase, Int32 calleeBase, FuncDef callee, List<UInt32> code);
+	private: inline Int32 ProcessArguments(Int32 argCount, Int32 selfParam, Int32 startPC, Int32 callerBase, Int32 calleeBase, FuncDefRef callee, List<UInt32> code);
 
 	// Apply pending self/super context to a callee's frame, if any.
 	// Called after SetupCallFrame to populate the callee's self/super registers.
-	private: inline void ApplyPendingContext(Int32 calleeBase, FuncDef callee);
+	private: inline void ApplyPendingContext(Int32 calleeBase, FuncDefRef callee);
 
 	// Helper for call setup (FUNCTION_CALLS.md steps 4-6):
 	// Initialize remaining parameters with defaults and clear callee's registers.
 	// Note: Parameters start at r1 (r0 is reserved for return value)
 	// selfParam is 1 if pendingSelf was injected as the first arg, else 0.
-	private: inline void SetupCallFrame(Int32 argCount, Int32 selfParam, Int32 calleeBase, FuncDef callee);
+	private: inline void SetupCallFrame(Int32 argCount, Int32 selfParam, Int32 calleeBase, FuncDefRef callee);
 
 	// Auto-invoke a zero-arg funcref (used by LOADC and CALLIFREF).
 	// Resolves the funcref, then either:
@@ -382,7 +389,7 @@ struct VM {
 	//   - User function: pushes CallInfo and sets up callee frame, returns the callee function index.
 	//     Caller must switch its local execution state (pc, baseIndex, curFunc, etc.).
 	// On error, calls RaiseRuntimeError and returns -1.
-	private: inline Int32 AutoInvokeFuncRef(Value funcRefVal, Int32 resultReg, Int32 returnPC, Int32 baseIndex, Int32 currentFuncIndex, FuncDef curFunc);
+	private: inline Int32 AutoInvokeFuncRef(Value funcRefVal, Int32 resultReg, Int32 returnPC, Int32 baseIndex, Int32 currentFuncIndex, FuncDefRef curFunc);
 
 	public: inline Value Execute(FuncDef entry);
 
@@ -449,11 +456,11 @@ inline void VM::RegisterFunction(FuncDef funcDef) { return get()->RegisterFuncti
 inline void VM::Reset(List<FuncDef> allFunctions) { return get()->Reset(allFunctions); }
 inline void VM::RaiseRuntimeError(String message) { return get()->RaiseRuntimeError(message); }
 inline bool VM::ReportRuntimeError() { return get()->ReportRuntimeError(); }
-inline Int32 VM::SelfParamOffset(FuncDef callee) { return get()->SelfParamOffset(callee); }
-inline Int32 VM::ProcessArguments(Int32 argCount,Int32 selfParam,Int32 startPC,Int32 callerBase,Int32 calleeBase,FuncDef callee,List<UInt32> code) { return get()->ProcessArguments(argCount, selfParam, startPC, callerBase, calleeBase, callee, code); }
-inline void VM::ApplyPendingContext(Int32 calleeBase,FuncDef callee) { return get()->ApplyPendingContext(calleeBase, callee); }
-inline void VM::SetupCallFrame(Int32 argCount,Int32 selfParam,Int32 calleeBase,FuncDef callee) { return get()->SetupCallFrame(argCount, selfParam, calleeBase, callee); }
-inline Int32 VM::AutoInvokeFuncRef(Value funcRefVal,Int32 resultReg,Int32 returnPC,Int32 baseIndex,Int32 currentFuncIndex,FuncDef curFunc) { return get()->AutoInvokeFuncRef(funcRefVal, resultReg, returnPC, baseIndex, currentFuncIndex, curFunc); }
+inline Int32 VM::SelfParamOffset(FuncDefRef callee) { return get()->SelfParamOffset(callee); }
+inline Int32 VM::ProcessArguments(Int32 argCount,Int32 selfParam,Int32 startPC,Int32 callerBase,Int32 calleeBase,FuncDefRef callee,List<UInt32> code) { return get()->ProcessArguments(argCount, selfParam, startPC, callerBase, calleeBase, callee, code); }
+inline void VM::ApplyPendingContext(Int32 calleeBase,FuncDefRef callee) { return get()->ApplyPendingContext(calleeBase, callee); }
+inline void VM::SetupCallFrame(Int32 argCount,Int32 selfParam,Int32 calleeBase,FuncDefRef callee) { return get()->SetupCallFrame(argCount, selfParam, calleeBase, callee); }
+inline Int32 VM::AutoInvokeFuncRef(Value funcRefVal,Int32 resultReg,Int32 returnPC,Int32 baseIndex,Int32 currentFuncIndex,FuncDefRef curFunc) { return get()->AutoInvokeFuncRef(funcRefVal, resultReg, returnPC, baseIndex, currentFuncIndex, curFunc); }
 inline Value VM::Execute(FuncDef entry) { return get()->Execute(entry); }
 inline Value VM::Execute(FuncDef entry,UInt32 maxCycles) { return get()->Execute(entry, maxCycles); }
 inline Value VM::Run(UInt32 maxCycles) { return get()->Run(maxCycles); }

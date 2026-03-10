@@ -561,3 +561,8 @@ Also note that while trying things, you can get a quick check by timing a single
 	time build/cpp/miniscript2 tools/benchmarks/recur_fib.msa 
 
 This morning, that's reporting 3.75s for my modified recur_fib.msa script before any refactoring.  After replacing `curFunc` (a FuncDef that wraps a smart pointer) with `curFuncRaw` (a FuncDefStorage dumb pointer) in the CPP code, the same test takes 1.4 seconds.  A substantial improvement!
+
+Then moved recalculation of local_stack into only the places where it changes (instead of on every instruction); that dropped the time for rfib(35) (via asm) down to 1.31 seconds.
+
+And with a further optimization (functionsRaw vector storing FuncDefStorage*'s), the time comes down to 1.14s!
+

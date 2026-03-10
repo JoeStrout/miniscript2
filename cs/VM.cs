@@ -7,6 +7,7 @@ using static System.Runtime.CompilerServices.MethodImplOptions;
 // H: #include "FuncDef.g.h"
 // H: #include "ErrorPool.g.h"
 // H: #include "value_map.h"
+// H: #include <vector>
 // CPP: #include "gc.h"
 // CPP: #include "value_list.h"
 // CPP: #include "value_string.h"
@@ -24,6 +25,8 @@ using static System.Runtime.CompilerServices.MethodImplOptions;
 using static MiniScript.ValueHelpers;
 
 namespace MiniScript {
+
+using FuncDefRef = FuncDef; // H: typedef const FuncDefStorage& FuncDefRef;
 
 // Call stack frame (return info)
 public struct CallInfo {
@@ -90,6 +93,10 @@ public class VM {
 	private Int32 callStackTop;	   // Index of next free call stack slot
 
 	private List<FuncDef> functions; // functions addressed by CALLF
+	/*** BEGIN H_ONLY ***
+	private: std::vector<FuncDefStorage*> functionsRaw;
+	*** END H_ONLY ***/
+	
 	private Dictionary<String, Value> _intrinsics; // intrinsic name -> FuncRef Value
 
 	// Execution state (persistent across RunSteps calls)
@@ -242,12 +249,15 @@ public class VM {
 			return;
 		}
 
-		// Find the entry function index
+		// Find the entry function index; at the same time, copy into
+		// our functionsRaw vector (C++ only) for quick access
+		// CPP: functionsRaw.reserve(functions.Count());
 		_currentFuncIndex = -1;
 		for (Int32 i = 0; i < functions.Count; i++) {
+			// CPP: functionsRaw.push_back(functions[i].get_storage());
 			if (functions[i].Name == mainFunc.Name) {
 				_currentFuncIndex = i;
-				break;
+				break; // CPP: // (don't break, we need to copy all function pointers)
 			}
 		}
 
@@ -292,14 +302,14 @@ public class VM {
 	// Returns the PC after the CALL instruction, or -1 on error.
 	// Check whether pendingSelf should be injected as the first parameter.
 	// Returns 1 if the callee's first param is named "self" and we have pending context, else 0.
-	private Int32 SelfParamOffset(FuncDef callee) {
+	private Int32 SelfParamOffset(FuncDefRef callee) {
 		if (hasPendingContext && callee.ParamNames.Count > 0 && value_equal(callee.ParamNames[0], val_self)) {
 			return 1;
 		}
 		return 0;
 	}
 
-	private Int32 ProcessArguments(Int32 argCount, Int32 selfParam, Int32 startPC, Int32 callerBase, Int32 calleeBase, FuncDef callee, List<UInt32> code) {
+	private Int32 ProcessArguments(Int32 argCount, Int32 selfParam, Int32 startPC, Int32 callerBase, Int32 calleeBase, FuncDefRef callee, List<UInt32> code) {
 		Int32 paramCount = callee.ParamNames.Count;
 
 		// Step 1: Validate argument count (selfParam accounts for the injected self)
@@ -345,7 +355,7 @@ public class VM {
 
 	// Apply pending self/super context to a callee's frame, if any.
 	// Called after SetupCallFrame to populate the callee's self/super registers.
-	private void ApplyPendingContext(Int32 calleeBase, FuncDef callee) {
+	private void ApplyPendingContext(Int32 calleeBase, FuncDefRef callee) {
 		if (!hasPendingContext) return;
 		if (callee.SelfReg >= 0) {
 			stack[calleeBase + callee.SelfReg] = pendingSelf;
@@ -364,7 +374,7 @@ public class VM {
 	// Initialize remaining parameters with defaults and clear callee's registers.
 	// Note: Parameters start at r1 (r0 is reserved for return value)
 	// selfParam is 1 if pendingSelf was injected as the first arg, else 0.
-	private void SetupCallFrame(Int32 argCount, Int32 selfParam, Int32 calleeBase, FuncDef callee) {
+	private void SetupCallFrame(Int32 argCount, Int32 selfParam, Int32 calleeBase, FuncDefRef callee) {
 		Int32 paramCount = callee.ParamNames.Count;
 
 		// Step 4: Set up remaining parameters with default values
@@ -391,14 +401,15 @@ public class VM {
 	//   - User function: pushes CallInfo and sets up callee frame, returns the callee function index.
 	//     Caller must switch its local execution state (pc, baseIndex, curFunc, etc.).
 	// On error, calls RaiseRuntimeError and returns -1.
-	private Int32 AutoInvokeFuncRef(Value funcRefVal, Int32 resultReg, Int32 returnPC, Int32 baseIndex, Int32 currentFuncIndex, FuncDef curFunc) {
+	private Int32 AutoInvokeFuncRef(Value funcRefVal, Int32 resultReg, Int32 returnPC, Int32 baseIndex, Int32 currentFuncIndex, FuncDefRef curFunc) {
 		Int32 funcIndex = funcref_index(funcRefVal);
 		if (funcIndex < 0 || funcIndex >= functions.Count) {
 			RaiseRuntimeError("Auto-invoke: Invalid function index");
 			return -1;
 		}
 
-		FuncDef callee = functions[funcIndex];
+		FuncDefRef callee =
+		   functions[funcIndex]; // CPP: *functionsRaw[funcIndex];
 		Value outerVars = funcref_outer_vars(funcRefVal);
 
 		Int32 calleeBase = baseIndex + curFunc.MaxRegs;
@@ -627,7 +638,8 @@ public class VM {
 						localStack[a] = val;
 					} else {
 						// Value is a funcref — auto-invoke with zero args
-						Int32 calleeIdx = AutoInvokeFuncRef(val, a, pc, baseIndex, currentFuncIndex, functions[currentFuncIndex]);
+						Int32 calleeIdx = AutoInvokeFuncRef(val, a, pc, baseIndex, currentFuncIndex, 
+						  functions[currentFuncIndex]); // CPP: *functionsRaw[currentFuncIndex]);
 						if (calleeIdx >= 0) {
 							// Frame was pushed — switch to callee
 							baseIndex += curFunc.MaxRegs; // CPP: baseIndex += curFuncRaw->MaxRegs;
@@ -1278,36 +1290,31 @@ public class VM {
 					}
 					UInt32 callInstruction = curCode[callPC];
 					Opcode callOp = (Opcode)BytecodeUtil.OP(callInstruction);
-
-					// Extract call parameters based on opcode type
-					FuncDef callee;
-					Int32 calleeBase = 0;
-					Int32 resultReg = -1;
-
-					if (callOp == Opcode.CALL_rA_rB_rC) {
-						// CALL r[A], r[B], r[C]: invoke funcref in r[C], frame at r[B], result to r[A]
-						Byte a = BytecodeUtil.Au(callInstruction);
-						Byte b = BytecodeUtil.Bu(callInstruction);
-						Byte c = BytecodeUtil.Cu(callInstruction);
-
-						funcRefValue = localStack[c];
-						if (!is_funcref(funcRefValue)) {
-							RaiseRuntimeError("ARGBLK/CALL: Not a function reference");
-							return val_null;
-						}
-
-						Int32 funcIndex = funcref_index(funcRefValue);
-						if (funcIndex < 0 || funcIndex >= functions.Count) {
-							RaiseRuntimeError("ARGBLK/CALL: Invalid function index");
-							return val_null;
-						}
-						callee = functions[funcIndex];
-						calleeBase = baseIndex + b;
-						resultReg = a;
-					} else {
+					if (callOp != Opcode.CALL_rA_rB_rC) {
 						RaiseRuntimeError("ARGBLK must be followed by CALL");
 						return val_null;
 					}
+
+					// CALL r[A], r[B], r[C]: invoke funcref in r[C], frame at r[B], result to r[A]
+					Byte a = BytecodeUtil.Au(callInstruction);
+					Byte b = BytecodeUtil.Bu(callInstruction);
+					Byte c = BytecodeUtil.Cu(callInstruction);
+
+					funcRefValue = localStack[c];
+					if (!is_funcref(funcRefValue)) {
+						RaiseRuntimeError("ARGBLK/CALL: Not a function reference");
+						return val_null;
+					}
+
+					Int32 funcIndex = funcref_index(funcRefValue);
+					if (funcIndex < 0 || funcIndex >= functions.Count) {
+						RaiseRuntimeError("ARGBLK/CALL: Invalid function index");
+						return val_null;
+					}
+					FuncDefRef callee = 
+					  functions[funcIndex]; // CPP: *functionsRaw[funcIndex];
+					Int32 calleeBase = baseIndex + b;
+					Int32 resultReg = a;
 
 					// Check for self-injection: if pending context and first param is "self",
 					// inject pendingSelf as the first argument
@@ -1384,7 +1391,8 @@ public class VM {
 						return val_null;
 					}
 					
-					FuncDef callee = functions[funcIndex];
+					FuncDefRef callee = 
+					  functions[funcIndex]; // CPP: *functionsRaw[funcIndex];
 
 					// Push return info
 					if (callStackTop >= callStack.Count) {
@@ -1441,7 +1449,8 @@ public class VM {
 						IOHelper.Print("CALL: Invalid function index in FuncRef");
 						return val_null;
 					}
-					FuncDef callee = functions[funcIndex];
+					FuncDefRef callee =
+					   functions[funcIndex]; // CPP: *functionsRaw[funcIndex];
 					outerVars = funcref_outer_vars(funcRefValue);
 
 					// For naked CALL (without ARGBLK): set up parameters with defaults
@@ -1624,7 +1633,8 @@ public class VM {
 					}
 
 					// Auto-invoke the funcref with zero args
-					Int32 calleeIdx = AutoInvokeFuncRef(val, a, pc, baseIndex, currentFuncIndex, functions[currentFuncIndex]);
+					Int32 calleeIdx = AutoInvokeFuncRef(val, a, pc, baseIndex, currentFuncIndex, 
+					  functions[currentFuncIndex]); // CPP: *functionsRaw[currentFuncIndex]);
 					if (calleeIdx >= 0) {
 						// Frame was pushed — switch to callee
 						baseIndex += curFunc.MaxRegs; // CPP: baseIndex += curFuncRaw->MaxRegs;

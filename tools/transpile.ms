@@ -484,7 +484,7 @@ Transpiler.transformStatement = function(trimmedLine)
 	// non-identifier string.
 	tokens = roughTokenize(trimmedLine)
 	
-	deepDebug = trimmedLine.contains("String[]")
+	deepDebug = trimmedLine.contains("callee")
 	ddprint = function(s); if deepDebug then print "====> " + s; end function
 	summarize = function(obj)
 		if obj == null then return "<null>"
@@ -529,7 +529,16 @@ Transpiler.transformStatement = function(trimmedLine)
 				continue
 			end if
 			ddprint "Got dot when curInfo=" + summarize(curInfo)
-			if curInfo isa VariableInfo then curInfo = self.lookup(curInfo.type) // ToDo: context?
+			if curInfo isa VariableInfo then
+				type = curInfo.type
+				curInfo = self.lookup(type - "Ref") // ToDo: context?
+				if curInfo and type.endsWith("Ref") then
+					curInfo = new curInfo
+					curInfo.viaRef = true
+					ddprint "Found ref type, bailing"
+					continue
+				end if
+			end if
 			ddprint "After lookup, curInfo=" + summarize(curInfo)
 			if i and tokens[i-1] == "this" then
 				curInfo = self.curClass
@@ -537,7 +546,7 @@ Transpiler.transformStatement = function(trimmedLine)
 			end if
 			// look up RHS type and see if it's static; if so, it needs "::" rather than "."
 			rhsStatic = true
-			if i-1 >= 0 and not isIdentifierChar(tokens[i-1][-1]) then
+			if i and not isIdentifierChar(tokens[i-1][-1]) then
 				// ...but if LHS token is not an identifier, then it *can't* be static
 				ddprint "LHS token is " + tokens[i-1] + ", so we CAN'T use :: here"
 				continue
@@ -659,18 +668,22 @@ Transpiler.transformStatement = function(trimmedLine)
 		if curInfo isa ClassInfo and curInfo.type == ClassType.CLASS and
 		  nextInfo isa VariableInfo then
 			// Found a field lookup!  Or maybe an assignment.  Check the next token
-			// to determine which.
+			// to determine which.  And skip extra syntax when accessed via Ref.
+			if curInfo.hasIndex("viaRef") then viaRef = curInfo.viaRef else viaRef = false
+			if viaRef then ddprint "ACCESS VIA REF so skipping extra syntax"
 			if i+1 < tokens.len and tokens[i+1].trimLeft.startsWith("= ") then
 				ddprint "FIELD ASSIGNMENT (" + curInfo.name + "." + nextInfo.name + ") FOUND!!!"
 				// Change this to a set_ call.
-				tokens[i] = "set_" + tokens[i] + "("
-				tokens[i+1] = tokens[i+1][2:].trimLeft
+				if not viaRef then
+					tokens[i] = "set_" + tokens[i] + "("
+					tokens[i+1] = tokens[i+1][2:].trimLeft
+				end if
 				nextInfo = null
 				didAssignment = true
 			else
 				ddprint "FIELD LOOKUP (" + curInfo.name + "." + nextInfo.name + ") FOUND!!!"
 				// Just add () to call the getter.
-				tokens[i] += "()"
+				if not viaRef then tokens[i] += "()"
 				nextInfo = self.lookup(nextInfo.type)
 				ddprint "Field type (nextInfo): " + summarize(nextInfo)
 			end if
@@ -1374,6 +1387,7 @@ Transpiler.updateStateMETHOD = function
 		return
 	end if
 	if (self.match("≤type:w≥ ≤name:w≥;") or
+	   self.match("≤type:w≥ ≤name:w≥ =") or
 	   self.match("≤type:w≥ ≤name:w≥ = ≤expr≥;")) and not isKeyword(self.m.type) then
 		self.localVars.push VariableInfo.Make(self.m.name, self.m.type, Scope.LOCAL)
 		// special case: watch for declarations of type Value, which need GC protection.

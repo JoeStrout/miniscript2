@@ -154,12 +154,15 @@ void VMStorage::Reset(List<FuncDef> allFunctions) {
 		return;
 	}
 
-	// Find the entry function index
+	// Find the entry function index; at the same time, copy into
+	// our functionsRaw vector (C++ only) for quick access
+	functionsRaw.reserve(functions.Count());
 	_currentFuncIndex = -1;
 	for (Int32 i = 0; i < functions.Count(); i++) {
+		functionsRaw.push_back(functions[i].get_storage());
 		if (functions[i].Name() == mainFunc.Name()) {
 			_currentFuncIndex = i;
-			break;
+			// (don't break, we need to copy all function pointers)
 		}
 	}
 
@@ -193,14 +196,14 @@ bool VMStorage::ReportRuntimeError() {
 	  RuntimeError, CurrentFunction.Name(), PC - 1));
 	return Boolean(true);
 }
-Int32 VMStorage::SelfParamOffset(FuncDef callee) {
-	if (hasPendingContext && callee.ParamNames().Count() > 0 && value_equal(callee.ParamNames()[0], val_self)) {
+Int32 VMStorage::SelfParamOffset(FuncDefRef callee) {
+	if (hasPendingContext && callee.ParamNames.Count() > 0 && value_equal(callee.ParamNames[0], val_self)) {
 		return 1;
 	}
 	return 0;
 }
-Int32 VMStorage::ProcessArguments(Int32 argCount,Int32 selfParam,Int32 startPC,Int32 callerBase,Int32 calleeBase,FuncDef callee,List<UInt32> code) {
-	Int32 paramCount = callee.ParamNames().Count();
+Int32 VMStorage::ProcessArguments(Int32 argCount,Int32 selfParam,Int32 startPC,Int32 callerBase,Int32 calleeBase,FuncDefRef callee,List<UInt32> code) {
+	Int32 paramCount = callee.ParamNames.Count();
 
 	// Step 1: Validate argument count (selfParam accounts for the injected self)
 	if (argCount + selfParam > paramCount) {
@@ -237,7 +240,7 @@ Int32 VMStorage::ProcessArguments(Int32 argCount,Int32 selfParam,Int32 startPC,I
 		// Copy argument value to callee's parameter register and assign name
 		// Parameters start at r1, so offset by 1, plus selfParam
 		stack[calleeBase + 1 + selfParam + i] = argValue;
-		names[calleeBase + 1 + selfParam + i] = callee.ParamNames()[selfParam + i];
+		names[calleeBase + 1 + selfParam + i] = callee.ParamNames[selfParam + i];
 
 		currentPC++;
 	}
@@ -245,41 +248,41 @@ Int32 VMStorage::ProcessArguments(Int32 argCount,Int32 selfParam,Int32 startPC,I
 	GC_POP_SCOPE();
 	return currentPC + 1; // Return PC after the CALL instruction
 }
-void VMStorage::ApplyPendingContext(Int32 calleeBase,FuncDef callee) {
+void VMStorage::ApplyPendingContext(Int32 calleeBase,FuncDefRef callee) {
 	if (!hasPendingContext) return;
-	if (callee.SelfReg() >= 0) {
-		stack[calleeBase + callee.SelfReg()] = pendingSelf;
-		names[calleeBase + callee.SelfReg()] = val_self;
+	if (callee.SelfReg >= 0) {
+		stack[calleeBase + callee.SelfReg] = pendingSelf;
+		names[calleeBase + callee.SelfReg] = val_self;
 	}
-	if (callee.SuperReg() >= 0) {
-		stack[calleeBase + callee.SuperReg()] = pendingSuper;
-		names[calleeBase + callee.SuperReg()] = val_super;
+	if (callee.SuperReg >= 0) {
+		stack[calleeBase + callee.SuperReg] = pendingSuper;
+		names[calleeBase + callee.SuperReg] = val_super;
 	}
 	pendingSelf = val_null;
 	pendingSuper = val_null;
 	hasPendingContext = Boolean(false);
 }
-void VMStorage::SetupCallFrame(Int32 argCount,Int32 selfParam,Int32 calleeBase,FuncDef callee) {
-	Int32 paramCount = callee.ParamNames().Count();
+void VMStorage::SetupCallFrame(Int32 argCount,Int32 selfParam,Int32 calleeBase,FuncDefRef callee) {
+	Int32 paramCount = callee.ParamNames.Count();
 
 	// Step 4: Set up remaining parameters with default values
 	// Parameters start at r1, so offset by 1
 	for (Int32 i = argCount + selfParam; i < paramCount; i++) {
-		stack[calleeBase + 1 + i] = callee.ParamDefaults()[i];
-		names[calleeBase + 1 + i] = callee.ParamNames()[i];
+		stack[calleeBase + 1 + i] = callee.ParamDefaults[i];
+		names[calleeBase + 1 + i] = callee.ParamNames[i];
 	}
 
 	// Step 5: Clear remaining registers (r0, and any beyond parameters)
 	stack[calleeBase] = val_null;
 	names[calleeBase] = val_null;
-	for (Int32 i = paramCount + 1; i < callee.MaxRegs(); i++) {
+	for (Int32 i = paramCount + 1; i < callee.MaxRegs; i++) {
 		stack[calleeBase + i] = val_null;
 		names[calleeBase + i] = val_null;
 	}
 
 	// Step 6 is handled by the caller (pushing CallInfo, switching frame, etc.)
 }
-Int32 VMStorage::AutoInvokeFuncRef(Value funcRefVal,Int32 resultReg,Int32 returnPC,Int32 baseIndex,Int32 currentFuncIndex,FuncDef curFunc) {
+Int32 VMStorage::AutoInvokeFuncRef(Value funcRefVal,Int32 resultReg,Int32 returnPC,Int32 baseIndex,Int32 currentFuncIndex,FuncDefRef curFunc) {
 	VM _this(std::static_pointer_cast<VMStorage>(shared_from_this()));
 	Int32 funcIndex = funcref_index(funcRefVal);
 	if (funcIndex < 0 || funcIndex >= functions.Count()) {
@@ -287,17 +290,18 @@ Int32 VMStorage::AutoInvokeFuncRef(Value funcRefVal,Int32 resultReg,Int32 return
 		return -1;
 	}
 
-	FuncDef callee = functions[funcIndex];
+	FuncDefRef callee =
+	   *functionsRaw[funcIndex];
 	GC_PUSH_SCOPE();
 	Value outerVars = funcref_outer_vars(funcRefVal); GC_PROTECT(&outerVars);
 
-	Int32 calleeBase = baseIndex + curFunc.MaxRegs();
+	Int32 calleeBase = baseIndex + curFunc.MaxRegs;
 
 	Int32 selfParam = SelfParamOffset(callee);
 
 	// Native intrinsic: invoke callback directly, no frame push
-	if (!IsNull(callee.NativeCallback())) {
-		EnsureFrame(calleeBase, callee.MaxRegs());
+	if (!IsNull(callee.NativeCallback)) {
+		EnsureFrame(calleeBase, callee.MaxRegs);
 		SetupCallFrame(0, selfParam, calleeBase, callee);
 		if (selfParam > 0) {
 			stack[calleeBase + 1] = pendingSelf;
@@ -305,7 +309,7 @@ Int32 VMStorage::AutoInvokeFuncRef(Value funcRefVal,Int32 resultReg,Int32 return
 			pendingSelf = val_null;
 			hasPendingContext = Boolean(false);
 		}
-		stack[baseIndex + resultReg] = callee.NativeCallback()(CallContext(_this, stack, calleeBase, selfParam));
+		stack[baseIndex + resultReg] = callee.NativeCallback(CallContext(_this, stack, calleeBase, selfParam));
 		GC_POP_SCOPE();
 		return -1;
 	}
@@ -325,7 +329,7 @@ Int32 VMStorage::AutoInvokeFuncRef(Value funcRefVal,Int32 resultReg,Int32 return
 	}
 	SetupCallFrame(0, selfParam, calleeBase, callee);
 	ApplyPendingContext(calleeBase, callee);
-	EnsureFrame(calleeBase, callee.MaxRegs());
+	EnsureFrame(calleeBase, callee.MaxRegs);
 	GC_POP_SCOPE();
 	return funcIndex;
 }
@@ -521,7 +525,8 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 					localStack[a] = val;
 				} else {
 					// Value is a funcref — auto-invoke with zero args
-					Int32 calleeIdx = AutoInvokeFuncRef(val, a, pc, baseIndex, currentFuncIndex, functions[currentFuncIndex]);
+					Int32 calleeIdx = AutoInvokeFuncRef(val, a, pc, baseIndex, currentFuncIndex, 
+					  *functionsRaw[currentFuncIndex]);
 					if (calleeIdx >= 0) {
 						// Frame was pushed — switch to callee
 						baseIndex += curFuncRaw->MaxRegs;
@@ -1173,39 +1178,34 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				}
 				UInt32 callInstruction = curCode[callPC];
 				Opcode callOp = (Opcode)BytecodeUtil::OP(callInstruction);
-
-				// Extract call parameters based on opcode type
-				FuncDef callee;
-				Int32 calleeBase = 0;
-				Int32 resultReg = -1;
-
-				if (callOp == Opcode::CALL_rA_rB_rC) {
-					// CALL r[A], r[B], r[C]: invoke funcref in r[C], frame at r[B], result to r[A]
-					Byte a = BytecodeUtil::Au(callInstruction);
-					Byte b = BytecodeUtil::Bu(callInstruction);
-					Byte c = BytecodeUtil::Cu(callInstruction);
-
-					funcRefValue = localStack[c];
-					if (!is_funcref(funcRefValue)) {
-						RaiseRuntimeError("ARGBLK/CALL: Not a function reference");
-						GC_POP_SCOPE();
-						return val_null;
-					}
-
-					Int32 funcIndex = funcref_index(funcRefValue);
-					if (funcIndex < 0 || funcIndex >= functions.Count()) {
-						RaiseRuntimeError("ARGBLK/CALL: Invalid function index");
-						GC_POP_SCOPE();
-						return val_null;
-					}
-					callee = functions[funcIndex];
-					calleeBase = baseIndex + b;
-					resultReg = a;
-				} else {
+				if (callOp != Opcode::CALL_rA_rB_rC) {
 					RaiseRuntimeError("ARGBLK must be followed by CALL");
 					GC_POP_SCOPE();
 					return val_null;
 				}
+
+				// CALL r[A], r[B], r[C]: invoke funcref in r[C], frame at r[B], result to r[A]
+				Byte a = BytecodeUtil::Au(callInstruction);
+				Byte b = BytecodeUtil::Bu(callInstruction);
+				Byte c = BytecodeUtil::Cu(callInstruction);
+
+				funcRefValue = localStack[c];
+				if (!is_funcref(funcRefValue)) {
+					RaiseRuntimeError("ARGBLK/CALL: Not a function reference");
+					GC_POP_SCOPE();
+					return val_null;
+				}
+
+				Int32 funcIndex = funcref_index(funcRefValue);
+				if (funcIndex < 0 || funcIndex >= functions.Count()) {
+					RaiseRuntimeError("ARGBLK/CALL: Invalid function index");
+					GC_POP_SCOPE();
+					return val_null;
+				}
+				FuncDefRef callee = 
+				  *functionsRaw[funcIndex];
+				Int32 calleeBase = baseIndex + b;
+				Int32 resultReg = a;
 
 				// Check for self-injection: if pending context and first param is "self",
 				// inject pendingSelf as the first argument
@@ -1224,11 +1224,11 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				// Set up call frame using helper
 				SetupCallFrame(argCount, selfParam, calleeBase, callee);
 				ApplyPendingContext(calleeBase, callee);
-				EnsureFrame(calleeBase, callee.MaxRegs());
+				EnsureFrame(calleeBase, callee.MaxRegs);
 
 				// Native intrinsic: invoke callback directly, no frame push
-				if (!IsNull(callee.NativeCallback())) {
-					localStack[resultReg] = callee.NativeCallback()(CallContext(_this, stack, calleeBase, argCount + selfParam));
+				if (!IsNull(callee.NativeCallback)) {
+					localStack[resultReg] = callee.NativeCallback(CallContext(_this, stack, calleeBase, argCount + selfParam));
 					pc = nextPC;
 					VM_NEXT();
 				}
@@ -1255,7 +1255,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				curConstants = &curFuncRaw->Constants[0];
 				localStack = stackPtr + baseIndex;
 				// -----------------------------------------------
-				EnsureFrame(baseIndex, callee.MaxRegs());
+				EnsureFrame(baseIndex, callee.MaxRegs);
 				VM_NEXT();
 			}
 
@@ -1289,7 +1289,8 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 					return val_null;
 				}
 				
-				FuncDef callee = functions[funcIndex];
+				FuncDefRef callee = 
+				  *functionsRaw[funcIndex];
 
 				// Push return info
 				if (callStackTop >= callStack.Count()) {
@@ -1313,7 +1314,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				localStack = stackPtr + baseIndex;
 				// -----------------------------------------------
 
-				EnsureFrame(baseIndex, callee.MaxRegs());
+				EnsureFrame(baseIndex, callee.MaxRegs);
 				VM_NEXT();
 			}
 
@@ -1348,7 +1349,8 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 					GC_POP_SCOPE();
 					return val_null;
 				}
-				FuncDef callee = functions[funcIndex];
+				FuncDefRef callee =
+				   *functionsRaw[funcIndex];
 				outerVars = funcref_outer_vars(funcRefValue);
 
 				// For naked CALL (without ARGBLK): set up parameters with defaults
@@ -1360,11 +1362,11 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 					names[calleeBase + 1] = val_self;
 				}
 				ApplyPendingContext(calleeBase, callee);
-				EnsureFrame(calleeBase, callee.MaxRegs());
+				EnsureFrame(calleeBase, callee.MaxRegs);
 
 				// Native intrinsic: invoke callback directly, no frame push
-				if (!IsNull(callee.NativeCallback())) {
-					localStack[a] = callee.NativeCallback()(CallContext(_this, stack, calleeBase, selfParam));
+				if (!IsNull(callee.NativeCallback)) {
+					localStack[a] = callee.NativeCallback(CallContext(_this, stack, calleeBase, selfParam));
 					VM_NEXT();
 				}
 
@@ -1387,7 +1389,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				curConstants = &curFuncRaw->Constants[0];
 				localStack = stackPtr + baseIndex;
 				// -----------------------------------------------
-				EnsureFrame(baseIndex, callee.MaxRegs());
+				EnsureFrame(baseIndex, callee.MaxRegs);
 				VM_NEXT();
 			}
 
@@ -1532,7 +1534,8 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				}
 
 				// Auto-invoke the funcref with zero args
-				Int32 calleeIdx = AutoInvokeFuncRef(val, a, pc, baseIndex, currentFuncIndex, functions[currentFuncIndex]);
+				Int32 calleeIdx = AutoInvokeFuncRef(val, a, pc, baseIndex, currentFuncIndex, 
+				  *functionsRaw[currentFuncIndex]);
 				if (calleeIdx >= 0) {
 					// Frame was pushed — switch to callee
 					baseIndex += curFuncRaw->MaxRegs;

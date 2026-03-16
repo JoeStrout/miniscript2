@@ -13,6 +13,8 @@
 #include "Disassembler.g.h"
 #include "Parser.g.h"
 #include "CodeGenerator.g.h"
+#include <thread>
+#include <chrono>
 using namespace MiniScript;
 
 int main(int argc, const char* argv[]) {
@@ -384,7 +386,12 @@ void App::RunProgram(List<FuncDef> functions,ErrorPool errors) {
 		}
 	} else {
 		vm.set_DebugMode(debugMode);
-		result = vm.Run();
+		while (vm.IsRunning()) {
+			result = vm.Run();
+			if (vm.IsRunning()) {
+				std::this_thread::sleep_for(std::chrono::milliseconds(1));
+			}
+		}
 	}
 
 	if (!errors.HasError()) {

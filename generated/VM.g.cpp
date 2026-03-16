@@ -11,6 +11,7 @@
 #include "IOHelper.g.h"
 #include "Disassembler.g.h"
 #include "StringUtils.g.h"
+#include "IntrinsicResult.g.h"
 #include "IntrinsicAPI.g.h"
 #include "dispatch_macros.h"
 #include "vm_error.h"
@@ -283,7 +284,6 @@ void VMStorage::SetupCallFrame(Int32 argCount,Int32 selfParam,Int32 calleeBase,F
 	// Step 6 is handled by the caller (pushing CallInfo, switching frame, etc.)
 }
 Int32 VMStorage::AutoInvokeFuncRef(Value funcRefVal,Int32 resultReg,Int32 returnPC,Int32 baseIndex,Int32 currentFuncIndex,FuncDefRef curFunc) {
-	VM _this(std::static_pointer_cast<VMStorage>(shared_from_this()));
 	Int32 funcIndex = funcref_index(funcRefVal);
 	if (funcIndex < 0 || funcIndex >= functions.Count()) {
 		RaiseRuntimeError("Auto-invoke: Invalid function index");
@@ -309,9 +309,12 @@ Int32 VMStorage::AutoInvokeFuncRef(Value funcRefVal,Int32 resultReg,Int32 return
 			pendingSelf = val_null;
 			hasPendingContext = Boolean(false);
 		}
-		stack[baseIndex + resultReg] = callee.NativeCallback(Context(_this, stack, calleeBase, selfParam), IntrinsicResult::Null).result;
+		if (InvokeNativeCallback(callee.NativeCallback, calleeBase, selfParam, IntrinsicResult::Null, baseIndex + resultReg)) {
+			GC_POP_SCOPE();
+			return -1;  // done
+		}
 		GC_POP_SCOPE();
-		return -1;
+		return -2;  // pending
 	}
 
 	// User function: push CallInfo and set up callee frame
@@ -333,6 +336,17 @@ Int32 VMStorage::AutoInvokeFuncRef(Value funcRefVal,Int32 resultReg,Int32 return
 	GC_POP_SCOPE();
 	return funcIndex;
 }
+bool VMStorage::InvokeNativeCallback(NativeCallbackDelegate callback,Int32 calleeBase,Int32 argCount,IntrinsicResult partialResult,Int32 absoluteResultIndex) {
+	VM _this(std::static_pointer_cast<VMStorage>(shared_from_this()));
+	IntrinsicResult ir = callback(Context(_this, stack, calleeBase, argCount), partialResult);
+	stack[absoluteResultIndex] = ir.result;
+	if (ir.done) return Boolean(true);
+	_pendingCallback = callback;
+	_pendingCalleeBase = calleeBase;
+	_pendingArgCount = argCount;
+	_pendingResultIndex = absoluteResultIndex;
+	return Boolean(false);
+}
 Value VMStorage::Execute(FuncDef entry) {
 	return Execute(entry, 0);
 }
@@ -352,6 +366,19 @@ Value VMStorage::Run(UInt32 maxCycles) {
 	// Set thread-local active VM (save/restore for nested calls)
 	VM previousVM = _activeVM;
 	_activeVM = _this;
+
+	// If we have a pending intrinsic continuation, re-invoke it
+	// before resuming normal execution.
+	if (!IsNull(_pendingCallback)) {
+		IntrinsicResult partialResult = IntrinsicResult(stack[_pendingResultIndex], Boolean(false));
+		if (!InvokeNativeCallback(_pendingCallback, _pendingCalleeBase, _pendingArgCount, partialResult, _pendingResultIndex)) {
+			// Still not done; return without running any bytecode
+			_activeVM = previousVM;
+			return val_null;
+		}
+		_pendingCallback = nullptr;
+	}
+
 	GC_PUSH_SCOPE();
 	Value runResult = RunInner(maxCycles); GC_PROTECT(&runResult);
 	_activeVM = previousVM;
@@ -359,7 +386,6 @@ Value VMStorage::Run(UInt32 maxCycles) {
 	return runResult;
 }
 Value VMStorage::RunInner(UInt32 maxCycles) {
-	VM _this(std::static_pointer_cast<VMStorage>(shared_from_this()));
 	// Copy instance variables to locals for performance
 	Int32 pc = PC;
 	Int32 baseIndex = BaseIndex;
@@ -525,9 +551,12 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 					localStack[a] = val;
 				} else {
 					// Value is a funcref — auto-invoke with zero args
-					Int32 calleeIdx = AutoInvokeFuncRef(val, a, pc, baseIndex, currentFuncIndex, 
+					Int32 calleeIdx = AutoInvokeFuncRef(val, a, pc, baseIndex, currentFuncIndex,
 					  *functionsRaw[currentFuncIndex]);
-					if (calleeIdx >= 0) {
+					if (calleeIdx == -2) {
+						// Native callback pending — exit RunInner
+						cyclesLeft = 0;
+					} else if (calleeIdx >= 0) {
 						// Frame was pushed — switch to callee
 						baseIndex += curFuncRaw->MaxRegs;
 						pc = 0;
@@ -1228,8 +1257,10 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 
 				// Native intrinsic: invoke callback directly, no frame push
 				if (!IsNull(callee.NativeCallback)) {
-					localStack[resultReg] = callee.NativeCallback(Context(_this, stack, calleeBase, argCount + selfParam), IntrinsicResult::Null).result;
 					pc = nextPC;
+					if (!InvokeNativeCallback(callee.NativeCallback, calleeBase, argCount + selfParam, IntrinsicResult::Null, baseIndex + resultReg)) {
+						cyclesLeft = 0;
+					}
 					VM_NEXT();
 				}
 
@@ -1366,7 +1397,9 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 
 				// Native intrinsic: invoke callback directly, no frame push
 				if (!IsNull(callee.NativeCallback)) {
-					localStack[a] = callee.NativeCallback(Context(_this, stack, calleeBase, selfParam), IntrinsicResult::Null).result;
+					if (!InvokeNativeCallback(callee.NativeCallback, calleeBase, selfParam, IntrinsicResult::Null, baseIndex + a)) {
+						cyclesLeft = 0;
+					}
 					VM_NEXT();
 				}
 
@@ -1534,9 +1567,12 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				}
 
 				// Auto-invoke the funcref with zero args
-				Int32 calleeIdx = AutoInvokeFuncRef(val, a, pc, baseIndex, currentFuncIndex, 
+				Int32 calleeIdx = AutoInvokeFuncRef(val, a, pc, baseIndex, currentFuncIndex,
 				  *functionsRaw[currentFuncIndex]);
-				if (calleeIdx >= 0) {
+				if (calleeIdx == -2) {
+					// Native callback pending — exit RunInner
+					cyclesLeft = 0;
+				} else if (calleeIdx >= 0) {
 					// Frame was pushed — switch to callee
 					baseIndex += curFuncRaw->MaxRegs;
 					pc = 0;

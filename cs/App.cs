@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;	// only for ToList!
+using System.Threading;
 using MiniScript;
 using static MiniScript.ValueHelpers;
 
@@ -17,6 +18,8 @@ using static MiniScript.ValueHelpers;
 // CPP: #include "Disassembler.g.h"
 // CPP: #include "Parser.g.h"
 // CPP: #include "CodeGenerator.g.h"
+// CPP: #include <thread>
+// CPP: #include <chrono>
 // CPP: using namespace MiniScript;
 
 namespace MiniScript {
@@ -400,7 +403,12 @@ public struct App {
 			}
 		} else {
 			vm.DebugMode = debugMode;
-			result = vm.Run();
+			while (vm.IsRunning) {
+				result = vm.Run();
+				if (vm.IsRunning) {
+					Thread.Sleep(1);	// CPP: std::this_thread::sleep_for(std::chrono::milliseconds(1));
+				}
+			}
 		}
 
 		if (!errors.HasError()) {

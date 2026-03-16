@@ -579,8 +579,6 @@ Transpiler.transformStatement = function(trimmedLine)
 				// class, not one of our storage wrappers), then just remove `new`
 				if cl == null then
 					print "Unknown type " + tokens[i+2] + " found after `new`; assuming class/struct"
-				else
-					print "Removing `new` before known type " + summarize(cl)
 				end if
 				tokens[i] = ""
 				tokens[i+1] = ""
@@ -1466,6 +1464,8 @@ Transpiler.updateStateMETHOD = function
 		  "	≤var≥.set_≤member≥([](Context ≤ctx≥, IntrinsicResult ≤part≥) -> IntrinsicResult {")
 		ctxInfo = VariableInfo.Make(self.m.ctx, "Context", Scope.LOCAL)
 		if self.localVars.indexOf(ctxInfo) == null then self.localVars.push ctxInfo 
+		partInfo = VariableInfo.Make(self.m.part, "IntrinsicResult", Scope.LOCAL)
+		if self.localVars.indexOf(partInfo) == null then self.localVars.push partInfo 
 		return
 	else if self.match("≤var≥.≤member≥ = (≤params≥) => {") then
 		// More general case: no way to know what it returns.  We'll assume nothing

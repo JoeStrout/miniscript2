@@ -169,8 +169,6 @@ class CoreIntrinsics {
 	private: static Value _functionType;
 	static void MarkRoots(void* user_data);
 
-	// H: static void MarkRoots(void* user_data);
-
 	public: static void Init();
 
 	public: static void InvalidateTypeMaps();

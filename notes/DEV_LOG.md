@@ -587,3 +587,17 @@ Once yield and wait are working, a good next milestone would be converting comma
 
 I've refactored the intrinsic callback API to mimic that in MiniScript 1.  One difference: IntrinsicResult is now a struct, so the C# code can no longer compare it against `null`; instead it should check `done` just like the C++ code.  (Or I guess you could check whether it == IntrinsicResult::Null, which is what we will always pass in for a fresh call.)
 
+Some things for the To-Do list that occurred to me while working on this:
+
+- We really need to delete Value.FromString, etc., from the C# code and force use of the transpilable globals (make_string, etc.).
+- That long boilerplate of forward declarations in every generated header file: we should output that to just one file (perhaps ForwardDecs.g.h), and just include that.
+
+But also today, I really want to get wait and yield working.  I might tackle those first.
+
+That's going reasonably well; working fine in C#, but running into circular-dependency issues in C++.  For example, I wanted to store the pending Context in VM, but Context also has a VM reference itself; this is impossible (without resorting to pointers) in C/C++.
+
+So I'm breaking apart the parts of Context (and IntrinsicResult) that we need and storing them in VM directly, but I hate that the code is being uglified just to support this stupid C/C++ limitation.  Oh, and after all that, I still needed to pull IntrinsicResult into its own header file, as it's used as a parameter in a VM method.  Ugh.
+
+I also hate the proliferation of little source files that we're growing here.  At some point I should do a dependency analysis, break all the dependencies we can, and try to consolidate things into a few nice neat layers (with one or a few files per layer).
+
+`wait` and `yield` are working now, though.

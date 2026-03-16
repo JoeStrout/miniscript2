@@ -5,6 +5,7 @@
 #include "core_includes.h"
 #include "value.h"
 #include "FuncDef.g.h"
+#include "IntrinsicResult.g.h"
 #include "ErrorPool.g.h"
 #include "value_map.h"
 #include <vector>
@@ -167,6 +168,11 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	private: Value pendingSelf;
 	private: Value pendingSuper;
 	private: bool hasPendingContext;
+	private: NativeCallbackDelegate _pendingCallback;
+	private: Int32 _pendingCalleeBase; // base index for reconstructing Context
+	private: Int32 _pendingArgCount; // arg count for reconstructing Context
+	private: Int32 _pendingResultIndex; // absolute stack index for result (and partial result)
+	public: bool yielding;
 	private: std::chrono::steady_clock::time_point _startTime;
 
 	// Print callback: if set, print output goes here instead of IOHelper.Print
@@ -179,6 +185,12 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 
 	// Pending self/super for method calls, set by METHFIND/SETSELF,
 	// consumed by the next CALL instruction
+
+	// Pending intrinsic continuation: when an intrinsic returns done=false,
+	// we store the state here so Run can re-invoke it on the next call.
+	// The partial result value is stored in stack[_pendingResultIndex].
+
+	// Set by the "yield" intrinsic; host app can check and clear this.
 
 	// Wall-clock start time, set in Reset(), used by the "time" intrinsic.
 	
@@ -237,11 +249,17 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 
 	// Auto-invoke a zero-arg funcref (used by LOADC and CALLIFREF).
 	// Resolves the funcref, then either:
-	//   - Native callback: invokes it, stores result at stack[baseIndex + resultReg], returns -1.
+	//   - Native callback (done):    stores result, returns -1.
+	//   - Native callback (pending): stores pending state, returns -2.
 	//   - User function: pushes CallInfo and sets up callee frame, returns the callee function index.
 	//     Caller must switch its local execution state (pc, baseIndex, curFunc, etc.).
 	// On error, calls RaiseRuntimeError and returns -1.
 	private: Int32 AutoInvokeFuncRef(Value funcRefVal, Int32 resultReg, Int32 returnPC, Int32 baseIndex, Int32 currentFuncIndex, FuncDefRef curFunc);
+
+	// Invoke a native callback and handle the result.  If done, writes the
+	// result to stack[absoluteResultIndex] and returns true.  If not done,
+	// stores the pending state for re-invocation and returns false.
+	private: bool InvokeNativeCallback(NativeCallbackDelegate callback, Int32 calleeBase, Int32 argCount, IntrinsicResult partialResult, Int32 absoluteResultIndex);
 
 	public: Value Execute(FuncDef entry);
 
@@ -303,6 +321,16 @@ struct VM {
 	private: void set_pendingSuper(Value _v);
 	private: bool hasPendingContext();
 	private: void set_hasPendingContext(bool _v);
+	private: NativeCallbackDelegate _pendingCallback();
+	private: void set__pendingCallback(NativeCallbackDelegate _v);
+	private: Int32 _pendingCalleeBase(); // base index for reconstructing Context
+	private: void set__pendingCalleeBase(Int32 _v); // base index for reconstructing Context
+	private: Int32 _pendingArgCount(); // arg count for reconstructing Context
+	private: void set__pendingArgCount(Int32 _v); // arg count for reconstructing Context
+	private: Int32 _pendingResultIndex(); // absolute stack index for result (and partial result)
+	private: void set__pendingResultIndex(Int32 _v); // absolute stack index for result (and partial result)
+	public: bool yielding();
+	public: void set_yielding(bool _v);
 
 	// Print callback: if set, print output goes here instead of IOHelper.Print
 
@@ -314,6 +342,12 @@ struct VM {
 
 	// Pending self/super for method calls, set by METHFIND/SETSELF,
 	// consumed by the next CALL instruction
+
+	// Pending intrinsic continuation: when an intrinsic returns done=false,
+	// we store the state here so Run can re-invoke it on the next call.
+	// The partial result value is stored in stack[_pendingResultIndex].
+
+	// Set by the "yield" intrinsic; host app can check and clear this.
 
 	// Wall-clock start time, set in Reset(), used by the "time" intrinsic.
 	
@@ -373,11 +407,17 @@ struct VM {
 
 	// Auto-invoke a zero-arg funcref (used by LOADC and CALLIFREF).
 	// Resolves the funcref, then either:
-	//   - Native callback: invokes it, stores result at stack[baseIndex + resultReg], returns -1.
+	//   - Native callback (done):    stores result, returns -1.
+	//   - Native callback (pending): stores pending state, returns -2.
 	//   - User function: pushes CallInfo and sets up callee frame, returns the callee function index.
 	//     Caller must switch its local execution state (pc, baseIndex, curFunc, etc.).
 	// On error, calls RaiseRuntimeError and returns -1.
 	private: inline Int32 AutoInvokeFuncRef(Value funcRefVal, Int32 resultReg, Int32 returnPC, Int32 baseIndex, Int32 currentFuncIndex, FuncDefRef curFunc);
+
+	// Invoke a native callback and handle the result.  If done, writes the
+	// result to stack[absoluteResultIndex] and returns true.  If not done,
+	// stores the pending state for re-invocation and returns false.
+	private: inline bool InvokeNativeCallback(NativeCallbackDelegate callback, Int32 calleeBase, Int32 argCount, IntrinsicResult partialResult, Int32 absoluteResultIndex);
 
 	public: inline Value Execute(FuncDef entry);
 
@@ -431,6 +471,16 @@ inline Value VM::pendingSuper() { return get()->pendingSuper; }
 inline void VM::set_pendingSuper(Value _v) { get()->pendingSuper = _v; }
 inline bool VM::hasPendingContext() { return get()->hasPendingContext; }
 inline void VM::set_hasPendingContext(bool _v) { get()->hasPendingContext = _v; }
+inline NativeCallbackDelegate VM::_pendingCallback() { return get()->_pendingCallback; }
+inline void VM::set__pendingCallback(NativeCallbackDelegate _v) { get()->_pendingCallback = _v; }
+inline Int32 VM::_pendingCalleeBase() { return get()->_pendingCalleeBase; } // base index for reconstructing Context
+inline void VM::set__pendingCalleeBase(Int32 _v) { get()->_pendingCalleeBase = _v; } // base index for reconstructing Context
+inline Int32 VM::_pendingArgCount() { return get()->_pendingArgCount; } // arg count for reconstructing Context
+inline void VM::set__pendingArgCount(Int32 _v) { get()->_pendingArgCount = _v; } // arg count for reconstructing Context
+inline Int32 VM::_pendingResultIndex() { return get()->_pendingResultIndex; } // absolute stack index for result (and partial result)
+inline void VM::set__pendingResultIndex(Int32 _v) { get()->_pendingResultIndex = _v; } // absolute stack index for result (and partial result)
+inline bool VM::yielding() { return get()->yielding; }
+inline void VM::set_yielding(bool _v) { get()->yielding = _v; }
 inline double VM::ElapsedTime() { return get()->ElapsedTime(); }
 inline VM VM::_activeVM() { return get()->_activeVM; }
 inline void VM::set__activeVM(VM _v) { get()->_activeVM = _v; }
@@ -451,6 +501,7 @@ inline Int32 VM::ProcessArguments(Int32 argCount,Int32 selfParam,Int32 startPC,I
 inline void VM::ApplyPendingContext(Int32 calleeBase,FuncDefRef callee) { return get()->ApplyPendingContext(calleeBase, callee); }
 inline void VM::SetupCallFrame(Int32 argCount,Int32 selfParam,Int32 calleeBase,FuncDefRef callee) { return get()->SetupCallFrame(argCount, selfParam, calleeBase, callee); }
 inline Int32 VM::AutoInvokeFuncRef(Value funcRefVal,Int32 resultReg,Int32 returnPC,Int32 baseIndex,Int32 currentFuncIndex,FuncDefRef curFunc) { return get()->AutoInvokeFuncRef(funcRefVal, resultReg, returnPC, baseIndex, currentFuncIndex, curFunc); }
+inline bool VM::InvokeNativeCallback(NativeCallbackDelegate callback,Int32 calleeBase,Int32 argCount,IntrinsicResult partialResult,Int32 absoluteResultIndex) { return get()->InvokeNativeCallback(callback, calleeBase, argCount, partialResult, absoluteResultIndex); }
 inline Value VM::Execute(FuncDef entry) { return get()->Execute(entry); }
 inline Value VM::Execute(FuncDef entry,UInt32 maxCycles) { return get()->Execute(entry, maxCycles); }
 inline Value VM::Run(UInt32 maxCycles) { return get()->Run(maxCycles); }

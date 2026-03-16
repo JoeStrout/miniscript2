@@ -895,6 +895,35 @@ public static class CoreIntrinsics {
 			return new IntrinsicResult(make_double(ctx.vm.ElapsedTime()));
 		};
 
+		// wait(seconds=1)
+		//    Pause execution of this script for some amount of time.
+		// seconds (default 1.0): how many seconds to wait
+		// See also: time, yield
+		f = Intrinsic.Create("wait");
+		f.AddParam("seconds", make_int(1));
+		f.Code = (Context ctx, IntrinsicResult partialResult) => {
+			double now = ctx.vm.ElapsedTime();
+			if (partialResult.done) {
+				// Fresh call: calculate end time and return as partial result
+				double interval = numeric_val(ctx.GetArg(0));
+				return new IntrinsicResult(make_double(now + interval), false);
+			} else {
+				// Continuation: check if we've waited long enough
+				if (now > numeric_val(partialResult.result)) return IntrinsicResult.Null;
+				return partialResult;
+			}
+		};
+
+		// yield
+		//    Pause execution of the script until the next "tick" of the
+		//    host app.  In Mini Micro, for example, this waits until the
+		//    next 60Hz frame.  If you're doing something in a tight loop,
+		//    calling yield is polite to the host app or other scripts.
+		f = Intrinsic.Create("yield");
+		f.Code = (Context ctx, IntrinsicResult partialResult) => {
+			ctx.vm.yielding = true;
+			return IntrinsicResult.Null;
+		};
 
 	}
 

@@ -1,13 +1,9 @@
 // AUTO-GENERATED FILE.  DO NOT MODIFY.
-// Transpiled from: Lexer.cs
+// Transpiled from: IntrinsicResult.cs
 
 #pragma once
 #include "core_includes.h"
-// Hand-written lexer for MiniScript
-// Simple expression tokenizer (to be expanded for full MiniScript grammar)
-
-#include "LangConstants.g.h"
-#include "ErrorPool.g.h"
+#include "value.h"
 
 namespace MiniScript {
 
@@ -126,81 +122,32 @@ class ReturnNodeStorage;
 
 // DECLARATIONS
 
-// Represents a single token from the lexer
-struct Token {
-	public: TokenType Type;
-	public: String Text;
-	public: Int32 IntValue;
-	public: Double DoubleValue;
-	public: Int32 Line;
-	public: Int32 Column;
-	public: Boolean AfterSpace; // True if whitespace preceded this token
-	public: Token() {}
+// IntrinsicResult: represents the result of calling an intrinsic function
+// (i.e. a function defined by the host app, for use in MiniScript code).
+// This may be a final or "done" result, containing the return value of
+// the intrinsic; or it may be a partial or "not done yet" result, in which
+// case the intrinsic will be invoked again, with this partial result
+// passed back so the intrinsic can continue its work.
+struct IntrinsicResult {
+	public: Boolean done; // set to true if done, false if there is pending work
+	public: Value result; // final result if done; in-progress data if not done
 
-	public: Token(TokenType type, String text, Int32 line, Int32 column);
-}; // end of struct Token
+	public: IntrinsicResult(Value result, Boolean done = true);
 
-struct Lexer {
-	private: String _input;
-	private: Int32 _position;
-	private: Int32 _line;
-	private: Int32 _column;
-	public: ErrorPool Errors;
-	public: Lexer() {}
+	// For backwards compatibility with 1.x:
+	public: Boolean Done();
+	public: static const IntrinsicResult Null;
+	public: static const IntrinsicResult EmptyString;
+	public: static const IntrinsicResult Zero;
+	public: static const IntrinsicResult One;
 
-	public: Lexer(String source);
-
-	// Peek at current character without advancing
-	private: Char Peek();
-
-	// Advance to next character
-	private: Char Advance();
-
-	public: static Boolean IsDigit(Char c);
-	
-	public: static Boolean IsWhiteSpace(Char c);
-		
-	public: static Boolean IsIdentifierStartChar(Char c);
-
-	public: static Boolean IsIdentifierChar(Char c);
-
-	// Skip whitespace (but not newlines, which may be significant)
-	// Returns true if any whitespace was skipped
-	private: Boolean SkipWhitespace();
-
-	// Get the next token from _input
-	public: Token NextToken();
-
-	// Report an error
-	public: void Error(String message);
-}; // end of struct Lexer
+	// Some standard results you can efficiently use:
+}; // end of struct IntrinsicResult
 
 // INLINE METHODS
 
-inline Boolean Lexer::IsDigit(Char c) {
-	return '0' <= c && c <= '9';
-}
-inline Boolean Lexer::IsWhiteSpace(Char c) {
-	// ToDo: rework this whole file to be fully Unicode-savvy in both C# and C++
-	return UnicodeCharIsWhitespace((long)c);
-}
-inline Boolean Lexer::IsIdentifierStartChar(Char c) {
-	return ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'
-	    || ((int)c > 127 && !IsWhiteSpace(c)));
-}
-inline Boolean Lexer::IsIdentifierChar(Char c) {
-	return IsIdentifierStartChar(c) || IsDigit(c);
-}
-inline Boolean Lexer::SkipWhitespace() {
-	Boolean skipped = Boolean(false);
-	while (_position < _input.Length()) {
-		Char ch = _input[_position];
-		if (ch == '\n') break;  // newlines are significant
-		if (!IsWhiteSpace(ch)) break;
-		Advance();
-		skipped = Boolean(true);
-	}
-	return skipped;
+inline Boolean IntrinsicResult::Done() {
+	return done;
 }
 
 } // end of namespace MiniScript

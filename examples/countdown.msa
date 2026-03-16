@@ -1,5 +1,6 @@
 # Countdown loop from 5 to 0
 # Demonstrates labels and conditional jumps
+# (Does NOT currently call `wait`.)
 
 @main:
 	LOAD r0, 5       # Start with 5

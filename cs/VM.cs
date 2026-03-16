@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 using static System.Runtime.CompilerServices.MethodImplOptions;
 // H: #include "value.h"
 // H: #include "FuncDef.g.h"
+// H: #include "IntrinsicResult.g.h"
 // H: #include "ErrorPool.g.h"
 // H: #include "value_map.h"
 // H: #include <vector>
@@ -17,6 +18,7 @@ using static System.Runtime.CompilerServices.MethodImplOptions;
 // CPP: #include "IOHelper.g.h"
 // CPP: #include "Disassembler.g.h"
 // CPP: #include "StringUtils.g.h"
+// CPP: #include "IntrinsicResult.g.h"
 // CPP: #include "IntrinsicAPI.g.h"
 // CPP: #include "dispatch_macros.h"
 // CPP: #include "vm_error.h"
@@ -113,6 +115,17 @@ public class VM {
 	private Value pendingSelf;
 	private Value pendingSuper;
 	private bool hasPendingContext;
+
+	// Pending intrinsic continuation: when an intrinsic returns done=false,
+	// we store the state here so Run can re-invoke it on the next call.
+	// The partial result value is stored in stack[_pendingResultIndex].
+	private NativeCallbackDelegate _pendingCallback;
+	private Int32 _pendingCalleeBase;   // base index for reconstructing Context
+	private Int32 _pendingArgCount;     // arg count for reconstructing Context
+	private Int32 _pendingResultIndex;  // absolute stack index for result (and partial result)
+
+	// Set by the "yield" intrinsic; host app can check and clear this.
+	public bool yielding;
 
 	// Wall-clock start time, set in Reset(), used by the "time" intrinsic.
 	//*** BEGIN CS_ONLY ***
@@ -397,7 +410,8 @@ public class VM {
 
 	// Auto-invoke a zero-arg funcref (used by LOADC and CALLIFREF).
 	// Resolves the funcref, then either:
-	//   - Native callback: invokes it, stores result at stack[baseIndex + resultReg], returns -1.
+	//   - Native callback (done):    stores result, returns -1.
+	//   - Native callback (pending): stores pending state, returns -2.
 	//   - User function: pushes CallInfo and sets up callee frame, returns the callee function index.
 	//     Caller must switch its local execution state (pc, baseIndex, curFunc, etc.).
 	// On error, calls RaiseRuntimeError and returns -1.
@@ -426,8 +440,10 @@ public class VM {
 				pendingSelf = val_null;
 				hasPendingContext = false;
 			}
-			stack[baseIndex + resultReg] = callee.NativeCallback(new Context(this, stack, calleeBase, selfParam), IntrinsicResult.Null).result;
-			return -1;
+			if (InvokeNativeCallback(callee.NativeCallback, calleeBase, selfParam, IntrinsicResult.Null, baseIndex + resultReg)) {
+				return -1;  // done
+			}
+			return -2;  // pending
 		}
 
 		// User function: push CallInfo and set up callee frame
@@ -446,6 +462,20 @@ public class VM {
 		ApplyPendingContext(calleeBase, callee);
 		EnsureFrame(calleeBase, callee.MaxRegs);
 		return funcIndex;
+	}
+
+	// Invoke a native callback and handle the result.  If done, writes the
+	// result to stack[absoluteResultIndex] and returns true.  If not done,
+	// stores the pending state for re-invocation and returns false.
+	private bool InvokeNativeCallback(NativeCallbackDelegate callback, Int32 calleeBase, Int32 argCount, IntrinsicResult partialResult, Int32 absoluteResultIndex) {
+		IntrinsicResult ir = callback(new Context(this, stack, calleeBase, argCount), partialResult);
+		stack[absoluteResultIndex] = ir.result;
+		if (ir.done) return true;
+		_pendingCallback = callback;
+		_pendingCalleeBase = calleeBase;
+		_pendingArgCount = argCount;
+		_pendingResultIndex = absoluteResultIndex;
+		return false;
 	}
 
 	public Value Execute(FuncDef entry) {
@@ -468,6 +498,19 @@ public class VM {
 		// Set thread-local active VM (save/restore for nested calls)
 		VM previousVM = _activeVM;
 		_activeVM = this;
+
+		// If we have a pending intrinsic continuation, re-invoke it
+		// before resuming normal execution.
+		if (_pendingCallback != null) {
+			IntrinsicResult partialResult = new IntrinsicResult(stack[_pendingResultIndex], false);
+			if (!InvokeNativeCallback(_pendingCallback, _pendingCalleeBase, _pendingArgCount, partialResult, _pendingResultIndex)) {
+				// Still not done; return without running any bytecode
+				_activeVM = previousVM;
+				return val_null;
+			}
+			_pendingCallback = null;
+		}
+
 		Value runResult = RunInner(maxCycles);
 		_activeVM = previousVM;
 		return runResult;
@@ -638,9 +681,12 @@ public class VM {
 						localStack[a] = val;
 					} else {
 						// Value is a funcref — auto-invoke with zero args
-						Int32 calleeIdx = AutoInvokeFuncRef(val, a, pc, baseIndex, currentFuncIndex, 
+						Int32 calleeIdx = AutoInvokeFuncRef(val, a, pc, baseIndex, currentFuncIndex,
 						  functions[currentFuncIndex]); // CPP: *functionsRaw[currentFuncIndex]);
-						if (calleeIdx >= 0) {
+						if (calleeIdx == -2) {
+							// Native callback pending — exit RunInner
+							cyclesLeft = 0;
+						} else if (calleeIdx >= 0) {
 							// Frame was pushed — switch to callee
 							baseIndex += curFunc.MaxRegs; // CPP: baseIndex += curFuncRaw->MaxRegs;
 							pc = 0;
@@ -1334,8 +1380,10 @@ public class VM {
 
 					// Native intrinsic: invoke callback directly, no frame push
 					if (callee.NativeCallback != null) {
-						localStack[resultReg] = callee.NativeCallback(new Context(this, stack, calleeBase, argCount + selfParam), IntrinsicResult.Null).result;
 						pc = nextPC;
+						if (!InvokeNativeCallback(callee.NativeCallback, calleeBase, argCount + selfParam, IntrinsicResult.Null, baseIndex + resultReg)) {
+							cyclesLeft = 0;
+						}
 						break;
 					}
 
@@ -1466,7 +1514,9 @@ public class VM {
 
 					// Native intrinsic: invoke callback directly, no frame push
 					if (callee.NativeCallback != null) {
-						localStack[a] = callee.NativeCallback(new Context(this, stack, calleeBase, selfParam), IntrinsicResult.Null).result;
+						if (!InvokeNativeCallback(callee.NativeCallback, calleeBase, selfParam, IntrinsicResult.Null, baseIndex + a)) {
+							cyclesLeft = 0;
+						}
 						break;
 					}
 
@@ -1633,9 +1683,12 @@ public class VM {
 					}
 
 					// Auto-invoke the funcref with zero args
-					Int32 calleeIdx = AutoInvokeFuncRef(val, a, pc, baseIndex, currentFuncIndex, 
+					Int32 calleeIdx = AutoInvokeFuncRef(val, a, pc, baseIndex, currentFuncIndex,
 					  functions[currentFuncIndex]); // CPP: *functionsRaw[currentFuncIndex]);
-					if (calleeIdx >= 0) {
+					if (calleeIdx == -2) {
+						// Native callback pending — exit RunInner
+						cyclesLeft = 0;
+					} else if (calleeIdx >= 0) {
 						// Frame was pushed — switch to callee
 						baseIndex += curFunc.MaxRegs; // CPP: baseIndex += curFuncRaw->MaxRegs;
 						pc = 0;

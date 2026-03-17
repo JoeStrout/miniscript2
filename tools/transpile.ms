@@ -1523,20 +1523,8 @@ Transpiler.generateOutput = function
 	headerLines.push ""
 	headerLines.push "#pragma once"
 	headerLines.push "#include ""core_includes.h"""
+	headerLines.push "#include ""forward_decs.g.h"""
 	headerLines += self.headerLines
-
-	headerLines.push ""
-	headerLines.push "// FORWARD DECLARATIONS"
-	headerLines.push ""
-	for class in self.allClasses
-		if class.elsewhere then continue
-		if class.type == ClassType.CLASS then
-			headerLines.push "struct ≤name≥;".fill(class)
-			headerLines.push "class ≤name≥Storage;".fill(class)
-		else if class.type == ClassType.STRUCT and not class.static then
-			headerLines.push "struct ≤name≥;".fill(class)
-		end if
-	end for
 
 	headerLines.push ""
 	headerLines.push "// DECLARATIONS"
@@ -1830,6 +1818,26 @@ if locals == globals then
 			printOnce "- " + cls.summary
 		end for
 	end for
+	
+	// Then write out all the forward declarations to forward_decs.g.h
+	decLines = []
+	decLines.push "// FORWARD DECLARATIONS"
+	decLines.push ""
+	decLines.push "namespace MiniScript {"
+	for class in t.allClasses
+		if class.elsewhere then continue
+		if class.type == ClassType.CLASS then
+			decLines.push "struct ≤name≥;".fill(class)
+			decLines.push "class ≤name≥Storage;".fill(class)
+		else if class.type == ClassType.STRUCT and not class.static then
+			decLines.push "struct ≤name≥;".fill(class)
+		end if
+	end for
+	decLines.push "}"
+	file.writeLines file.child(t.outputFolder, "forward_decs.g.h"), decLines
+	print
+	print "Wrote " + decLines.len + " lines to forward_decs.g.h"
+	
 	// Then process again, generating output
 	print
 	print 

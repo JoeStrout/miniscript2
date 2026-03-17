@@ -4,24 +4,33 @@ using System.Runtime.CompilerServices;
 using static System.Runtime.CompilerServices.MethodImplOptions;
 using static MiniScript.ValueHelpers;
 // H: #include "value.h"
-// H: #include "VM.g.h"
-// H: #include "IntrinsicResult.g.h"
+// CPP: #include "VM.g.h"
 
 namespace MiniScript {
 
+// H: class VMStorage;
+using VMRef = VM; // H: typedef VMStorage& VMRef;
+
 // Context passed to native (intrinsic) callback functions.
 public struct Context {
-	public VM vm;
+	public VMRef vm;
 	public List<Value> stack;
 	public Int32 baseIndex;		// index of return register; arguments follow this
 	public Int32 argCount;		// how many arguments we have
 	
-	public Context(VM vm, List<Value> stack, Int32 baseIndex, Int32 argCount) {
+	//*** BEGIN CS_ONLY ***
+	public Context(VMRef vm, List<Value> stack, Int32 baseIndex, Int32 argCount) {
 		this.vm = vm;
 		this.stack = stack;
 		this.baseIndex = baseIndex;
 		this.argCount = argCount;
 	}
+	//*** END CS_ONLY ***
+	/*** BEGIN H_ONLY ***
+	public: Context(VMRef vm, List<Value> stack, Int32 baseIndex, Int32 argCount)
+		: vm(vm), stack(stack), baseIndex(baseIndex), argCount(argCount) {
+	}
+	*** END H_ONLY ***/
 	
 	// Get an argument from the stack, by number (the first argument is index 0,
 	// the second is index 1, etc.).

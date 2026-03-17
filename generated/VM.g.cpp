@@ -337,8 +337,12 @@ Int32 VMStorage::AutoInvokeFuncRef(Value funcRefVal,Int32 resultReg,Int32 return
 	return funcIndex;
 }
 bool VMStorage::InvokeNativeCallback(NativeCallbackDelegate callback,Int32 calleeBase,Int32 argCount,IntrinsicResult partialResult,Int32 absoluteResultIndex) {
-	VM _this(std::static_pointer_cast<VMStorage>(shared_from_this()));
-	IntrinsicResult ir = callback(Context(_this, stack, calleeBase, argCount), partialResult);
+	Context context = Context(
+		*this,
+		stack,
+		calleeBase,
+		argCount);
+	IntrinsicResult ir = callback(context, partialResult);
 	stack[absoluteResultIndex] = ir.result;
 	if (ir.done) return Boolean(true);
 	_pendingCallback = callback;

@@ -468,7 +468,12 @@ public class VM {
 	// result to stack[absoluteResultIndex] and returns true.  If not done,
 	// stores the pending state for re-invocation and returns false.
 	private bool InvokeNativeCallback(NativeCallbackDelegate callback, Int32 calleeBase, Int32 argCount, IntrinsicResult partialResult, Int32 absoluteResultIndex) {
-		IntrinsicResult ir = callback(new Context(this, stack, calleeBase, argCount), partialResult);
+		Context context = new Context(
+			this, // CPP: *this,
+			stack,
+			calleeBase,
+			argCount);
+		IntrinsicResult ir = callback(context, partialResult);
 		stack[absoluteResultIndex] = ir.result;
 		if (ir.done) return true;
 		_pendingCallback = callback;

@@ -4,10 +4,10 @@
 #pragma once
 #include "core_includes.h"
 #include "value.h"
-#include "VM.g.h"
-#include "IntrinsicResult.g.h"
 
 namespace MiniScript {
+class VMStorage;
+typedef VMStorage& VMRef;
 
 // FORWARD DECLARATIONS
 
@@ -126,12 +126,14 @@ class ReturnNodeStorage;
 
 // Context passed to native (intrinsic) callback functions.
 struct Context {
-	public: VM vm;
+	public: VMRef vm;
 	public: List<Value> stack;
 	public: Int32 baseIndex; // index of return register; arguments follow this
 	public: Int32 argCount; // how many arguments we have
+	public: Context(VMRef vm, List<Value> stack, Int32 baseIndex, Int32 argCount)
+		: vm(vm), stack(stack), baseIndex(baseIndex), argCount(argCount) {
+	}
 	
-	public: Context(VM vm, List<Value> stack, Int32 baseIndex, Int32 argCount);
 	
 	// Get an argument from the stack, by number (the first argument is index 0,
 	// the second is index 1, etc.).

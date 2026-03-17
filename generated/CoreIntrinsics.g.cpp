@@ -972,7 +972,7 @@ void CoreIntrinsics::Init() {
 	//    calling yield is polite to the host app or other scripts.
 	f = Intrinsic::Create("yield");
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
-		ctx.vm.set_yielding(Boolean(true));
+		ctx.vm.yielding = Boolean(true);
 		return IntrinsicResult::Null;
 	});
 

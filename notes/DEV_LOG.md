@@ -601,3 +601,52 @@ So I'm breaking apart the parts of Context (and IntrinsicResult) that we need an
 I also hate the proliferation of little source files that we're growing here.  At some point I should do a dependency analysis, break all the dependencies we can, and try to consolidate things into a few nice neat layers (with one or a few files per layer).
 
 `wait` and `yield` are working now, though.
+
+OK, so I'm trying to break the dependency of Context on VM by having it take a VMRef, which the transpiler already understands is a VMStorage&.  (We use a similar pattern elsewhere with FuncDefRef.)  This is working, as a quick hack, but to make it work in production we have to deal with a few things:
+- The constructor must assign the value in the initializer list, not the method body;
+- Where we call it, in VM.g.cpp, we need to pass `*this` (C++ code only)
+
+## Mar 17, 2026
+
+Continuing trying to break dependency of Context on VM.  For the constructor, I've resorted to just having separate constructors using CPP_ONLY and H_ONLY blocks.  They're trivial, so this is not a huge deal, though it might be nice to make the transpiler do this automatically somehow.
+
+For the call in the VM code, I just put that parameter on its own line and used a // CPP: tag.  Easy enough.
+
+So now our dependency graph looks something like this:
+
+  Dependency Graph (by level)                                                                                      
+                                                                                                                   
+  Level 0 — Leaf headers (no generated-header deps):                                                               
+    Bytecode.g.h                                                                                                   
+    LangConstants.g.h                                                                                              
+    ErrorPool.g.h                                                                                                  
+    IOHelper.g.h                                                                                                   
+    AST.g.h           (large, self-contained node hierarchy)                                                       
+    IntrinsicAPI.g.h  (i.e. Context struct)
+    IntrinsicResult.g.h                                                                                            
+    UnitTests.g.h                                                                                                  
+
+  Level 1:
+    StringUtils.g.h   → IOHelper.g.h (weak)
+    Lexer.g.h         → LangConstants.g.h (strong), ErrorPool.g.h (strong)
+
+  Level 2:
+    FuncDef.g.h       → StringUtils.g.h (weak)
+
+  Level 3:
+    CodeEmitter.g.h   → Bytecode.g.h (strong), FuncDef.g.h (strong)
+    Intrinsic.g.h     → FuncDef.g.h (strong)
+    Assembler.g.h     → Bytecode.g.h (strong), FuncDef.g.h (strong)
+    Disassembler.g.h  → Bytecode.g.h (strong)
+
+  Level 4:
+    VM.g.h            → FuncDef.g.h (strong), IntrinsicResult.g.h (strong), ErrorPool.g.h (strong)
+    Parselet.g.h      → AST.g.h (strong), Lexer.g.h (strong), LangConstants.g.h (strong)
+    CodeGenerator.g.h → AST.g.h (strong), CodeEmitter.g.h (strong), ErrorPool.g.h (strong)
+    CoreIntrinsics.g.h→ Intrinsic.g.h (weak)
+    App.g.h           → CodeEmitter.g.h (weak), ErrorPool.g.h (weak)
+
+  Level 5:
+    Parser.g.h        → Parselet.g.h (strong), Lexer.g.h (strong),
+                         LangConstants.g.h (strong), ErrorPool.g.h (strong)
+    VMVis.g.h         → VM.g.h (strong)

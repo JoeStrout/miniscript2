@@ -11,8 +11,6 @@
 #include "IOHelper.g.h"
 #include "Disassembler.g.h"
 #include "StringUtils.g.h"
-#include "IntrinsicResult.g.h"
-#include "IntrinsicAPI.g.h"
 #include "dispatch_macros.h"
 #include "vm_error.h"
 #include <chrono>

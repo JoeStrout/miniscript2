@@ -5,7 +5,6 @@ using static System.Runtime.CompilerServices.MethodImplOptions;
 using static MiniScript.ValueHelpers;
 // H: #include "value.h"
 // H: #include "StringUtils.g.h"
-// CPP: #include "IntrinsicResult.g.h"
 // CPP: #include "IntrinsicAPI.g.h"
 // CPP: #include "gc.h"
 

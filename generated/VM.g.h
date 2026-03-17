@@ -5,7 +5,7 @@
 #include "core_includes.h"
 #include "value.h"
 #include "FuncDef.g.h"
-#include "IntrinsicResult.g.h"
+#include "IntrinsicAPI.g.h"
 #include "ErrorPool.g.h"
 #include "value_map.h"
 #include <vector>

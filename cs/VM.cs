@@ -5,7 +5,7 @@ using System.Runtime.InteropServices;
 using static System.Runtime.CompilerServices.MethodImplOptions;
 // H: #include "value.h"
 // H: #include "FuncDef.g.h"
-// H: #include "IntrinsicResult.g.h"
+// H: #include "IntrinsicAPI.g.h"
 // H: #include "ErrorPool.g.h"
 // H: #include "value_map.h"
 // H: #include <vector>
@@ -18,8 +18,6 @@ using static System.Runtime.CompilerServices.MethodImplOptions;
 // CPP: #include "IOHelper.g.h"
 // CPP: #include "Disassembler.g.h"
 // CPP: #include "StringUtils.g.h"
-// CPP: #include "IntrinsicResult.g.h"
-// CPP: #include "IntrinsicAPI.g.h"
 // CPP: #include "dispatch_macros.h"
 // CPP: #include "vm_error.h"
 // CPP: #include <chrono>

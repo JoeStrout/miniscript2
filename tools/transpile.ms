@@ -484,7 +484,7 @@ Transpiler.transformStatement = function(trimmedLine)
 	// non-identifier string.
 	tokens = roughTokenize(trimmedLine)
 	
-	deepDebug = false // trimmedLine.contains("IntrinsicResult")
+	deepDebug = trimmedLine.contains("yielding")
 	ddprint = function(s); if deepDebug then print "====> " + s; end function
 	summarize = function(obj)
 		if obj == null then return "<null>"
@@ -677,9 +677,9 @@ Transpiler.transformStatement = function(trimmedLine)
 				if not viaRef then
 					tokens[i] = "set_" + tokens[i] + "("
 					tokens[i+1] = tokens[i+1][2:].trimLeft
+					didAssignment = true
 				end if
 				nextInfo = null
-				didAssignment = true
 			else
 				ddprint "FIELD LOOKUP (" + curInfo.name + "." + nextInfo.name + ") FOUND!!!"
 				// Just add () to call the getter.
@@ -698,7 +698,7 @@ Transpiler.transformStatement = function(trimmedLine)
 		if pos == null then pos = result.len
 		result = result[:pos] + ")" + result[pos:]
 	end if
-	//print "Transformed statement: " + result
+	ddprint "Transformed statement: " + result
 	return result
 	
 end function

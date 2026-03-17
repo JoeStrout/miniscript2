@@ -612,7 +612,7 @@ Continuing trying to break dependency of Context on VM.  For the constructor, I'
 
 For the call in the VM code, I just put that parameter on its own line and used a // CPP: tag.  Easy enough.
 
-I also moved IOHelper.g.h out of the StringUtils header (and into the .cpp file), and similar for FuncDef.g.h.  So now our revised dependency graph looks something like this:
+I also moved IOHelper.g.h out of the StringUtils header (and into the .cpp file), and similar for FuncDef.g.h.  ...And, more surgery of similar kind.  After all that, our revised dependency graph looks something like this:
 
   Level 0 — Leaf headers (no generated-header deps):                                                               
     Bytecode.g.h                                                                                                   
@@ -624,6 +624,8 @@ I also moved IOHelper.g.h out of the StringUtils header (and into the .cpp file)
     UnitTests.g.h                                                                                                  
     StringUtils.g.h
     FuncDef.g.h
+    App.g.h
+    CoreIntrinsics.g.h
 
   Level 1:
     Lexer.g.h         → LangConstants.g.h (strong), ErrorPool.g.h (strong)
@@ -636,11 +638,12 @@ I also moved IOHelper.g.h out of the StringUtils header (and into the .cpp file)
   Level 2:
     Parselet.g.h      → AST.g.h (strong), Lexer.g.h (strong), LangConstants.g.h (strong)
     CodeGenerator.g.h → AST.g.h (strong), CodeEmitter.g.h (strong), ErrorPool.g.h (strong)
-    CoreIntrinsics.g.h→ Intrinsic.g.h (weak)
-    App.g.h           → CodeEmitter.g.h (weak), ErrorPool.g.h (weak)
     VMVis.g.h         → VM.g.h (strong)
 
   Level 3:
     Parser.g.h        → Parselet.g.h (strong), Lexer.g.h (strong),
+                        LangConstants.g.h (strong), ErrorPool.g.h (strong)
 
-Much better than it looked yesterday (not shown).
+Much better than it looked yesterday (not shown).  The remaining includes are considered "strong" by Claude, in that they're not broken without refactoring -- but I'm much more satisfied with the layering now.
+
+

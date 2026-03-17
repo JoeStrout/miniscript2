@@ -5,8 +5,8 @@ using System.Threading;
 using MiniScript;
 using static MiniScript.ValueHelpers;
 
-// H: #include "CodeEmitter.g.h"
-// H: #include "ErrorPool.g.h"
+// CPP: #include "CodeEmitter.g.h"
+// CPP: #include "ErrorPool.g.h"
 // CPP: #include "UnitTests.g.h"
 // CPP: #include "VM.g.h"
 // CPP: #include "gc.h"

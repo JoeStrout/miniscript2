@@ -19,6 +19,7 @@ ClassType.INTERFACE = "interface"
 globals.ClassInfo = {}
 ClassInfo.name = ""
 ClassInfo.type = ClassType.CLASS
+ClassInfo.static = false		// true if it's a static class
 ClassInfo.superclass = ""		// name of superclass, if any
 ClassInfo.fields = null			// list of VariableInfo
 ClassInfo.methods = null		// list of MethodInfo

@@ -4,19 +4,22 @@
 #pragma once
 #include "core_includes.h"
 
-#include "CodeEmitter.g.h"
-#include "ErrorPool.g.h"
-
 namespace MiniScript {
 
 // FORWARD DECLARATIONS
 
 struct CodeGenerator;
 class CodeGeneratorStorage;
+struct CallInfo;
 struct VM;
 class VMStorage;
+struct Context;
+struct IntrinsicResult;
+struct ErrorPool;
+struct VMVis;
 struct CodeEmitterBase;
 class CodeEmitterBaseStorage;
+struct LabelReference;
 struct BytecodeEmitter;
 class BytecodeEmitterStorage;
 struct AssemblyEmitter;
@@ -121,6 +124,9 @@ struct ScopeNode;
 class ScopeNodeStorage;
 struct ReturnNode;
 class ReturnNodeStorage;
+struct App;
+struct Token;
+struct Lexer;
 
 // DECLARATIONS
 

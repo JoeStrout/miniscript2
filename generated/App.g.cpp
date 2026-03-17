@@ -2,6 +2,8 @@
 // Transpiled from: App.cs
 
 #include "App.g.h"
+#include "CodeEmitter.g.h"
+#include "ErrorPool.g.h"
 #include "UnitTests.g.h"
 #include "VM.g.h"
 #include "gc.h"

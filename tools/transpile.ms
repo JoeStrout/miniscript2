@@ -1023,6 +1023,7 @@ Transpiler.updateStateNAMESPACE = function
 	else if self.match("≤scope:w≥ static class ≤name:w≥ {") then
 		self.enterState State.CLASS
 		self.curClass.type = ClassType.STRUCT
+		self.curClass.static = true
 		self.curClass.declLines += self.preLines; self.preLines = []
 		self.curClass.declLines.push self.fill("class ≤name≥ {")
 	// struct
@@ -1528,9 +1529,13 @@ Transpiler.generateOutput = function
 	headerLines.push "// FORWARD DECLARATIONS"
 	headerLines.push ""
 	for class in self.allClasses
-		if class.elsewhere or class.type != ClassType.CLASS then continue
-		headerLines.push "struct ≤name≥;".fill(class)
-		headerLines.push "class ≤name≥Storage;".fill(class)
+		if class.elsewhere then continue
+		if class.type == ClassType.CLASS then
+			headerLines.push "struct ≤name≥;".fill(class)
+			headerLines.push "class ≤name≥Storage;".fill(class)
+		else if class.type == ClassType.STRUCT and not class.static then
+			headerLines.push "struct ≤name≥;".fill(class)
+		end if
 	end for
 
 	headerLines.push ""

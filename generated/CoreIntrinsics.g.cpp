@@ -2,6 +2,7 @@
 // Transpiled from: CoreIntrinsics.cs
 
 #include "CoreIntrinsics.g.h"
+#include "Intrinsic.g.h"
 #include "gc.h"
 #include "value_list.h"
 #include "value_string.h"

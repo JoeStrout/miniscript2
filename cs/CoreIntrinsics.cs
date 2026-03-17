@@ -4,7 +4,7 @@ using System;
 using System.Collections.Generic;
 using static MiniScript.ValueHelpers;
 // H: #include "value.h"
-// H: #include "Intrinsic.g.h"
+// CPP: #include "Intrinsic.g.h"
 // CPP: #include "gc.h"
 // CPP: #include "value_list.h"
 // CPP: #include "value_string.h"

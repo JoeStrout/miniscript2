@@ -6,7 +6,6 @@
 // CoreIntrinsics.cs - Definitions of all built-in intrinsic functions.
 
 #include "value.h"
-#include "Intrinsic.g.h"
 
 namespace MiniScript {
 
@@ -14,10 +13,16 @@ namespace MiniScript {
 
 struct CodeGenerator;
 class CodeGeneratorStorage;
+struct CallInfo;
 struct VM;
 class VMStorage;
+struct Context;
+struct IntrinsicResult;
+struct ErrorPool;
+struct VMVis;
 struct CodeEmitterBase;
 class CodeEmitterBaseStorage;
+struct LabelReference;
 struct BytecodeEmitter;
 class BytecodeEmitterStorage;
 struct AssemblyEmitter;
@@ -122,6 +127,9 @@ struct ScopeNode;
 class ScopeNodeStorage;
 struct ReturnNode;
 class ReturnNodeStorage;
+struct App;
+struct Token;
+struct Lexer;
 
 // DECLARATIONS
 

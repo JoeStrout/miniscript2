@@ -20,6 +20,7 @@ using static MiniScript.ValueHelpers;
 // CPP: #include "CodeGenerator.g.h"
 // CPP: #include "StringUtils.g.h"
 // CPP: #include "IOHelper.g.h"
+// CPP: #include "Interpreter.g.h"
 // CPP: #include <thread>
 // CPP: #include <chrono>
 // CPP: using namespace MiniScript;
@@ -297,21 +298,15 @@ public struct App {
 		// CPP: gPrintOutput = printOutput;  // Use global reference
 
 		if (functions != null) {
-			// Run the program with print callback
+			// Run the program with an Interpreter to capture output
 			VM vm = new VM();
 			vm.Errors = errors;
-			//*** BEGIN CS_ONLY ***
-			vm.SetPrintCallback((String s) => { printOutput.Add(s); });
-			//*** END CS_ONLY ***
-			// CPP: VMStorage::sPrintCallback = [](const String& s) { gPrintOutput.Add(s); };
+			Interpreter interp = new Interpreter();
+			interp.standardOutput = (String s, bool addLineBreak) => { printOutput.Add(s); }; // CPP:
+			// CPP: interp.set_standardOutput([](String s, Boolean) { gPrintOutput.Add(s); });
+			vm.SetInterpreter(interp);
 			vm.Reset(functions);
 			vm.Run();
-
-			// Reset the callback before returning
-			//*** BEGIN CS_ONLY ***
-			vm.SetPrintCallback(null);
-			//*** END CS_ONLY ***
-			// CPP: VMStorage::sPrintCallback = nullptr;
 		}
 
 		// If there were errors, add the first error to the output

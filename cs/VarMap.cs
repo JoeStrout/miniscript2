@@ -127,7 +127,7 @@ public class VarMap : ValueMap {
 		}
 
 		// Clear all register mappings
-		_regMap.Clear();			
+		_regMap.Clear();
 	}
 
 	/// <summary>

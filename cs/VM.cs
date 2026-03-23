@@ -20,6 +20,7 @@ using static System.Runtime.CompilerServices.MethodImplOptions;
 // CPP: #include "StringUtils.g.h"
 // CPP: #include "dispatch_macros.h"
 // CPP: #include "vm_error.h"
+// CPP: #include "Interpreter.g.h"
 // CPP: #include <chrono>
 
 using static MiniScript.ValueHelpers;
@@ -75,19 +76,17 @@ public class VM {
 	private List<Value> stack;
 	private List<Value> names;		// Variable names parallel to stack (null if unnamed)
 
-	// Print callback: if set, print output goes here instead of IOHelper.Print
-	//*** BEGIN CS_ONLY ***
-	private Action<String> _printCallback = null;
-	public void SetPrintCallback(Action<String> callback) { _printCallback = callback; }
-	public Action<String> GetPrintCallback() { return _printCallback; }
-	//*** END CS_ONLY ***
-	// H: public: std::function<void(const String&)> _printCallback;
-	// H: public: void SetPrintCallback(std::function<void(const String&)> cb) { _printCallback = cb; }
-	// H: public: std::function<void(const String&)> GetPrintCallback() { return _printCallback; }
-
-	// Static callback for C++ (accessible from VM wrapper)
-	// H: public: static std::function<void(const String&)> sPrintCallback;
-	// CPP: std::function<void(const String&)> VMStorage::sPrintCallback;
+	// Reference to the Interpreter that owns this VM (may be null if VM is used standalone).
+	// (Note that in C++, this is a raw pointer to the InterpreterStorage, due to annoying
+	// circular-header-dependency issues.)  The same Get/Set interface works on both C#/C++.
+	private Interpreter interpreter; // H: private: InterpreterStorage* interpreter;
+	public void SetInterpreter(Interpreter interp) { // NO_INLINE
+		interpreter = interp; // CPP: interpreter = interp.get_storage();
+	}
+	// H_WRAPPER: public: void SetInterpreter(InterpreterStorage* p) { get()->interpreter = p; }
+	public Interpreter GetInterpreter() { // NO_INLINE
+		return interpreter; // CPP: return Interpreter(interpreter);
+	}
 
 	private List<CallInfo> callStack;
 	private Int32 callStackTop;	   // Index of next free call stack slot
@@ -293,6 +292,10 @@ public class VM {
 		if (DebugMode) {
 			IOHelper.Print(StringUtils.Format("VM Reset: Executing {0} out of {1} functions", mainFunc.Name, functions.Count));
 		}
+	}
+
+	public void Stop() {
+		IsRunning = false;
 	}
 
 	public void RaiseRuntimeError(String message) {
@@ -712,10 +715,17 @@ public class VM {
 					Int16 funcIndex = BytecodeUtil.BCs(instruction);
 
 					// Create function reference with our locals as the closure context
-					CallInfo frame = callStack[callStackTop];
-					locals = frame.GetLocalVarMap(stack, names, baseIndex, 
-					  curFunc.MaxRegs); // CPP: curFuncRaw->MaxRegs);
-					callStack[callStackTop] = frame;  // write back (CallInfo is a struct)
+					if (callStackTop > 0) {
+						CallInfo frame = callStack[callStackTop - 1];
+						locals = frame.GetLocalVarMap(stack, names, baseIndex,
+						  curFunc.MaxRegs); // CPP: curFuncRaw->MaxRegs);
+						callStack[callStackTop - 1] = frame;  // write back (CallInfo is a struct)
+					} else {
+						// At global scope (@main): no call stack entry, but registers
+						// persist for the program lifetime so a live VarMap is fine.
+						locals = 
+						  make_varmap(stack, names, baseIndex, curFunc.MaxRegs); // CPP: make_varmap(&stack[0], &names[0], baseIndex, curFuncRaw->MaxRegs);
+					}
 					localStack[a] = make_funcref(funcIndex, locals);
 					break;
 				}
@@ -917,10 +927,16 @@ public class VM {
 					// Create VarMap for local variables and store in R[A]
 					Byte a = BytecodeUtil.Au(instruction);
 
-					CallInfo frame = callStack[callStackTop];
-					localStack[a] = frame.GetLocalVarMap(stack, names, baseIndex, 
-					  curFunc.MaxRegs); // CPP: curFuncRaw->MaxRegs);
-					callStack[callStackTop] = frame;  // write back (CallInfo is a struct)
+					if (callStackTop > 0) {
+						CallInfo frame = callStack[callStackTop - 1];
+						localStack[a] = frame.GetLocalVarMap(stack, names, baseIndex,
+						  curFunc.MaxRegs); // CPP: curFuncRaw->MaxRegs);
+						callStack[callStackTop - 1] = frame;  // write back (CallInfo is a struct)
+					} else {
+						// At global scope: no call stack entry, create VarMap directly
+						localStack[a] = 
+						  make_varmap(stack, names, baseIndex, curFunc.MaxRegs); // CPP: make_varmap(&stack[0], &names[0], baseIndex, curFuncRaw->MaxRegs);
+					}
 					names[baseIndex+a] = val_null;
 					break;
 				}
@@ -1721,10 +1737,11 @@ public class VM {
 					}
 					
 					// If current call frame had a locals VarMap, gather it up
-					CallInfo frame = callStack[callStackTop];
+					CallInfo frame = callStack[callStackTop - 1];
 					if (!is_null(frame.LocalVarMap)) {
 						varmap_gather(frame.LocalVarMap);
-						frame.LocalVarMap = val_null;  // then clear from call frame
+						frame.LocalVarMap = val_null;
+						callStack[callStackTop - 1] = frame;  // write back (CallInfo is a struct)
 					}
 
 					// Pop call stack

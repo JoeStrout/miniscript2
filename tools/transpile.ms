@@ -484,7 +484,7 @@ Transpiler.transformStatement = function(trimmedLine)
 	// non-identifier string.
 	tokens = roughTokenize(trimmedLine)
 	
-	deepDebug = trimmedLine.contains("yielding")
+	deepDebug = false // trimmedLine.contains("yielding")
 	ddprint = function(s); if deepDebug then print "====> " + s; end function
 	summarize = function(obj)
 		if obj == null then return "<null>"
@@ -526,6 +526,13 @@ Transpiler.transformStatement = function(trimmedLine)
 				tokens.remove i+1
 				tokens.remove i
 				i -= 1
+				continue
+			end if
+			if i+1 < tokens.len and tokens[i+1] == "Invoke" then
+				// invoking a function pointer in C++ is simpler, just call it
+				tokens.remove i+1
+				tokens.remove i
+				i -=1
 				continue
 			end if
 			ddprint "Got dot when curInfo=" + summarize(curInfo)
@@ -1283,10 +1290,17 @@ Transpiler.updateStateCLASS = function
 			self.enterState State.METHOD
 			if self.curClass.type == ClassType.CLASS then
 				self.curClass.storageLines.push self.fill("	≤scope≥: ≤type≥ ≤name≥(≤params≥);")
-				self.curClass.wrapperLines.push self.fill("	≤scope≥: inline ≤type≥ ≤name≥(≤params≥);")
-				self.stripDefaultArgs
-				self.curClass.inlineLines.push self.fill(
-				  "inline ≤type≥ ≤className≥::≤name≥(≤params≥) { return get()->≤name≥(≤args≥); }")
+				if comment.contains("NO_INLINE") then
+					self.curClass.wrapperLines.push self.fill("	≤scope≥: ≤type≥ ≤name≥(≤params≥);")
+					self.stripDefaultArgs
+					self.curClass.defLines.push self.fill(
+					  "≤type≥ ≤className≥::≤name≥(≤params≥) { return get()->≤name≥(≤args≥); }")
+				else
+					self.curClass.wrapperLines.push self.fill("	≤scope≥: inline ≤type≥ ≤name≥(≤params≥);")
+					self.stripDefaultArgs
+					self.curClass.inlineLines.push self.fill(
+					  "inline ≤type≥ ≤className≥::≤name≥(≤params≥) { return get()->≤name≥(≤args≥); }")
+				end if
 				self.curClass.methodLines.push self.fill("≤inline≥≤type≥ ≤className≥Storage::≤name≥(≤params≥) {")
 			else
 				self.curClass.declLines.push self.fill("	≤scope≥: ≤type≥ ≤name≥(≤params≥);")

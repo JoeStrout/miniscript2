@@ -648,4 +648,13 @@ Much better than it looked yesterday (not shown).  The remaining includes are co
 
 And finally for today, I moved that long list of forward declarations into its own forward_decs.g.h file.  This shortens all the other headers and makes them much neater.
 
+## Mar 23, 2026
+
+I intended to spend today doing code inspection and clean-up.  But I ended up doing more of pushing the APIs in the direction of MS1, starting with TextOutuputMethod (including the addLinebreak parameter).  This uncovered a lurking bug in the VM, where we were storing the `outer` varmap in the wrong call frame.
+
+That's fixed now.  But I then realized a major missing piece, which makes some of that clean-up possible: the Interpreter class.  This is also important for making the MS1 -> MS2 transition tolerable for embedders; the Interpreter is the main interface between MiniScript and the host app.
+
+But getting this to transpile cleanly to C++ was a major PITA, because of circular header hell: VM includes an Interpreter reference, and Interpreter includes a VM reference.  Both are necessary.  To make it compile in C++, I made the VM's reference actually an InterpreterStorage* in C++, and have Get/Set methods to mostly hide that ugliness.  But the usual wrappers of those methods are inline in the header, which still has the same problem.  So I had to add a NO_INLINE feature to the transpiler to force those method definitions into the .cpp file.
+
+Eventually, though, all the issues were solved.  Compiling cleanly for both C# and C++, and we now have an Interpreter (and fixed `outer` variables).
 

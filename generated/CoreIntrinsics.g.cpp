@@ -13,6 +13,7 @@
 #include "IntrinsicAPI.g.h"
 #include "CS_Math.h"
 #include "CS_value_util.h"
+#include "Interpreter.g.h"
 #include <random>
 
 namespace MiniScript {
@@ -107,6 +108,7 @@ Value CoreIntrinsics::FunctionType() {
 	return _functionType;
 }
 Value CoreIntrinsics::_functionType = val_null;
+Value CoreIntrinsics::_EOL = make_string("\n");
 void CoreIntrinsics::Init() {
 	gc_register_mark_callback(CoreIntrinsics::MarkRoots, nullptr);
 
@@ -124,13 +126,27 @@ void CoreIntrinsics::Init() {
 	// print(s="")
 	f = Intrinsic::Create("print");
 	f.AddParam("s", make_string(""));
+	f.AddParam("delimiter", _EOL);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
-		String output = StringUtils::Format("{0}", ctx.GetArg(0));
-		if (VMStorage::sPrintCallback) {
-			VMStorage::sPrintCallback(output);
+		String s = StringUtils::Format("{0}", ctx.GetArg(0));
+		GC_PUSH_SCOPE();
+		Value delimiterVal = ctx.GetArg(1); GC_PROTECT(&delimiterVal);
+		Interpreter interp = ctx.vm.GetInterpreter();
+		if (!IsNull(interp) && !IsNull(interp.standardOutput())) {
+			if (is_null(delimiterVal)) {
+				interp.standardOutput()(s, Boolean(true));
+			} else {
+				String delimiter = as_cstring(delimiterVal);
+				if (delimiter == "\n") {
+					interp.standardOutput()(s, Boolean(true));
+				} else {
+					interp.standardOutput()(s + delimiter, Boolean(false));
+				}
+			}
 		} else {
-			IOHelper::Print(output);
+			IOHelper::Print(s);
 		}
+		GC_POP_SCOPE();
 		return IntrinsicResult(val_null);
 	});
 

@@ -59,6 +59,8 @@ struct Intrinsic;
 class IntrinsicStorage;
 struct Parser;
 class ParserStorage;
+struct Interpreter;
+class InterpreterStorage;
 struct FuncDef;
 class FuncDefStorage;
 struct ASTNode;

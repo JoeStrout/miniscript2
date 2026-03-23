@@ -54,6 +54,7 @@ class CoreIntrinsics {
 	/// </summary>
 	public: static Value FunctionType();
 	private: static Value _functionType;
+	private: static Value _EOL;
 	static void MarkRoots(void* user_data);
 
 	public: static void Init();

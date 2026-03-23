@@ -17,6 +17,7 @@
 #include "CodeGenerator.g.h"
 #include "StringUtils.g.h"
 #include "IOHelper.g.h"
+#include "Interpreter.g.h"
 #include <thread>
 #include <chrono>
 using namespace MiniScript;
@@ -286,15 +287,14 @@ bool App::RunSingleTest(List<String> inputLines,List<String> expectedLines,Int32
 	gPrintOutput = printOutput;  // Use global reference
 
 	if (!IsNull(functions)) {
-		// Run the program with print callback
+		// Run the program with an Interpreter to capture output
 		VM vm =  VM::New();
 		vm.set_Errors(errors);
-		VMStorage::sPrintCallback = [](const String& s) { gPrintOutput.Add(s); };
+		Interpreter interp =  Interpreter::New();
+		interp.set_standardOutput([](String s, Boolean) { gPrintOutput.Add(s); });
+		vm.SetInterpreter(interp);
 		vm.Reset(functions);
 		vm.Run();
-
-		// Reset the callback before returning
-		VMStorage::sPrintCallback = nullptr;
 	}
 
 	// If there were errors, add the first error to the output

@@ -3,11 +3,15 @@
 
 #include "IntrinsicAPI.g.h"
 #include "VM.g.h"
+#include "Interpreter.g.h"
 
 namespace MiniScript {
 
 Value Context::GetVar(String variableName) {
 	return vm.LookupParamByName(variableName);
+}
+Interpreter Context::Interpreter() {
+	return vm.GetInterpreter();
 }
 
 IntrinsicResult::IntrinsicResult(Value result,Boolean done ) {

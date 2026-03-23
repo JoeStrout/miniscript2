@@ -37,10 +37,13 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	public: Boolean DebugMode = false;
 	private: List<Value> stack;
 	private: List<Value> names; // Variable names parallel to stack (null if unnamed)
-	public: std::function<void(const String&)> _printCallback;
-	public: void SetPrintCallback(std::function<void(const String&)> cb) { _printCallback = cb; }
-	public: std::function<void(const String&)> GetPrintCallback() { return _printCallback; }
-	public: static std::function<void(const String&)> sPrintCallback;
+	private: InterpreterStorage* interpreter;
+
+	// Reference to the Interpreter that owns this VM (may be null if VM is used standalone).
+	// (Note that in C++, this is a raw pointer to the InterpreterStorage, due to annoying
+	// circular-header-dependency issues.)  The same Get/Set interface works on both C#/C++.
+	public: void SetInterpreter(Interpreter interp); // NO_INLINE
+	public: Interpreter GetInterpreter(); // NO_INLINE
 	private: List<CallInfo> callStack;
 	private: Int32 callStackTop; // Index of next free call stack slot
 	private: List<FuncDef> functions; // functions addressed by CALLF
@@ -62,10 +65,6 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	private: Int32 _pendingResultIndex; // absolute stack index for result (and partial result)
 	public: bool yielding;
 	private: std::chrono::steady_clock::time_point _startTime;
-
-	// Print callback: if set, print output goes here instead of IOHelper.Print
-
-	// Static callback for C++ (accessible from VM wrapper)
 
 	
 
@@ -111,6 +110,8 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	public: void RegisterFunction(FuncDef funcDef);
 
 	public: void Reset(List<FuncDef> allFunctions);
+
+	public: void Stop();
 
 	public: void RaiseRuntimeError(String message);
 
@@ -181,6 +182,13 @@ struct VM {
 	private: void set_stack(List<Value> _v);
 	private: List<Value> names(); // Variable names parallel to stack (null if unnamed)
 	private: void set_names(List<Value> _v); // Variable names parallel to stack (null if unnamed)
+
+	// Reference to the Interpreter that owns this VM (may be null if VM is used standalone).
+	// (Note that in C++, this is a raw pointer to the InterpreterStorage, due to annoying
+	// circular-header-dependency issues.)  The same Get/Set interface works on both C#/C++.
+	public: void SetInterpreter(Interpreter interp); // NO_INLINE
+	public: void SetInterpreter(InterpreterStorage* p) { get()->interpreter = p; }
+	public: Interpreter GetInterpreter(); // NO_INLINE
 	private: List<CallInfo> callStack();
 	private: void set_callStack(List<CallInfo> _v);
 	private: Int32 callStackTop(); // Index of next free call stack slot
@@ -219,10 +227,6 @@ struct VM {
 	private: void set__pendingResultIndex(Int32 _v); // absolute stack index for result (and partial result)
 	public: bool yielding();
 	public: void set_yielding(bool _v);
-
-	// Print callback: if set, print output goes here instead of IOHelper.Print
-
-	// Static callback for C++ (accessible from VM wrapper)
 
 	
 
@@ -269,6 +273,8 @@ struct VM {
 	public: inline void RegisterFunction(FuncDef funcDef);
 
 	public: inline void Reset(List<FuncDef> allFunctions);
+
+	public: inline void Stop();
 
 	public: inline void RaiseRuntimeError(String message);
 
@@ -382,6 +388,7 @@ inline void VM::InitVM(Int32 stackSlots,Int32 callSlots) { return get()->InitVM(
 inline void VM::CleanupVM() { return get()->CleanupVM(); }
 inline void VM::RegisterFunction(FuncDef funcDef) { return get()->RegisterFunction(funcDef); }
 inline void VM::Reset(List<FuncDef> allFunctions) { return get()->Reset(allFunctions); }
+inline void VM::Stop() { return get()->Stop(); }
 inline void VM::RaiseRuntimeError(String message) { return get()->RaiseRuntimeError(message); }
 inline bool VM::ReportRuntimeError() { return get()->ReportRuntimeError(); }
 inline Int32 VM::SelfParamOffset(FuncDefRef callee) { return get()->SelfParamOffset(callee); }

@@ -13,6 +13,7 @@
 #include "StringUtils.g.h"
 #include "dispatch_macros.h"
 #include "vm_error.h"
+#include "Interpreter.g.h"
 #include <chrono>
 
 namespace MiniScript {
@@ -46,7 +47,14 @@ Value CallInfo::GetLocalVarMap(List<Value> registers,List<Value> names,int baseI
 	return LocalVarMap;
 }
 
-	std::function<void(const String&)> VMStorage::sPrintCallback;
+void VM::SetInterpreter(Interpreter interp) { return get()->SetInterpreter(interp); } // NO_INLINE
+void VMStorage::SetInterpreter(Interpreter interp) { // NO_INLINE
+	interpreter = interp.get_storage();
+}
+Interpreter VM::GetInterpreter() { return get()->GetInterpreter(); } // NO_INLINE
+Interpreter VMStorage::GetInterpreter() { // NO_INLINE
+	return Interpreter(interpreter);
+}
 double VMStorage::ElapsedTime() {
 	auto now = std::chrono::steady_clock::now();
 	return std::chrono::duration<double>(now - _startTime).count();
@@ -183,6 +191,9 @@ void VMStorage::Reset(List<FuncDef> allFunctions) {
 	if (DebugMode) {
 		IOHelper::Print(StringUtils::Format("VM Reset: Executing {0} out of {1} functions", mainFunc.Name(), functions.Count()));
 	}
+}
+void VMStorage::Stop() {
+	IsRunning = Boolean(false);
 }
 void VMStorage::RaiseRuntimeError(String message) {
 	RuntimeError = message;
@@ -581,10 +592,17 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Int16 funcIndex = BytecodeUtil::BCs(instruction);
 
 				// Create function reference with our locals as the closure context
-				CallInfo frame = callStack[callStackTop];
-				locals = frame.GetLocalVarMap(stack, names, baseIndex, 
-				  curFuncRaw->MaxRegs);
-				callStack[callStackTop] = frame;  // write back (CallInfo is a struct)
+				if (callStackTop > 0) {
+					CallInfo frame = callStack[callStackTop - 1];
+					locals = frame.GetLocalVarMap(stack, names, baseIndex,
+					  curFuncRaw->MaxRegs);
+					callStack[callStackTop - 1] = frame;  // write back (CallInfo is a struct)
+				} else {
+					// At global scope (@main): no call stack entry, but registers
+					// persist for the program lifetime so a live VarMap is fine.
+					locals = 
+					  make_varmap(&stack[0], &names[0], baseIndex, curFuncRaw->MaxRegs);
+				}
 				localStack[a] = make_funcref(funcIndex, locals);
 				VM_NEXT();
 			}
@@ -786,10 +804,16 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				// Create VarMap for local variables and store in R[A]
 				Byte a = BytecodeUtil::Au(instruction);
 
-				CallInfo frame = callStack[callStackTop];
-				localStack[a] = frame.GetLocalVarMap(stack, names, baseIndex, 
-				  curFuncRaw->MaxRegs);
-				callStack[callStackTop] = frame;  // write back (CallInfo is a struct)
+				if (callStackTop > 0) {
+					CallInfo frame = callStack[callStackTop - 1];
+					localStack[a] = frame.GetLocalVarMap(stack, names, baseIndex,
+					  curFuncRaw->MaxRegs);
+					callStack[callStackTop - 1] = frame;  // write back (CallInfo is a struct)
+				} else {
+					// At global scope: no call stack entry, create VarMap directly
+					localStack[a] = 
+					  make_varmap(&stack[0], &names[0], baseIndex, curFuncRaw->MaxRegs);
+				}
 				names[baseIndex+a] = val_null;
 				VM_NEXT();
 			}
@@ -1605,10 +1629,11 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				}
 				
 				// If current call frame had a locals VarMap, gather it up
-				CallInfo frame = callStack[callStackTop];
+				CallInfo frame = callStack[callStackTop - 1];
 				if (!is_null(frame.LocalVarMap)) {
 					varmap_gather(frame.LocalVarMap);
-					frame.LocalVarMap = val_null;  // then clear from call frame
+					frame.LocalVarMap = val_null;
+					callStack[callStackTop - 1] = frame;  // write back (CallInfo is a struct)
 				}
 
 				// Pop call stack

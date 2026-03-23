@@ -15,6 +15,7 @@ using static MiniScript.ValueHelpers;
 // CPP: #include "IntrinsicAPI.g.h"
 // CPP: #include "CS_Math.h"
 // CPP: #include "CS_value_util.h"
+// CPP: #include "Interpreter.g.h"
 // CPP: #include <random>
 
 namespace MiniScript {
@@ -149,7 +150,9 @@ public static class CoreIntrinsics {
 		}
 		return _functionType;
 	}
-	private static Value _functionType = val_null;	
+	private static Value _functionType = val_null;
+
+	private static Value _EOL = make_string("\n");
 
 	// H: static void MarkRoots(void* user_data);
 
@@ -170,12 +173,24 @@ public static class CoreIntrinsics {
 		// print(s="")
 		f = Intrinsic.Create("print");
 		f.AddParam("s", make_string(""));
+		f.AddParam("delimiter", _EOL);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
-			String output = StringUtils.Format("{0}", ctx.GetArg(0));
-			if (ctx.vm.GetPrintCallback() != null) {  // CPP: if (VMStorage::sPrintCallback) {
-				ctx.vm.GetPrintCallback()(output);    // CPP: VMStorage::sPrintCallback(output);
+			String s = StringUtils.Format("{0}", ctx.GetArg(0));
+			Value delimiterVal = ctx.GetArg(1);
+			Interpreter interp = ctx.vm.GetInterpreter();
+			if (interp != null && interp.standardOutput != null) {
+				if (is_null(delimiterVal)) {
+					interp.standardOutput(s, true);
+				} else {
+					String delimiter = as_cstring(delimiterVal);
+					if (delimiter == "\n") {
+						interp.standardOutput(s, true);
+					} else {
+						interp.standardOutput(s + delimiter, false);
+					}
+				}
 			} else {
-				IOHelper.Print(output);
+				IOHelper.Print(s);
 			}
 			return new IntrinsicResult(val_null);
 		};

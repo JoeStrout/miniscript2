@@ -9,14 +9,19 @@
 namespace MiniScript {
 class VMStorage;
 typedef VMStorage& VMRef;
+typedef void (*TextOutputMethod)(String, Boolean);
+inline bool IsNull(TextOutputMethod f) { return f == nullptr; }
 
 // DECLARATIONS
+
+// Delegate method for text output.  This is used for `print` output,
+// and also for errors and REPL implicit results.
 
 // Context passed to native (intrinsic) callback functions.  This gives the
 // intrinsic function access to the call arguments, as well as the VM.
 struct Context {
-	public: VMRef vm;
-	public: List<Value> stack;
+	public: VMRef vm; // virtual machine
+	public: List<Value> stack; // VM value stack
 	public: Int32 baseIndex; // index of return register; arguments follow this
 	public: Int32 argCount; // how many arguments we have
 	public: Context(VMRef vm, List<Value> stack, Int32 baseIndex, Int32 argCount)
@@ -32,6 +37,8 @@ struct Context {
 	// compatibility with MiniScript 1.x; in most cases, intrinsics only need
 	// argument values, which are far more efficiently found via GetArg (above).
 	public: Value GetVar(String variableName);
+	
+	public: Interpreter Interpreter();
 }; // end of struct Context
 
 // IntrinsicResult: represents the result of calling an intrinsic function

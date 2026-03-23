@@ -5,17 +5,24 @@ using static System.Runtime.CompilerServices.MethodImplOptions;
 using static MiniScript.ValueHelpers;
 // H: #include "value.h"
 // CPP: #include "VM.g.h"
+// CPP: #include "Interpreter.g.h"
 
 namespace MiniScript {
 
 // H: class VMStorage;
 using VMRef = VM; // H: typedef VMStorage& VMRef;
 
+// Delegate method for text output.  This is used for `print` output,
+// and also for errors and REPL implicit results.
+// H: typedef void (*TextOutputMethod)(String, Boolean);
+// H: inline bool IsNull(TextOutputMethod f) { return f == nullptr; }
+public delegate void TextOutputMethod(String output, Boolean addLineBreak); // CPP:
+
 // Context passed to native (intrinsic) callback functions.  This gives the
 // intrinsic function access to the call arguments, as well as the VM.
 public struct Context {
-	public VMRef vm;
-	public List<Value> stack;
+	public VMRef vm;			// virtual machine
+	public List<Value> stack;	// VM value stack
 	public Int32 baseIndex;		// index of return register; arguments follow this
 	public Int32 argCount;		// how many arguments we have
 	
@@ -48,6 +55,10 @@ public struct Context {
 	// argument values, which are far more efficiently found via GetArg (above).
 	public Value GetVar(String variableName) {
 		return vm.LookupParamByName(variableName);
+	}
+	
+	public Interpreter Interpreter() {
+		return vm.GetInterpreter();
 	}
 }
 

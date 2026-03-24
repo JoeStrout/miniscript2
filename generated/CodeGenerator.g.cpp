@@ -471,24 +471,27 @@ Int32 CodeGeneratorStorage::Visit(CallNode node) {
 	return result;
 }
 Int32 CodeGeneratorStorage::CompileUserCall(CallNode node,Int32 funcVarReg,Int32 explicitTarget) {
+	List<Int32> argRegs = CompileArguments(node.Arguments());
+	return EmitCallSequence(funcVarReg, argRegs, explicitTarget, Interp("call {}", node.Function()));
+}
+List<Int32> CodeGeneratorStorage::CompileArguments(List<ASTNode> arguments) {
 	CodeGenerator _this(std::static_pointer_cast<CodeGeneratorStorage>(shared_from_this()));
-	Int32 argCount = node.Arguments().Count();
-
-	// Compile arguments into temporary registers
 	List<Int32> argRegs =  List<Int32>::New();
-	for (Int32 i = 0; i < argCount; i++) {
-		argRegs.Add(node.Arguments()[i].Accept(_this));
+	for (Int32 i = 0; i < arguments.Count(); i++) {
+		argRegs.Add(arguments[i].Accept(_this));
 	}
+	return argRegs;
+}
+Int32 CodeGeneratorStorage::EmitCallSequence(Int32 funcReg,List<Int32> argRegs,Int32 explicitTarget,String comment) {
+	Int32 argCount = argRegs.Count();
 
-	// Emit ARGBLK (24-bit arg count)
+	// Emit ARGBLK + ARG instructions
 	_emitter.EmitABC(Opcode::ARGBLK_iABC, 0, 0, argCount, Interp("argblock {}", argCount));
-
-	// Emit ARG for each argument
 	for (Int32 i = 0; i < argCount; i++) {
 		_emitter.EmitA(Opcode::ARG_rA, argRegs[i], Interp("arg {}", i));
 	}
 
-	// Determine base register for callee frame (past all our used registers)
+	// Determine callee frame base (past all our used registers)
 	Int32 calleeBase = _maxRegUsed + 1;
 	_emitter.ReserveRegister(calleeBase);
 
@@ -496,8 +499,8 @@ Int32 CodeGeneratorStorage::CompileUserCall(CallNode node,Int32 funcVarReg,Int32
 	Int32 resultReg = (explicitTarget >= 0) ? explicitTarget : AllocReg();
 
 	// Emit CALL: result in rA, callee frame at rB, funcref in rC
-	_emitter.EmitABC(Opcode::CALL_rA_rB_rC, resultReg, calleeBase, funcVarReg,
-		Interp("call {}, result to r{}", node.Function(), resultReg));
+	_emitter.EmitABC(Opcode::CALL_rA_rB_rC, resultReg, calleeBase, funcReg,
+		Interp("{}, result to r{}", comment, resultReg));
 
 	// Free argument registers
 	for (Int32 i = 0; i < argCount; i++) {
@@ -553,20 +556,9 @@ Int32 CodeGeneratorStorage::VisitIndex(IndexNode node,bool addressOf) {
 	Int32 resultReg = GetTargetOrAlloc();  // Capture target before any recursive calls
 	Int32 targetReg = node.Target().Accept(_this);
 	Int32 indexReg = node.Index().Accept(_this);
+	String comment = Interp("{}[{}]", node.Target().ToStr(), node.Index().ToStr());
 
-	if (addressOf) {
-		_emitter.EmitABC(Opcode::INDEX_rA_rB_rC, resultReg, targetReg, indexReg,
-			Interp("@{}[{}]", node.Target().ToStr(), node.Index().ToStr()));
-	} else {
-		_emitter.EmitABC(Opcode::METHFIND_rA_rB_rC, resultReg, targetReg, indexReg,
-			Interp("{}[{}]", node.Target().ToStr(), node.Index().ToStr()));
-		SuperNode superTarget = As<SuperNode, SuperNodeStorage>(node.Target());
-		if (!IsNull(superTarget)) {
-			Int32 selfReg = GetSelfReg();
-			_emitter.EmitA(Opcode::SETSELF_rA, selfReg, Interp("preserve self for super access"));
-		}
-		_emitter.EmitA(Opcode::CALLIFREF_rA, resultReg, Interp("auto-invoke if funcref"));
-	}
+	EmitAccessOrInvoke(resultReg, targetReg, indexReg, addressOf, node.Target(), comment);
 
 	FreeReg(indexReg);
 	FreeReg(targetReg);
@@ -611,27 +603,27 @@ Int32 CodeGeneratorStorage::VisitMember(MemberNode node,bool addressOf) {
 	Int32 indexReg = AllocReg();
 	Int32 constIdx = _emitter.AddConstant(make_string(node.Member()));
 	_emitter.EmitAB(Opcode::LOAD_rA_kBC, indexReg, constIdx, Interp("r{} = \"{}\"", indexReg, node.Member()));
+	String comment = Interp("{}.{}", node.Target().ToStr(), node.Member());
 
+	EmitAccessOrInvoke(resultReg, targetReg, indexReg, addressOf, node.Target(), comment);
+
+	FreeReg(indexReg);
+	FreeReg(targetReg);
+	return resultReg;
+}
+void CodeGeneratorStorage::EmitAccessOrInvoke(Int32 resultReg,Int32 targetReg,Int32 indexReg,bool addressOf,ASTNode targetNode,String comment) {
 	if (addressOf) {
-		// @ prefix: plain INDEX, no auto-invoke
 		_emitter.EmitABC(Opcode::INDEX_rA_rB_rC, resultReg, targetReg, indexReg,
-			Interp("@{}.{}", node.Target().ToStr(), node.Member()));
+			Interp("@{}", comment));
 	} else {
-		// Normal access: METHFIND + optional SETSELF + CALLIFREF
-		_emitter.EmitABC(Opcode::METHFIND_rA_rB_rC, resultReg, targetReg, indexReg,
-			Interp("{}.{}", node.Target().ToStr(), node.Member()));
-		// If target is 'super', preserve current self
-		SuperNode superTarget = As<SuperNode, SuperNodeStorage>(node.Target());
+		_emitter.EmitABC(Opcode::METHFIND_rA_rB_rC, resultReg, targetReg, indexReg, comment);
+		SuperNode superTarget = As<SuperNode, SuperNodeStorage>(targetNode);
 		if (!IsNull(superTarget)) {
 			Int32 selfReg = GetSelfReg();
 			_emitter.EmitA(Opcode::SETSELF_rA, selfReg, Interp("preserve self for super access"));
 		}
 		_emitter.EmitA(Opcode::CALLIFREF_rA, resultReg, Interp("auto-invoke if funcref"));
 	}
-
-	FreeReg(indexReg);
-	FreeReg(targetReg);
-	return resultReg;
 }
 Int32 CodeGeneratorStorage::Visit(ExprCallNode node) {
 	CodeGenerator _this(std::static_pointer_cast<CodeGeneratorStorage>(shared_from_this()));
@@ -673,28 +665,8 @@ Int32 CodeGeneratorStorage::Visit(ExprCallNode node) {
 
 		FreeReg(keyReg);
 
-		// Compile arguments
-		Int32 argCount = node.Arguments().Count();
-		List<Int32> argRegs =  List<Int32>::New();
-		for (Int32 i = 0; i < argCount; i++) {
-			argRegs.Add(node.Arguments()[i].Accept(_this));
-		}
-
-		_emitter.EmitABC(Opcode::ARGBLK_iABC, 0, 0, argCount, Interp("argblock {}", argCount));
-		for (Int32 i = 0; i < argCount; i++) {
-			_emitter.EmitA(Opcode::ARG_rA, argRegs[i], Interp("arg {}", i));
-		}
-
-		Int32 calleeBase = _maxRegUsed + 1;
-		_emitter.ReserveRegister(calleeBase);
-		Int32 resultReg = (explicitTarget >= 0) ? explicitTarget : AllocReg();
-
-		_emitter.EmitABC(Opcode::CALL_rA_rB_rC, resultReg, calleeBase, funcReg,
-			Interp("method call via index, result to r{}", resultReg));
-
-		for (Int32 i = 0; i < argCount; i++) {
-			FreeReg(argRegs[i]);
-		}
+		List<Int32> argRegs = CompileArguments(node.Arguments());
+		Int32 resultReg = EmitCallSequence(funcReg, argRegs, explicitTarget, "method call via index");
 		FreeReg(funcReg);
 		FreeReg(receiverReg);
 		return resultReg;
@@ -704,40 +676,11 @@ Int32 CodeGeneratorStorage::Visit(ExprCallNode node) {
 	Int32 explicitTarget2 = _targetReg;
 	_targetReg = -1;
 
-	Int32 argCount2 = node.Arguments().Count();
-
 	// Evaluate the function expression to get the funcref
 	Int32 funcReg2 = node.Function().Accept(_this);
 
-	// Compile arguments into temporary registers
-	List<Int32> argRegs2 =  List<Int32>::New();
-	for (Int32 i = 0; i < argCount2; i++) {
-		argRegs2.Add(node.Arguments()[i].Accept(_this));
-	}
-
-	// Emit ARGBLK (24-bit arg count)
-	_emitter.EmitABC(Opcode::ARGBLK_iABC, 0, 0, argCount2, Interp("argblock {}", argCount2));
-
-	// Emit ARG for each argument
-	for (Int32 i = 0; i < argCount2; i++) {
-		_emitter.EmitA(Opcode::ARG_rA, argRegs2[i], Interp("arg {}", i));
-	}
-
-	// Determine base register for callee frame (past all our used registers)
-	Int32 calleeBase2 = _maxRegUsed + 1;
-	_emitter.ReserveRegister(calleeBase2);
-
-	// Determine result register
-	Int32 resultReg2 = (explicitTarget2 >= 0) ? explicitTarget2 : AllocReg();
-
-	// Emit CALL: result in rA, callee frame at rB, funcref in rC
-	_emitter.EmitABC(Opcode::CALL_rA_rB_rC, resultReg2, calleeBase2, funcReg2,
-		Interp("call expr, result to r{}", resultReg2));
-
-	// Free argument registers and funcref register
-	for (Int32 i = 0; i < argCount2; i++) {
-		FreeReg(argRegs2[i]);
-	}
+	List<Int32> argRegs2 = CompileArguments(node.Arguments());
+	Int32 resultReg2 = EmitCallSequence(funcReg2, argRegs2, explicitTarget2, "call expr");
 	FreeReg(funcReg2);
 
 	return resultReg2;
@@ -1127,7 +1070,6 @@ Int32 CodeGeneratorStorage::Visit(ScopeNode node) {
 	return resultReg;
 }
 Int32 CodeGeneratorStorage::EmitMethodCall(Int32 receiverReg,String methodKey,List<ASTNode> arguments,bool preserveSelf) {
-	CodeGenerator _this(std::static_pointer_cast<CodeGeneratorStorage>(shared_from_this()));
 	Int32 explicitTarget = _targetReg;
 	_targetReg = -1;
 
@@ -1146,34 +1088,8 @@ Int32 CodeGeneratorStorage::EmitMethodCall(Int32 receiverReg,String methodKey,Li
 		_emitter.EmitA(Opcode::SETSELF_rA, selfReg, Interp("preserve self for super call"));
 	}
 
-	// Compile arguments
-	Int32 argCount = arguments.Count();
-	List<Int32> argRegs =  List<Int32>::New();
-	for (Int32 i = 0; i < argCount; i++) {
-		argRegs.Add(arguments[i].Accept(_this));
-	}
-
-	// Emit ARGBLK + ARG instructions
-	_emitter.EmitABC(Opcode::ARGBLK_iABC, 0, 0, argCount, Interp("argblock {}", argCount));
-	for (Int32 i = 0; i < argCount; i++) {
-		_emitter.EmitA(Opcode::ARG_rA, argRegs[i], Interp("arg {}", i));
-	}
-
-	// Determine callee frame base
-	Int32 calleeBase = _maxRegUsed + 1;
-	_emitter.ReserveRegister(calleeBase);
-
-	// Result register
-	Int32 resultReg = (explicitTarget >= 0) ? explicitTarget : AllocReg();
-
-	// Emit CALL
-	_emitter.EmitABC(Opcode::CALL_rA_rB_rC, resultReg, calleeBase, funcReg,
-		Interp("method call {}, result to r{}", methodKey, resultReg));
-
-	// Free temporaries
-	for (Int32 i = 0; i < argCount; i++) {
-		FreeReg(argRegs[i]);
-	}
+	List<Int32> argRegs = CompileArguments(arguments);
+	Int32 resultReg = EmitCallSequence(funcReg, argRegs, explicitTarget, Interp("method call {}", methodKey));
 	FreeReg(funcReg);
 
 	return resultReg;

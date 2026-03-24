@@ -97,6 +97,13 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 	// Compile a call to a user-defined function (funcref in a register)
 	private: Int32 CompileUserCall(CallNode node, Int32 funcVarReg, Int32 explicitTarget);
 
+	// Compile argument expressions into temporary registers.
+	private: List<Int32> CompileArguments(List<ASTNode> arguments);
+
+	// Emit ARGBLK + ARG instructions, compute callee frame, emit CALL, and free
+	// the argument registers.  Returns the result register.
+	private: Int32 EmitCallSequence(Int32 funcReg, List<Int32> argRegs, Int32 explicitTarget, String comment);
+
 	public: Int32 Visit(GroupNode node);
 
 	public: Int32 Visit(ListNode node);
@@ -114,6 +121,10 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 
 	// Compile member access, optionally as address-of (no auto-invoke)
 	private: Int32 VisitMember(MemberNode node, bool addressOf);
+
+	// Shared tail for VisitIndex/VisitMember: emit INDEX (address-of) or
+	// METHFIND + optional SETSELF + CALLIFREF (normal access with auto-invoke).
+	private: void EmitAccessOrInvoke(Int32 resultReg, Int32 targetReg, Int32 indexReg, bool addressOf, ASTNode targetNode, String comment);
 
 	public: Int32 Visit(ExprCallNode node);
 
@@ -262,6 +273,13 @@ struct CodeGenerator : public IASTVisitor {
 	// Compile a call to a user-defined function (funcref in a register)
 	private: inline Int32 CompileUserCall(CallNode node, Int32 funcVarReg, Int32 explicitTarget);
 
+	// Compile argument expressions into temporary registers.
+	private: inline List<Int32> CompileArguments(List<ASTNode> arguments);
+
+	// Emit ARGBLK + ARG instructions, compute callee frame, emit CALL, and free
+	// the argument registers.  Returns the result register.
+	private: inline Int32 EmitCallSequence(Int32 funcReg, List<Int32> argRegs, Int32 explicitTarget, String comment);
+
 	public: inline Int32 Visit(GroupNode node);
 
 	public: inline Int32 Visit(ListNode node);
@@ -279,6 +297,10 @@ struct CodeGenerator : public IASTVisitor {
 
 	// Compile member access, optionally as address-of (no auto-invoke)
 	private: inline Int32 VisitMember(MemberNode node, bool addressOf);
+
+	// Shared tail for VisitIndex/VisitMember: emit INDEX (address-of) or
+	// METHFIND + optional SETSELF + CALLIFREF (normal access with auto-invoke).
+	private: inline void EmitAccessOrInvoke(Int32 resultReg, Int32 targetReg, Int32 indexReg, bool addressOf, ASTNode targetNode, String comment);
 
 	public: inline Int32 Visit(ExprCallNode node);
 
@@ -370,6 +392,8 @@ inline Int32 CodeGenerator::Visit(ComparisonChainNode node) { return get()->Visi
 inline void CodeGenerator::EmitComparison(String op,Int32 destReg,Int32 leftReg,Int32 rightReg) { return get()->EmitComparison(op, destReg, leftReg, rightReg); }
 inline Int32 CodeGenerator::Visit(CallNode node) { return get()->Visit(node); }
 inline Int32 CodeGenerator::CompileUserCall(CallNode node,Int32 funcVarReg,Int32 explicitTarget) { return get()->CompileUserCall(node, funcVarReg, explicitTarget); }
+inline List<Int32> CodeGenerator::CompileArguments(List<ASTNode> arguments) { return get()->CompileArguments(arguments); }
+inline Int32 CodeGenerator::EmitCallSequence(Int32 funcReg,List<Int32> argRegs,Int32 explicitTarget,String comment) { return get()->EmitCallSequence(funcReg, argRegs, explicitTarget, comment); }
 inline Int32 CodeGenerator::Visit(GroupNode node) { return get()->Visit(node); }
 inline Int32 CodeGenerator::Visit(ListNode node) { return get()->Visit(node); }
 inline Int32 CodeGenerator::Visit(MapNode node) { return get()->Visit(node); }
@@ -378,6 +402,7 @@ inline Int32 CodeGenerator::VisitIndex(IndexNode node,bool addressOf) { return g
 inline Int32 CodeGenerator::Visit(SliceNode node) { return get()->Visit(node); }
 inline Int32 CodeGenerator::Visit(MemberNode node) { return get()->Visit(node); }
 inline Int32 CodeGenerator::VisitMember(MemberNode node,bool addressOf) { return get()->VisitMember(node, addressOf); }
+inline void CodeGenerator::EmitAccessOrInvoke(Int32 resultReg,Int32 targetReg,Int32 indexReg,bool addressOf,ASTNode targetNode,String comment) { return get()->EmitAccessOrInvoke(resultReg, targetReg, indexReg, addressOf, targetNode, comment); }
 inline Int32 CodeGenerator::Visit(ExprCallNode node) { return get()->Visit(node); }
 inline Int32 CodeGenerator::Visit(MethodCallNode node) { return get()->Visit(node); }
 inline Int32 CodeGenerator::Visit(WhileNode node) { return get()->Visit(node); }

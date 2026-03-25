@@ -658,3 +658,13 @@ But getting this to transpile cleanly to C++ was a major PITA, because of circul
 
 Eventually, though, all the issues were solved.  Compiling cleanly for both C# and C++, and we now have an Interpreter (and fixed `outer` variables).
 
+## Mar 24, 2026
+
+Today I asked Claude to look for code duplication and other "bad smells" in the C# code.  The worst offenders it found were in Assembler.cs.  I don't care about that one a whole lot -- it probably won't actually be included in the final shipping version of MiniScript 2, or it'll be some optional extra install for those with some weird reason to need it.  But, if we can slim it down by 200 lines or more, then why not.
+
+It found some code duplication in VM.cs.  This is stuff I was already aware of, but it's in the hot path, so we have to be very careful — any method we extract will need to be inlinable.  But if we can manage that, then it may be worth doing.  A bigger win would probably be to tame that nest of Value declarations at the top of VM.RunInner; we certainly don't need that many.  The big decision there is: do we try to keep useful names, or do we just call them val1 ... valN?  (If we do the latter, we probably won't neem any more than val3 or val4.)
+
+CodeGenerator.cs also has a couple of opportunities for eliminating duplicate code.
+
+Assembler and CodeGenerator have been deduplicated; and I manually reduced the local Values in RunInner, by making heavy use of names based on the opcode register they come from: valA, valB, and valC.  There are a couple of others I still needed, but it's dramatically better than it was (though this does make the code slightly harder to read).
+

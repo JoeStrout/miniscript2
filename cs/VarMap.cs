@@ -42,12 +42,41 @@ public class VarMap : ValueMap {
 		}
 	}
 
+	public void DebugDump() {
+		IOHelper.Print("Base Items:");
+		foreach (var kvp in base.Items) {
+			// ToDo: watch out for recursion, or maybe just limit our depth in
+			// general.  I think MS1.0 limits nesting to 16 levels deep.  But
+			// whatever we do, we shouldn't just crash with a stack overflow.
+			string keyStr = ValueHelpers.value_repr(kvp.Key).ToString();
+			string valueStr = ValueHelpers.value_repr(kvp.Value).ToString();
+			IOHelper.Print($"  - {keyStr}: {valueStr}");
+		}
+		IOHelper.Print("_regMap:");
+		foreach (var kv in _regMap) {
+			string keyStr = ValueHelpers.value_repr(kv.Key).ToString();
+			IOHelper.Print($"  - {keyStr} --> r{kv.Value}");
+		}
+		IOHelper.Print("_registers and _names (for non-null names):");
+		for (int i=0; i<_registers.Count; i++) {
+			if (_names[i].IsNull) continue;
+			IOHelper.Print($"   r{i} ({_registers[i]}) --> {_names[i]}");
+		}
+	}
+
 	/// <summary>
 	/// Map a variable name to a specific register index.
 	/// This creates the special register-backed behavior for this key.
+	/// If the name already exists as a plain map entry, remove it
+	/// (the register mapping shadows it) after copying the value into
+	/// that register.
 	/// </summary>
-	public void MapToRegister(Value varName, int regIndex) {
+	public void MapToRegister(Value varName, List<Value> registers, int regIndex) {
 		_regMap[varName] = regIndex;
+		if (base.HasKey(varName)) {
+			registers[regIndex] = base.Get(varName);
+			base.Remove(varName);
+		}
 	}
 
 	/// <summary>
@@ -128,6 +157,19 @@ public class VarMap : ValueMap {
 
 		// Clear all register mappings
 		_regMap.Clear();
+	}
+
+	/// <summary>
+	/// Rebind this VarMap to a new set of registers and names arrays.
+	/// Clears all existing register mappings but preserves plain map entries.
+	/// Used in REPL mode when a new @main is compiled: the VarMap keeps its
+	/// gathered values as plain entries, and register mappings are re-established
+	/// as ASSIGN/NAME opcodes execute in the new frame (via MapToRegister).
+	/// </summary>
+	public void Rebind(List<Value> registers, List<Value> names) {
+		Gather();
+		_registers = registers;
+		_names = names;
 	}
 
 	/// <summary>

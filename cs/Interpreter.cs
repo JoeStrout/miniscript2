@@ -12,6 +12,7 @@ using static MiniScript.ValueHelpers;
 // H: #include "IntrinsicAPI.g.h"
 // H: #include "VM.g.h"
 // H: #include "Parser.g.h"
+// H: #include "AST.g.h"
 // H: #include "IOHelper.g.h"
 // H: #include "Bytecode.g.h"
 // H: #include "CodeGenerator.g.h"
@@ -72,6 +73,10 @@ public class Interpreter {
 	protected Parser parser;
 	protected ErrorPool errors;
 	protected List<FuncDef> compiledFunctions;
+
+	// REPL state
+	private String _pendingSource;       // accumulated REPL lines so far
+	private Value _replGlobals = val_null; // persistent globals VarMap
 
 	// H_WRAPPER: public: Interpreter(InterpreterStorage* p) : storage(p ? p->shared_from_this() : nullptr) {}  
   
@@ -256,14 +261,120 @@ public class Interpreter {
 	/// <param name="sourceLine">line of source code to parse and run</param>
 	/// <param name="timeLimit">time limit in seconds</param>
 	public void REPL(String sourceLine, double timeLimit=60) {
-		// TODO: Implement incremental parsing and REPL support.
-		// For now, this is a stub that compiles and runs a complete program
-		// each time.  A proper implementation will accumulate lines,
-		// support NeedMoreInput, and track implicit results.
 		if (sourceLine == null) return;
 
-		Reset(sourceLine);
-		RunUntilDone(timeLimit, true);
+		// Accumulate source lines
+		if (_pendingSource == null) {
+			_pendingSource = sourceLine;
+		} else {
+			_pendingSource = _pendingSource + "\n" + sourceLine;
+		}
+
+		// Try to parse
+		errors.Clear();
+		if (parser == null) parser = new Parser();
+		parser.Errors = errors;
+		parser.Init(_pendingSource);
+		List<ASTNode> statements = parser.ParseProgram();
+
+		// If parser needs more input, return and wait for next line
+		if (parser.NeedMoreInput()) return;
+
+		// If there were parse errors, report and reset
+		if (parser.HadError()) {
+			ReportErrors();
+			_pendingSource = null;
+			return;
+		}
+
+		// Nothing to do if no statements
+		if (statements.Count == 0) {
+			_pendingSource = null;
+			return;
+		}
+
+		// Simplify AST
+		for (Int32 i = 0; i < statements.Count; i++) {
+			statements[i] = statements[i].Simplify();
+		}
+
+		// Detect implicit output: last statement is a bare expression
+		// (not an assignment, block statement, break, continue, or return)
+		Boolean hasImplicitOutput = false;
+		ASTNode lastStmt = statements[statements.Count - 1];
+		AssignmentNode asAssign = lastStmt as AssignmentNode;
+		IndexedAssignmentNode asIdxAssign = lastStmt as IndexedAssignmentNode;
+		WhileNode asWhile = lastStmt as WhileNode;
+		IfNode asIf = lastStmt as IfNode;
+		ForNode asFor = lastStmt as ForNode;
+		BreakNode asBreak = lastStmt as BreakNode;
+		ContinueNode asContinue = lastStmt as ContinueNode;
+		ReturnNode asReturn = lastStmt as ReturnNode;
+		if (asAssign == null && asIdxAssign == null
+			&& asWhile == null && asIf == null && asFor == null
+			&& asBreak == null && asContinue == null && asReturn == null) {
+			hasImplicitOutput = true;
+		}
+
+		// Compile to bytecode
+		BytecodeEmitter emitter = new BytecodeEmitter();
+		CodeGenerator generator = new CodeGenerator(emitter);
+		generator.Errors = errors;
+		generator.CompileProgram(statements, "@main");
+
+		if (errors.HasError()) {
+			ReportErrors();
+			_pendingSource = null;
+			return;
+		}
+
+		List<FuncDef> functions = generator.GetFunctions();
+
+		// Debug: output the disassembly
+		//foreach (String line in Disassembler.Disassemble(functions)) {
+		//	IOHelper.Print(line);
+		//}
+
+		// Create/reset VM
+		if (vm == null) vm = new VM();
+		vm.Errors = errors;
+		vm.SetInterpreter(this);
+		vm.Reset(functions, _replGlobals);
+
+		if (errors.HasError()) {
+			ReportErrors();
+			vm = null;
+			_pendingSource = null;
+			return;
+		}
+
+		// If this is the first REPL entry, create the initial globals VarMap
+		if (is_null(_replGlobals)) {
+			_replGlobals = make_varmap(vm.GetStack(), vm.GetNames(), 0, functions[0].MaxRegs); // CPP: _replGlobals = make_varmap(&vm.GetStack()[0], &vm.GetNames()[0], 0, functions[0].MaxRegs);
+			vm.ReplGlobals = _replGlobals;
+		}
+
+		// Run
+		double startTime = vm.ElapsedTime();
+		vm.yielding = false;
+		while (vm.IsRunning && !vm.yielding) {
+			if (vm.ElapsedTime() - startTime > timeLimit) break;
+			vm.Run(1000);
+			if (errors.HasError()) {
+				ReportErrors();
+				break;
+			}
+		}
+
+		// Implicit output: if last statement was a bare expression, report r0
+		if (hasImplicitOutput && !errors.HasError() && implicitOutput != null) {
+			Value result = vm.GetStackValue(vm.BaseIndex);
+			if (!is_null(result)) {
+				implicitOutput.Invoke(result.ToString(), true);
+			}
+		}
+
+		_pendingSource = null;
 	}
 
 	/// <summary>
@@ -281,8 +392,7 @@ public class Interpreter {
 	/// prompt when more input is expected.
 	/// </summary>
 	public bool NeedMoreInput() {
-		// TODO: Implement when incremental parsing is added.
-		return false;
+		return _pendingSource != null && parser != null && parser.NeedMoreInput();
 	}
 
 	/// <summary>

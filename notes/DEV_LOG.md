@@ -668,3 +668,13 @@ CodeGenerator.cs also has a couple of opportunities for eliminating duplicate co
 
 Assembler and CodeGenerator have been deduplicated; and I manually reduced the local Values in RunInner, by making heavy use of names based on the opcode register they come from: valA, valB, and valC.  There are a couple of others I still needed, but it's dramatically better than it was (though this does make the code slightly harder to read).
 
+## Mar 30, 2026
+
+I think it's time to add the REPL.  We already have stub REPL() and NeedMoreInput() methods. The challenge is threefold: (1) detecting when user input is incomplete (open blocks), (2) compiling each REPL entry as a fresh @main while preserving global variables across entries, and (3) supporting implicit output for bare expressions.
+
+Each REPL entry compiles as a new @main function, but all entries share a persistent globals VarMap that carries variables forward. The parser gains a "need more input" signal (distinct from syntax errors) for incomplete blocks. The Interpreter orchestrates the lifecycle: accumulate lines, compile, run, gather globals, report implicit output.
+
+The trick is to keep the global VarMap around, and in sync with the new variable registers each time we make a fresh main.  We'll add a new `Rebind()` method that re-attaches the new registers to the existing map.  There are three spots that access `callStack[0].GetLocalVarMap` to look up globals (these are LookupVariable, the OUTER_rA opcode, and the GLOBALS_rA opcode).  At each of those, we'll check for `ReplGlobals` and use it if found.
+
+Resetting the VM requires care in this case: we must really do a *partial* reset, keeping the functions list from before, while creating new stack and name lists -- but then rebinding the persistent globals map to these new lists.
+

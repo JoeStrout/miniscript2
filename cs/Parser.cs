@@ -26,6 +26,7 @@ public class Parser : IParser {
 	private Lexer _lexer;
 	private Token _current;
 	private TokenType _previousType;
+	private Boolean _needMoreInput;
 	public ErrorPool Errors;
 
 	// Parselet tables - indexed by TokenType
@@ -102,8 +103,18 @@ public class Parser : IParser {
 	public void Init(String source) {
 		_lexer = new Lexer(source);
 		Errors.Clear();
+		_needMoreInput = false;
 		_lexer.Errors = Errors;  // Share the same error pool
 		Advance();  // Prime the pump with the first token
+	}
+
+	/// <summary>
+	/// Return whether the parser ran out of input in the middle of an open
+	/// block (if/while/for/function).  Only meaningful when there are no
+	/// errors -- a genuine syntax error takes precedence.
+	/// </summary>
+	public Boolean NeedMoreInput() {
+		return _needMoreInput && !HadError();
 	}
 
 	// Advance to the next token, skipping comments and line continuations.
@@ -472,6 +483,11 @@ public class Parser : IParser {
 
 	// Require "end <keyword>" and consume it, reporting error if not found
 	private void RequireEndKeyword(TokenType keyword, String keywordName) {
+		if (_current.Type == TokenType.END_OF_INPUT) {
+			// Ran out of input inside an open block -- not an error, just incomplete
+			_needMoreInput = true;
+			return;
+		}
 		if (_current.Type != TokenType.END) {
 			ReportError($"Expected 'end {keywordName}'");
 			return;
@@ -503,6 +519,8 @@ public class Parser : IParser {
 			List<ASTNode> elseBody = ParseElseClause();
 			if (_current.Type == TokenType.END) {
 				RequireEndKeyword(TokenType.IF, "if");
+			} else if (_current.Type == TokenType.END_OF_INPUT) {
+				_needMoreInput = true;
 			}
 			return new IfNode(condition, thenBody, elseBody);
 		} else {

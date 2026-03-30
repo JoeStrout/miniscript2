@@ -808,6 +808,18 @@ public static class ValueHelpers {
 		varMap?.Gather();
 	}
 
+	public static void varmap_rebind(Value map_val, List<Value> registers, List<Value> names) {
+		if (!map_val.IsMap) return;
+		var varMap = HandlePool.Get(map_val.Handle()) as VarMap;
+		varMap?.Rebind(registers, names);
+	}
+
+	public static void varmap_map_to_register(Value map_val, Value varName, List<Value> registers, int regIndex) {
+		if (!map_val.IsMap) return;
+		var varMap = HandlePool.Get(map_val.Handle()) as VarMap;
+		varMap?.MapToRegister(varName, registers, regIndex);
+	}
+
 	// Frozen value helpers
 	public static bool is_frozen(Value v) {
 		if (v.IsList) {

@@ -72,8 +72,12 @@ void ParserStorage::RegisterInfix(TokenType type,InfixParselet parselet) {
 void ParserStorage::Init(String source) {
 	_lexer = Lexer(source);
 	Errors.Clear();
+	_needMoreInput = Boolean(false);
 	_lexer.Errors = Errors;  // Share the same error pool
 	Advance();  // Prime the pump with the first token
+}
+Boolean ParserStorage::NeedMoreInput() {
+	return _needMoreInput && !HadError();
 }
 void ParserStorage::Advance() {
 	_previousType = _current.Type;
@@ -402,6 +406,11 @@ List<ASTNode> ParserStorage::ParseBlock(TokenType terminator1,TokenType terminat
 	return body;
 }
 void ParserStorage::RequireEndKeyword(TokenType keyword,String keywordName) {
+	if (_current.Type == TokenType::END_OF_INPUT) {
+		// Ran out of input inside an open block -- not an error, just incomplete
+		_needMoreInput = Boolean(true);
+		return;
+	}
 	if (_current.Type != TokenType::END) {
 		ReportError(Interp("Expected 'end {}'", keywordName));
 		return;
@@ -430,6 +439,8 @@ ASTNode ParserStorage::ParseIfStatement() {
 		List<ASTNode> elseBody = ParseElseClause();
 		if (_current.Type == TokenType::END) {
 			RequireEndKeyword(TokenType::IF, "if");
+		} else if (_current.Type == TokenType::END_OF_INPUT) {
+			_needMoreInput = Boolean(true);
 		}
 		return  IfNode::New(condition, thenBody, elseBody);
 	} else {

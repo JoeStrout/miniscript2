@@ -17,6 +17,7 @@ using static MiniScript.ValueHelpers;
 // H: #include "Bytecode.g.h"
 // H: #include "CodeGenerator.g.h"
 // H: #include "gc.h"
+// CPP: #include "StringUtils.g.h"
 
 namespace MiniScript {
 
@@ -350,7 +351,7 @@ public class Interpreter {
 
 		// If this is the first REPL entry, create the initial globals VarMap
 		if (is_null(_replGlobals)) {
-			_replGlobals = make_varmap(vm.GetStack(), vm.GetNames(), 0, functions[0].MaxRegs); // CPP: _replGlobals = make_varmap(&vm.GetStack()[0], &vm.GetNames()[0], 0, functions[0].MaxRegs);
+			_replGlobals = make_varmap(vm.GetStack(), vm.GetNames(), 0, functions[0].MaxRegs); // CPP: _replGlobals = make_varmap(&vm.GetStack()[0], &vm.GetNames()[0], 0, functions[0].MaxRegs());
 			vm.ReplGlobals = _replGlobals;
 		}
 
@@ -367,10 +368,11 @@ public class Interpreter {
 		}
 
 		// Implicit output: if last statement was a bare expression, report r0
+		Value result;
 		if (hasImplicitOutput && !errors.HasError() && implicitOutput != null) {
-			Value result = vm.GetStackValue(vm.BaseIndex);
+			result = vm.GetStackValue(vm.BaseIndex);
 			if (!is_null(result)) {
-				implicitOutput.Invoke(result.ToString(), true);
+				implicitOutput.Invoke(StringUtils.Format("{0}", result), true);
 			}
 		}
 

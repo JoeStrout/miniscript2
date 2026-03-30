@@ -48,6 +48,13 @@ class UnitTests {
 
 	public: static Boolean TestLexer();
 
+	// Helper: run a sequence of REPL inputs and collect all printed output.
+	private: static List<String> RunREPLSequence(List<String> inputs);
+
+	public: static Boolean TestParserNeedMoreInput();
+
+	public: static Boolean TestREPL();
+
 	public: static Boolean RunAll();
 }; // end of struct UnitTests
 

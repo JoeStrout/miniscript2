@@ -65,6 +65,12 @@ VM VMStorage::ActiveVM() {
 Int32 VMStorage::StackSize() {
 	return stack.Count();
 }
+List<Value> VMStorage::GetStack() {
+	return stack;
+}
+List<Value> VMStorage::GetNames() {
+	return names;
+}
 Int32 VMStorage::CallStackDepth() {
 	return callStackTop;
 }
@@ -138,38 +144,69 @@ void VMStorage::RegisterFunction(FuncDef funcDef) {
 	functions.Add(funcDef);
 }
 void VMStorage::Reset(List<FuncDef> allFunctions) {
-	// Store all functions for CALLF instructions, and find @main
-	FuncDef mainFunc = nullptr;
-	functions.Clear();
+	Reset(allFunctions, val_null);
+}
+void VMStorage::Reset(List<FuncDef> allFunctions,Value replGlobals) {
+	bool partialReset = !is_null(replGlobals);
+
+	// Store all functions for CALLF instructions, and find @main.
+	// NOTE: if given replGlobals, then don't clear previous functions,
+	// (except for @main), as some of those globals might reference them.
+	// (We can also skip registering intrinsics in this case, as they're 
+	// already registered.)	
+	Int32 mainIdx = -1;
+	if (partialReset) {
+		// search existing functions for old main func;
+		// clear that slot and note the index
+		for (Int32 i = 0; i < functions.Count(); i++) {
+			if (functions[i].Name() == "@main") {
+				functions[i] = nullptr;
+				mainIdx = i;
+				break;
+			}
+		}
+	} else {
+		// full reset: clear all previous functions
+		functions.Clear();
+	}
+	
+	// Then, add new functions (taking special care with @main)
 	for (Int32 i = 0; i < allFunctions.Count(); i++) {
-		functions.Add(allFunctions[i]);
-		if (functions[i].Name() == "@main") mainFunc = functions[i];
+		if (allFunctions[i].Name() == "@main") {
+			if (mainIdx >= 0) {
+				functions[mainIdx] = allFunctions[i];
+			} else {
+				functions.Add(allFunctions[i]);
+				mainIdx = i;
+			}
+		} else {
+			functions.Add(allFunctions[i]);
+		}
 	}
 
-	_intrinsics =  Dictionary<String, Value>::New();
-	Intrinsic::RegisterAll(functions, _intrinsics);
-
-	if (!mainFunc) {
+	if (is_null(replGlobals)) {
+		_intrinsics =  Dictionary<String, Value>::New();
+		Intrinsic::RegisterAll(functions, _intrinsics);
+	}
+	
+	// Basic validation
+	if (mainIdx < 0) {
 		IOHelper::Print("ERROR: No @main function found in VM.Reset");
 		return;
 	}
+	FuncDef mainFunc = functions[mainIdx];
+	_currentFuncIndex = mainIdx;
 
-	// Basic validation - simplified for C++ transpilation
 	if (mainFunc.Code().Count() == 0) {
 		IOHelper::Print("Entry function has no code");
 		return;
 	}
 
-	// Find the entry function index; at the same time, copy into
-	// our functionsRaw vector (C++ only) for quick access
+	// C++ only: copy functions into functionsRaw vector for quick access
+	functionsRaw.clear();
 	functionsRaw.reserve(functions.Count());
-	_currentFuncIndex = -1;
 	for (Int32 i = 0; i < functions.Count(); i++) {
 		functionsRaw.push_back(functions[i].get_storage());
-		if (functions[i].Name() == mainFunc.Name()) {
-			_currentFuncIndex = i;
-			// (don't break, we need to copy all function pointers)
-		}
 	}
 
 	// Initialize execution state
@@ -185,6 +222,23 @@ void VMStorage::Reset(List<FuncDef> allFunctions) {
 
 	EnsureFrame(BaseIndex, CurrentFunction.MaxRegs());
 
+	// In REPL mode, rebind the persistent globals VarMap to the new stack arrays
+	if (partialReset) {
+		ReplGlobals = replGlobals;
+		Int32 capacity = stack.Count();
+		// careful: don't release old stacks until after varmap_rebind (below)
+		List<Value> newStack =  List<Value>::New(capacity);	
+		List<Value> newNames =  List<Value>::New(capacity);
+		for (int i=0; i<capacity; i++) {
+			newStack.Add(val_null);
+			newNames.Add(val_null);
+		}
+		varmap_rebind(ReplGlobals, &newStack[0], &newNames[0]);
+		stack = newStack;
+		names = newNames;
+	}
+
+	// Start the run timer (e.g. for the `time` intrinsic)
 	_startTime = std::chrono::steady_clock::now();
 
 	if (DebugMode) {
@@ -443,7 +497,6 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 		cyclesLeft--;
 
 		if (pc >= codeCount) {
-			IOHelper::Print("VM: PC out of bounds");
 			IsRunning = Boolean(false);
 			SaveState(pc, baseIndex, currentFuncIndex);
 			GC_POP_SCOPE();
@@ -453,7 +506,6 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 		UInt32 instruction = curCode[pc++];
 
 		if (DebugMode) {
-			// Debug output disabled for C++ transpilation
 			IOHelper::Print(StringUtils::Format("{0} {1}: {2}     r0:{3}, r1:{4}, r2:{5}",
 				curFuncRaw->Name,
 				StringUtils::ZeroPad(pc-1, 4),
@@ -574,7 +626,14 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Byte b = BytecodeUtil::Bu(instruction);
 				Byte c = BytecodeUtil::Cu(instruction);
 				localStack[a] = localStack[b];
-				names[baseIndex + a] = curConstants[c];	// OFI: keep localNames?
+				valC = curConstants[c];
+				names[baseIndex + a] = valC;
+				// In REPL mode, register this variable in the globals VarMap
+				if (baseIndex == 0 && !is_null(ReplGlobals)) {
+					varmap_map_to_register(ReplGlobals, valC, 
+						&stack[0],
+						baseIndex + a);
+				}
 				VM_NEXT();
 			}
 
@@ -582,7 +641,14 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				// names[baseIndex + A] = constants[BC] (without changing R[A])
 				Byte a = BytecodeUtil::Au(instruction);
 				UInt16 constIdx = BytecodeUtil::BCu(instruction);
-				names[baseIndex + a] = curConstants[constIdx];	// OFI: keep localNames?
+				valC = curConstants[constIdx];
+				names[baseIndex + a] = valC;
+				// In REPL mode, register this variable in the globals VarMap
+				if (baseIndex == 0 && !is_null(ReplGlobals)) {
+					varmap_map_to_register(ReplGlobals, valC,
+						&stack[0],
+						baseIndex + a);
+				}
 				VM_NEXT();
 			}
 
@@ -776,15 +842,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 					localStack[a] = callStack[callStackTop - 1].OuterVarMap;
 				} else {
 					// No enclosing scope or at global scope: outer == globals
-					CallInfo gframe = callStack[0];
-					Int32 regCount;  // TODO: is the following right?  Why not just functions[0].MaxRegs?
-					if (callStackTop == 0) {
-						regCount = curFuncRaw->MaxRegs;
-					} else {
-						regCount = functions[gframe.ReturnFuncIndex].MaxRegs();
-					}
-					localStack[a] = gframe.GetLocalVarMap(stack, names, 0, regCount);
-					callStack[0] = gframe;
+					localStack[a] = GetGlobalsVarMap();
 				}
 				names[baseIndex+a] = val_null;
 				VM_NEXT();
@@ -793,15 +851,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 			VM_CASE(GLOBALS_rA) {
 				// Return VarMap for global variables
 				Byte a = BytecodeUtil::Au(instruction);
-				CallInfo gframe = callStack[0];
-				Int32 regCount;  // TODO: is the following right?  Why not just functions[0].MaxRegs?
-				if (callStackTop == 0) {
-					regCount = curFuncRaw->MaxRegs;
-				} else {
-					regCount = functions[gframe.ReturnFuncIndex].MaxRegs();
-				}
-				localStack[a] = gframe.GetLocalVarMap(stack, names, 0, regCount);
-				callStack[0] = gframe;  // write back (CallInfo is a struct)
+				localStack[a] = GetGlobalsVarMap();
 				names[baseIndex+a] = val_null;
 				VM_NEXT();
 			}
@@ -1596,7 +1646,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 			VM_DISPATCH_END();
 	}
 	VM_DISPATCH_BOTTOM();
-
+	
 	// Save state after loop exit (e.g. from error condition)
 	SaveState(pc, baseIndex, currentFuncIndex);
 	GC_POP_SCOPE();
@@ -1611,6 +1661,21 @@ FORCE_INLINE void VMStorage::SwitchFrame(Int32 currentFuncIndex, Int32 baseIndex
 	curCode = &curFuncRaw->Code[0];
 	curConstants = &curFuncRaw->Constants[0];
 	localStack = stackPtr + baseIndex;
+}
+Value VMStorage::GetGlobalsVarMap() {
+	if (!is_null(ReplGlobals)) return ReplGlobals;
+	CallInfo gframe = callStack[0];
+	Int32 regCount;
+	if (callStackTop == 0) {
+		regCount = CurrentFunction.MaxRegs();
+	} else {
+		regCount = functions[gframe.ReturnFuncIndex].MaxRegs();
+	}
+	GC_PUSH_SCOPE();
+	Value globalMap = gframe.GetLocalVarMap(stack, names, 0, regCount); GC_PROTECT(&globalMap);
+	callStack[0] = gframe;  // write back (CallInfo is a struct)
+	GC_POP_SCOPE();
+	return globalMap;
 }
 Value VMStorage::LookupParamByName(String varName) {
 	// Look up a parameter by name in the current frame.  This is provided
@@ -1646,11 +1711,8 @@ Value VMStorage::LookupVariable(Value varName) {
 
 	// Check global variables via VarMap (registers at base 0 in the @main frame)
 	Value globalMap; GC_PROTECT(&globalMap);
-	if (callStackTop > 0) {
-		CallInfo gframe = callStack[0];
-		Int32 globalRegCount = functions[gframe.ReturnFuncIndex].MaxRegs();
-		globalMap = gframe.GetLocalVarMap(stack, names, 0, globalRegCount);
-		callStack[0] = gframe;  // write back (CallInfo is a struct)
+	if (callStackTop > 0 || !is_null(ReplGlobals)) {
+		globalMap = GetGlobalsVarMap();
 		if (map_try_get(globalMap, varName, &result)) {
 			GC_POP_SCOPE();
 			return result;

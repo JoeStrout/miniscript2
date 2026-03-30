@@ -160,8 +160,21 @@ case "$TARGET" in
         make -C tests vm
         ;;
 
+    "xcode")
+        echo "Generating Xcode project..."
+        if [ ! -f "cpp/CMakeLists.txt" ]; then
+            echo "Error: cpp/CMakeLists.txt not found."
+            exit 1
+        fi
+        mkdir -p cpp/xcode
+        cd cpp/xcode
+        cmake -G Xcode -DCMAKE_BUILD_TYPE=Debug ..
+        echo "Xcode project generated at cpp/xcode/miniscript2.xcodeproj"
+        echo "Open with: open cpp/xcode/miniscript2.xcodeproj"
+        ;;
+
     *)
-        echo "Usage: $0 {setup|cs|transpile|cpp|all|clean|test|test-*} [options]"
+        echo "Usage: $0 {setup|cs|transpile|cpp|all|clean|test|test-*|xcode} [options]"
         echo ""
         echo "Build Commands:"
         echo "  setup       - Set up development environment"
@@ -177,6 +190,9 @@ case "$TARGET" in
         echo "  test-cpp    - Run all C++ test suites"
         echo "  test-cs     - Run all C# test suites"
         echo "  test-vm     - Run VM tests only"
+        echo ""
+        echo "IDE:"
+        echo "  xcode       - Generate Xcode project in cpp/xcode/"
         echo ""
         echo "C++ build options (can be combined in any order):"
         echo "  debug       - Build with -O0 -g and asserts enabled"

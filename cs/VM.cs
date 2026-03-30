@@ -151,8 +151,15 @@ public class VM {
 	public Int32 StackSize() {
 		return stack.Count;
 	}
-	public List<Value> GetStack() { return stack; }
-	public List<Value> GetNames() { return names; }
+	
+	public List<Value> GetStack() {
+		return stack;
+	}
+	
+	public List<Value> GetNames() {
+		return names;
+	}
+
 	public Int32 CallStackDepth() {
 		return callStackTop;
 	}
@@ -248,7 +255,6 @@ public class VM {
 
 	public void Reset(List<FuncDef> allFunctions, Value replGlobals) {
 		bool partialReset = !is_null(replGlobals);
-		bool fullReset = !partialReset;
 
 		// Store all functions for CALLF instructions, and find @main.
 		// NOTE: if given replGlobals, then don't clear previous functions,
@@ -303,6 +309,15 @@ public class VM {
 			return;
 		}
 
+		/*** BEGIN CPP_ONLY ***
+		// C++ only: copy functions into functionsRaw vector for quick access
+		functionsRaw.clear();
+		functionsRaw.reserve(functions.Count());
+		for (Int32 i = 0; i < functions.Count(); i++) {
+			functionsRaw.push_back(functions[i].get_storage());
+		}
+		*** END CPP_ONLY ***/
+
 		// Initialize execution state
 		BaseIndex = 0;			  // entry executes at stack base
 		PC = 0;				 // start at entry code
@@ -320,19 +335,20 @@ public class VM {
 		if (partialReset) {
 			ReplGlobals = replGlobals;
 			Int32 capacity = stack.Count;
-			stack = new List<Value>(capacity);
-			names = new List<Value>(capacity);
+			// careful: don't release old stacks until after varmap_rebind (below)
+			List<Value> newStack = new List<Value>(capacity);	
+			List<Value> newNames = new List<Value>(capacity);
 			for (int i=0; i<capacity; i++) {
-				stack.Add(val_null);
-				names.Add(val_null);
+				newStack.Add(val_null);
+				newNames.Add(val_null);
 			}
-			varmap_rebind(ReplGlobals, stack, names);
+			varmap_rebind(ReplGlobals, newStack, newNames); // CPP: varmap_rebind(ReplGlobals, &newStack[0], &newNames[0]);
+			stack = newStack;
+			names = newNames;
 		}
 
-		//*** BEGIN CS_ONLY ***
-		_stopwatch.Restart();
-		//*** END CS_ONLY ***
-		// CPP: _startTime = std::chrono::steady_clock::now();
+		// Start the run timer (e.g. for the `time` intrinsic)
+		_stopwatch.Restart(); // CPP: _startTime = std::chrono::steady_clock::now();
 
 		if (DebugMode) {
 			IOHelper.Print(StringUtils.Format("VM Reset: Executing {0} out of {1} functions", mainFunc.Name, functions.Count));
@@ -747,7 +763,9 @@ public class VM {
 					names[baseIndex + a] = valC;
 					// In REPL mode, register this variable in the globals VarMap
 					if (baseIndex == 0 && !is_null(ReplGlobals)) {
-						varmap_map_to_register(ReplGlobals, valC, stack, baseIndex + a);
+						varmap_map_to_register(ReplGlobals, valC, 
+							stack,  // CPP: &stack[0],
+							baseIndex + a);
 					}
 					break;
 				}
@@ -760,7 +778,9 @@ public class VM {
 					names[baseIndex + a] = valC;
 					// In REPL mode, register this variable in the globals VarMap
 					if (baseIndex == 0 && !is_null(ReplGlobals)) {
-						varmap_map_to_register(ReplGlobals, valC, stack, baseIndex + a);
+						varmap_map_to_register(ReplGlobals, valC,
+							stack,  // CPP: &stack[0],
+							baseIndex + a);
 					}
 					break;
 				}
@@ -1858,7 +1878,7 @@ public class VM {
 	private Value LookupVariable(Value varName) {
 		// Look up a variable in outer context (and eventually globals)
 		// Returns the value if found, or null if not found
-		Value result;
+		Value result;		
 		if (callStackTop > 0) {
 			CallInfo currentFrame = callStack[callStackTop - 1];  // Current frame, not next frame
 			if (!is_null(currentFrame.OuterVarMap)) {
@@ -1869,8 +1889,9 @@ public class VM {
 		}
 
 		// Check global variables via VarMap (registers at base 0 in the @main frame)
+		Value globalMap;
 		if (callStackTop > 0 || !is_null(ReplGlobals)) {
-			Value globalMap = GetGlobalsVarMap();
+			globalMap = GetGlobalsVarMap();
 			if (map_try_get(globalMap, varName, out result)) {
 				return result;
 			}

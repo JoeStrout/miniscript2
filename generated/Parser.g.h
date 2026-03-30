@@ -27,6 +27,7 @@ class ParserStorage : public std::enable_shared_from_this<ParserStorage>, public
 	private: Lexer _lexer;
 	private: Token _current;
 	private: TokenType _previousType;
+	private: Boolean _needMoreInput;
 	public: ErrorPool Errors;
 	private: Dictionary<TokenType, PrefixParselet> _prefixParselets;
 	private: Dictionary<TokenType, InfixParselet> _infixParselets;
@@ -44,6 +45,13 @@ class ParserStorage : public std::enable_shared_from_this<ParserStorage>, public
 
 	// Initialize the parser with source code
 	public: void Init(String source);
+
+	/// <summary>
+	/// Return whether the parser ran out of input in the middle of an open
+	/// block (if/while/for/function).  Only meaningful when there are no
+	/// errors -- a genuine syntax error takes precedence.
+	/// </summary>
+	public: Boolean NeedMoreInput();
 
 	// Advance to the next token, skipping comments and line continuations.
 	// A line continuation is an EOL that follows a token which naturally
@@ -178,6 +186,8 @@ struct Parser : public IParser {
 	private: void set__current(Token _v);
 	private: TokenType _previousType();
 	private: void set__previousType(TokenType _v);
+	private: Boolean _needMoreInput();
+	private: void set__needMoreInput(Boolean _v);
 	public: ErrorPool Errors();
 	public: void set_Errors(ErrorPool _v);
 	private: Dictionary<TokenType, PrefixParselet> _prefixParselets();
@@ -200,6 +210,13 @@ struct Parser : public IParser {
 
 	// Initialize the parser with source code
 	public: inline void Init(String source);
+
+	/// <summary>
+	/// Return whether the parser ran out of input in the middle of an open
+	/// block (if/while/for/function).  Only meaningful when there are no
+	/// errors -- a genuine syntax error takes precedence.
+	/// </summary>
+	public: inline Boolean NeedMoreInput();
 
 	// Advance to the next token, skipping comments and line continuations.
 	// A line continuation is an EOL that follows a token which naturally
@@ -325,6 +342,8 @@ inline Token Parser::_current() { return get()->_current; }
 inline void Parser::set__current(Token _v) { get()->_current = _v; }
 inline TokenType Parser::_previousType() { return get()->_previousType; }
 inline void Parser::set__previousType(TokenType _v) { get()->_previousType = _v; }
+inline Boolean Parser::_needMoreInput() { return get()->_needMoreInput; }
+inline void Parser::set__needMoreInput(Boolean _v) { get()->_needMoreInput = _v; }
 inline ErrorPool Parser::Errors() { return get()->Errors; }
 inline void Parser::set_Errors(ErrorPool _v) { get()->Errors = _v; }
 inline Dictionary<TokenType, PrefixParselet> Parser::_prefixParselets() { return get()->_prefixParselets; }
@@ -335,6 +354,7 @@ inline void Parser::RegisterParselets() { return get()->RegisterParselets(); }
 inline void Parser::RegisterPrefix(TokenType type,PrefixParselet parselet) { return get()->RegisterPrefix(type, parselet); }
 inline void Parser::RegisterInfix(TokenType type,InfixParselet parselet) { return get()->RegisterInfix(type, parselet); }
 inline void Parser::Init(String source) { return get()->Init(source); }
+inline Boolean Parser::NeedMoreInput() { return get()->NeedMoreInput(); }
 inline void Parser::Advance() { return get()->Advance(); }
 inline Boolean Parser::IsAssignOp(TokenType type) { return get()->IsAssignOp(type); }
 inline String Parser::CompoundAssignOp(TokenType type) { return get()->CompoundAssignOp(type); }

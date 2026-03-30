@@ -46,8 +46,9 @@ bool map_expand_capacity(Value map_val);  // Expands in-place, returns success
 Value map_with_expanded_capacity(Value map_val);  // Deprecated - creates new map
 
 // VarMap-specific functions
-void varmap_map_to_register(Value map_val, Value var_name, int reg_index);
+void varmap_map_to_register(Value map_val, Value var_name, Value* registers, int reg_index);
 void varmap_gather(Value map_val);
+void varmap_rebind(Value map_val, Value* registers, Value* names);
 
 // Map iteration
 typedef struct {

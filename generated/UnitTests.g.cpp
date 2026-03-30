@@ -12,6 +12,7 @@
 #include "AST.g.h"
 #include "CodeEmitter.g.h"
 #include "CodeGenerator.g.h"
+#include "Interpreter.g.h"
 
 namespace MiniScript {
 
@@ -746,6 +747,161 @@ Boolean UnitTests::TestLexer() {
 
 	return ok;
 }
+	static List<String> gTestOutput;
+List<String> UnitTests::RunREPLSequence(List<String> inputs) {
+	List<String> output =  List<String>::New();
+	gTestOutput = output;
+	Interpreter interp =  Interpreter::New();
+	interp.set_standardOutput([](String s, Boolean) { gTestOutput.Add(s); });
+	interp.set_implicitOutput([](String s, Boolean) { gTestOutput.Add(s); });
+	interp.set_errorOutput([](String s, Boolean) { gTestOutput.Add(s); });
+	for (Int32 i = 0; i < inputs.Count(); i++) {
+		IOHelper::Print(StringUtils::Format("--------------------------\n{0}", inputs[i]));
+		interp.REPL(inputs[i]);
+	}
+	return output;
+}
+Boolean UnitTests::TestParserNeedMoreInput() {
+	Boolean ok = Boolean(true);
+
+	// Incomplete while block should need more input
+	Parser parser =  Parser::New();
+	parser.Init("while true");
+	parser.ParseProgram();
+	ok = ok && Assert(parser.NeedMoreInput(), "while without end should need more input");
+
+	// Incomplete if block
+	parser =  Parser::New();
+	parser.Init("if true then");
+	parser.ParseProgram();
+	ok = ok && Assert(parser.NeedMoreInput(), "if-then without end should need more input");
+
+	// Incomplete for block
+	parser =  Parser::New();
+	parser.Init("for i in range(10)");
+	parser.ParseProgram();
+	ok = ok && Assert(parser.NeedMoreInput(), "for without end should need more input");
+
+	// Incomplete function block
+	parser =  Parser::New();
+	parser.Init("f = function(x)");
+	parser.ParseProgram();
+	ok = ok && Assert(parser.NeedMoreInput(), "function without end should need more input");
+
+	// Complete statement should NOT need more input
+	parser =  Parser::New();
+	parser.Init("x = 42");
+	parser.ParseProgram();
+	ok = ok && Assert(!parser.NeedMoreInput(), "complete statement should not need more input");
+
+	// Syntax error should NOT be treated as need-more-input
+	parser =  Parser::New();
+	parser.Init("if + then");
+	parser.ParseProgram();
+	ok = ok && Assert(!parser.NeedMoreInput(), "syntax error should not be need-more-input");
+
+	if (!ok) IOHelper::Print("TestParserNeedMoreInput FAILED");
+	return ok;
+}
+Boolean UnitTests::TestREPL() {
+	Boolean ok = Boolean(true);
+
+	// Test 1: Simple global persistence
+	{
+		List<String> inputs =  List<String>::New();
+		inputs.Add("x = 42");
+		inputs.Add("print x");
+		List<String> output = RunREPLSequence(inputs);
+		ok = ok && Assert(output.Count() >= 1 && output[0] == "42",
+			StringUtils::Format("Global persistence: expected '42' but got {0}",
+				output.Count() > 0 ? output[0] : "(empty)"));
+	}
+
+	// Test 2: Global update (x = x + 1)
+	{
+		List<String> inputs =  List<String>::New();
+		inputs.Add("x = 10");
+		inputs.Add("x = x + 1");
+		inputs.Add("print x");
+		List<String> output = RunREPLSequence(inputs);
+		ok = ok && Assert(output.Count() >= 1 && output[0] == "11",
+			StringUtils::Format("Global update: expected '11' but got {0}",
+				output.Count() > 0 ? output[0] : "(empty)"));
+	}
+
+	// Test 3: Function reading globals implicitly
+	{
+		List<String> inputs =  List<String>::New();
+		inputs.Add("f = function; print x; end function");
+		inputs.Add("x = 42; f");
+		List<String> output = RunREPLSequence(inputs);
+		ok = ok && Assert(output.Count() >= 1 && output[0] == "42",
+			StringUtils::Format("Function accessing globals (implicitly): expected '42' but got {0}",
+				output.Count() > 0 ? output[0] : "(empty)"));
+	}
+
+	// Test 3b: Function reading globals explicitly
+	{
+		List<String> inputs =  List<String>::New();
+		inputs.Add("f = function; print globals.x; end function");
+		inputs.Add("x = 42; f");
+		List<String> output = RunREPLSequence(inputs);
+		ok = ok && Assert(output.Count() >= 1 && output[0] == "42",
+			StringUtils::Format("Function accessing globals (explicitly): expected '42' but got {0}",
+				output.Count() > 0 ? output[0] : "(empty)"));
+	}
+
+	// Test 3b: Function updating globals, then read in main
+	{
+		List<String> inputs =  List<String>::New();
+		inputs.Add("incX = function; globals.x += 1; end function");
+		inputs.Add("x = 10; incX; print x");
+		List<String> output = RunREPLSequence(inputs);
+		ok = ok && Assert(output.Count() >= 1 && output[0] == "11",
+			StringUtils::Format("Function updating global: expected '11' but got {0}",
+				output.Count() > 0 ? output[0] : "(empty)"));
+	}
+
+	// Test 4: Implicit output for bare expression
+	{
+		List<String> inputs =  List<String>::New();
+		inputs.Add("2 + 3");
+		List<String> output = RunREPLSequence(inputs);
+		ok = ok && Assert(output.Count() >= 1 && output[0] == "5",
+			StringUtils::Format("Implicit output: expected '5' but got {0}",
+				output.Count() > 0 ? output[0] : "(empty)"));
+	}
+
+	// Test 5: No implicit output for assignment
+	{
+		List<String> inputs =  List<String>::New();
+		inputs.Add("x = 42");
+		List<String> output = RunREPLSequence(inputs);
+		ok = ok && Assert(output.Count() == 0,
+			StringUtils::Format("Assignment should not produce output, got {0} items",
+				output.Count()));
+	}
+
+	// Test 6: Multi-line block via NeedMoreInput
+	{
+		Interpreter interp =  Interpreter::New();
+		List<String> output =  List<String>::New();
+		gTestOutput = output;
+		interp.set_standardOutput([](String s, Boolean) { gTestOutput.Add(s); });
+		interp.REPL("if true then");
+		ok = ok && Assert(interp.NeedMoreInput(), "After 'if true then', should need more input");
+		interp.REPL("print 99");
+		ok = ok && Assert(interp.NeedMoreInput(), "After body line, should still need more input");
+		interp.REPL("end if");
+		ok = ok && Assert(!interp.NeedMoreInput(), "After 'end if', should not need more input");
+		ok = ok && Assert(output.Count() >= 1 && output[0] == "99",
+			StringUtils::Format("Multi-line if: expected '99' but got {0}",
+				output.Count() > 0 ? output[0] : "(empty)"));
+	}
+
+	if (!ok) IOHelper::Print("TestREPL FAILED");
+	return ok;
+}
 Boolean UnitTests::RunAll() {
 	return TestStringUtils()
 		&& TestDisassembler()
@@ -754,7 +910,9 @@ Boolean UnitTests::RunAll() {
 		&& TestLexer()
 		&& TestParser()
 		&& TestCodeGenerator()
-		&& TestEmitPatternValidation();
+		&& TestEmitPatternValidation()
+		&& TestParserNeedMoreInput()
+		&& TestREPL();
 }
 
 } // end of namespace MiniScript

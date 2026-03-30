@@ -26,7 +26,7 @@ build/
 build/tests/
 
 # Generated (transpiled) files... not entirely sure whether we want
-# to push these to github or not, but probably not in this prototype.
+# to push these to github or not, but probably not for now.
 miniscript2/generated/
 
 # C# / .NET / Mono Build Products
@@ -50,6 +50,9 @@ out/
 # .NET Test Projects
 NanBoxTests/
 TestProject*/
+
+# Xcode stuff
+cpp/xcode
 
 # Visual Studio / Visual Studio Code
 .vs/

@@ -744,16 +744,19 @@ public static class UnitTests {
 		return ok;
 	}
 
+	// CPP: static List<String> gTestOutput;
+
 	// Helper: run a sequence of REPL inputs and collect all printed output.
-	static List<String> RunREPLSequence(List<String> inputs) {
+	private static List<String> RunREPLSequence(List<String> inputs) {
 		List<String> output = new List<String>();
+		// CPP: gTestOutput = output;
 		Interpreter interp = new Interpreter();
 		interp.standardOutput = (String s, bool eol) => { output.Add(s); }; // CPP:
-		// CPP: interp.set_standardOutput([&output](String s, Boolean) { output.Add(s); });
+		// CPP: interp.set_standardOutput([](String s, Boolean) { gTestOutput.Add(s); });
 		interp.implicitOutput = (String s, bool eol) => { output.Add(s); }; // CPP:
-		// CPP: interp.set_implicitOutput([&output](String s, Boolean) { output.Add(s); });
+		// CPP: interp.set_implicitOutput([](String s, Boolean) { gTestOutput.Add(s); });
 		interp.errorOutput = (String s, bool eol) => { output.Add(s); }; // CPP:
-		// CPP: interp.set_errorOutput([&output](String s, Boolean) { output.Add(s); });
+		// CPP: interp.set_errorOutput([](String s, Boolean) { gTestOutput.Add(s); });
 		for (Int32 i = 0; i < inputs.Count; i++) {
 			interp.REPL(inputs[i]);
 		}
@@ -886,8 +889,9 @@ public static class UnitTests {
 		{
 			Interpreter interp = new Interpreter();
 			List<String> output = new List<String>();
+			// CPP: gTestOutput = output;
 			interp.standardOutput = (String s, bool eol) => { output.Add(s); }; // CPP:
-			// CPP: interp.set_standardOutput([&output](String s, Boolean) { output.Add(s); });
+			// CPP: interp.set_standardOutput([](String s, Boolean) { gTestOutput.Add(s); });
 			interp.REPL("if true then");
 			ok = ok && Assert(interp.NeedMoreInput(), "After 'if true then', should need more input");
 			interp.REPL("print 99");

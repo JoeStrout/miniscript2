@@ -14,6 +14,7 @@
 #include "IntrinsicAPI.g.h"
 #include "VM.g.h"
 #include "Parser.g.h"
+#include "AST.g.h"
 #include "IOHelper.g.h"
 #include "Bytecode.g.h"
 #include "CodeGenerator.g.h"
@@ -35,6 +36,8 @@ class InterpreterStorage : public std::enable_shared_from_this<InterpreterStorag
 	protected: Parser parser;
 	protected: ErrorPool errors;
 	protected: List<FuncDef> compiledFunctions;
+	private: String _pendingSource; // accumulated REPL lines so far
+	private: Value _replGlobals = val_null; // persistent globals VarMap
 
 	/// <summary>
 	/// standardOutput: receives the output of the "print" intrinsic.
@@ -69,6 +72,8 @@ class InterpreterStorage : public std::enable_shared_from_this<InterpreterStorag
 	/// vm: the virtual machine this interpreter is running.  Most applications
 	/// will not need to use this, but it's provided for advanced users.
 	/// </summary>
+
+	// REPL state
 
   
 	/// <summary>
@@ -219,6 +224,10 @@ struct Interpreter {
 	protected: void set_errors(ErrorPool _v);
 	protected: List<FuncDef> compiledFunctions();
 	protected: void set_compiledFunctions(List<FuncDef> _v);
+	private: String _pendingSource(); // accumulated REPL lines so far
+	private: void set__pendingSource(String _v); // accumulated REPL lines so far
+	private: Value _replGlobals(); // persistent globals VarMap
+	private: void set__replGlobals(Value _v); // persistent globals VarMap
 	public: Interpreter(InterpreterStorage* p) : storage(p ? p->shared_from_this() : nullptr) {}  
 
 	/// <summary>
@@ -254,6 +263,8 @@ struct Interpreter {
 	/// vm: the virtual machine this interpreter is running.  Most applications
 	/// will not need to use this, but it's provided for advanced users.
 	/// </summary>
+
+	// REPL state
 
   
 	/// <summary>
@@ -398,6 +409,10 @@ inline ErrorPool Interpreter::errors() { return get()->errors; }
 inline void Interpreter::set_errors(ErrorPool _v) { get()->errors = _v; }
 inline List<FuncDef> Interpreter::compiledFunctions() { return get()->compiledFunctions; }
 inline void Interpreter::set_compiledFunctions(List<FuncDef> _v) { get()->compiledFunctions = _v; }
+inline String Interpreter::_pendingSource() { return get()->_pendingSource; } // accumulated REPL lines so far
+inline void Interpreter::set__pendingSource(String _v) { get()->_pendingSource = _v; } // accumulated REPL lines so far
+inline Value Interpreter::_replGlobals() { return get()->_replGlobals; } // persistent globals VarMap
+inline void Interpreter::set__replGlobals(Value _v) { get()->_replGlobals = _v; } // persistent globals VarMap
 inline void Interpreter::Init(String _source,TextOutputMethod _standardOutput,TextOutputMethod _errorOutput) { return get()->Init(_source, _standardOutput, _errorOutput); }
 inline void Interpreter::Stop() { return get()->Stop(); }
 inline void Interpreter::Reset(String _source) { return get()->Reset(_source); }

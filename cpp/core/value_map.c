@@ -722,14 +722,16 @@ Value make_varmap(Value* registers, Value* names, int firstIndex, int count) {
     map->varmap_data = vdata;
 
     for (int i = firstIndex; i < firstIndex + count; i++) {
-    	if (!is_null(names[i])) varmap_map_to_register(result, names[i], i);
+    	if (!is_null(names[i])) varmap_map_to_register(result, names[i], registers, i);
     }
 
     return result;
 }
 
-// Helper function to add register mapping
-void varmap_map_to_register(Value map_val, Value var_name, int reg_index) {
+// Helper function to add register mapping.
+// If var_name already exists as a plain map entry, hydrate the register
+// from that entry and remove the plain entry (the register mapping shadows it).
+void varmap_map_to_register(Value map_val, Value var_name, Value* registers, int reg_index) {
     ValueMap* map = as_map(map_val);
     if (!map || !map->varmap_data) return;
 
@@ -740,6 +742,31 @@ void varmap_map_to_register(Value map_val, Value var_name, int reg_index) {
         vdata->reg_map_count++;
     }
     // ToDo: else grow our capacity!
+
+    // If there's a plain map entry for this name, hydrate the register from it
+    uint32_t hash = value_hash(var_name);
+    int entry_index = find_entry(map, var_name, hash);
+    if (entry_index >= 0) {
+        registers[reg_index] = map->entries[entry_index].value;
+        // Remove the plain entry (now shadowed by register mapping)
+        int bucket = hash % map->capacity;
+        int prev = -1;
+        for (int i = map->buckets[bucket]; i >= 0; prev = i, i = map->entries[i].next) {
+            if (i == entry_index) {
+                if (prev < 0) {
+                    map->buckets[bucket] = map->entries[i].next;
+                } else {
+                    map->entries[prev].next = map->entries[i].next;
+                }
+                map->entries[i].next = MAP_ENTRY_REMOVED;
+                map->entries[i].key = val_null;
+                map->entries[i].value = val_null;
+                map->entries[i].hash = 0;
+                map->freeCount++;
+                break;
+            }
+        }
+    }
 }
 
 static void map_debug_dump(Value map_val) {
@@ -778,4 +805,20 @@ void varmap_gather(Value map_val) {
 
     // Clear all register mappings
     vdata->reg_map_count = 0;
+}
+
+// Rebind a VarMap to new register and names arrays.
+// Gathers all register-mapped values into plain map entries first,
+// then updates the register/names pointers for future operations.
+void varmap_rebind(Value map_val, Value* registers, Value* names) {
+    ValueMap* map = as_map(map_val);
+    if (!map || !map->varmap_data) return;
+
+    // Gather current register values into plain map entries
+    varmap_gather(map_val);
+
+    // Update pointers to new arrays
+    VarMapData* vdata = map->varmap_data;
+    vdata->registers = registers;
+    vdata->names = names;
 }

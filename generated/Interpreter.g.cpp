@@ -2,6 +2,7 @@
 // Transpiled from: Interpreter.cs
 
 #include "Interpreter.g.h"
+#include "StringUtils.g.h"
 
 namespace MiniScript {
 
@@ -114,21 +115,130 @@ void InterpreterStorage::Step() {
 	}
 }
 void InterpreterStorage::REPL(String sourceLine,double timeLimit) {
-	// TODO: Implement incremental parsing and REPL support.
-	// For now, this is a stub that compiles and runs a complete program
-	// each time.  A proper implementation will accumulate lines,
-	// support NeedMoreInput, and track implicit results.
+	Interpreter _this(std::static_pointer_cast<InterpreterStorage>(shared_from_this()));
 	if (IsNull(sourceLine)) return;
 
-	Reset(sourceLine);
-	RunUntilDone(timeLimit, Boolean(true));
+	// Accumulate source lines
+	if (IsNull(_pendingSource)) {
+		_pendingSource = sourceLine;
+	} else {
+		_pendingSource = _pendingSource + "\n" + sourceLine;
+	}
+
+	// Try to parse
+	errors.Clear();
+	if (IsNull(parser)) parser =  Parser::New();
+	parser.set_Errors(errors);
+	parser.Init(_pendingSource);
+	List<ASTNode> statements = parser.ParseProgram();
+
+	// If parser needs more input, return and wait for next line
+	if (parser.NeedMoreInput()) return;
+
+	// If there were parse errors, report and reset
+	if (parser.HadError()) {
+		ReportErrors();
+		_pendingSource = nullptr;
+		return;
+	}
+
+	// Nothing to do if no statements
+	if (statements.Count() == 0) {
+		_pendingSource = nullptr;
+		return;
+	}
+
+	// Simplify AST
+	for (Int32 i = 0; i < statements.Count(); i++) {
+		statements[i] = statements[i].Simplify();
+	}
+
+	// Detect implicit output: last statement is a bare expression
+	// (not an assignment, block statement, break, continue, or return)
+	Boolean hasImplicitOutput = Boolean(false);
+	ASTNode lastStmt = statements[statements.Count() - 1];
+	AssignmentNode asAssign = As<AssignmentNode, AssignmentNodeStorage>(lastStmt);
+	IndexedAssignmentNode asIdxAssign = As<IndexedAssignmentNode, IndexedAssignmentNodeStorage>(lastStmt);
+	WhileNode asWhile = As<WhileNode, WhileNodeStorage>(lastStmt);
+	IfNode asIf = As<IfNode, IfNodeStorage>(lastStmt);
+	ForNode asFor = As<ForNode, ForNodeStorage>(lastStmt);
+	BreakNode asBreak = As<BreakNode, BreakNodeStorage>(lastStmt);
+	ContinueNode asContinue = As<ContinueNode, ContinueNodeStorage>(lastStmt);
+	ReturnNode asReturn = As<ReturnNode, ReturnNodeStorage>(lastStmt);
+	if (IsNull(asAssign) && IsNull(asIdxAssign)
+		&& IsNull(asWhile) && IsNull(asIf) && IsNull(asFor)
+		&& IsNull(asBreak) && IsNull(asContinue) && IsNull(asReturn)) {
+		hasImplicitOutput = Boolean(true);
+	}
+
+	// Compile to bytecode
+	BytecodeEmitter emitter =  BytecodeEmitter::New();
+	CodeGenerator generator =  CodeGenerator::New(emitter);
+	generator.set_Errors(errors);
+	generator.CompileProgram(statements, "@main");
+
+	if (errors.HasError()) {
+		ReportErrors();
+		_pendingSource = nullptr;
+		return;
+	}
+
+	List<FuncDef> functions = generator.GetFunctions();
+
+	// Debug: output the disassembly
+	//foreach (String line in Disassembler.Disassemble(functions)) {
+	//	IOHelper.Print(line);
+	//}
+
+	// Create/reset VM
+	if (IsNull(vm)) vm =  VM::New();
+	vm.set_Errors(errors);
+	vm.SetInterpreter(_this);
+	vm.Reset(functions, _replGlobals);
+
+	if (errors.HasError()) {
+		ReportErrors();
+		vm = nullptr;
+		_pendingSource = nullptr;
+		return;
+	}
+
+	// If this is the first REPL entry, create the initial globals VarMap
+	if (is_null(_replGlobals)) {
+		_replGlobals = make_varmap(&vm.GetStack()[0], &vm.GetNames()[0], 0, functions[0].MaxRegs());
+		vm.set_ReplGlobals(_replGlobals);
+	}
+
+	// Run
+	double startTime = vm.ElapsedTime();
+	vm.set_yielding(Boolean(false));
+	while (vm.IsRunning() && !vm.yielding()) {
+		if (vm.ElapsedTime() - startTime > timeLimit) break;
+		vm.Run(1000);
+		if (errors.HasError()) {
+			ReportErrors();
+			break;
+		}
+	}
+
+	// Implicit output: if last statement was a bare expression, report r0
+	GC_PUSH_SCOPE();
+	Value result; GC_PROTECT(&result);
+	if (hasImplicitOutput && !errors.HasError() && !IsNull(implicitOutput)) {
+		result = vm.GetStackValue(vm.BaseIndex());
+		if (!is_null(result)) {
+			implicitOutput(StringUtils::Format("{0}", result), Boolean(true));
+		}
+	}
+
+	_pendingSource = nullptr;
+	GC_POP_SCOPE();
 }
 bool InterpreterStorage::Running() {
 	return !IsNull(vm) && vm.IsRunning();
 }
 bool InterpreterStorage::NeedMoreInput() {
-	// TODO: Implement when incremental parsing is added.
-	return Boolean(false);
+	return !IsNull(_pendingSource) && !IsNull(parser) && parser.NeedMoreInput();
 }
 Value InterpreterStorage::GetGlobalValue(String varName) {
 	if (IsNull(vm)) return val_null;

@@ -57,6 +57,7 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	public: Int32 BaseIndex;
 	public: String RuntimeError;
 	public: ErrorPool Errors;
+	public: Value ReplGlobals = val_null;
 	private: Value pendingSelf;
 	private: Value pendingSuper;
 	private: bool hasPendingContext;
@@ -70,6 +71,9 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	
 
 	// Execution state (persistent across RunSteps calls)
+
+	// REPL mode: persistent globals VarMap shared across REPL entries.
+	// When set (not val_null), used instead of callStack[0].GetLocalVarMap for globals.
 
 	// Pending self/super for method calls, set by METHFIND/SETSELF,
 	// consumed by the next CALL instruction
@@ -90,6 +94,11 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	public: static VM ActiveVM();
 
 	public: Int32 StackSize();
+	
+	public: List<Value> GetStack();
+	
+	public: List<Value> GetNames();
+
 	public: Int32 CallStackDepth();
 
 	public: Value GetStackValue(Int32 index);
@@ -111,6 +120,8 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	public: void RegisterFunction(FuncDef funcDef);
 
 	public: void Reset(List<FuncDef> allFunctions);
+
+	public: void Reset(List<FuncDef> allFunctions, Value replGlobals);
 
 	public: void Stop();
 
@@ -163,6 +174,10 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	void SwitchFrame(Int32 currentFuncIndex, Int32 baseIndex, FuncDefStorage* &curFuncRaw, Int32 &codeCount, UInt32* &curCode, Value* &curConstants, Value* &localStack, Value* stackPtr);
 
 	// Switch all frame-local execution state to the function at currentFuncIndex.
+
+	// Get the globals VarMap.  In REPL mode, returns the persistent ReplGlobals.
+	// Otherwise, lazily creates one from callStack[0].
+	private: Value GetGlobalsVarMap();
 
 	// Get or create a VarMap for the current call frame's local variables.
 	// At global scope (callStackTop == 0), creates a VarMap directly.
@@ -221,6 +236,8 @@ struct VM {
 	public: void set_RuntimeError(String _v);
 	public: ErrorPool Errors();
 	public: void set_Errors(ErrorPool _v);
+	public: Value ReplGlobals();
+	public: void set_ReplGlobals(Value _v);
 	private: Value pendingSelf();
 	private: void set_pendingSelf(Value _v);
 	private: Value pendingSuper();
@@ -242,6 +259,9 @@ struct VM {
 
 	// Execution state (persistent across RunSteps calls)
 
+	// REPL mode: persistent globals VarMap shared across REPL entries.
+	// When set (not val_null), used instead of callStack[0].GetLocalVarMap for globals.
+
 	// Pending self/super for method calls, set by METHFIND/SETSELF,
 	// consumed by the next CALL instruction
 
@@ -262,6 +282,11 @@ struct VM {
 	public: static VM ActiveVM() { return VMStorage::ActiveVM(); }
 
 	public: inline Int32 StackSize();
+	
+	public: inline List<Value> GetStack();
+	
+	public: inline List<Value> GetNames();
+
 	public: inline Int32 CallStackDepth();
 
 	public: inline Value GetStackValue(Int32 index);
@@ -283,6 +308,8 @@ struct VM {
 	public: inline void RegisterFunction(FuncDef funcDef);
 
 	public: inline void Reset(List<FuncDef> allFunctions);
+
+	public: inline void Reset(List<FuncDef> allFunctions, Value replGlobals);
 
 	public: inline void Stop();
 
@@ -335,6 +362,10 @@ struct VM {
 
 	// Switch all frame-local execution state to the function at currentFuncIndex.
 
+	// Get the globals VarMap.  In REPL mode, returns the persistent ReplGlobals.
+	// Otherwise, lazily creates one from callStack[0].
+	private: inline Value GetGlobalsVarMap();
+
 	// Get or create a VarMap for the current call frame's local variables.
 	// At global scope (callStackTop == 0), creates a VarMap directly.
 	private: inline Value GetCurrentLocalVarMap(Int32 baseIndex, UInt16 maxRegs);
@@ -377,6 +408,8 @@ inline String VM::RuntimeError() { return get()->RuntimeError; }
 inline void VM::set_RuntimeError(String _v) { get()->RuntimeError = _v; }
 inline ErrorPool VM::Errors() { return get()->Errors; }
 inline void VM::set_Errors(ErrorPool _v) { get()->Errors = _v; }
+inline Value VM::ReplGlobals() { return get()->ReplGlobals; }
+inline void VM::set_ReplGlobals(Value _v) { get()->ReplGlobals = _v; }
 inline Value VM::pendingSelf() { return get()->pendingSelf; }
 inline void VM::set_pendingSelf(Value _v) { get()->pendingSelf = _v; }
 inline Value VM::pendingSuper() { return get()->pendingSuper; }
@@ -397,6 +430,8 @@ inline double VM::ElapsedTime() { return get()->ElapsedTime(); }
 inline VM VM::_activeVM() { return get()->_activeVM; }
 inline void VM::set__activeVM(VM _v) { get()->_activeVM = _v; }
 inline Int32 VM::StackSize() { return get()->StackSize(); }
+inline List<Value> VM::GetStack() { return get()->GetStack(); }
+inline List<Value> VM::GetNames() { return get()->GetNames(); }
 inline Int32 VM::CallStackDepth() { return get()->CallStackDepth(); }
 inline Value VM::GetStackValue(Int32 index) { return get()->GetStackValue(index); }
 inline Value VM::GetStackName(Int32 index) { return get()->GetStackName(index); }
@@ -406,6 +441,7 @@ inline void VM::InitVM(Int32 stackSlots,Int32 callSlots) { return get()->InitVM(
 inline void VM::CleanupVM() { return get()->CleanupVM(); }
 inline void VM::RegisterFunction(FuncDef funcDef) { return get()->RegisterFunction(funcDef); }
 inline void VM::Reset(List<FuncDef> allFunctions) { return get()->Reset(allFunctions); }
+inline void VM::Reset(List<FuncDef> allFunctions,Value replGlobals) { return get()->Reset(allFunctions, replGlobals); }
 inline void VM::Stop() { return get()->Stop(); }
 inline void VM::RaiseRuntimeError(String message) { return get()->RaiseRuntimeError(message); }
 inline bool VM::ReportRuntimeError() { return get()->ReportRuntimeError(); }
@@ -425,6 +461,7 @@ inline void VMStorage::EnsureFrame(Int32 baseIndex,UInt16 neededRegs) {
 		RaiseRuntimeError("Stack Overflow");
 	}
 }
+inline Value VM::GetGlobalsVarMap() { return get()->GetGlobalsVarMap(); }
 inline Value VM::GetCurrentLocalVarMap(Int32 baseIndex,UInt16 maxRegs) { return get()->GetCurrentLocalVarMap(baseIndex, maxRegs); }
 inline Value VMStorage::GetCurrentLocalVarMap(Int32 baseIndex,UInt16 maxRegs) {
 	GC_PUSH_SCOPE();

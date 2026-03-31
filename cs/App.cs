@@ -79,107 +79,55 @@ public struct App {
 			IOHelper.Print("Integration tests complete.");
 		}
 		
-		// Handle inline code (-c) or file argument
-		List<FuncDef> functions = null;
-		ErrorPool errors = ErrorPool.Create();
-
+		// Handle inline code (-c), file argument, or REPL
 		if (inlineCode != null) {
-			// Compile inline code
 			if (debugMode) IOHelper.Print(StringUtils.Format("Compiling: {0}", inlineCode));
-			functions = CompileSource(inlineCode, errors, debugMode);
+			Interpreter interp = CreateInterpreter();
+			interp.Reset(inlineCode);
+			RunInterpreter(interp);
 		} else if (fileArgIndex != -1) {
 			String filePath = args[fileArgIndex];
-
-			// Determine file type by extension
+			Interpreter interp = CreateInterpreter();
 			if (filePath.EndsWith(".ms")) {
-				functions = CompileSourceFile(filePath, errors);
+				// Source file: read, join, and compile via Interpreter
+				if (debugMode) IOHelper.Print(StringUtils.Format("Reading source file: {0}", filePath));
+				List<String> lines = IOHelper.ReadFile(filePath);
+				if (lines.Count == 0) {
+					IOHelper.Print("No lines read from file.");
+				} else {
+					String source = "";
+					for (Int32 i = 0; i < lines.Count; i++) {
+						if (i > 0) source += "\n";
+						source += lines[i];
+					}
+					if (debugMode) IOHelper.Print(StringUtils.Format("Parsing {0} lines...", lines.Count));
+					interp.Reset(source);
+					RunInterpreter(interp);
+				}
 			} else {
-				// Default to assembly file (.msa or any other extension)
-				functions = AssembleFile(filePath);
+				// Assembly file (.msa or any other extension)
+				List<FuncDef> functions = AssembleFile(filePath);
+				if (functions != null) {
+					interp.Reset(functions);
+					RunInterpreter(interp);
+				}
 			}
-		}
-
-		if (functions != null) {
-			RunProgram(functions, errors);
-		} else if (inlineCode == null && fileArgIndex == -1 && !debugMode) {
+		} else if (!debugMode) {
 			// No file or inline code: enter REPL mode
 			RunREPL();
-		}
-
-		if (errors.HasError()) {
-			IOHelper.Print(errors.TopError());
 		}
 
 		IOHelper.Print("All done!");
 	}
 
-	// Compile MiniScript source code to a list of functions.
-	// Set verbose=true for extra debug output (assembly listing, etc.)
-	private static List<FuncDef> CompileSource(String source, ErrorPool errors, Boolean verbose=false) {
-		// Parse the source as a program (multiple statements)
-		Parser parser = new Parser();
-		parser.Errors = errors;
-		parser.Init(source);
-		List<ASTNode> statements = parser.ParseProgram();
-
-		if (parser.HadError()) return null;
-
-		if (statements.Count == 0) {
-			if (verbose) IOHelper.Print("No statements to compile.");
-			return null;
-		}
-
-		// Simplify each AST (e.g. constant folding)
-		for (Int32 i = 0; i < statements.Count; i++) {
-			statements[i] = statements[i].Simplify();
-		}
-
-		// Compile to bytecode (offset past intrinsics so indices don't collide)
-		// (ToDo: refactor this so that callers don't have to know so many steps
-		// to get correct behavior; it should be more automatic.)
-		BytecodeEmitter emitter = new BytecodeEmitter();
-		CodeGenerator generator = new CodeGenerator(emitter);
-		generator.Errors = errors;
-		generator.FunctionIndexOffset = Intrinsic.Count();
-		generator.CompileProgram(statements, "@main");
-
-		if (generator.Errors.HasError()) return null;
-
-		if (verbose) IOHelper.Print("Compilation complete.");
-
-		// In verbose mode, also generate and print assembly
-		if (verbose) {
-			AssemblyEmitter asmEmitter = new AssemblyEmitter();
-			CodeGenerator asmGenerator = new CodeGenerator(asmEmitter);
-			asmGenerator.FunctionIndexOffset = Intrinsic.Count();
-			asmGenerator.CompileProgram(statements, "@main");
-
-			IOHelper.Print("\nGenerated assembly:");
-			IOHelper.Print(asmEmitter.GetAssembly());
-		}
-
-		return generator.GetFunctions();
-	}
-
-	private static List<FuncDef> CompileSourceFile(String filePath, ErrorPool errors) {
-		if (debugMode) IOHelper.Print(StringUtils.Format("Reading source file: {0}", filePath));
-
-		List<String> lines = IOHelper.ReadFile(filePath);
-		if (lines.Count == 0) {
-			IOHelper.Print("No lines read from file.");
-			return null;
-		}
-
-		// Join lines into a single source string
-		String source = "";
-		for (Int32 i = 0; i < lines.Count; i++) {
-			if (i > 0) source += "\n";
-			source += lines[i];
-		}
-
-		if (debugMode) IOHelper.Print(StringUtils.Format("Parsing {0} lines...", lines.Count));
-
-		return CompileSource(source, errors, debugMode);
+	// Create an Interpreter with standard output wiring
+	private static Interpreter CreateInterpreter() {
+		Interpreter interp = new Interpreter();
+		interp.standardOutput = (String s, bool eol) => { IOHelper.Print(s); }; // CPP:
+		// CPP: interp.set_standardOutput([](String s, Boolean) { IOHelper::Print(s); });
+		interp.errorOutput = (String s, bool eol) => { IOHelper.Print(s); }; // CPP:
+		// CPP: interp.set_errorOutput([](String s, Boolean) { IOHelper::Print(s); });
+		return interp;
 	}
 
 	// Assemble an assembly file (.msa) to a list of functions
@@ -294,34 +242,19 @@ public struct App {
 		// Skip empty tests
 		if (String.IsNullOrEmpty(source.Trim())) return true;
 
-		// Set up a shared error pool for all stages
-		ErrorPool errors = ErrorPool.Create();
-
-		// Compile the source (parser + code generator share the error pool)
-		List<FuncDef> functions = CompileSource(source, errors);
-
 		// Set up print output capture
 		List<String> printOutput = new List<String>();
 		// CPP: static List<String> gPrintOutput;
 		// CPP: gPrintOutput = printOutput;  // Use global reference
 
-		if (functions != null) {
-			// Run the program with an Interpreter to capture output
-			VM vm = new VM();
-			vm.Errors = errors;
-			Interpreter interp = new Interpreter();
-			interp.standardOutput = (String s, bool addLineBreak) => { printOutput.Add(s); }; // CPP:
-			// CPP: interp.set_standardOutput([](String s, Boolean) { gPrintOutput.Add(s); });
-			vm.SetInterpreter(interp);
-			vm.Reset(functions);
-			vm.Run();
-		}
-
-		// If there were errors, add the first error to the output
-		// (matching MiniScript 1.x behavior of reporting only the first error)
-		if (errors.HasError()) {
-			printOutput.Add(errors.TopError());
-		}
+		// Compile and run via Interpreter
+		Interpreter interp = new Interpreter();
+		interp.standardOutput = (String s, bool addLineBreak) => { printOutput.Add(s); }; // CPP:
+		// CPP: interp.set_standardOutput([](String s, Boolean) { gPrintOutput.Add(s); });
+		interp.errorOutput = (String s, bool eol) => { printOutput.Add(s); }; // CPP:
+		// CPP: interp.set_errorOutput([](String s, Boolean) { gPrintOutput.Add(s); });
+		interp.Reset(source);
+		interp.RunUntilDone();
 
 		// Get expected output (join lines, trim trailing empty lines)
 		String expected = "";
@@ -349,17 +282,21 @@ public struct App {
 		return true;
 	}
 
-	// Run a program given its list of functions
-	private static void RunProgram(List<FuncDef> functions, ErrorPool errors) {
-		// Disassemble and print program (debug only)
+	// Run an Interpreter that has already been compiled or loaded with functions.
+	private static void RunInterpreter(Interpreter interp) {
+		interp.Compile();
+		VM vm = interp.vm;
+		if (vm == null) return;		// compilation error (already reported)
+
+		// Debug: disassemble and print
 		if (debugMode) {
+			List<FuncDef> functions = vm.GetFunctions();
 			IOHelper.Print("Disassembly:\n");
 			List<String> disassembly = Disassembler.Disassemble(functions, true);
 			for (Int32 i = 0; i < disassembly.Count; i++) {
 				IOHelper.Print(disassembly[i]);
 			}
 
-			// Print all functions found
 			IOHelper.Print(StringUtils.Format("Found {0} functions:", functions.Count));
 			for (Int32 i = 0; i < functions.Count; i++) {
 				FuncDef func = functions[i];
@@ -371,10 +308,6 @@ public struct App {
 			IOHelper.Print("Executing @main with VM...");
 		}
 
-		// Run the program
-		VM vm = new VM();
-		vm.Errors = errors;
-		vm.Reset(functions);
 		Value result = val_null;
 
 		if (visMode) {
@@ -398,8 +331,6 @@ public struct App {
 					IOHelper.Print("Available commands:");
 					IOHelper.Print("q[uit] -- Quit to shell");
 					IOHelper.Print("s[tep] -- single-step VM");
-					IOHelper.Print("pooldump -- dump all string pool state (C++ only)");
-					IOHelper.Print("gcdump -- dump all GC objects with hex view (C++ only)");
 					IOHelper.Print("gcmark -- run GC mark and show reachable objects (C++ only)");
 					IOHelper.Print("interndump -- dump interned strings table (C++ only)");
 				}
@@ -416,7 +347,7 @@ public struct App {
 			}
 		}
 
-		if (!errors.HasError()) {
+		if (!vm.Errors.HasError()) {
 			IOHelper.Print("\nVM execution complete. Result in r0:");
 			IOHelper.Print(StringUtils.Format("\u001b[1;93m{0}\u001b[0m", result)); // (bold bright yellow)
 		}

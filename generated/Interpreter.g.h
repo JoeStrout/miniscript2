@@ -103,6 +103,12 @@ class InterpreterStorage : public std::enable_shared_from_this<InterpreterStorag
 	public: void Reset(String _source="");
 
 	/// <summary>
+	/// Reset the interpreter with pre-compiled functions (e.g. from an assembler).
+	/// The list must contain a FuncDef named "@main".
+	/// </summary>
+	public: void Reset(List<FuncDef> functions);
+
+	/// <summary>
 	/// Compile our source code, if we haven't already done so, so that we are
 	/// either ready to run, or generate compiler errors (reported via errorOutput).
 	/// </summary>
@@ -298,6 +304,12 @@ struct Interpreter {
 	public: inline void Reset(String _source="");
 
 	/// <summary>
+	/// Reset the interpreter with pre-compiled functions (e.g. from an assembler).
+	/// The list must contain a FuncDef named "@main".
+	/// </summary>
+	public: inline void Reset(List<FuncDef> functions);
+
+	/// <summary>
 	/// Compile our source code, if we haven't already done so, so that we are
 	/// either ready to run, or generate compiler errors (reported via errorOutput).
 	/// </summary>
@@ -416,6 +428,7 @@ inline void Interpreter::set__replGlobals(Value _v) { get()->_replGlobals = _v; 
 inline void Interpreter::Init(String _source,TextOutputMethod _standardOutput,TextOutputMethod _errorOutput) { return get()->Init(_source, _standardOutput, _errorOutput); }
 inline void Interpreter::Stop() { return get()->Stop(); }
 inline void Interpreter::Reset(String _source) { return get()->Reset(_source); }
+inline void Interpreter::Reset(List<FuncDef> functions) { return get()->Reset(functions); }
 inline void Interpreter::Compile() { return get()->Compile(); }
 inline void Interpreter::Restart() { return get()->Restart(); }
 inline void Interpreter::RunUntilDone(double timeLimit,bool returnEarly) { return get()->RunUntilDone(timeLimit, returnEarly); }

@@ -143,6 +143,28 @@ public class Interpreter {
 	}
 
 	/// <summary>
+	/// Reset the interpreter with pre-compiled functions (e.g. from an assembler).
+	/// The list must contain a FuncDef named "@main".
+	/// </summary>
+	public void Reset(List<FuncDef> functions) {
+		source = null;
+		parser = null;
+		compiledFunctions = functions;
+		errors.Clear();
+
+		// Create and configure VM
+		vm = new VM();
+		vm.Errors = errors;
+		vm.SetInterpreter(this);
+		vm.Reset(functions);
+
+		if (errors.HasError()) {
+			ReportErrors();
+			vm = null;
+		}
+	}
+
+	/// <summary>
 	/// Compile our source code, if we haven't already done so, so that we are
 	/// either ready to run, or generate compiler errors (reported via errorOutput).
 	/// </summary>

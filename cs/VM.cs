@@ -358,6 +358,10 @@ public class VM {
 		return functions.Count;
 	}
 
+	public List<FuncDef> GetFunctions() {
+		return functions;
+	}
+
 	// Helper for argument processing (FUNCTION_CALLS.md steps 1-3):
 	// Process ARG instructions, validate argument count, and set up parameter registers.
 	// Returns the PC after the CALL instruction, or -1 on error.

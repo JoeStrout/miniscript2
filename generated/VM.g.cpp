@@ -244,6 +244,9 @@ bool VMStorage::ReportRuntimeError() {
 Int32 VMStorage::FunctionCount() {
 	return functions.Count();
 }
+List<FuncDef> VMStorage::GetFunctions() {
+	return functions;
+}
 Int32 VMStorage::SelfParamOffset(FuncDefRef callee) {
 	if (hasPendingContext && callee.ParamNames.Count() > 0 && value_equal(callee.ParamNames[0], val_self)) {
 		return 1;

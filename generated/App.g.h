@@ -15,11 +15,8 @@ struct App {
 	
 	public: static void MainProgram(List<String> args);
 
-	// Compile MiniScript source code to a list of functions.
-	// Set verbose=true for extra debug output (assembly listing, etc.)
-	private: static List<FuncDef> CompileSource(String source, ErrorPool errors, Boolean verbose=false);
-
-	private: static List<FuncDef> CompileSourceFile(String filePath, ErrorPool errors);
+	// Create an Interpreter with standard output wiring
+	private: static Interpreter CreateInterpreter();
 
 	// Assemble an assembly file (.msa) to a list of functions
 	private: static List<FuncDef> AssembleFile(String filePath);
@@ -30,8 +27,8 @@ struct App {
 	// Run a single integration test
 	private: static bool RunSingleTest(List<String> inputLines, List<String> expectedLines, Int32 lineNum);
 
-	// Run a program given its list of functions
-	private: static void RunProgram(List<FuncDef> functions, ErrorPool errors);
+	// Run an Interpreter that has already been compiled or loaded with functions.
+	private: static void RunInterpreter(Interpreter interp);
 
 	private: static void RunREPL();
 

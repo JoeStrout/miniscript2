@@ -78,101 +78,51 @@ void App::MainProgram(List<String> args) {
 		IOHelper::Print("Integration tests complete.");
 	}
 	
-	// Handle inline code (-c) or file argument
-	List<FuncDef> functions = nullptr;
-	ErrorPool errors = ErrorPool::Create();
-
+	// Handle inline code (-c), file argument, or REPL
 	if (!IsNull(inlineCode)) {
-		// Compile inline code
 		if (debugMode) IOHelper::Print(StringUtils::Format("Compiling: {0}", inlineCode));
-		functions = CompileSource(inlineCode, errors, debugMode);
+		Interpreter interp = CreateInterpreter();
+		interp.Reset(inlineCode);
+		RunInterpreter(interp);
 	} else if (fileArgIndex != -1) {
 		String filePath = args[fileArgIndex];
-
-		// Determine file type by extension
+		Interpreter interp = CreateInterpreter();
 		if (filePath.EndsWith(".ms")) {
-			functions = CompileSourceFile(filePath, errors);
+			// Source file: read, join, and compile via Interpreter
+			if (debugMode) IOHelper::Print(StringUtils::Format("Reading source file: {0}", filePath));
+			List<String> lines = IOHelper::ReadFile(filePath);
+			if (lines.Count() == 0) {
+				IOHelper::Print("No lines read from file.");
+			} else {
+				String source = "";
+				for (Int32 i = 0; i < lines.Count(); i++) {
+					if (i > 0) source += "\n";
+					source += lines[i];
+				}
+				if (debugMode) IOHelper::Print(StringUtils::Format("Parsing {0} lines...", lines.Count()));
+				interp.Reset(source);
+				RunInterpreter(interp);
+			}
 		} else {
-			// Default to assembly file (.msa or any other extension)
-			functions = AssembleFile(filePath);
+			// Assembly file (.msa or any other extension)
+			List<FuncDef> functions = AssembleFile(filePath);
+			if (!IsNull(functions)) {
+				interp.Reset(functions);
+				RunInterpreter(interp);
+			}
 		}
-	}
-
-	if (!IsNull(functions)) {
-		RunProgram(functions, errors);
-	} else if (IsNull(inlineCode) && fileArgIndex == -1 && !debugMode) {
+	} else if (!debugMode) {
 		// No file or inline code: enter REPL mode
 		RunREPL();
 	}
 
-	if (errors.HasError()) {
-		IOHelper::Print(errors.TopError());
-	}
-
 	IOHelper::Print("All done!");
 }
-List<FuncDef> App::CompileSource(String source,ErrorPool errors,Boolean verbose) {
-	// Parse the source as a program (multiple statements)
-	Parser parser =  Parser::New();
-	parser.set_Errors(errors);
-	parser.Init(source);
-	List<ASTNode> statements = parser.ParseProgram();
-
-	if (parser.HadError()) return nullptr;
-
-	if (statements.Count() == 0) {
-		if (verbose) IOHelper::Print("No statements to compile.");
-		return nullptr;
-	}
-
-	// Simplify each AST (e.g. constant folding)
-	for (Int32 i = 0; i < statements.Count(); i++) {
-		statements[i] = statements[i].Simplify();
-	}
-
-	// Compile to bytecode (offset past intrinsics so indices don't collide)
-	BytecodeEmitter emitter =  BytecodeEmitter::New();
-	CodeGenerator generator =  CodeGenerator::New(emitter);
-	generator.set_Errors(errors);
-	generator.set_FunctionIndexOffset(Intrinsic::Count());
-	generator.CompileProgram(statements, "@main");
-
-	if (generator.Errors().HasError()) return nullptr;
-
-	if (verbose) IOHelper::Print("Compilation complete.");
-
-	// In verbose mode, also generate and print assembly
-	if (verbose) {
-		AssemblyEmitter asmEmitter =  AssemblyEmitter::New();
-		CodeGenerator asmGenerator =  CodeGenerator::New(asmEmitter);
-		asmGenerator.set_FunctionIndexOffset(Intrinsic::Count());
-		asmGenerator.CompileProgram(statements, "@main");
-
-		IOHelper::Print("\nGenerated assembly:");
-		IOHelper::Print(asmEmitter.GetAssembly());
-	}
-
-	return generator.GetFunctions();
-}
-List<FuncDef> App::CompileSourceFile(String filePath,ErrorPool errors) {
-	if (debugMode) IOHelper::Print(StringUtils::Format("Reading source file: {0}", filePath));
-
-	List<String> lines = IOHelper::ReadFile(filePath);
-	if (lines.Count() == 0) {
-		IOHelper::Print("No lines read from file.");
-		return nullptr;
-	}
-
-	// Join lines into a single source string
-	String source = "";
-	for (Int32 i = 0; i < lines.Count(); i++) {
-		if (i > 0) source += "\n";
-		source += lines[i];
-	}
-
-	if (debugMode) IOHelper::Print(StringUtils::Format("Parsing {0} lines...", lines.Count()));
-
-	return CompileSource(source, errors, debugMode);
+Interpreter App::CreateInterpreter() {
+	Interpreter interp =  Interpreter::New();
+	interp.set_standardOutput([](String s, Boolean) { IOHelper::Print(s); });
+	interp.set_errorOutput([](String s, Boolean) { IOHelper::Print(s); });
+	return interp;
 }
 List<FuncDef> App::AssembleFile(String filePath) {
 	if (debugMode) IOHelper::Print(StringUtils::Format("Reading assembly file: {0}", filePath));
@@ -281,33 +231,17 @@ bool App::RunSingleTest(List<String> inputLines,List<String> expectedLines,Int32
 	// Skip empty tests
 	if (String::IsNullOrEmpty(source.Trim())) return Boolean(true);
 
-	// Set up a shared error pool for all stages
-	ErrorPool errors = ErrorPool::Create();
-
-	// Compile the source (parser + code generator share the error pool)
-	List<FuncDef> functions = CompileSource(source, errors);
-
 	// Set up print output capture
 	List<String> printOutput =  List<String>::New();
 	static List<String> gPrintOutput;
 	gPrintOutput = printOutput;  // Use global reference
 
-	if (!IsNull(functions)) {
-		// Run the program with an Interpreter to capture output
-		VM vm =  VM::New();
-		vm.set_Errors(errors);
-		Interpreter interp =  Interpreter::New();
-		interp.set_standardOutput([](String s, Boolean) { gPrintOutput.Add(s); });
-		vm.SetInterpreter(interp);
-		vm.Reset(functions);
-		vm.Run();
-	}
-
-	// If there were errors, add the first error to the output
-	// (matching MiniScript 1.x behavior of reporting only the first error)
-	if (errors.HasError()) {
-		printOutput.Add(errors.TopError());
-	}
+	// Compile and run via Interpreter
+	Interpreter interp =  Interpreter::New();
+	interp.set_standardOutput([](String s, Boolean) { gPrintOutput.Add(s); });
+	interp.set_errorOutput([](String s, Boolean) { gPrintOutput.Add(s); });
+	interp.Reset(source);
+	interp.RunUntilDone();
 
 	// Get expected output (join lines, trim trailing empty lines)
 	String expected = "";
@@ -334,16 +268,20 @@ bool App::RunSingleTest(List<String> inputLines,List<String> expectedLines,Int32
 
 	return Boolean(true);
 }
-void App::RunProgram(List<FuncDef> functions,ErrorPool errors) {
-	// Disassemble and print program (debug only)
+void App::RunInterpreter(Interpreter interp) {
+	interp.Compile();
+	VM vm = interp.vm();
+	if (IsNull(vm)) return;		// compilation error (already reported)
+
+	// Debug: disassemble and print
 	if (debugMode) {
+		List<FuncDef> functions = vm.GetFunctions();
 		IOHelper::Print("Disassembly:\n");
 		List<String> disassembly = Disassembler::Disassemble(functions, Boolean(true));
 		for (Int32 i = 0; i < disassembly.Count(); i++) {
 			IOHelper::Print(disassembly[i]);
 		}
 
-		// Print all functions found
 		IOHelper::Print(StringUtils::Format("Found {0} functions:", functions.Count()));
 		for (Int32 i = 0; i < functions.Count(); i++) {
 			FuncDef func = functions[i];
@@ -355,10 +293,6 @@ void App::RunProgram(List<FuncDef> functions,ErrorPool errors) {
 		IOHelper::Print("Executing @main with VM...");
 	}
 
-	// Run the program
-	VM vm =  VM::New();
-	vm.set_Errors(errors);
-	vm.Reset(functions);
 	GC_PUSH_SCOPE();
 	Value result = val_null; GC_PROTECT(&result);
 
@@ -386,8 +320,6 @@ void App::RunProgram(List<FuncDef> functions,ErrorPool errors) {
 				IOHelper::Print("Available commands:");
 				IOHelper::Print("q[uit] -- Quit to shell");
 				IOHelper::Print("s[tep] -- single-step VM");
-				IOHelper::Print("pooldump -- dump all string pool state (C++ only)");
-				IOHelper::Print("gcdump -- dump all GC objects with hex view (C++ only)");
 				IOHelper::Print("gcmark -- run GC mark and show reachable objects (C++ only)");
 				IOHelper::Print("interndump -- dump interned strings table (C++ only)");
 			}
@@ -404,7 +336,7 @@ void App::RunProgram(List<FuncDef> functions,ErrorPool errors) {
 		}
 	}
 
-	if (!errors.HasError()) {
+	if (!vm.Errors().HasError()) {
 		IOHelper::Print("\nVM execution complete. Result in r0:");
 		IOHelper::Print(StringUtils::Format("\u001b[1;93m{0}\u001b[0m", result)); // (bold bright yellow)
 	}

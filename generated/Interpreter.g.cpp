@@ -35,6 +35,24 @@ void InterpreterStorage::Reset(String _source) {
 	compiledFunctions = nullptr;
 	errors.Clear();
 }
+void InterpreterStorage::Reset(List<FuncDef> functions) {
+	Interpreter _this(std::static_pointer_cast<InterpreterStorage>(shared_from_this()));
+	source = nullptr;
+	parser = nullptr;
+	compiledFunctions = functions;
+	errors.Clear();
+
+	// Create and configure VM
+	vm =  VM::New();
+	vm.set_Errors(errors);
+	vm.SetInterpreter(_this);
+	vm.Reset(functions);
+
+	if (errors.HasError()) {
+		ReportErrors();
+		vm = nullptr;
+	}
+}
 void InterpreterStorage::Compile() {
 	Interpreter _this(std::static_pointer_cast<InterpreterStorage>(shared_from_this()));
 	if (!IsNull(vm)) return;		// already compiled

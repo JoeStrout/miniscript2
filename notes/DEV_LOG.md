@@ -684,3 +684,9 @@ This relates to the choice made a while back to add all the intrinsic functions 
 
 So what we should do instead is: add the intrinsics *first*, when a VM is initialized.  And then give CodeGenerator an offset (`firstFunctionIndex` or similar) to add to _functions.Count for any functions that it generates.  This way, even on a non-REPL run, it can stick the user functions after the intrinsic functions; and on a REPL run, it can also avoid reusing indexes in use by previous user functions.
 
+...OK, that refactoring is done, and it does seem to solve the problem.  We now have a working REPL in both C# and C++.
+
+## Mar 31, 2026
+
+Today I'm going to refactor the App code a bit; much of it predates the Interpreter class, and so is working harder than it needs to.
+

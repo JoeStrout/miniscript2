@@ -142,6 +142,7 @@ public struct App {
 
 		if (debugMode) IOHelper.Print(StringUtils.Format("Assembling {0} lines...", lines.Count));
 		Assembler assembler = new Assembler();
+		assembler.SetFunctionIndexOffset(Intrinsic.Count());
 
 		// Assemble the code
 		assembler.Assemble(lines);

@@ -498,4 +498,3 @@ inline Value VM::LookupParamByName(String varName) { return get()->LookupParamBy
 inline Value VM::LookupVariable(Value varName) { return get()->LookupVariable(varName); }
 
 } // end of namespace MiniScript
-

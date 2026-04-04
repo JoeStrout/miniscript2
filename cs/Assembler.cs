@@ -22,8 +22,13 @@ public class Assembler {
 	// Multiple functions support
 	public List<FuncDef> Functions = new List<FuncDef>(); // all functions
 	public FuncDef Current = new FuncDef(); // function we are currently building
+	public Int32 FunctionIndexOffset = 0; // added to assembled CALLF/FUNCREF targets
 	private List<String> _labelNames = new List<String>(); // label names within current function
 	private List<Int32> _labelAddresses = new List<Int32>(); // corresponding instruction addresses within current function
+
+	public void SetFunctionIndexOffset(Int32 offset) {
+		FunctionIndexOffset = offset;
+	}
 	
 	// Error handling state
 	public Boolean HasError { get; private set; }
@@ -282,7 +287,17 @@ public class Assembler {
 			}
 			Byte dest = ParseRegister(parts[1]);
 			Current.ReserveRegister(dest);
-			Int16 funcIdx = (Int16)FindFunctionIndex(parts[2]);
+			Int32 localIdx = FindFunctionIndex(parts[2]);
+			if (localIdx < 0) {
+				Error(StringUtils.Format("Unknown function: '{0}'", parts[2]));
+				return 0;
+			}
+			Int32 resolvedIdx = localIdx + FunctionIndexOffset;
+			if (resolvedIdx < Int16.MinValue || resolvedIdx > Int16.MaxValue) {
+				Error(StringUtils.Format("Function index out of range for FUNCREF: {0}", resolvedIdx));
+				return 0;
+			}
+			Int16 funcIdx = (Int16)resolvedIdx;
 			instruction = BytecodeUtil.INS_AB(Opcode.FUNCREF_iA_iBC, dest, funcIdx);
 
 		} else if (mnemonic == "ASSIGN") {
@@ -555,11 +570,17 @@ public class Assembler {
 		} else if (mnemonic == "CALLF") {
 			if (parts.Count != 3) { Error("Syntax error"); return 0; }
 			Byte reserveRegs = (Byte)ParseInt16(parts[1]);	// ToDo: check range before typecast
-			Int16 funcIdx = (Int16)FindFunctionIndex(parts[2]);
-			if (funcIdx < 0) {
+			Int32 localIdx = FindFunctionIndex(parts[2]);
+			if (localIdx < 0) {
 				Error(StringUtils.Format("Unknown function: '{0}'", parts[2]));
 				return 0;
 			}
+			Int32 resolvedIdx = localIdx + FunctionIndexOffset;
+			if (resolvedIdx < Int16.MinValue || resolvedIdx > Int16.MaxValue) {
+				Error(StringUtils.Format("Function index out of range for CALLF: {0}", resolvedIdx));
+				return 0;
+			}
+			Int16 funcIdx = (Int16)resolvedIdx;
 			instruction = BytecodeUtil.INS_AB(Opcode.CALLF_iA_iBC, reserveRegs, funcIdx);
 
 		} else if (mnemonic == "CALLFN") {

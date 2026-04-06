@@ -116,6 +116,22 @@ public class UnaryOpParselet : PrefixParselet {
 	}
 }
 
+// AddressOfParselet: handles the @ (address-of) operator.
+// Unlike other unary operators, @ should bind tightly to member-access/index
+// chains (e.g. @foo.bar means @(foo.bar), not (@foo).bar).  We achieve this
+// by parsing the operand at POWER precedence (just below CALL), which allows
+// '.' and '[' to be consumed as part of the operand.
+public class AddressOfParselet : PrefixParselet {
+	public AddressOfParselet() {
+		Prec = Precedence.ADDRESS_OF;
+	}
+
+	public override ASTNode Parse(IParser parser, Token token) {
+		ASTNode operand = parser.ParseExpression(Precedence.POWER);
+		return new UnaryOpNode(Op.ADDRESS_OF, operand);
+	}
+}
+
 // GroupParselet: handles parenthesized expressions like '(2 + 3)'.
 public class GroupParselet : PrefixParselet {
 	public GroupParselet() {}

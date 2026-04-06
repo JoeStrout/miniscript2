@@ -307,7 +307,18 @@ public class CodeGenerator : IASTVisitor {
 			Int32 nameIdx = _emitter.AddConstant(make_string(node.Variable));
 			_emitter.EmitAB(Opcode.NAME_rA_kBC, varReg, nameIdx, $"use r{varReg} for {node.Variable}");
 		}
+		// If the RHS is a function expression, note the current function count so we
+		// can assign the variable name to the resulting FuncDef afterward.
+		FunctionNode rhsFunc = node.Value as FunctionNode;
+		Int32 funcIndexBeforeRHS = _functions.Count;
+
 		CompileInto(node.Value, varReg);  // get RHS directly into the variable's register
+
+		// If the RHS was a function expression, give that FuncDef the variable name.
+		if (rhsFunc != null && funcIndexBeforeRHS < _functions.Count) {
+			FuncDef rhsFuncDef = _functions[funcIndexBeforeRHS];
+			if (rhsFuncDef != null) rhsFuncDef.Name = node.Variable;
+		}
 
 		// Note that we don't FreeReg(varReg) here, as we need this register to
 		// continue to serve as the storage for this variable for the life of
@@ -323,7 +334,21 @@ public class CodeGenerator : IASTVisitor {
 	public Int32 Visit(IndexedAssignmentNode node) {
 		Int32 containerReg = node.Target.Accept(this);
 		Int32 indexReg = node.Index.Accept(this);
+
+		// If the RHS is a function expression, note the current function count so we
+		// can assign a name to the resulting FuncDef afterward.
+		FunctionNode rhsFunc = node.Value as FunctionNode;
+		Int32 funcIndexBeforeRHS = _functions.Count;
+
 		Int32 valueReg = node.Value.Accept(this);
+
+		// If the RHS was a function expression, give it the LHS name.
+		if (rhsFunc != null && funcIndexBeforeRHS < _functions.Count) {
+			FuncDef rhsFuncDef = _functions[funcIndexBeforeRHS];
+			if (rhsFuncDef != null && node.LHSName != null) {
+				rhsFuncDef.Name = node.LHSName;
+			}
+		}
 
 		_emitter.EmitABC(Opcode.IDXSET_rA_rB_rC, containerReg, indexReg, valueReg,
 			$"{node.Target.ToStr()}[{node.Index.ToStr()}] = {node.Value.ToStr()}");
@@ -1041,8 +1066,20 @@ public class CodeGenerator : IASTVisitor {
 			innerEmitter.EmitAB(Opcode.NAME_rA_kBC, paramReg, nameIdx, $"param {name}");
 		}
 
+		// Check for a docstring: if the first body statement is a string literal,
+		// store it as the Note and skip compiling it (it's a no-op at runtime).
+		String noteText = "";
+		List<ASTNode> bodyToCompile = node.Body;
+		if (node.Body.Count > 0) {
+			StringNode firstStmt = node.Body[0].Simplify() as StringNode;
+			if (firstStmt != null) {
+				noteText = firstStmt.Value;
+				bodyToCompile = node.Body.GetRange(1, node.Body.Count - 1);
+			}
+		}
+
 		// Compile the function body
-		innerGen.CompileBody(node.Body);
+		innerGen.CompileBody(bodyToCompile);
 
 		// Emit implicit RETURN at end of body
 		innerEmitter.Emit(Opcode.RETURN, null);
@@ -1051,6 +1088,9 @@ public class CodeGenerator : IASTVisitor {
 		Int32 globalFuncIndex = funcIndex + FunctionIndexOffset;
 		String funcName = StringUtils.Format("@f{0}", globalFuncIndex);
 		FuncDef funcDef = innerEmitter.Finalize(funcName);
+
+		// Set the note (docstring) if found
+		funcDef.Note = noteText;
 
 		// Set parameter info on the FuncDef
 		Value defaultVal;

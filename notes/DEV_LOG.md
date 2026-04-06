@@ -693,3 +693,18 @@ Today I'm going to refactor the App code a bit; much of it predates the Interpre
 OK, so that's done and it helps quite a bit.  App.cs is now much shorter and cleaner, and it's properly exercising Interpreter.
 
 Now I'm going to indulge in a little quality-of-life enhancement over MS1: I'm going to style (color) the text in the REPL.  We'll have the prompt in gray, the user's input in normal, and the output in bold.
+
+
+## Apr 06, 2026
+
+I'm adding metadata to functions today, accessed through a new `@note` intrinsic.  Example (via the REPL):
+
+> foo = function
+>>> "Returns the ultimate answer to life, the universe, and everything."
+>>> return 42
+>>> end function
+> info(@foo)
+{"type": "funcRef", "__idx": 54, "name": "foo", "note": "Returns the ultimate answer to life, the universe, and everything.", "params": []}
+
+`info` returns a frozen map, and in the case of a function, that includes `name`, `note` (when the first statement in the function evaluates to a string literal), and `params`.
+

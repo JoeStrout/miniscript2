@@ -170,11 +170,13 @@ public class IndexedAssignmentNode : ASTNode {
 	public ASTNode Target;      // the container (list/map) being assigned into
 	public ASTNode Index;       // the index/key expression
 	public ASTNode Value;       // the value being assigned
+	public String LHSName;      // human-readable LHS (e.g. "foo.bar"), used for function naming
 
-	public IndexedAssignmentNode(ASTNode target, ASTNode index, ASTNode value) {
+	public IndexedAssignmentNode(ASTNode target, ASTNode index, ASTNode value, String lhsName = null) {
 		Target = target;
 		Index = index;
 		Value = value;
+		LHSName = lhsName;
 	}
 
 	public override String ToStr() {
@@ -182,7 +184,7 @@ public class IndexedAssignmentNode : ASTNode {
 	}
 
 	public override ASTNode Simplify() {
-		return new IndexedAssignmentNode(Target.Simplify(), Index.Simplify(), Value.Simplify());
+		return new IndexedAssignmentNode(Target.Simplify(), Index.Simplify(), Value.Simplify(), LHSName);
 	}
 
 	public override Int32 Accept(IASTVisitor visitor) {
@@ -287,6 +289,30 @@ public class BinaryOpNode : ASTNode {
 				Double b = rightNum.Value;
 				return new NumberNode(AbsClamp01(a + b - a * b));
 			}
+		}
+
+		// String constant folding
+		StringNode leftStr = simplifiedLeft as StringNode;
+		StringNode rightStr = simplifiedRight as StringNode;
+		if (leftStr != null && rightStr != null && Op == MiniScript.Op.PLUS) {
+			return new StringNode(leftStr.Value + rightStr.Value);
+		}
+		if (leftStr != null && rightStr != null && Op == MiniScript.Op.MINUS) {
+			if (rightStr.Value.Length > 0 && leftStr.Value.EndsWith(rightStr.Value)) {
+				return new StringNode(leftStr.Value.Substring(0, leftStr.Value.Length - rightStr.Value.Length));
+			}
+			return leftStr;
+		}
+		// string * number: repeat the string (mirrors Value.Multiply logic)
+		if (leftStr != null && rightNum != null && Op == MiniScript.Op.TIMES) {
+			double factor = rightNum.Value;
+			if (double.IsNaN(factor) || double.IsInfinity(factor) || factor <= 0) return new StringNode("");
+			int repeats = (int)factor;
+			int extraChars = (int)(leftStr.Value.Length * (factor - repeats));
+			System.Text.StringBuilder sb = new System.Text.StringBuilder(repeats * leftStr.Value.Length + extraChars);
+			for (int i = 0; i < repeats; i++) sb.Append(leftStr.Value);
+			if (extraChars > 0) sb.Append(leftStr.Value.Substring(0, extraChars));
+			return new StringNode(sb.ToString());
 		}
 
 		// Otherwise return binary op with simplified operands

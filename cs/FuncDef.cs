@@ -27,6 +27,8 @@ public class FuncDef {
 	public List<Value> ParamDefaults = new List<Value>();  // default values for parameters
 	public Int16 SelfReg = -1;   // register for 'self' (-1 if not used)
 	public Int16 SuperReg = -1;  // register for 'super' (-1 if not used)
+	public String Note = "";
+	public String SourceLoc = "";
 
 	// Native callback for intrinsic functions. When non-null, this FuncDef
 	// represents a built-in function: CALL invokes the callback directly

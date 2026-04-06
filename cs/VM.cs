@@ -184,6 +184,11 @@ public class VM {
 		return functions[funcIndex].Name;
 	}
 
+	public FuncDef GetFuncDef(Int32 funcIndex) {
+		if (funcIndex < 0 || funcIndex >= functions.Count) return new FuncDef();
+		return functions[funcIndex];
+	}
+
 	public VM(Int32 stackSlots=1024, Int32 callSlots=256) {
 		InitVM(stackSlots, callSlots);
 	}

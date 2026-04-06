@@ -26,13 +26,11 @@ In MiniScript 2, we will commit to this behavior: **maps return keys in insertio
 
 ## Function Info
 
-_This feature is not officially settled on yet._
-
 FuncRef will get some metadata which can be accessed via a new intrinsic, perhaps like `info(@f)`.  This will include:
 
 - name: the text of the expression to the left of `=` where the function was defined, if any
 - note: when the first statement of a function body evaluates to a string constant, it is stored as the note (similar to a Python docstring)
-- params: a list of litle maps, one for each parameter; each contains `name` and `default` (the actual default value)
+- params: a list of little maps, one for each parameter; each contains `name` and `default` (the actual default value)
 - sourceLoc: the location of this function definition in the source code
 
 These details will be returned by `info` as a frozen map.

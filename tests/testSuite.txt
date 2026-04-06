@@ -3802,7 +3802,7 @@ return globals
 end function
 print f
 ---------------------------------
-{"g": 99, "f": FuncRef(#53, closure)}
+{"g": 99, "f": FuncRef(#54, closure)}
 ================================
 ==== outer from a nested function
 ================================
@@ -3816,11 +3816,136 @@ return inner
 end function
 print f
 ---------------------------------
-{"a": 10, "inner": FuncRef(#54, closure)}
+{"a": 10, "inner": FuncRef(#55, closure)}
 ================================
 ==== outer at global scope equals globals
 ================================
 x = 1; print outer == globals
+---------------------------------
+1
+================================
+==== info: name of a named function
+================================
+foo = function; return 42; end function
+print info(@foo).name
+---------------------------------
+foo
+================================
+==== info: name of a named function in a map
+================================
+foo = {}
+foo.bar = function; return 42; end function
+print info(@foo.bar).name
+---------------------------------
+foo.bar
+================================
+==== info: name of a function with params
+================================
+add = function(a, b=0); return a+b; end function
+print info(@add).name
+---------------------------------
+add
+================================
+==== info: params list count
+================================
+f = function(x, y, z); end function
+print info(@f).params.len
+---------------------------------
+3
+================================
+==== info: param names
+================================
+f = function(a, b); end function
+print info(@f).params[0].name
+print info(@f).params[1].name
+---------------------------------
+a
+b
+================================
+==== info: param defaults
+================================
+f = function(x, y=10); end function
+print info(@f).params[0].default
+print info(@f).params[1].default
+---------------------------------
+null
+10
+================================
+==== info: note (docstring)
+================================
+foo = function(x)
+"Returns 42 times x."
+return 42 * x
+end function
+print info(@foo).note
+---------------------------------
+Returns 42 times x.
+================================
+==== info: note making use of constant folding
+================================
+foo = function(x)
+"This is" + " a test" + "!"*3
+return 42 * x
+end function
+print info(@foo).note
+---------------------------------
+This is a test!!!
+================================
+==== info: note is empty when absent
+================================
+foo = function; return 1; end function
+print info(@foo).note
+---------------------------------
+
+================================
+==== info: docstring does not affect return value
+================================
+foo = function(x)
+"This is a note."
+return x + 1
+end function
+print foo(5)
+---------------------------------
+6
+================================
+==== info: anonymous function has empty name
+================================
+f = function; end function
+g = @f
+print info(@g).name
+---------------------------------
+f
+================================
+==== info: result is frozen
+================================
+foo = function; end function
+m = info(@foo)
+m.x = 1
+---------------------------------
+Runtime Error: Attempt to modify a frozen map
+================================
+==== address-of on map member: @foo.bar should return function, not invoke it
+================================
+foo = {}
+foo.bar = function; return 42; end function
+print @foo.bar isa funcRef
+---------------------------------
+1
+================================
+==== address-of on index: @foo["bar"] should return function, not invoke it
+================================
+foo = {}
+foo.bar = function; return 42; end function
+print @foo["bar"] isa funcRef
+---------------------------------
+1
+================================
+==== address-of on nested member: @foo.bar.baz
+================================
+foo = {}
+foo.bar = {}
+foo.bar.baz = function; return 99; end function
+print @foo.bar.baz isa funcRef
 ---------------------------------
 1
 ================================

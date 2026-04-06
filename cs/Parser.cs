@@ -54,7 +54,7 @@ public class Parser : IParser {
 		// Unary operators
 		RegisterPrefix(TokenType.MINUS, new UnaryOpParselet(Op.MINUS, Precedence.UNARY_MINUS));
 		RegisterPrefix(TokenType.NOT, new UnaryOpParselet(Op.NOT, Precedence.NOT));
-		RegisterPrefix(TokenType.ADDRESS_OF, new UnaryOpParselet(Op.ADDRESS_OF, Precedence.ADDRESS_OF));
+		RegisterPrefix(TokenType.ADDRESS_OF, new AddressOfParselet());
 		RegisterPrefix(TokenType.NEW, new UnaryOpParselet(Op.NEW, Precedence.UNARY_MINUS));
 		RegisterPrefix(TokenType.SELF, new SelfParselet());
 		RegisterPrefix(TokenType.SUPER, new SuperParselet());
@@ -383,7 +383,8 @@ public class Parser : IParser {
 				if (compoundOp != null) {
 					value = new BinaryOpNode(compoundOp, new IndexNode(idxNode.Target, idxNode.Index), value);
 				}
-				return new IndexedAssignmentNode(idxNode.Target, idxNode.Index, value);
+				String lhsName = idxNode.Target.ToStr() + "[" + idxNode.Index.ToStr() + "]";
+				return new IndexedAssignmentNode(idxNode.Target, idxNode.Index, value, lhsName);
 			}
 
 			// Check for member assignment: expr.member = value (or compound: expr.member += value)
@@ -396,7 +397,8 @@ public class Parser : IParser {
 				if (compoundOp != null) {
 					value = new BinaryOpNode(compoundOp, new IndexNode(memNode.Target, index), value);
 				}
-				return new IndexedAssignmentNode(memNode.Target, index, value);
+				String lhsName = memNode.Target.ToStr() + "." + memNode.Member;
+				return new IndexedAssignmentNode(memNode.Target, index, value, lhsName);
 			}
 
 			// Check for no-parens call on an expression result, e.g. funcs[0] 10
@@ -422,7 +424,8 @@ public class Parser : IParser {
 			if (compoundOp2 != null) {
 				value = new BinaryOpNode(compoundOp2, new IndexNode(idxNode2.Target, idxNode2.Index), value);
 			}
-			return new IndexedAssignmentNode(idxNode2.Target, idxNode2.Index, value);
+			String lhsName2 = idxNode2.Target.ToStr() + "[" + idxNode2.Index.ToStr() + "]";
+			return new IndexedAssignmentNode(idxNode2.Target, idxNode2.Index, value, lhsName2);
 		}
 		MemberNode memNode2 = expr2 as MemberNode;
 		if (memNode2 != null && IsAssignOp(_current.Type)) {
@@ -433,7 +436,8 @@ public class Parser : IParser {
 			if (compoundOp2 != null) {
 				value = new BinaryOpNode(compoundOp2, new IndexNode(memNode2.Target, index), value);
 			}
-			return new IndexedAssignmentNode(memNode2.Target, index, value);
+			String lhsName2 = memNode2.Target.ToStr() + "." + memNode2.Member;
+			return new IndexedAssignmentNode(memNode2.Target, index, value, lhsName2);
 		}
 		return expr2;
 	}

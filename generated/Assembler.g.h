@@ -19,14 +19,17 @@ class AssemblerStorage : public std::enable_shared_from_this<AssemblerStorage> {
 	public: AssemblerStorage();
 	public: List<FuncDef> Functions = List<FuncDef>::New(); // all functions
 	public: FuncDef Current = FuncDef::New(); // function we are currently building
+	public: Int32 FunctionIndexOffset = 0; // added to assembled CALLF/FUNCREF targets
 	private: List<String> _labelNames = List<String>::New(); // label names within current function
 	private: List<Int32> _labelAddresses = List<Int32>::New(); // corresponding instruction addresses within current function
+
+	// Multiple functions support
+
+	public: void SetFunctionIndexOffset(Int32 offset);
 	public: Boolean HasError;
 	public: String ErrorMessage;
 	public: Int32 CurrentLineNumber;
 	public: String CurrentLine;
-
-	// Multiple functions support
 	
 	// Error handling state
 
@@ -152,10 +155,16 @@ struct Assembler {
 	public: void set_Functions(List<FuncDef> _v); // all functions
 	public: FuncDef Current(); // function we are currently building
 	public: void set_Current(FuncDef _v); // function we are currently building
+	public: Int32 FunctionIndexOffset(); // added to assembled CALLF/FUNCREF targets
+	public: void set_FunctionIndexOffset(Int32 _v); // added to assembled CALLF/FUNCREF targets
 	private: List<String> _labelNames(); // label names within current function
 	private: void set__labelNames(List<String> _v); // label names within current function
 	private: List<Int32> _labelAddresses(); // corresponding instruction addresses within current function
 	private: void set__labelAddresses(List<Int32> _v); // corresponding instruction addresses within current function
+
+	// Multiple functions support
+
+	public: inline void SetFunctionIndexOffset(Int32 offset);
 	public: Boolean HasError();
 	public: void set_HasError(Boolean _v);
 	public: String ErrorMessage();
@@ -164,8 +173,6 @@ struct Assembler {
 	public: void set_CurrentLineNumber(Int32 _v);
 	public: String CurrentLine();
 	public: void set_CurrentLine(String _v);
-
-	// Multiple functions support
 	
 	// Error handling state
 
@@ -280,10 +287,13 @@ inline List<FuncDef> Assembler::Functions() { return get()->Functions; } // all 
 inline void Assembler::set_Functions(List<FuncDef> _v) { get()->Functions = _v; } // all functions
 inline FuncDef Assembler::Current() { return get()->Current; } // function we are currently building
 inline void Assembler::set_Current(FuncDef _v) { get()->Current = _v; } // function we are currently building
+inline Int32 Assembler::FunctionIndexOffset() { return get()->FunctionIndexOffset; } // added to assembled CALLF/FUNCREF targets
+inline void Assembler::set_FunctionIndexOffset(Int32 _v) { get()->FunctionIndexOffset = _v; } // added to assembled CALLF/FUNCREF targets
 inline List<String> Assembler::_labelNames() { return get()->_labelNames; } // label names within current function
 inline void Assembler::set__labelNames(List<String> _v) { get()->_labelNames = _v; } // label names within current function
 inline List<Int32> Assembler::_labelAddresses() { return get()->_labelAddresses; } // corresponding instruction addresses within current function
 inline void Assembler::set__labelAddresses(List<Int32> _v) { get()->_labelAddresses = _v; } // corresponding instruction addresses within current function
+inline void Assembler::SetFunctionIndexOffset(Int32 offset) { return get()->SetFunctionIndexOffset(offset); }
 inline Boolean Assembler::HasError() { return get()->HasError; }
 inline void Assembler::set_HasError(Boolean _v) { get()->HasError = _v; }
 inline String Assembler::ErrorMessage() { return get()->ErrorMessage; }

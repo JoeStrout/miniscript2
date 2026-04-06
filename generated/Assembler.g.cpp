@@ -12,6 +12,9 @@ namespace MiniScript {
 
 AssemblerStorage::AssemblerStorage() {
 }
+void AssemblerStorage::SetFunctionIndexOffset(Int32 offset) {
+	FunctionIndexOffset = offset;
+}
 Int32 AssemblerStorage::FindFunctionIndex(String name) {
 	for (Int32 i = 0; i < Functions.Count(); i++) {
 		if (Functions[i].Name() == name) return i;
@@ -263,7 +266,19 @@ UInt32 AssemblerStorage::AddLine(String line,Int32 lineNumber) {
 		}
 		Byte dest = ParseRegister(parts[1]);
 		Current.ReserveRegister(dest);
-		Int16 funcIdx = (Int16)FindFunctionIndex(parts[2]);
+		Int32 localIdx = FindFunctionIndex(parts[2]);
+		if (localIdx < 0) {
+			Error(StringUtils::Format("Unknown function: '{0}'", parts[2]));
+			GC_POP_SCOPE();
+			return 0;
+		}
+		Int32 resolvedIdx = localIdx + FunctionIndexOffset;
+		if (resolvedIdx < Int16MinValue || resolvedIdx > Int16MaxValue) {
+			Error(StringUtils::Format("Function index out of range for FUNCREF: {0}", resolvedIdx));
+			GC_POP_SCOPE();
+			return 0;
+		}
+		Int16 funcIdx = (Int16)resolvedIdx;
 		instruction = BytecodeUtil::INS_AB(Opcode::FUNCREF_iA_iBC, dest, funcIdx);
 
 	} else if (mnemonic == "ASSIGN") {
@@ -654,12 +669,19 @@ UInt32 AssemblerStorage::AddLine(String line,Int32 lineNumber) {
 			return 0; }
 		}
 		Byte reserveRegs = (Byte)ParseInt16(parts[1]);	// ToDo: check range before typecast
-		Int16 funcIdx = (Int16)FindFunctionIndex(parts[2]);
-		if (funcIdx < 0) {
+		Int32 localIdx = FindFunctionIndex(parts[2]);
+		if (localIdx < 0) {
 			Error(StringUtils::Format("Unknown function: '{0}'", parts[2]));
 			GC_POP_SCOPE();
 			return 0;
 		}
+		Int32 resolvedIdx = localIdx + FunctionIndexOffset;
+		if (resolvedIdx < Int16MinValue || resolvedIdx > Int16MaxValue) {
+			Error(StringUtils::Format("Function index out of range for CALLF: {0}", resolvedIdx));
+			GC_POP_SCOPE();
+			return 0;
+		}
+		Int16 funcIdx = (Int16)resolvedIdx;
 		instruction = BytecodeUtil::INS_AB(Opcode::CALLF_iA_iBC, reserveRegs, funcIdx);
 
 	} else if (mnemonic == "CALLFN") {

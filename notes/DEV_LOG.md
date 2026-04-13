@@ -728,3 +728,5 @@ I think the distinction between `error` (the type) and `err` (the factory functi
 
 Another refinement to consider: the last error should be stored on the VM, and accessible not only to internal code (to see whether we are in an error state), but also to users via some new intrinsic (`lastError` or `error.last` or something).
 
+That's it for today, but next time, we should consider the above refinements, and then also implement source-code location tracking (probably as some array parallel to the bytecode in each function).  That will enable us to implement the stackTrace intrinsic, and also attach a stack whenever an error is created.
+

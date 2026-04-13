@@ -230,6 +230,10 @@ public static class StringUtils {
 			oss << ")";
 			return String(oss.str().c_str());
 		}
+		if (is_error(v)) {
+			Value strVal = to_string(v);
+			return String(as_cstring(strVal));
+		}
 		std::ostringstream oss;
 		oss << "<value:0x" << std::hex << v << ">";
 		return String(oss.str().c_str());

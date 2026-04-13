@@ -128,6 +128,12 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	public: void Stop();
 
 	public: void RaiseRuntimeError(String message);
+	
+	// Call this method when the user has apparently failed to notice that
+	// they have an error value, and is attempting to use it as a value.
+	// Returns a null IntrinsicResult, which is what intrinsics should
+	// usually return in this case; other callers can ignore it.
+	public: IntrinsicResult RaiseUncaughtError(Value error);
 
 	public: bool ReportRuntimeError();
 
@@ -322,6 +328,12 @@ struct VM {
 	public: inline void Stop();
 
 	public: inline void RaiseRuntimeError(String message);
+	
+	// Call this method when the user has apparently failed to notice that
+	// they have an error value, and is attempting to use it as a value.
+	// Returns a null IntrinsicResult, which is what intrinsics should
+	// usually return in this case; other callers can ignore it.
+	public: inline IntrinsicResult RaiseUncaughtError(Value error);
 
 	public: inline bool ReportRuntimeError();
 
@@ -457,6 +469,7 @@ inline void VM::Reset(List<FuncDef> allFunctions) { return get()->Reset(allFunct
 inline void VM::Reset(List<FuncDef> allFunctions,Value replGlobals) { return get()->Reset(allFunctions, replGlobals); }
 inline void VM::Stop() { return get()->Stop(); }
 inline void VM::RaiseRuntimeError(String message) { return get()->RaiseRuntimeError(message); }
+inline IntrinsicResult VM::RaiseUncaughtError(Value error) { return get()->RaiseUncaughtError(error); }
 inline bool VM::ReportRuntimeError() { return get()->ReportRuntimeError(); }
 inline Int32 VM::FunctionCount() { return get()->FunctionCount(); }
 inline List<FuncDef> VM::GetFunctions() { return get()->GetFunctions(); }

@@ -3802,7 +3802,7 @@ return globals
 end function
 print f
 ---------------------------------
-{"g": 99, "f": FuncRef(#54, closure)}
+{"g": 99, "f": FuncRef(#57, closure)}
 ================================
 ==== outer from a nested function
 ================================
@@ -3816,7 +3816,7 @@ return inner
 end function
 print f
 ---------------------------------
-{"a": 10, "inner": FuncRef(#55, closure)}
+{"a": 10, "inner": FuncRef(#58, closure)}
 ================================
 ==== outer at global scope equals globals
 ================================
@@ -3948,6 +3948,98 @@ foo.bar.baz = function; return 99; end function
 print @foo.bar.baz isa funcRef
 ---------------------------------
 1
+================================
+==== error: basic creation and to_string
+================================
+e = err("oops")
+print e
+---------------------------------
+error: oops
+================================
+==== error: message field access
+================================
+e = err("boom")
+print e.message
+---------------------------------
+boom
+================================
+==== error: inner field defaults to null
+================================
+e = err("x")
+print e.inner
+---------------------------------
+null
+================================
+==== error: isa error
+================================
+e = err("x")
+print e isa error
+---------------------------------
+1
+================================
+==== error: non-error isa error
+================================
+print 5 isa error
+---------------------------------
+0
+================================
+==== error: arithmetic propagates error
+================================
+e = err("bad")
+print e + 2
+---------------------------------
+error: bad
+================================
+==== error: arithmetic propagates on right
+================================
+e = err("bad")
+print 5 * e
+---------------------------------
+error: bad
+================================
+==== error: or short-circuits to non-error
+================================
+print err("x") or "fallback"
+---------------------------------
+fallback
+================================
+==== error: specialization via .err and __isa chain
+================================
+se = err("parent")
+e = se.err("child")
+print e isa se
+---------------------------------
+1
+================================
+==== error: specialization still isa error
+================================
+se = err("parent")
+e = se.err("child")
+print e isa error
+---------------------------------
+1
+================================
+==== error: undefined field terminates
+================================
+e = err("x")
+print e.foo
+---------------------------------
+Runtime Error: Undefined error field 'foo'
+================================
+==== error: used in if condition terminates
+================================
+e = err("x")
+if e then print "yes"
+---------------------------------
+Runtime Error: Error used in conditional: error: x
+================================
+==== error: slice with error index terminates
+================================
+e = err("DOH")
+lst = [1, 2, 3, 4, 5]
+lst[2:e]
+---------------------------------
+Runtime Error: Uncaught DOH
 ================================
 ==== END OF TESTS
 ================================================================================

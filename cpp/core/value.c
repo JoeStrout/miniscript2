@@ -323,16 +323,17 @@ Value to_string(Value v) {
             if (i+1 < strlen(buf)) buf[i+1] = '\0';
             return make_string(buf);
         }
-    }
-    else if (is_int(v)) {
+    } else if (is_int(v)) {
         snprintf(buf, sizeof buf, "%d", as_int(v));
         return make_string(buf);
-    }
-    else if (is_list(v)) {
+    } else if (is_list(v)) {
         return list_to_string(v);
-    }
-    else if (is_map(v)) {
+    } else if (is_map(v)) {
         return map_to_string(v);
+    } else if (is_error(v)) {
+        Value msg = error_message(v);
+        if (is_string(msg)) return string_concat(make_string("error: "), msg);
+        return make_string("error");
     }
     return val_empty_string;
 }
@@ -470,3 +471,4 @@ Value frozen_copy(Value v) {
     }
     return v;
 }
+

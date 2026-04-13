@@ -31,8 +31,8 @@ MiniScript::App::MainProgram(args);
 
 namespace MiniScript {
 
-bool App::debugMode = false;
-bool App::visMode = false;
+bool App::debugMode = Boolean(false);
+bool App::visMode = Boolean(false);
 void App::MainProgram(List<String> args) {
 	gc_init();
 	value_init_constants();

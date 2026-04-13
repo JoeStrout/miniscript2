@@ -39,8 +39,10 @@ These details will be returned by `info` as a frozen map.
 
 We'll add one new type to MiniScript, `error`, which represents a runtime error, and a new `err(msg, innerErr=null)` intrinsic for creating them.  Here are the special rules, given an error `e` and any type `x`:
 
-- `err(msg, e)` returns a new `error` (let's call it `e2`) such that `e2.message == msg`,  `e2.inner == e`, and `e2.stack` returns the stack trace at this point.
-- `e.foo` (where `foo` is _not_ literally `message`, `inner`, or `stack`) terminates [note 1].
+- Global intrinsic `err(msg, e)` returns a new `error` (let's call it `e2`) such that `e2.message == msg`,  `e2.inner == e`, and `e2.stack` returns the stack trace at this point.
+- `se.err(msg, e)` does the same, but also sets `e2.__isa == se`, i.e., it creates a specialization of a more general error `se`.  The `__isa` chain can be probed with the `isa` operator, just like with maps.  Note that this `.err` method will terminate if it creates a *loop* in the `__isa` chain.  (`new` should also.)
+- `e.foo` (where `foo` is _not_ literally `message`, `inner`, `stack`, or `__isa`) terminates [note 1].
+- All errors are immutable, so attempting `e.message = rhs`, etc. will terminate with a runtime error.
 - `e or x` evaluates to `x`.
 - `if e then` and `while e` both terminate.
 - `f(e)` returns `e` for any intrinsic pure function `f` [note 2]; functions that affect state (or which don't normally return a result) terminate.

@@ -7,7 +7,7 @@
 
 namespace MiniScript {
 
-Boolean BytecodeUtil::ValidateOpcodes = true;
+Boolean BytecodeUtil::ValidateOpcodes = Boolean(true);
 EmitPattern BytecodeUtil::GetEmitPattern(Opcode opcode) {
 	String mnemonic = ToMnemonic(opcode);
 

@@ -394,8 +394,9 @@ public class Interpreter {
 		}
 
 		// Implicit output: if last statement was a bare expression, report r0
+		// (unless we are in an error state).
 		Value result;
-		if (hasImplicitOutput && !errors.HasError() && implicitOutput != null) {
+		if (hasImplicitOutput && !errors.HasError() && String.IsNullOrEmpty(vm.RuntimeError) && implicitOutput != null) {
 			result = vm.GetStackValue(vm.BaseIndex);
 			if (!is_null(result)) {
 				implicitOutput.Invoke(StringUtils.Format("{0}", result), true);

@@ -108,6 +108,19 @@ Value CoreIntrinsics::FunctionType() {
 	return _functionType;
 }
 Value CoreIntrinsics::_functionType = val_null;
+Value CoreIntrinsics::ErrorType() {
+	if (is_null(_errorType)) {
+		_errorType = make_map(4);
+		// The method-form of err (with self) is registered under "__error_err"
+		// but exposed in this map as "err".
+		Intrinsic errMethod = Intrinsic::GetByName("__error_err");
+		if (!IsNull(errMethod)) {
+			map_set(_errorType, make_string("err"), errMethod.GetFunc());
+		}
+	}
+	return _errorType;
+}
+Value CoreIntrinsics::_errorType = val_null;
 Value CoreIntrinsics::_EOL = make_string("\n");
 void CoreIntrinsics::Init() {
 	gc_register_mark_callback(CoreIntrinsics::MarkRoots, nullptr);
@@ -162,6 +175,54 @@ void CoreIntrinsics::Init() {
 		return IntrinsicResult(make_string(result));
 	});
 
+	// err(msg, inner=null) — global intrinsic: create a new error value.
+	f = Intrinsic::Create("err");
+	f.AddParam("msg");
+	f.AddParam("inner");
+	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
+		GC_PUSH_SCOPE();
+		Value msg = ctx.GetArg(0); GC_PROTECT(&msg);
+		Value inner = ctx.GetArg(1); GC_PROTECT(&inner);
+		if (!is_string(msg)) msg = to_string(msg);
+		GC_POP_SCOPE();
+		return IntrinsicResult(make_error(msg, inner, val_null, val_null));
+	});
+
+	// err method on ErrorType: se.err(msg, inner=null) creates a new error
+	// whose __isa is se.  Terminates if this would create an __isa cycle.
+	f = Intrinsic::Create("__error_err");
+	f.AddParam("self");
+	f.AddParam("msg");
+	f.AddParam("inner");
+	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
+		GC_PUSH_SCOPE();
+		Value self = ctx.GetArg(0); GC_PROTECT(&self);
+		Value msg = ctx.GetArg(1); GC_PROTECT(&msg);
+		Value inner = ctx.GetArg(2); GC_PROTECT(&inner);
+		if (!is_error(self)) {
+			ctx.vm.RaiseRuntimeError("err method called on non-error value");
+			GC_POP_SCOPE();
+			return IntrinsicResult::Null;
+		}
+		if (!is_string(msg)) msg = to_string(msg);
+		// Build the new error with self as __isa.  Then verify no cycle.
+		Value newErr = make_error(msg, inner, val_null, self); GC_PROTECT(&newErr);
+		// Walk chain from newErr to check for loop (if newErr appears again).
+		Value current = self; GC_PROTECT(&current);
+		for (int depth = 0; depth < 256; depth++) {
+			if (is_null(current)) break;
+			if (!is_error(current)) break;
+			if (value_identical(current, newErr)) {
+				ctx.vm.RaiseRuntimeError("err: __isa chain would form a cycle");
+				GC_POP_SCOPE();
+				return IntrinsicResult::Null;
+			}
+			current = error_isa(current);
+		}
+		GC_POP_SCOPE();
+		return IntrinsicResult(newErr);
+	});
+
 	// info(ref)
 	f = Intrinsic::Create("info");
 	f.AddParam("ref");
@@ -204,6 +265,12 @@ void CoreIntrinsics::Init() {
 			map_set(result, make_string("type"), make_string("list"));
 		} else if (is_map(arg)) {
 			map_set(result, make_string("type"), make_string("map"));
+		} else if (is_error(arg)) {
+			map_set(result, make_string("type"), make_string("error"));
+			map_set(result, make_string("message"), error_message(arg));
+			map_set(result, make_string("inner"), error_inner(arg));
+			map_set(result, make_string("stack"), error_stack(arg));
+			map_set(result, make_string("isa"), error_isa(arg));
 		} else if (is_null(arg)) {
 			map_set(result, make_string("type"), make_string("null"));
 		} else {
@@ -220,6 +287,11 @@ void CoreIntrinsics::Init() {
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		GC_PUSH_SCOPE();
 		Value v = ctx.GetArg(0); GC_PROTECT(&v);
+		if (is_error(v)) {
+			ctx.vm.RaiseUncaughtError(v);
+			GC_POP_SCOPE();
+			return IntrinsicResult(v);
+		}
 		if (is_number(v))  {
 			GC_POP_SCOPE();
 			return IntrinsicResult(v);
@@ -1007,6 +1079,15 @@ void CoreIntrinsics::Init() {
 		return IntrinsicResult(FunctionType());
 	});
 
+	// error
+	//    Returns a map that represents the error datatype in
+	//    MiniScript's core type system.  This can be used with `isa`
+	//    to check whether a variable refers to an error.
+	f = Intrinsic::Create("error");
+	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
+		return IntrinsicResult(ErrorType());
+	});
+
 	// time
 	//    Returns the number of seconds (double) elapsed since the VM
 	//    started running (i.e., since VM.Reset was called).
@@ -1052,6 +1133,7 @@ void CoreIntrinsics::InvalidateTypeMaps() {
 	_mapType = val_null;
 	_numberType = val_null;
 	_functionType = val_null;
+	_errorType = val_null;
 }
 // GC mark callback to protect our static type maps from collection.
 void CoreIntrinsics::MarkRoots(void* user_data) {
@@ -1061,6 +1143,7 @@ void CoreIntrinsics::MarkRoots(void* user_data) {
 	gc_mark_value(_mapType);
 	gc_mark_value(_numberType);
 	gc_mark_value(_functionType);
+	gc_mark_value(_errorType);
 }
 
 } // end of namespace MiniScript

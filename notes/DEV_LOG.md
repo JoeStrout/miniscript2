@@ -710,3 +710,21 @@ I'm adding metadata to functions today, accessed through a new `@note` intrinsic
 want to break your note up onto multiple lines.
 
 
+## Apr 13, 2026
+
+Today we're going to add the `error` type to the language.  This is probably going to end up being the major new language feature in 2.0, but I think it's totally worth it.
+
+Claude wanted to add `Pure` and `AllowErrors` fields to the Intrinsic struct, and then wrap every intrinsic call in a lambda method that checked the arguments, in order to unify the error handling.  But I don't want the extra data or the extra (wrapper) function call, so I took that out.  It will be the responsibility of each function to check its arguments and handle appropriately.  Yes, that's a lot of repeated boilerplate, but I think it's worth it in this case to give each function author the maximum flexibility to handle errors as needed, and avoid the extra overhead.
+
+The C# code is basically working now, and it transpiles, but does not yet build for C++ because we need to implement make_error, error_message, error_inner, error_stack, and error_isa (as well as the error struct itself, and associated GC integration).
+
+That's all fixed now, and it's working in both C# and C++.  However I find myself often making this mistake:
+
+> e = error("Doh!")
+Runtime Error: Too many arguments: got 1, expected 0
+> e = err("Doh!")
+
+I think the distinction between `error` (the type) and `err` (the factory function) is necessary, but unfortunate.  Maybe we can make it easier by elaborating the error message for common cases?  In this case, it could add something like "(to create a new error object, use `err(msg)`)".
+
+Another refinement to consider: the last error should be stored on the VM, and accessible not only to internal code (to see whether we are in an error state), but also to users via some new intrinsic (`lastError` or `error.last` or something).
+

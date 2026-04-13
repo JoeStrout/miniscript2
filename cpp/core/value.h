@@ -64,6 +64,7 @@ typedef struct ValueMap {
 // NaN-boxing masks and constants
 #define NANISH_MASK       0xffff000000000000ULL
 #define NULL_VALUE        0xfff1000000000000ULL  // our lowest reserved NaN pattern
+#define ERROR_TAG         0xfff9000000000000ULL
 #define INTEGER_TAG       0xfffa000000000000ULL
 #define FUNCREF_TAG       0xfffb000000000000ULL
 #define MAP_TAG           0xfffc000000000000ULL
@@ -107,6 +108,10 @@ static inline bool value_identical(Value a, Value b) {
 // Core type checking functions
 static inline bool is_null(Value v) {
     return v == val_null;
+}
+
+static inline bool is_error(Value v) {
+    return (v & NANISH_MASK) == ERROR_TAG;
 }
 
 static inline bool is_int(Value v) {
@@ -168,6 +173,58 @@ static inline Value make_double(double d) {
     memcpy(&v, &d, sizeof v);   // bitwise copy; aliasing-safe
     return v;
 }
+
+typedef struct {
+	Value message;
+	Value inner;
+	Value stack;
+	Value isa;
+} ValueError;
+
+static inline ValueError* as_error(Value v) {
+	if (!is_error(v)) return NULL;
+	return (ValueError*)(uintptr_t)(v & 0xFFFFFFFFFFFFULL);
+}
+
+static inline Value make_error(Value message, Value inner, Value stack, Value isa) {
+	ValueError* errObj = (ValueError*)gc_allocate(sizeof(ValueError));
+	errObj->message = message;
+	errObj->inner = inner;
+	errObj->stack = stack;
+	errObj->isa = isa;
+	// ToDo: ensure that isa, if given, does not create an isa loop.
+	return ERROR_TAG | ((uintptr_t)errObj & 0xFFFFFFFFFFFFULL);
+}
+
+static inline Value error_message(Value error) {
+	ValueError* errObj = as_error(error);
+	return errObj ? errObj->message : val_null;
+}
+
+static inline Value error_inner(Value error) {
+	ValueError* errObj = as_error(error);
+	return errObj ? errObj->inner : val_null;
+}
+
+static inline Value error_stack(Value error) {
+	ValueError* errObj = as_error(error);
+	return errObj ? errObj->stack : val_null;
+}
+
+static inline Value error_isa(Value error) {
+	ValueError* errObj = as_error(error);
+	return errObj ? errObj->isa : val_null;
+}
+
+static inline bool error_isa_contains(Value error, Value base) {
+	ValueError* errObj = as_error(error);
+	ValueError* baseObj = as_error(base);
+	while (errObj) {
+		if (errObj == baseObj) return true;
+		errObj = as_error(errObj->isa);
+	}
+	return false;
+}	
 
 // ValueFuncRef represents a function reference with closure support
 typedef struct {
@@ -236,6 +293,8 @@ Value to_number(Value v);
 
 // Arithmetic operations (inlined for performance)
 static inline Value value_add(Value a, Value b) {
+    if (is_error(a)) return a;
+    if (is_error(b)) return b;
     // Handle integer + integer case
     if (is_int(a) && is_int(b)) {
         // Use int64_t to detect overflow
@@ -281,6 +340,8 @@ static inline Value value_add(Value a, Value b) {
 }
 
 static inline Value value_sub(Value a, Value b) {
+    if (is_error(a)) return a;
+    if (is_error(b)) return b;
     // Handle integer - integer case
     if (is_int(a) && is_int(b)) {
         // Use int64_t to detect overflow/underflow
@@ -311,6 +372,9 @@ static inline Value value_sub(Value a, Value b) {
 
 
 // Most critical comparison function (inlined for performance)
+// NOTE: if either operand is an error, value_lt returns false.  Callers that
+// care about error propagation (arithmetic LT/LE opcodes, branch opcodes)
+// must check is_error() on the operands first.
 static inline bool value_lt(Value a, Value b) {
     // Handle numeric comparisons
     if (is_number(a) && is_number(b)) {
@@ -330,6 +394,8 @@ static inline bool value_lt(Value a, Value b) {
 
 extern Value value_mult_nonnumeric(Value a, Value b);
 static inline Value value_mult(Value a, Value b) {
+    if (is_error(a)) return a;
+    if (is_error(b)) return b;
     // Handle integer * integer case
     if (is_int(a) && is_int(b)) {
         // Use int64_t to detect overflow
@@ -354,6 +420,8 @@ static inline Value value_mult(Value a, Value b) {
 }
 
 static inline Value value_div(Value a, Value b) {
+	if (is_error(a)) return a;
+	if (is_error(b)) return b;
 	if (is_number(b)) {
 		if (is_number(a)) {	// common number/number case
 			double da = is_int(a) ? (double)as_int(a) : as_double(a);
@@ -368,6 +436,8 @@ static inline Value value_div(Value a, Value b) {
 }
 
 static inline Value value_mod(Value a, Value b) {
+    if (is_error(a)) return a;
+    if (is_error(b)) return b;
     // Handle integer % integer case
     if (is_int(a) && is_int(b)) {
         // Use int64_t to detect overflow
@@ -390,6 +460,8 @@ static inline Value value_mod(Value a, Value b) {
 }
 
 static inline Value value_pow(Value a, Value b) {
+    if (is_error(a)) return a;
+    if (is_error(b)) return b;
     if (is_number(a) && is_number(b)) {
         double da = is_int(a) ? (double)as_int(a) : as_double(a);
         double db = is_int(b) ? (double)as_int(b) : as_double(b);
@@ -426,13 +498,19 @@ static inline double AbsClamp01(double d) {
 // Logical operations
 // AND: AbsClamp01(a * b)
 static inline Value value_and(Value a, Value b) {
+	if (is_error(a)) return a;
+	if (is_error(b)) return b;
 	double fA = ToFuzzyBool(a);
 	double fB = ToFuzzyBool(b);
 	return make_double(AbsClamp01(fA * fB));
 }
 
 // OR: AbsClamp01(a + b - a*b)
+// Error semantics: `e or x` evaluates to x (fallback idiom).
+// `x or e` propagates e (like other binary operators).
 static inline Value value_or(Value a, Value b) {
+	if (is_error(a)) return b;
+	if (is_error(b)) return b;
 	double fA = ToFuzzyBool(a);
 	double fB = ToFuzzyBool(b);
 	return make_double(AbsClamp01(fA + fB - fA * fB));
@@ -440,6 +518,7 @@ static inline Value value_or(Value a, Value b) {
 
 // NOT: 1 - AbsClamp01(a)
 static inline Value value_not(Value a) {
+	if (is_error(a)) return a;
 	double fA = ToFuzzyBool(a);
 	return make_double(1.0 - AbsClamp01(fA));
 }

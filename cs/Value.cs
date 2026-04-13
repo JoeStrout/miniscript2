@@ -31,6 +31,7 @@ public readonly struct Value {
 	// High 16 bits used to tag NaN-ish payloads.
 	private const ulong NANISH_MASK     = 0xFFFF_0000_0000_0000UL;
 	private const ulong NULL_VALUE      = 0xFFF1_0000_0000_0000UL; // null singleton (our lowest reserved NaN pattern)
+	private const ulong ERROR_TAG       = 0xFFF9_0000_0000_0000UL; // error reference tag
 	private const ulong INTEGER_TAG     = 0xFFFA_0000_0000_0000UL; // Int32 tag
 	private const ulong FUNCREF_TAG     = 0xFFFB_0000_0000_0000UL; // function reference tag
 	private const ulong MAP_TAG         = 0xFFFC_0000_0000_0000UL; // map tag
@@ -98,6 +99,12 @@ public readonly struct Value {
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static Value FromError(ValueError errorObj) {
+		int h = HandlePool.Add(errorObj);
+		return FromHandle(ERROR_TAG, h);
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value FromHandle(ulong tagMask, int handle)
 		=> new(tagMask | (uint)handle);
 
@@ -108,6 +115,7 @@ public readonly struct Value {
 	public bool IsHeapString { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => (_u & NANISH_MASK) == STRING_TAG; }
 	public bool IsString { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => (_u & STRING_TAG) == STRING_TAG; }
 	public bool IsFuncRef { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => (_u & NANISH_MASK) == FUNCREF_TAG; }
+	public bool IsError  { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => (_u & NANISH_MASK) == ERROR_TAG; }
 	public bool IsList   { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => (_u & NANISH_MASK) == LIST_TAG; }
 	public bool IsMap	{ [MethodImpl(MethodImplOptions.AggressiveInlining)] get => (_u & NANISH_MASK) == MAP_TAG; }
 	public bool IsDouble { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => (_u & NANISH_MASK) < NULL_VALUE; }
@@ -118,6 +126,9 @@ public readonly struct Value {
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public ValueFuncRef AsFuncRefObject() => HandlePool.Get(Handle()) as ValueFuncRef;
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public ValueError AsErrorObject() => HandlePool.Get(Handle()) as ValueError;
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public double AsDouble() {
@@ -205,6 +216,12 @@ public readonly struct Value {
 			if (funcRefObj == null) return "<funcref?>";
 			return funcRefObj.ToString();
 		}
+		if (IsError) {
+			var errObj = AsErrorObject();
+			if (errObj == null) return "<error?>";
+			string msg = ValueHelpers.is_string(errObj.Message) ? ValueHelpers.as_cstring(errObj.Message) : errObj.Message.ToString();
+			return "error: " + msg;
+		}
 		return "<value>";
 	}
 
@@ -213,6 +230,8 @@ public readonly struct Value {
 	// ==== ARITHMETIC & COMPARISON (subset; extend as needed) ==============
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value Add(Value a, Value b) {
+		if (a.IsError) return a;
+		if (b.IsError) return b;
 		if (a.IsInt && b.IsInt) {
 			long r = (long)a.AsInt() + b.AsInt();
 			if ((uint)r == r) return FromInt((int)r);
@@ -242,6 +261,8 @@ public readonly struct Value {
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value Multiply(Value a, Value b) {
+		if (a.IsError) return a;
+		if (b.IsError) return b;
 		if (a.IsInt && b.IsInt) {
 			long r = (long)a.AsInt() * b.AsInt();
 			if ((uint)r == r) return FromInt((int)r);
@@ -307,6 +328,8 @@ public readonly struct Value {
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value Divide(Value a, Value b) {
+		if (a.IsError) return a;
+		if (b.IsError) return b;
 		// MiniScript division always returns a float/double
 		if ((a.IsInt || a.IsDouble) && (b.IsInt || b.IsDouble)) {
 			double da = a.IsInt ? a.AsInt() : a.AsDouble();
@@ -328,6 +351,8 @@ public readonly struct Value {
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value Mod(Value a, Value b) {
+		if (a.IsError) return a;
+		if (b.IsError) return b;
 		if (a.IsInt && b.IsInt) {
 			long r = (long)a.AsInt() % b.AsInt();
 			if ((uint)r == r) return FromInt((int)r);
@@ -344,6 +369,8 @@ public readonly struct Value {
 	}
 
 	public static Value Pow(Value a, Value b) {
+		if (a.IsError) return a;
+		if (b.IsError) return b;
 		if ((a.IsInt || a.IsDouble) && (b.IsInt || b.IsDouble)) {
 			double da = a.IsInt ? a.AsInt() : a.AsDouble();
 			double db = b.IsInt ? b.AsInt() : b.AsDouble();
@@ -358,6 +385,8 @@ public readonly struct Value {
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value Sub(Value a, Value b) {
+		if (a.IsError) return a;
+		if (b.IsError) return b;
 		if (a.IsInt && b.IsInt) {
 			long r = (long)a.AsInt() - b.AsInt();
 			if (r >= int.MinValue && r <= int.MaxValue) return FromInt((int)r);
@@ -901,7 +930,12 @@ public static class ValueHelpers {
 	// Get the numeric value as a double, whether stored as int or double.
 	// Returns 0 for non-numeric types (null, string, list, map, etc.).
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static double numeric_val(Value v) => v.IsInt ? v.AsInt() : v.IsDouble ? v.AsDouble() : 0.0;
+	public static double numeric_val(Value v) {
+		if (v.IsInt) return v.AsInt();
+		if (v.IsDouble) return v.AsDouble();
+		if (v.IsError) VM.ActiveVM().RaiseUncaughtError(v);
+		return 0.0;
+	}
 
 	// Core type checking functions (matching value.h)
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -924,6 +958,61 @@ public static class ValueHelpers {
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool is_funcref(Value v) => v.IsFuncRef;
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static bool is_error(Value v) => v.IsError;
+
+	// Create a new error Value.  message should be a string; inner and isa may be val_null.
+	// stack is a list (frozen); pass val_null for a stubbed empty stack.
+	public static Value make_error(Value message, Value inner, Value stack, Value isa) {
+		if (is_null(stack)) {
+			stack = make_list(0);
+			freeze_value(stack);
+		}
+		return Value.FromError(new ValueError(message, inner, stack, isa));
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static Value error_message(Value v) {
+		ValueError e = v.AsErrorObject();
+		return e != null ? e.Message : val_null;
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static Value error_inner(Value v) {
+		ValueError e = v.AsErrorObject();
+		return e != null ? e.Inner : val_null;
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static Value error_stack(Value v) {
+		ValueError e = v.AsErrorObject();
+		return e != null ? e.Stack : val_null;
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static Value error_isa(Value v) {
+		ValueError e = v.AsErrorObject();
+		return e != null ? e.Isa : val_null;
+	}
+
+	// Walk the __isa chain of err looking for identity with target.
+	// Does not consider err itself (the ISA opcode handles identity separately).
+	// Returns true if target found in chain, false otherwise.  Stops after 256 levels.
+	public static bool error_isa_contains(Value err, Value target) {
+		ValueError ce = err.AsErrorObject();
+		if (ce == null) return false;
+		Value current = ce.Isa;
+		for (int depth = 0; depth < 256; depth++) {
+			if (is_null(current)) return false;
+			if (value_identical(current, target)) return true;
+			if (!is_error(current)) return false;
+			ValueError nc = current.AsErrorObject();
+			if (nc == null) return false;
+			current = nc.Isa;
+		}
+		return false;
+	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool is_tiny_string(Value v) => v.IsTiny;
@@ -986,14 +1075,20 @@ public static class ValueHelpers {
 	// AND: AbsClamp01(a * b)
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value value_and(Value a, Value b) {
+		if (a.IsError) return a;
+		if (b.IsError) return b;
 		Double fA = ToFuzzyBool(a);
 		Double fB = ToFuzzyBool(b);
 		return make_double(AbsClamp01(fA * fB));
 	}
 
 	// OR: AbsClamp01(a + b - a*b)
+	// Error semantics: `e or x` evaluates to x (fallback idiom).
+	// `x or e` propagates e (like other binary operators).
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value value_or(Value a, Value b) {
+		if (a.IsError) return b;
+		if (b.IsError) return b;
 		Double fA = ToFuzzyBool(a);
 		Double fB = ToFuzzyBool(b);
 		return make_double(AbsClamp01(fA + fB - fA * fB));
@@ -1002,6 +1097,7 @@ public static class ValueHelpers {
 	// NOT: 1 - AbsClamp01(a)
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value value_not(Value a) {
+		if (a.IsError) return a;
 		Double fA = ToFuzzyBool(a);
 		return make_double(1.0 - AbsClamp01(fA));
 	}

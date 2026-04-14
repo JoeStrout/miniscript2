@@ -137,6 +137,12 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 
 	public: bool ReportRuntimeError();
 
+	// Build and return the current call stack as a frozen list of strings,
+	// innermost (most recent) frame first.  Each entry has the form
+	// "{file} line {lineNum}".  PC is the saved program counter at the
+	// point of the call (typically vm.PC - 1 at the call site).
+	public: Value BuildStackTrace();
+
 	public: Int32 FunctionCount();
 
 	public: List<FuncDef> GetFunctions();
@@ -337,6 +343,12 @@ struct VM {
 
 	public: inline bool ReportRuntimeError();
 
+	// Build and return the current call stack as a frozen list of strings,
+	// innermost (most recent) frame first.  Each entry has the form
+	// "{file} line {lineNum}".  PC is the saved program counter at the
+	// point of the call (typically vm.PC - 1 at the call site).
+	public: inline Value BuildStackTrace();
+
 	public: inline Int32 FunctionCount();
 
 	public: inline List<FuncDef> GetFunctions();
@@ -471,6 +483,7 @@ inline void VM::Stop() { return get()->Stop(); }
 inline void VM::RaiseRuntimeError(String message) { return get()->RaiseRuntimeError(message); }
 inline IntrinsicResult VM::RaiseUncaughtError(Value error) { return get()->RaiseUncaughtError(error); }
 inline bool VM::ReportRuntimeError() { return get()->ReportRuntimeError(); }
+inline Value VM::BuildStackTrace() { return get()->BuildStackTrace(); }
 inline Int32 VM::FunctionCount() { return get()->FunctionCount(); }
 inline List<FuncDef> VM::GetFunctions() { return get()->GetFunctions(); }
 inline Int32 VM::SelfParamOffset(FuncDefRef callee) { return get()->SelfParamOffset(callee); }

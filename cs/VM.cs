@@ -369,6 +369,31 @@ public class VM {
 		return true;
 	}
 
+	// Build and return the current call stack as a frozen list of strings,
+	// innermost (most recent) frame first.  Each entry has the form
+	// "{file} line {lineNum}".  PC is the saved program counter at the
+	// point of the call (typically vm.PC - 1 at the call site).
+	public Value BuildStackTrace() {
+		Value result = make_list(8);
+		Int32 callSitePC = PC - 1;
+		if (callSitePC < 0) callSitePC = 0;
+		String curFile = CurrentFunction.FileName;
+		if (curFile == "") curFile = "(current program)";
+		list_push(result, make_string(StringUtils.Format("{0} line {1}", curFile, CurrentFunction.GetLineNumber(callSitePC))));
+		for (Int32 i = CallStackDepth() - 1; i >= 0; i--) {
+			CallInfo ci = GetCallStackFrame(i);
+			if (ci.ReturnFuncIndex < 0) break;
+			FuncDef callerFunc = GetFuncDef(ci.ReturnFuncIndex);
+			Int32 callerPC = ci.ReturnPC - 1;
+			if (callerPC < 0) callerPC = 0;
+			String callerFile = callerFunc.FileName;
+			if (callerFile == "") callerFile = "(current program)";
+			list_push(result, make_string(StringUtils.Format("{0} line {1}", callerFile, callerFunc.GetLineNumber(callerPC))));
+		}
+		freeze_value(result);
+		return result;
+	}
+
 	public Int32 FunctionCount() {
 		return functions.Count;
 	}

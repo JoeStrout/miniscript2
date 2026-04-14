@@ -234,7 +234,7 @@ public static class CoreIntrinsics {
 			Value msg = ctx.GetArg(0);
 			Value inner = ctx.GetArg(1);
 			if (!is_string(msg)) msg = to_string(msg);
-			return new IntrinsicResult(make_error(msg, inner, val_null, val_null));
+			return new IntrinsicResult(make_error(msg, inner, ctx.vm.BuildStackTrace(), val_null));
 		};
 
 		// err method on ErrorType: se.err(msg, inner=null) creates a new error
@@ -253,7 +253,7 @@ public static class CoreIntrinsics {
 			}
 			if (!is_string(msg)) msg = to_string(msg);
 			// Build the new error with self as __isa.  Then verify no cycle.
-			Value newErr = make_error(msg, inner, val_null, self);
+			Value newErr = make_error(msg, inner, ctx.vm.BuildStackTrace(), self);
 			// Walk chain from newErr to check for loop (if newErr appears again).
 			Value current = self;
 			for (int depth = 0; depth < 256; depth++) {
@@ -1147,28 +1147,7 @@ public static class CoreIntrinsics {
 		//    a file name.
 		f = Intrinsic.Create("stackTrace");
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
-			Value result = make_list(8);
-			// Innermost frame: the function that called stackTrace.
-			// vm.PC was saved just before this intrinsic was invoked; the
-			// call instruction itself is at vm.PC - 1.
-			FuncDef curFunc = ctx.vm.CurrentFunction;
-			Int32 callSitePC = ctx.vm.PC - 1;
-			if (callSitePC < 0) callSitePC = 0;
-			String curFile = curFunc.FileName;
-			if (curFile == "") curFile = "(current program)";
-			list_push(result, make_string(StringUtils.Format("{0} line {1}", curFile, curFunc.GetLineNumber(callSitePC))));
-			// Walk the rest of the call stack, outermost last.
-			for (Int32 i = ctx.vm.CallStackDepth() - 1; i >= 0; i--) {
-				CallInfo ci = ctx.vm.GetCallStackFrame(i);
-				if (ci.ReturnFuncIndex < 0) break;
-				FuncDef callerFunc = ctx.vm.GetFuncDef(ci.ReturnFuncIndex);
-				Int32 callerPC = ci.ReturnPC - 1;
-				if (callerPC < 0) callerPC = 0;
-				String callerFile = callerFunc.FileName;
-				if (callerFile == "") callerFile = "(current program)";
-				list_push(result, make_string(StringUtils.Format("{0} line {1}", callerFile, callerFunc.GetLineNumber(callerPC))));
-			}
-			return new IntrinsicResult(result);
+			return new IntrinsicResult(ctx.vm.BuildStackTrace());
 		};
 
 	}

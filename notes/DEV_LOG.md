@@ -735,5 +735,6 @@ That's it for today, but next time, we should consider the above refinements, an
 
 Today I'm adding tracking of source code files and line numbers.  Line numbers are stored (RLE compressed) in FuncDef next to the bytecode.   I've implemented the `stackTrace` intrinsic, and it seems to be working so far.
 
-So, the next step is to attach a stack trace to errors when they are created.
+So, the next step is to attach a stack trace to errors when they are created.  ...And done.
+
 

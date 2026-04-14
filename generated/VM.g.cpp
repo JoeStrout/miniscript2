@@ -250,6 +250,28 @@ bool VMStorage::ReportRuntimeError() {
 	  RuntimeError, CurrentFunction.Name(), PC - 1));
 	return Boolean(true);
 }
+Value VMStorage::BuildStackTrace() {
+	GC_PUSH_SCOPE();
+	Value result = make_list(8); GC_PROTECT(&result);
+	Int32 callSitePC = PC - 1;
+	if (callSitePC < 0) callSitePC = 0;
+	String curFile = CurrentFunction.FileName();
+	if (curFile == "") curFile = "(current program)";
+	list_push(result, make_string(StringUtils::Format("{0} line {1}", curFile, CurrentFunction.GetLineNumber(callSitePC))));
+	for (Int32 i = CallStackDepth() - 1; i >= 0; i--) {
+		CallInfo ci = GetCallStackFrame(i);
+		if (ci.ReturnFuncIndex < 0) break;
+		FuncDef callerFunc = GetFuncDef(ci.ReturnFuncIndex);
+		Int32 callerPC = ci.ReturnPC - 1;
+		if (callerPC < 0) callerPC = 0;
+		String callerFile = callerFunc.FileName();
+		if (callerFile == "") callerFile = "(current program)";
+		list_push(result, make_string(StringUtils::Format("{0} line {1}", callerFile, callerFunc.GetLineNumber(callerPC))));
+	}
+	freeze_value(result);
+	GC_POP_SCOPE();
+	return result;
+}
 Int32 VMStorage::FunctionCount() {
 	return functions.Count();
 }

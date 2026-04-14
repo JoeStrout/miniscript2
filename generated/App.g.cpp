@@ -3,7 +3,7 @@
 
 #include "App.g.h"
 #include "CodeEmitter.g.h"
-#include "ErrorPool.g.h"
+#include "ErrorTypes.g.h"
 #include "UnitTests.g.h"
 #include "VM.g.h"
 #include "gc.h"
@@ -36,6 +36,7 @@ bool App::visMode = Boolean(false);
 void App::MainProgram(List<String> args) {
 	gc_init();
 	value_init_constants();
+	ErrorType::Init();
 
 	// Parse command-line switches
 	Int32 fileArgIndex = -1;
@@ -345,7 +346,7 @@ void App::RunInterpreter(Interpreter interp) {
 		}
 	}
 
-	if (!vm.Errors().HasError()) {
+	if (is_null(vm.Error())) {
 		IOHelper::Print("\nVM execution complete. Result in r0:");
 		IOHelper::Print(StringUtils::Format("\u001b[1;93m{0}\u001b[0m", result)); // (bold bright yellow)
 	}

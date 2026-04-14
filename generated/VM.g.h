@@ -7,7 +7,7 @@
 #include "value.h"
 #include "FuncDef.g.h"
 #include "IntrinsicAPI.g.h"
-#include "ErrorPool.g.h"
+#include "ErrorTypes.g.h"
 #include "value_map.h"
 #include <vector>
 #include "gc.h"
@@ -55,8 +55,7 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	public: FuncDef CurrentFunction;
 	public: Boolean IsRunning;
 	public: Int32 BaseIndex;
-	public: String RuntimeError;
-	public: ErrorPool Errors;
+	public: Value Error;
 	public: Value ReplGlobals = val_null;
 	private: Value pendingSelf;
 	private: Value pendingSuper;
@@ -90,7 +89,7 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	private: thread_local static VM _activeVM;
 
 	// Thread-local active VM: set during Run(), so value operations
-	// (like list_push) can report errors without passing ErrorPool around.
+	// (like list_push) can report errors via the VM.
 	public: static VM ActiveVM();
 
 	public: Int32 StackSize();
@@ -127,14 +126,20 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 
 	public: void Stop();
 
+	// Stop the VM with a runtime error described by a string message.
+	// Creates an error Value (with stack trace) and stores it in Error.
 	public: void RaiseRuntimeError(String message);
-	
-	// Call this method when the user has apparently failed to notice that
-	// they have an error value, and is attempting to use it as a value.
-	// Returns a null IntrinsicResult, which is what intrinsics should
-	// usually return in this case; other callers can ignore it.
+
+	// Stop the VM with a pre-built error value (e.g. an uncaught user error).
+	public: void RaiseRuntimeError(Value error);
+
+	// Called when user code silently ignored an error value and then tried
+	// to use it in an operation that doesn't tolerate errors.
+	// Returns IntrinsicResult.Null for convenience.
 	public: IntrinsicResult RaiseUncaughtError(Value error);
 
+	// Print the current error to stdout (useful for debug/standalone use).
+	// Returns false if there is no error.
 	public: bool ReportRuntimeError();
 
 	// Build and return the current call stack as a frozen list of strings,
@@ -250,10 +255,8 @@ struct VM {
 	public: void set_IsRunning(Boolean _v);
 	public: Int32 BaseIndex();
 	public: void set_BaseIndex(Int32 _v);
-	public: String RuntimeError();
-	public: void set_RuntimeError(String _v);
-	public: ErrorPool Errors();
-	public: void set_Errors(ErrorPool _v);
+	public: Value Error();
+	public: void set_Error(Value _v);
 	public: Value ReplGlobals();
 	public: void set_ReplGlobals(Value _v);
 	private: Value pendingSelf();
@@ -296,7 +299,7 @@ struct VM {
 	private: void set__activeVM(VM _v);
 
 	// Thread-local active VM: set during Run(), so value operations
-	// (like list_push) can report errors without passing ErrorPool around.
+	// (like list_push) can report errors via the VM.
 	public: static VM ActiveVM() { return VMStorage::ActiveVM(); }
 
 	public: inline Int32 StackSize();
@@ -333,14 +336,20 @@ struct VM {
 
 	public: inline void Stop();
 
+	// Stop the VM with a runtime error described by a string message.
+	// Creates an error Value (with stack trace) and stores it in Error.
 	public: inline void RaiseRuntimeError(String message);
-	
-	// Call this method when the user has apparently failed to notice that
-	// they have an error value, and is attempting to use it as a value.
-	// Returns a null IntrinsicResult, which is what intrinsics should
-	// usually return in this case; other callers can ignore it.
+
+	// Stop the VM with a pre-built error value (e.g. an uncaught user error).
+	public: inline void RaiseRuntimeError(Value error);
+
+	// Called when user code silently ignored an error value and then tried
+	// to use it in an operation that doesn't tolerate errors.
+	// Returns IntrinsicResult.Null for convenience.
 	public: inline IntrinsicResult RaiseUncaughtError(Value error);
 
+	// Print the current error to stdout (useful for debug/standalone use).
+	// Returns false if there is no error.
 	public: inline bool ReportRuntimeError();
 
 	// Build and return the current call stack as a frozen list of strings,
@@ -440,10 +449,8 @@ inline Boolean VM::IsRunning() { return get()->IsRunning; }
 inline void VM::set_IsRunning(Boolean _v) { get()->IsRunning = _v; }
 inline Int32 VM::BaseIndex() { return get()->BaseIndex; }
 inline void VM::set_BaseIndex(Int32 _v) { get()->BaseIndex = _v; }
-inline String VM::RuntimeError() { return get()->RuntimeError; }
-inline void VM::set_RuntimeError(String _v) { get()->RuntimeError = _v; }
-inline ErrorPool VM::Errors() { return get()->Errors; }
-inline void VM::set_Errors(ErrorPool _v) { get()->Errors = _v; }
+inline Value VM::Error() { return get()->Error; }
+inline void VM::set_Error(Value _v) { get()->Error = _v; }
 inline Value VM::ReplGlobals() { return get()->ReplGlobals; }
 inline void VM::set_ReplGlobals(Value _v) { get()->ReplGlobals = _v; }
 inline Value VM::pendingSelf() { return get()->pendingSelf; }
@@ -481,6 +488,7 @@ inline void VM::Reset(List<FuncDef> allFunctions) { return get()->Reset(allFunct
 inline void VM::Reset(List<FuncDef> allFunctions,Value replGlobals) { return get()->Reset(allFunctions, replGlobals); }
 inline void VM::Stop() { return get()->Stop(); }
 inline void VM::RaiseRuntimeError(String message) { return get()->RaiseRuntimeError(message); }
+inline void VM::RaiseRuntimeError(Value error) { return get()->RaiseRuntimeError(error); }
 inline IntrinsicResult VM::RaiseUncaughtError(Value error) { return get()->RaiseUncaughtError(error); }
 inline bool VM::ReportRuntimeError() { return get()->ReportRuntimeError(); }
 inline Value VM::BuildStackTrace() { return get()->BuildStackTrace(); }

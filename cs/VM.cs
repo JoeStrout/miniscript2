@@ -6,7 +6,7 @@ using static System.Runtime.CompilerServices.MethodImplOptions;
 // H: #include "value.h"
 // H: #include "FuncDef.g.h"
 // H: #include "IntrinsicAPI.g.h"
-// H: #include "ErrorPool.g.h"
+// H: #include "ErrorTypes.g.h"
 // H: #include "value_map.h"
 // H: #include <vector>
 // H: #include "gc.h"
@@ -104,8 +104,7 @@ public class VM {
 	public FuncDef CurrentFunction { get; private set; }
 	public Boolean IsRunning { get; private set; }
 	public Int32 BaseIndex { get; private set; }
-	public String RuntimeError { get; private set; }
-	public ErrorPool Errors;
+	public Value Error { get; private set; }
 
 	// REPL mode: persistent globals VarMap shared across REPL entries.
 	// When set (not val_null), used instead of callStack[0].GetLocalVarMap for globals.
@@ -142,7 +141,7 @@ public class VM {
 	}
 
 	// Thread-local active VM: set during Run(), so value operations
-	// (like list_push) can report errors without passing ErrorPool around.
+	// (like list_push) can report errors via the VM.
 	[ThreadStatic] private static VM _activeVM;
 	public static VM ActiveVM() {
 		return _activeVM;
@@ -199,7 +198,7 @@ public class VM {
 		callStack = new List<CallInfo>();
 		functions = new List<FuncDef>();
 		callStackTop = 0;
-		RuntimeError = "";
+		Error = val_null;
 
 		// Initialize stack with null values
 		for (Int32 i = 0; i < stackSlots; i++) {
@@ -311,7 +310,7 @@ public class VM {
 		CurrentFunction = mainFunc;
 		IsRunning = true;
 		callStackTop = 0;
-		RuntimeError = "";
+		Error = val_null;
 		pendingSelf = val_null;
 		pendingSuper = val_null;
 		hasPendingContext = false;
@@ -346,26 +345,34 @@ public class VM {
 		IsRunning = false;
 	}
 
+	// Stop the VM with a runtime error described by a string message.
+	// Creates an error Value (with stack trace) and stores it in Error.
 	public void RaiseRuntimeError(String message) {
-		RuntimeError = message;
-		Errors.Add(StringUtils.Format("Runtime Error: {0}", message));
+		Value stack = (IsRunning && CurrentFunction) ? BuildStackTrace() : val_null;
+		Error = ErrorType.RuntimeError(message, stack);
 		IsRunning = false;
 	}
-	
-	// Call this method when the user has apparently failed to notice that
-	// they have an error value, and is attempting to use it as a value.
-	// Returns a null IntrinsicResult, which is what intrinsics should
-	// usually return in this case; other callers can ignore it.
+
+	// Stop the VM with a pre-built error value (e.g. an uncaught user error).
+	public void RaiseRuntimeError(Value error) {
+		Error = error;
+		IsRunning = false;
+	}
+
+	// Called when user code silently ignored an error value and then tried
+	// to use it in an operation that doesn't tolerate errors.
+	// Returns IntrinsicResult.Null for convenience.
 	public IntrinsicResult RaiseUncaughtError(Value error) {
-		// For now, we'll just report it as a string.
-		RaiseRuntimeError(StringUtils.Format("Uncaught {0}", error_message(error)));
+		String msg = StringUtils.Format("Uncaught {0}", error_message(error));
+		RaiseRuntimeError(msg);
 		return IntrinsicResult.Null;
 	}
 
+	// Print the current error to stdout (useful for debug/standalone use).
+	// Returns false if there is no error.
 	public bool ReportRuntimeError() {
-		if (String.IsNullOrEmpty(RuntimeError)) return false;
-		IOHelper.Print(StringUtils.Format("Runtime Error: {0} [{1} line {2}]",
-		  RuntimeError, CurrentFunction.Name, PC - 1));
+		if (is_null(Error)) return false;
+		IOHelper.Print(StringUtils.Format("Runtime Error: {0}", StringUtils.Format("{0}", error_message(Error))));
 		return true;
 	}
 

@@ -22,7 +22,7 @@ Lexer::Lexer(String source) {
 	_position = 0;
 	_line = 1;
 	_column = 1;
-	Errors = ErrorPool();
+	Error = val_null;
 }
 Char Lexer::Peek() {
 	if (_position >= _input.Length()) return '\0';
@@ -262,8 +262,11 @@ Token Lexer::NextToken() {
 	singleTok.AfterSpace = hadWhitespace;
 	return singleTok;
 }
-void Lexer::Error(String message) {
-	Errors.Add(StringUtils::Format("Compiler Error: {0} [line {1}]", message, _line));
+void Lexer::ReportError(String message) {
+	if (is_null(Error)) Error = ErrorType::CompilerError(StringUtils::Format("{0} [line {1}]", message, _line));
+}
+Boolean Lexer::HadError() {
+	return !is_null(Error);
 }
 
 } // end of namespace MiniScript

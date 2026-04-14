@@ -7,6 +7,7 @@
 // CoreIntrinsics.cs - Definitions of all built-in intrinsic functions.
 
 #include "value.h"
+#include "ErrorTypes.g.h"
 
 namespace MiniScript {
 

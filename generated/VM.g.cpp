@@ -103,7 +103,7 @@ void VMStorage::InitVM(Int32 stackSlots,Int32 callSlots) {
 	callStack =  List<CallInfo>::New();
 	functions =  List<FuncDef>::New();
 	callStackTop = 0;
-	RuntimeError = "";
+	Error = val_null;
 
 	// Initialize stack with null values
 	for (Int32 i = 0; i < stackSlots; i++) {
@@ -201,7 +201,7 @@ void VMStorage::Reset(List<FuncDef> allFunctions,Value replGlobals) {
 	CurrentFunction = mainFunc;
 	IsRunning = Boolean(true);
 	callStackTop = 0;
-	RuntimeError = "";
+	Error = val_null;
 	pendingSelf = val_null;
 	pendingSuper = val_null;
 	hasPendingContext = Boolean(false);
@@ -235,19 +235,24 @@ void VMStorage::Stop() {
 	IsRunning = Boolean(false);
 }
 void VMStorage::RaiseRuntimeError(String message) {
-	RuntimeError = message;
-	Errors.Add(StringUtils::Format("Runtime Error: {0}", message));
+	GC_PUSH_SCOPE();
+	Value stack = (IsRunning && CurrentFunction) ? BuildStackTrace() : val_null; GC_PROTECT(&stack);
+	Error = ErrorType::RuntimeError(message, stack);
+	IsRunning = Boolean(false);
+	GC_POP_SCOPE();
+}
+void VMStorage::RaiseRuntimeError(Value error) {
+	Error = error;
 	IsRunning = Boolean(false);
 }
 IntrinsicResult VMStorage::RaiseUncaughtError(Value error) {
-	// For now, we'll just report it as a string.
-	RaiseRuntimeError(StringUtils::Format("Uncaught {0}", error_message(error)));
+	String msg = StringUtils::Format("Uncaught {0}", error_message(error));
+	RaiseRuntimeError(msg);
 	return IntrinsicResult::Null;
 }
 bool VMStorage::ReportRuntimeError() {
-	if (String::IsNullOrEmpty(RuntimeError)) return Boolean(false);
-	IOHelper::Print(StringUtils::Format("Runtime Error: {0} [{1} line {2}]",
-	  RuntimeError, CurrentFunction.Name(), PC - 1));
+	if (is_null(Error)) return Boolean(false);
+	IOHelper::Print(StringUtils::Format("Runtime Error: {0}", StringUtils::Format("{0}", error_message(Error))));
 	return Boolean(true);
 }
 Value VMStorage::BuildStackTrace() {

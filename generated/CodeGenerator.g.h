@@ -9,7 +9,7 @@
 
 #include "AST.g.h"
 #include "CodeEmitter.g.h"
-#include "ErrorPool.g.h"
+#include "ErrorTypes.g.h"
 
 namespace MiniScript {
 
@@ -28,7 +28,7 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 	private: List<FuncDef> _functions; // All compiled functions (shared across inner generators)
 	public: Int32 FunctionIndexOffset; // Offset added to local function indices for FUNCREF emission
 	public: String FileName = ""; // Source file name, copied to each compiled FuncDef
-	public: ErrorPool Errors;
+	public: Value Error;
 
 	public: CodeGeneratorStorage(CodeEmitterBase emitter);
 
@@ -205,8 +205,8 @@ struct CodeGenerator : public IASTVisitor {
 	public: void set_FunctionIndexOffset(Int32 _v); // Offset added to local function indices for FUNCREF emission
 	public: String FileName(); // Source file name, copied to each compiled FuncDef
 	public: void set_FileName(String _v); // Source file name, copied to each compiled FuncDef
-	public: ErrorPool Errors();
-	public: void set_Errors(ErrorPool _v);
+	public: Value Error();
+	public: void set_Error(Value _v);
 
 	public: static CodeGenerator New(CodeEmitterBase emitter) {
 		return CodeGenerator(std::make_shared<CodeGeneratorStorage>(emitter));
@@ -377,8 +377,8 @@ inline Int32 CodeGenerator::FunctionIndexOffset() { return get()->FunctionIndexO
 inline void CodeGenerator::set_FunctionIndexOffset(Int32 _v) { get()->FunctionIndexOffset = _v; } // Offset added to local function indices for FUNCREF emission
 inline String CodeGenerator::FileName() { return get()->FileName; } // Source file name, copied to each compiled FuncDef
 inline void CodeGenerator::set_FileName(String _v) { get()->FileName = _v; } // Source file name, copied to each compiled FuncDef
-inline ErrorPool CodeGenerator::Errors() { return get()->Errors; }
-inline void CodeGenerator::set_Errors(ErrorPool _v) { get()->Errors = _v; }
+inline Value CodeGenerator::Error() { return get()->Error; }
+inline void CodeGenerator::set_Error(Value _v) { get()->Error = _v; }
 inline List<FuncDef> CodeGenerator::GetFunctions() { return get()->GetFunctions(); }
 inline Int32 CodeGenerator::AllocReg() { return get()->AllocReg(); }
 inline void CodeGenerator::FreeReg(Int32 reg) { return get()->FreeReg(reg); }

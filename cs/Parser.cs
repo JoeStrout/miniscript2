@@ -9,10 +9,11 @@
 
 using System;
 using System.Collections.Generic;
+using static MiniScript.ValueHelpers;
 // H: #include "LangConstants.g.h"
 // H: #include "Lexer.g.h"
 // H: #include "Parselet.g.h"
-// H: #include "ErrorPool.g.h"
+// H: #include "ErrorTypes.g.h"
 // CPP: #include "AST.g.h"
 // CPP: #include "IOHelper.g.h"
 // CPP: #include "StringUtils.g.h"
@@ -27,14 +28,14 @@ public class Parser : IParser {
 	private Token _current;
 	private TokenType _previousType;
 	private Boolean _needMoreInput;
-	public ErrorPool Errors;
+	public Value Error;
 
 	// Parselet tables - indexed by TokenType
 	private Dictionary<TokenType, PrefixParselet> _prefixParselets;
 	private Dictionary<TokenType, InfixParselet> _infixParselets;
 
 	public Parser() {
-		Errors = new ErrorPool();
+		Error = val_null;
 		_prefixParselets = new Dictionary<TokenType, PrefixParselet>();
 		_infixParselets = new Dictionary<TokenType, InfixParselet>();
 
@@ -102,9 +103,8 @@ public class Parser : IParser {
 	// Initialize the parser with source code
 	public void Init(String source) {
 		_lexer = new Lexer(source);
-		Errors.Clear();
+		Error = val_null;
 		_needMoreInput = false;
-		_lexer.Errors = Errors;  // Share the same error pool
 		Advance();  // Prime the pump with the first token
 	}
 
@@ -124,6 +124,7 @@ public class Parser : IParser {
 		_previousType = _current.Type;
 		do {
 			_current = _lexer.NextToken();
+			if (is_null(Error) && _lexer.HadError()) Error = _lexer.Error;
 		} while (_current.Type == TokenType.COMMENT
 			|| (_current.Type == TokenType.EOL && AllowsLineContinuation(_previousType)));
 		// If the last meaningful token allows line continuation and we've run out
@@ -798,19 +799,14 @@ public class Parser : IParser {
 		return StringUtils.Format("got {0} where {1} is required", TokenDescription(_current), expected);
 	}
 
-	// Report an error
+	// Report an error.  Only the first error is kept.
 	public void ReportError(String message) {
-		Errors.Add(StringUtils.Format("Compiler Error: {0} [line {1}]", message, _current.Line));
+		if (is_null(Error)) Error = ErrorType.CompilerError(StringUtils.Format("{0} [line {1}]", message, _current.Line));
 	}
 
 	// Check if any errors occurred
 	public Boolean HadError() {
-		return Errors.HasError();
-	}
-
-	// Get the list of errors
-	public List<String> GetErrors() {
-		return Errors.GetErrors();
+		return !is_null(Error);
 	}
 }
 

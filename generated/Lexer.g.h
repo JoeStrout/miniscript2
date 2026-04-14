@@ -8,7 +8,7 @@
 // Simple expression tokenizer (to be expanded for full MiniScript grammar)
 
 #include "LangConstants.g.h"
-#include "ErrorPool.g.h"
+#include "ErrorTypes.g.h"
 
 namespace MiniScript {
 
@@ -33,7 +33,7 @@ struct Lexer {
 	private: Int32 _position;
 	private: Int32 _line;
 	private: Int32 _column;
-	public: ErrorPool Errors;
+	public: Value Error;
 	public: Lexer() {}
 
 	public: Lexer(String source);
@@ -59,8 +59,10 @@ struct Lexer {
 	// Get the next token from _input
 	public: Token NextToken();
 
-	// Report an error
-	public: void Error(String message);
+	// Record a compiler error.  Only the first error is kept.
+	public: void ReportError(String message);
+
+	public: Boolean HadError();
 }; // end of struct Lexer
 
 // INLINE METHODS

@@ -16,7 +16,7 @@
 #include "LangConstants.g.h"
 #include "Lexer.g.h"
 #include "Parselet.g.h"
-#include "ErrorPool.g.h"
+#include "ErrorTypes.g.h"
 
 namespace MiniScript {
 
@@ -28,7 +28,7 @@ class ParserStorage : public std::enable_shared_from_this<ParserStorage>, public
 	private: Token _current;
 	private: TokenType _previousType;
 	private: Boolean _needMoreInput;
-	public: ErrorPool Errors;
+	public: Value Error;
 	private: Dictionary<TokenType, PrefixParselet> _prefixParselets;
 	private: Dictionary<TokenType, InfixParselet> _infixParselets;
 
@@ -158,14 +158,11 @@ class ParserStorage : public std::enable_shared_from_this<ParserStorage>, public
 	// Format an error in the 1.x style: "got X where Y is required"
 	private: String GotExpected(String expected);
 
-	// Report an error
+	// Report an error.  Only the first error is kept.
 	public: void ReportError(String message);
 
 	// Check if any errors occurred
 	public: Boolean HadError();
-
-	// Get the list of errors
-	public: List<String> GetErrors();
 }; // end of class ParserStorage
 
 // Parser: the main parsing engine.
@@ -188,8 +185,8 @@ struct Parser : public IParser {
 	private: void set__previousType(TokenType _v);
 	private: Boolean _needMoreInput();
 	private: void set__needMoreInput(Boolean _v);
-	public: ErrorPool Errors();
-	public: void set_Errors(ErrorPool _v);
+	public: Value Error();
+	public: void set_Error(Value _v);
 	private: Dictionary<TokenType, PrefixParselet> _prefixParselets();
 	private: void set__prefixParselets(Dictionary<TokenType, PrefixParselet> _v);
 	private: Dictionary<TokenType, InfixParselet> _infixParselets();
@@ -323,14 +320,11 @@ struct Parser : public IParser {
 	// Format an error in the 1.x style: "got X where Y is required"
 	private: inline String GotExpected(String expected);
 
-	// Report an error
+	// Report an error.  Only the first error is kept.
 	public: inline void ReportError(String message);
 
 	// Check if any errors occurred
 	public: inline Boolean HadError();
-
-	// Get the list of errors
-	public: inline List<String> GetErrors();
 }; // end of struct Parser
 
 // INLINE METHODS
@@ -344,8 +338,8 @@ inline TokenType Parser::_previousType() { return get()->_previousType; }
 inline void Parser::set__previousType(TokenType _v) { get()->_previousType = _v; }
 inline Boolean Parser::_needMoreInput() { return get()->_needMoreInput; }
 inline void Parser::set__needMoreInput(Boolean _v) { get()->_needMoreInput = _v; }
-inline ErrorPool Parser::Errors() { return get()->Errors; }
-inline void Parser::set_Errors(ErrorPool _v) { get()->Errors = _v; }
+inline Value Parser::Error() { return get()->Error; }
+inline void Parser::set_Error(Value _v) { get()->Error = _v; }
 inline Dictionary<TokenType, PrefixParselet> Parser::_prefixParselets() { return get()->_prefixParselets; }
 inline void Parser::set__prefixParselets(Dictionary<TokenType, PrefixParselet> _v) { get()->_prefixParselets = _v; }
 inline Dictionary<TokenType, InfixParselet> Parser::_infixParselets() { return get()->_infixParselets; }
@@ -385,6 +379,5 @@ inline String Parser::TokenDescription(Token tok) { return get()->TokenDescripti
 inline String Parser::GotExpected(String expected) { return get()->GotExpected(expected); }
 inline void Parser::ReportError(String message) { return get()->ReportError(message); }
 inline Boolean Parser::HadError() { return get()->HadError(); }
-inline List<String> Parser::GetErrors() { return get()->GetErrors(); }
 
 } // end of namespace MiniScript

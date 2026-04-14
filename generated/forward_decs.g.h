@@ -8,7 +8,6 @@ struct VM;
 class VMStorage;
 struct Context;
 struct IntrinsicResult;
-struct ErrorPool;
 struct VMVis;
 struct CodeEmitterBase;
 class CodeEmitterBaseStorage;

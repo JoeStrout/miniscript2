@@ -9,7 +9,7 @@
 namespace MiniScript {
 
 ParserStorage::ParserStorage() {
-	Errors = ErrorPool();
+	Error = val_null;
 	_prefixParselets =  Dictionary<TokenType, PrefixParselet>::New();
 	_infixParselets =  Dictionary<TokenType, InfixParselet>::New();
 
@@ -71,9 +71,8 @@ void ParserStorage::RegisterInfix(TokenType type,InfixParselet parselet) {
 }
 void ParserStorage::Init(String source) {
 	_lexer = Lexer(source);
-	Errors.Clear();
+	Error = val_null;
 	_needMoreInput = Boolean(false);
-	_lexer.Errors = Errors;  // Share the same error pool
 	Advance();  // Prime the pump with the first token
 }
 Boolean ParserStorage::NeedMoreInput() {
@@ -83,6 +82,7 @@ void ParserStorage::Advance() {
 	_previousType = _current.Type;
 	do {
 		_current = _lexer.NextToken();
+		if (is_null(Error) && _lexer.HadError()) Error = _lexer.Error;
 	} while (_current.Type == TokenType::COMMENT
 		|| (_current.Type == TokenType::EOL && AllowsLineContinuation(_previousType)));
 	// If the last meaningful token allows line continuation and we've run out
@@ -687,13 +687,10 @@ String ParserStorage::GotExpected(String expected) {
 	return StringUtils::Format("got {0} where {1} is required", TokenDescription(_current), expected);
 }
 void ParserStorage::ReportError(String message) {
-	Errors.Add(StringUtils::Format("Compiler Error: {0} [line {1}]", message, _current.Line));
+	if (is_null(Error)) Error = ErrorType::CompilerError(StringUtils::Format("{0} [line {1}]", message, _current.Line));
 }
 Boolean ParserStorage::HadError() {
-	return Errors.HasError();
-}
-List<String> ParserStorage::GetErrors() {
-	return Errors.GetErrors();
+	return !is_null(Error);
 }
 
 } // end of namespace MiniScript

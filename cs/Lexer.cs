@@ -5,8 +5,9 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using static System.Runtime.CompilerServices.MethodImplOptions;
+using static MiniScript.ValueHelpers;
 // H: #include "LangConstants.g.h"
-// H: #include "ErrorPool.g.h"
+// H: #include "ErrorTypes.g.h"
 // CPP: #include "StringUtils.g.h"
 // CPP: #include "IOHelper.g.h"
 
@@ -39,7 +40,7 @@ public struct Lexer {
 	private Int32 _position;
 	private Int32 _line;
 	private Int32 _column;
-	public ErrorPool Errors;
+	public Value Error;
 
 	// H: public: Lexer() {}
 	public Lexer(String source) {
@@ -47,7 +48,7 @@ public struct Lexer {
 		_position = 0;
 		_line = 1;
 		_column = 1;
-		Errors = new ErrorPool();
+		Error = val_null;
 	}
 
 	// Peek at current character without advancing
@@ -331,9 +332,13 @@ public struct Lexer {
 		return singleTok;
 	}
 
-	// Report an error
-	public void Error(String message) {
-		Errors.Add(StringUtils.Format("Compiler Error: {0} [line {1}]", message, _line));
+	// Record a compiler error.  Only the first error is kept.
+	public void ReportError(String message) {
+		if (is_null(Error)) Error = ErrorType.CompilerError(StringUtils.Format("{0} [line {1}]", message, _line));
+	}
+
+	public Boolean HadError() {
+		return !is_null(Error);
 	}
 }
 

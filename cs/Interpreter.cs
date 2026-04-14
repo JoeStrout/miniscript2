@@ -80,8 +80,14 @@ public class Interpreter {
 
 	protected String source;
 	protected Parser parser;
-	protected ErrorPool errors;
 	protected List<FuncDef> compiledFunctions;
+
+	/// <summary>
+	/// The most recent compiler or runtime error, as an error Value, or val_null
+	/// if there is no error.  Host code can inspect this (and its __isa chain)
+	/// to distinguish error types.
+	/// </summary>
+	public Value Error;
 
 	// REPL state
 	private String _pendingSource;       // accumulated REPL lines so far
@@ -104,7 +110,7 @@ public class Interpreter {
 		if (errorOutput == null) errorOutput = _standardOutput;
 		standardOutput = _standardOutput;
 		errorOutput = _errorOutput;
-		errors = ErrorPool.Create();
+		Error = val_null;
 	}
 
 	/// <summary>
@@ -146,7 +152,7 @@ public class Interpreter {
 		parser = null;
 		vm = null;
 		compiledFunctions = null;
-		errors.Clear();
+		Error = val_null;
 	}
 
 	/// <summary>
@@ -157,18 +163,12 @@ public class Interpreter {
 		source = null;
 		parser = null;
 		compiledFunctions = functions;
-		errors.Clear();
+		Error = val_null;
 
 		// Create and configure VM
 		vm = new VM();
-		vm.Errors = errors;
 		vm.SetInterpreter(this);
 		vm.Reset(functions);
-
-		if (errors.HasError()) {
-			ReportErrors();
-			vm = null;
-		}
 	}
 
 	/// <summary>
@@ -178,15 +178,15 @@ public class Interpreter {
 	public void Compile() {
 		if (vm != null) return;		// already compiled
 
-		errors.Clear();
+		Error = val_null;
 
 		if (parser == null) parser = new Parser();
-		parser.Errors = errors;
 		parser.Init(source);
 		List<ASTNode> statements = parser.ParseProgram();
 
 		if (parser.HadError()) {
-			ReportErrors();
+			Error = parser.Error;
+			ReportError(Error);
 			return;
 		}
 
@@ -200,13 +200,13 @@ public class Interpreter {
 		// Compile to bytecode (offset past intrinsics so indices don't collide)
 		BytecodeEmitter emitter = new BytecodeEmitter();
 		CodeGenerator generator = new CodeGenerator(emitter);
-		generator.Errors = errors;
 		generator.FunctionIndexOffset = Intrinsic.Count();
 		generator.FileName = SourceFile;
 		generator.CompileProgram(statements, "@main");
 
-		if (errors.HasError()) {
-			ReportErrors();
+		if (!is_null(generator.Error)) {
+			Error = generator.Error;
+			ReportError(Error);
 			return;
 		}
 
@@ -214,14 +214,8 @@ public class Interpreter {
 
 		// Create and configure VM
 		vm = new VM();
-		vm.Errors = errors;
 		vm.SetInterpreter(this);
 		vm.Reset(compiledFunctions);
-
-		if (errors.HasError()) {
-			ReportErrors();
-			vm = null;
-		}
 	}
 
 	/// <summary>
@@ -232,7 +226,7 @@ public class Interpreter {
 	/// </summary>
 	public void Restart() {
 		if (vm != null && compiledFunctions != null) {
-			errors.Clear();
+			Error = val_null;
 			vm.Reset(compiledFunctions);
 		}
 	}
@@ -263,8 +257,9 @@ public class Interpreter {
 		while (vm.IsRunning && !vm.yielding) {
 			if (vm.ElapsedTime() - startTime > timeLimit) return;	// time's up for now
 			vm.Run(1000);	// run in small batches so we can check the time
-			if (errors.HasError()) {
-				ReportErrors();
+			if (!is_null(vm.Error)) {
+				Error = vm.Error;
+				ReportError(Error);
 				Stop();
 				return;
 			}
@@ -280,8 +275,9 @@ public class Interpreter {
 		Compile();
 		if (vm == null) return;
 		vm.Run(1);
-		if (errors.HasError()) {
-			ReportErrors();
+		if (!is_null(vm.Error)) {
+			Error = vm.Error;
+			ReportError(Error);
 			Stop();
 		}
 	}
@@ -304,9 +300,8 @@ public class Interpreter {
 		}
 
 		// Try to parse
-		errors.Clear();
+		Error = val_null;
 		if (parser == null) parser = new Parser();
-		parser.Errors = errors;
 		parser.Init(_pendingSource);
 		List<ASTNode> statements = parser.ParseProgram();
 
@@ -315,7 +310,8 @@ public class Interpreter {
 
 		// If there were parse errors, report and reset
 		if (parser.HadError()) {
-			ReportErrors();
+			Error = parser.Error;
+			ReportError(Error);
 			_pendingSource = null;
 			return;
 		}
@@ -353,12 +349,12 @@ public class Interpreter {
 		Int32 funcOffset = (vm != null) ? vm.FunctionCount() : Intrinsic.Count();
 		BytecodeEmitter emitter = new BytecodeEmitter();
 		CodeGenerator generator = new CodeGenerator(emitter);
-		generator.Errors = errors;
 		generator.FunctionIndexOffset = funcOffset;
 		generator.CompileProgram(statements, "@main");
 
-		if (errors.HasError()) {
-			ReportErrors();
+		if (!is_null(generator.Error)) {
+			Error = generator.Error;
+			ReportError(Error);
 			_pendingSource = null;
 			return;
 		}
@@ -372,16 +368,8 @@ public class Interpreter {
 
 		// Create/reset VM
 		if (vm == null) vm = new VM();
-		vm.Errors = errors;
 		vm.SetInterpreter(this);
 		vm.Reset(functions, _replGlobals);
-
-		if (errors.HasError()) {
-			ReportErrors();
-			vm = null;
-			_pendingSource = null;
-			return;
-		}
 
 		// If this is the first REPL entry, create the initial globals VarMap
 		if (is_null(_replGlobals)) {
@@ -392,11 +380,14 @@ public class Interpreter {
 		// Run
 		double startTime = vm.ElapsedTime();
 		vm.yielding = false;
+		bool hadRuntimeError = false;
 		while (vm.IsRunning && !vm.yielding) {
 			if (vm.ElapsedTime() - startTime > timeLimit) break;
 			vm.Run(1000);
-			if (errors.HasError()) {
-				ReportErrors();
+			if (!is_null(vm.Error)) {
+				Error = vm.Error;
+				ReportError(Error);
+				hadRuntimeError = true;
 				break;
 			}
 		}
@@ -404,7 +395,7 @@ public class Interpreter {
 		// Implicit output: if last statement was a bare expression, report r0
 		// (unless we are in an error state).
 		Value result;
-		if (hasImplicitOutput && !errors.HasError() && String.IsNullOrEmpty(vm.RuntimeError) && implicitOutput != null) {
+		if (hasImplicitOutput && !hadRuntimeError && implicitOutput != null) {
 			result = vm.GetStackValue(vm.BaseIndex);
 			if (!is_null(result)) {
 				implicitOutput.Invoke(StringUtils.Format("{0}", result), true);
@@ -466,21 +457,22 @@ public class Interpreter {
 	}
 
 	/// <summary>
-	/// Report all accumulated errors via the errorOutput callback, then clear them.
+	/// Report an error value to the user via errorOutput.  The default
+	/// implementation formats the error message as a string and calls
+	/// ReportError(String).  Subclass and override to do something different
+	/// (e.g. inspect the error type or store it for later retrieval).
 	/// </summary>
-	protected void ReportErrors() {
-		if (errorOutput == null) return;
-		List<String> errorList = errors.GetErrors();
-		for (Int32 i = 0; i < errorList.Count; i++) {
-			ReportError(errorList[i]);
-		}
-		errors.Clear();
+	/// <param name="error">error Value to report</param>
+	protected virtual void ReportError(Value error) {
+		String msg = StringUtils.Format("{0}", error_message(error));
+		String prefix = error_isa_contains(error, ErrorType.compiler) ? "Compiler Error: " : "Runtime Error: ";
+		ReportError(prefix + msg);
 	}
 
 	/// <summary>
-	/// Report a single error string to the user.  The default implementation
-	/// simply invokes errorOutput.  If you want to do something different,
-	/// subclass Interpreter and override this method.
+	/// Report a single error string to the user via errorOutput.  The default
+	/// implementation simply invokes errorOutput.  If you want to do something
+	/// different, subclass Interpreter and override this method.
 	/// </summary>
 	/// <param name="message">error message</param>
 	protected virtual void ReportError(String message) {

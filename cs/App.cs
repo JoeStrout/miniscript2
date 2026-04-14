@@ -6,7 +6,7 @@ using MiniScript;
 using static MiniScript.ValueHelpers;
 
 // CPP: #include "CodeEmitter.g.h"
-// CPP: #include "ErrorPool.g.h"
+// CPP: #include "ErrorTypes.g.h"
 // CPP: #include "UnitTests.g.h"
 // CPP: #include "VM.g.h"
 // CPP: #include "gc.h"
@@ -35,7 +35,8 @@ public struct App {
 	public static void MainProgram(List<String> args) {
 		// CPP: gc_init();
 		// CPP: value_init_constants();
-	
+		ErrorType.Init();
+
 		// Parse command-line switches
 		Int32 fileArgIndex = -1;
 		String inlineCode = null;
@@ -363,7 +364,7 @@ public struct App {
 			}
 		}
 
-		if (!vm.Errors.HasError()) {
+		if (is_null(vm.Error)) {
 			IOHelper.Print("\nVM execution complete. Result in r0:");
 			IOHelper.Print(StringUtils.Format("\u001b[1;93m{0}\u001b[0m", result)); // (bold bright yellow)
 		}

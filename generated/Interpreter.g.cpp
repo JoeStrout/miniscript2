@@ -18,7 +18,7 @@ void InterpreterStorage::Init(String _source,TextOutputMethod _standardOutput,Te
 	if (IsNull(errorOutput)) errorOutput = _standardOutput;
 	standardOutput = _standardOutput;
 	errorOutput = _errorOutput;
-	errors = ErrorPool::Create();
+	Error = val_null;
 }
 InterpreterStorage::InterpreterStorage(List<String> sourceList,TextOutputMethod standardOutput,TextOutputMethod errorOutput) {
 	String source = String::Join("\n", sourceList);
@@ -33,39 +33,33 @@ void InterpreterStorage::Reset(String _source) {
 	parser = nullptr;
 	vm = nullptr;
 	compiledFunctions = nullptr;
-	errors.Clear();
+	Error = val_null;
 }
 void InterpreterStorage::Reset(List<FuncDef> functions) {
 	Interpreter _this(std::static_pointer_cast<InterpreterStorage>(shared_from_this()));
 	source = nullptr;
 	parser = nullptr;
 	compiledFunctions = functions;
-	errors.Clear();
+	Error = val_null;
 
 	// Create and configure VM
 	vm =  VM::New();
-	vm.set_Errors(errors);
 	vm.SetInterpreter(_this);
 	vm.Reset(functions);
-
-	if (errors.HasError()) {
-		ReportErrors();
-		vm = nullptr;
-	}
 }
 void InterpreterStorage::Compile() {
 	Interpreter _this(std::static_pointer_cast<InterpreterStorage>(shared_from_this()));
 	if (!IsNull(vm)) return;		// already compiled
 
-	errors.Clear();
+	Error = val_null;
 
 	if (IsNull(parser)) parser =  Parser::New();
-	parser.set_Errors(errors);
 	parser.Init(source);
 	List<ASTNode> statements = parser.ParseProgram();
 
 	if (parser.HadError()) {
-		ReportErrors();
+		Error = parser.Error();
+		ReportError(Error);
 		return;
 	}
 
@@ -79,13 +73,13 @@ void InterpreterStorage::Compile() {
 	// Compile to bytecode (offset past intrinsics so indices don't collide)
 	BytecodeEmitter emitter =  BytecodeEmitter::New();
 	CodeGenerator generator =  CodeGenerator::New(emitter);
-	generator.set_Errors(errors);
 	generator.set_FunctionIndexOffset(Intrinsic::Count());
 	generator.set_FileName(SourceFile);
 	generator.CompileProgram(statements, "@main");
 
-	if (errors.HasError()) {
-		ReportErrors();
+	if (!is_null(generator.Error())) {
+		Error = generator.Error();
+		ReportError(Error);
 		return;
 	}
 
@@ -93,18 +87,12 @@ void InterpreterStorage::Compile() {
 
 	// Create and configure VM
 	vm =  VM::New();
-	vm.set_Errors(errors);
 	vm.SetInterpreter(_this);
 	vm.Reset(compiledFunctions);
-
-	if (errors.HasError()) {
-		ReportErrors();
-		vm = nullptr;
-	}
 }
 void InterpreterStorage::Restart() {
 	if (!IsNull(vm) && !IsNull(compiledFunctions)) {
-		errors.Clear();
+		Error = val_null;
 		vm.Reset(compiledFunctions);
 	}
 }
@@ -118,8 +106,9 @@ void InterpreterStorage::RunUntilDone(double timeLimit,bool returnEarly) {
 	while (vm.IsRunning() && !vm.yielding()) {
 		if (vm.ElapsedTime() - startTime > timeLimit) return;	// time's up for now
 		vm.Run(1000);	// run in small batches so we can check the time
-		if (errors.HasError()) {
-			ReportErrors();
+		if (!is_null(vm.Error())) {
+			Error = vm.Error();
+			ReportError(Error);
 			Stop();
 			return;
 		}
@@ -130,8 +119,9 @@ void InterpreterStorage::Step() {
 	Compile();
 	if (IsNull(vm)) return;
 	vm.Run(1);
-	if (errors.HasError()) {
-		ReportErrors();
+	if (!is_null(vm.Error())) {
+		Error = vm.Error();
+		ReportError(Error);
 		Stop();
 	}
 }
@@ -147,9 +137,8 @@ void InterpreterStorage::REPL(String sourceLine,double timeLimit) {
 	}
 
 	// Try to parse
-	errors.Clear();
+	Error = val_null;
 	if (IsNull(parser)) parser =  Parser::New();
-	parser.set_Errors(errors);
 	parser.Init(_pendingSource);
 	List<ASTNode> statements = parser.ParseProgram();
 
@@ -158,7 +147,8 @@ void InterpreterStorage::REPL(String sourceLine,double timeLimit) {
 
 	// If there were parse errors, report and reset
 	if (parser.HadError()) {
-		ReportErrors();
+		Error = parser.Error();
+		ReportError(Error);
 		_pendingSource = nullptr;
 		return;
 	}
@@ -196,12 +186,12 @@ void InterpreterStorage::REPL(String sourceLine,double timeLimit) {
 	Int32 funcOffset = (!IsNull(vm)) ? vm.FunctionCount() : Intrinsic::Count();
 	BytecodeEmitter emitter =  BytecodeEmitter::New();
 	CodeGenerator generator =  CodeGenerator::New(emitter);
-	generator.set_Errors(errors);
 	generator.set_FunctionIndexOffset(funcOffset);
 	generator.CompileProgram(statements, "@main");
 
-	if (errors.HasError()) {
-		ReportErrors();
+	if (!is_null(generator.Error())) {
+		Error = generator.Error();
+		ReportError(Error);
 		_pendingSource = nullptr;
 		return;
 	}
@@ -215,16 +205,8 @@ void InterpreterStorage::REPL(String sourceLine,double timeLimit) {
 
 	// Create/reset VM
 	if (IsNull(vm)) vm =  VM::New();
-	vm.set_Errors(errors);
 	vm.SetInterpreter(_this);
 	vm.Reset(functions, _replGlobals);
-
-	if (errors.HasError()) {
-		ReportErrors();
-		vm = nullptr;
-		_pendingSource = nullptr;
-		return;
-	}
 
 	// If this is the first REPL entry, create the initial globals VarMap
 	if (is_null(_replGlobals)) {
@@ -235,11 +217,14 @@ void InterpreterStorage::REPL(String sourceLine,double timeLimit) {
 	// Run
 	double startTime = vm.ElapsedTime();
 	vm.set_yielding(Boolean(false));
+	bool hadRuntimeError = Boolean(false);
 	while (vm.IsRunning() && !vm.yielding()) {
 		if (vm.ElapsedTime() - startTime > timeLimit) break;
 		vm.Run(1000);
-		if (errors.HasError()) {
-			ReportErrors();
+		if (!is_null(vm.Error())) {
+			Error = vm.Error();
+			ReportError(Error);
+			hadRuntimeError = Boolean(true);
 			break;
 		}
 	}
@@ -248,7 +233,7 @@ void InterpreterStorage::REPL(String sourceLine,double timeLimit) {
 	// (unless we are in an error state).
 	GC_PUSH_SCOPE();
 	Value result; GC_PROTECT(&result);
-	if (hasImplicitOutput && !errors.HasError() && String::IsNullOrEmpty(vm.RuntimeError()) && !IsNull(implicitOutput)) {
+	if (hasImplicitOutput && !hadRuntimeError && !IsNull(implicitOutput)) {
 		result = vm.GetStackValue(vm.BaseIndex());
 		if (!is_null(result)) {
 			implicitOutput(StringUtils::Format("{0}", result), Boolean(true));
@@ -286,13 +271,10 @@ void InterpreterStorage::SetGlobalValue(String varName,Value value) {
 	// TODO: Implement when VM supports setting stack values by index.
 	// The current VM API only provides read access to the stack.
 }
-void InterpreterStorage::ReportErrors() {
-	if (IsNull(errorOutput)) return;
-	List<String> errorList = errors.GetErrors();
-	for (Int32 i = 0; i < errorList.Count(); i++) {
-		ReportError(errorList[i]);
-	}
-	errors.Clear();
+void InterpreterStorage::ReportError(Value error) {
+	String msg = StringUtils::Format("{0}", error_message(error));
+	String prefix = error_isa_contains(error, ErrorType::compiler) ? "Compiler Error: " : "Runtime Error: ";
+	ReportError(prefix + msg);
 }
 void InterpreterStorage::ReportError(String message) {
 	if (!IsNull(errorOutput)) errorOutput(message, Boolean(true));

@@ -18,6 +18,7 @@ CodeGeneratorStorage::CodeGeneratorStorage(CodeEmitterBase emitter) {
 	_loopExitLabels =  List<Int32>::New();
 	_loopContinueLabels =  List<Int32>::New();
 	_functions =  List<FuncDef>::New();
+	Error = val_null;
 }
 List<FuncDef> CodeGeneratorStorage::GetFunctions() {
 	return _functions;
@@ -241,7 +242,7 @@ Int32 CodeGeneratorStorage::Visit(IdentifierNode node) {
 }
 Int32 CodeGeneratorStorage::Visit(AssignmentNode node) {
 	if (_targetReg > 0) {
-		Errors.Add(StringUtils::Format("Compiler Error: unexpected target register {0} in assignment", _targetReg));
+		if (is_null(Error)) Error = ErrorType::CompilerError(StringUtils::Format("unexpected target register {0} in assignment", _targetReg));
 	}
 	
 	// Get or allocate register for this variable
@@ -348,7 +349,7 @@ Int32 CodeGeneratorStorage::Visit(UnaryOpNode node) {
 	}
 
 	// Unknown unary operator - move operand to result if needed
-	Errors.Add("Compiler Error: unknown unary operator");
+	if (is_null(Error)) Error = ErrorType::CompilerError("unknown unary operator");
 	if (operandReg != resultReg) {
 		_emitter.EmitABC(Opcode::LOAD_rA_rB, resultReg, operandReg, 0, "move to target");
 		FreeReg(operandReg);
@@ -893,7 +894,7 @@ Int32 CodeGeneratorStorage::Visit(ForNode node) {
 Int32 CodeGeneratorStorage::Visit(BreakNode node) {
 	// Break jumps to the innermost loop's exit label
 	if (_loopExitLabels.Count() == 0) {
-		Errors.Add("Compiler Error: 'break' without open loop block");
+		if (is_null(Error)) Error = ErrorType::CompilerError("'break' without open loop block");
 		_emitter.Emit(Opcode::NOOP, "break outside loop (error)");
 	} else {
 		Int32 exitLabel = _loopExitLabels[_loopExitLabels.Count() - 1];
@@ -904,7 +905,7 @@ Int32 CodeGeneratorStorage::Visit(BreakNode node) {
 Int32 CodeGeneratorStorage::Visit(ContinueNode node) {
 	// Continue jumps to the innermost loop's continue label (loop start)
 	if (_loopContinueLabels.Count() == 0) {
-		Errors.Add("Compiler Error: 'continue' without open loop block");
+		if (is_null(Error)) Error = ErrorType::CompilerError("'continue' without open loop block");
 		_emitter.Emit(Opcode::NOOP, "continue outside loop (error)");
 	} else {
 		Int32 continueLabel = _loopContinueLabels[_loopContinueLabels.Count() - 1];
@@ -996,7 +997,6 @@ Int32 CodeGeneratorStorage::Visit(FunctionNode node) {
 	innerGen.set__functions(_functions);  // share the function list
 	innerGen.set_FunctionIndexOffset(FunctionIndexOffset);  // share the offset too
 	innerGen.set_FileName(FileName);      // share the source file name
-	innerGen.set_Errors(Errors);
 
 	// Reserve r0 for return value, then set up param registers (r1, r2, ...)
 	innerGen.AllocReg();  // r0 reserved for return value
@@ -1022,6 +1022,7 @@ Int32 CodeGeneratorStorage::Visit(FunctionNode node) {
 
 	// Compile the function body
 	innerGen.CompileBody(bodyToCompile);
+	if (is_null(Error) && !is_null(innerGen.Error())) Error = innerGen.Error();
 
 	// Emit implicit RETURN at end of body
 	innerEmitter.Emit(Opcode::RETURN, nullptr);
@@ -1045,7 +1046,7 @@ Int32 CodeGeneratorStorage::Visit(FunctionNode node) {
 			if (TryEvaluateConstant(defaultNode, &defaultVal)) {
 				funcDef.ParamDefaults().Add(defaultVal);
 			} else {
-				Errors.Add(StringUtils::Format("Default value for parameter '{0}' must be a constant", node.ParamNames()[i]));
+				if (is_null(Error)) Error = ErrorType::CompilerError(StringUtils::Format("Default value for parameter '{0}' must be a constant", node.ParamNames()[i]));
 				funcDef.ParamDefaults().Add(val_null);
 			}
 		} else {

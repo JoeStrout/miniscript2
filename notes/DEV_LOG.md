@@ -737,4 +737,7 @@ Today I'm adding tracking of source code files and line numbers.  Line numbers a
 
 So, the next step is to attach a stack trace to errors when they are created.  ...And done.
 
+So now I'm examining the overall error infrastructure.  I think we over-engineered a bit with ErrorPool, because all I really want is to track a single error (the first one encountered in any compilation or run).  And at the same time, we didn't provide enough helpful infrastructure for reporting common types of errors.  I'm going to rework all that a bit, based now on error values.
+
+
 

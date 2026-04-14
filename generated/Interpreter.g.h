@@ -35,8 +35,8 @@ class InterpreterStorage : public std::enable_shared_from_this<InterpreterStorag
 	public: String SourceFile = "";
 	protected: String source;
 	protected: Parser parser;
-	protected: ErrorPool errors;
 	protected: List<FuncDef> compiledFunctions;
+	public: Value Error;
 	private: String _pendingSource; // accumulated REPL lines so far
 	private: Value _replGlobals = val_null; // persistent globals VarMap
 
@@ -78,6 +78,12 @@ class InterpreterStorage : public std::enable_shared_from_this<InterpreterStorag
 	/// SourceFile: the name of the file this interpreter loaded (e.g. "myScript.ms"),
 	/// or empty string for source provided directly as a string.
 	/// Used to populate FuncDef.FileName for stack traces.
+	/// </summary>
+
+	/// <summary>
+	/// The most recent compiler or runtime error, as an error Value, or val_null
+	/// if there is no error.  Host code can inspect this (and its __isa chain)
+	/// to distinguish error types.
 	/// </summary>
 
 	// REPL state
@@ -193,14 +199,18 @@ class InterpreterStorage : public std::enable_shared_from_this<InterpreterStorag
 	public: void SetGlobalValue(String varName, Value value);
 
 	/// <summary>
-	/// Report all accumulated errors via the errorOutput callback, then clear them.
+	/// Report an error value to the user via errorOutput.  The default
+	/// implementation formats the error message as a string and calls
+	/// ReportError(String).  Subclass and override to do something different
+	/// (e.g. inspect the error type or store it for later retrieval).
 	/// </summary>
-	protected: void ReportErrors();
+	/// <param name="error">error Value to report</param>
+	protected: virtual void ReportError(Value error);
 
 	/// <summary>
-	/// Report a single error string to the user.  The default implementation
-	/// simply invokes errorOutput.  If you want to do something different,
-	/// subclass Interpreter and override this method.
+	/// Report a single error string to the user via errorOutput.  The default
+	/// implementation simply invokes errorOutput.  If you want to do something
+	/// different, subclass Interpreter and override this method.
 	/// </summary>
 	/// <param name="message">error message</param>
 	protected: virtual void ReportError(String message);
@@ -235,10 +245,10 @@ struct Interpreter {
 	protected: void set_source(String _v);
 	protected: Parser parser();
 	protected: void set_parser(Parser _v);
-	protected: ErrorPool errors();
-	protected: void set_errors(ErrorPool _v);
 	protected: List<FuncDef> compiledFunctions();
 	protected: void set_compiledFunctions(List<FuncDef> _v);
+	public: Value Error();
+	public: void set_Error(Value _v);
 	private: String _pendingSource(); // accumulated REPL lines so far
 	private: void set__pendingSource(String _v); // accumulated REPL lines so far
 	private: Value _replGlobals(); // persistent globals VarMap
@@ -283,6 +293,12 @@ struct Interpreter {
 	/// SourceFile: the name of the file this interpreter loaded (e.g. "myScript.ms"),
 	/// or empty string for source provided directly as a string.
 	/// Used to populate FuncDef.FileName for stack traces.
+	/// </summary>
+
+	/// <summary>
+	/// The most recent compiler or runtime error, as an error Value, or val_null
+	/// if there is no error.  Host code can inspect this (and its __isa chain)
+	/// to distinguish error types.
 	/// </summary>
 
 	// REPL state
@@ -402,14 +418,18 @@ struct Interpreter {
 	public: inline void SetGlobalValue(String varName, Value value);
 
 	/// <summary>
-	/// Report all accumulated errors via the errorOutput callback, then clear them.
+	/// Report an error value to the user via errorOutput.  The default
+	/// implementation formats the error message as a string and calls
+	/// ReportError(String).  Subclass and override to do something different
+	/// (e.g. inspect the error type or store it for later retrieval).
 	/// </summary>
-	protected: inline void ReportErrors();
+	/// <param name="error">error Value to report</param>
+	protected: inline virtual void ReportError(Value error);
 
 	/// <summary>
-	/// Report a single error string to the user.  The default implementation
-	/// simply invokes errorOutput.  If you want to do something different,
-	/// subclass Interpreter and override this method.
+	/// Report a single error string to the user via errorOutput.  The default
+	/// implementation simply invokes errorOutput.  If you want to do something
+	/// different, subclass Interpreter and override this method.
 	/// </summary>
 	/// <param name="message">error message</param>
 	protected: inline virtual void ReportError(String message);
@@ -434,10 +454,10 @@ inline String Interpreter::source() { return get()->source; }
 inline void Interpreter::set_source(String _v) { get()->source = _v; }
 inline Parser Interpreter::parser() { return get()->parser; }
 inline void Interpreter::set_parser(Parser _v) { get()->parser = _v; }
-inline ErrorPool Interpreter::errors() { return get()->errors; }
-inline void Interpreter::set_errors(ErrorPool _v) { get()->errors = _v; }
 inline List<FuncDef> Interpreter::compiledFunctions() { return get()->compiledFunctions; }
 inline void Interpreter::set_compiledFunctions(List<FuncDef> _v) { get()->compiledFunctions = _v; }
+inline Value Interpreter::Error() { return get()->Error; }
+inline void Interpreter::set_Error(Value _v) { get()->Error = _v; }
 inline String Interpreter::_pendingSource() { return get()->_pendingSource; } // accumulated REPL lines so far
 inline void Interpreter::set__pendingSource(String _v) { get()->_pendingSource = _v; } // accumulated REPL lines so far
 inline Value Interpreter::_replGlobals() { return get()->_replGlobals; } // persistent globals VarMap
@@ -455,7 +475,7 @@ inline bool Interpreter::Running() { return get()->Running(); }
 inline bool Interpreter::NeedMoreInput() { return get()->NeedMoreInput(); }
 inline Value Interpreter::GetGlobalValue(String varName) { return get()->GetGlobalValue(varName); }
 inline void Interpreter::SetGlobalValue(String varName,Value value) { return get()->SetGlobalValue(varName, value); }
-inline void Interpreter::ReportErrors() { return get()->ReportErrors(); }
+inline void Interpreter::ReportError(Value error) { return get()->ReportError(error); }
 inline void Interpreter::ReportError(String message) { return get()->ReportError(message); }
 
 } // end of namespace MiniScript

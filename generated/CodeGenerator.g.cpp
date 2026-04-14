@@ -133,6 +133,7 @@ void CodeGeneratorStorage::CompileBody(List<ASTNode> body) {
 	CodeGenerator _this(std::static_pointer_cast<CodeGeneratorStorage>(shared_from_this()));
 	for (Int32 i = 0; i < body.Count(); i++) {
 		ResetTempRegisters();
+		if (body[i].Line() != 0) _emitter.set_CurrentLine(body[i].Line());
 		body[i].Accept(_this);
 	}
 }
@@ -166,12 +167,14 @@ FuncDef CodeGeneratorStorage::CompileProgram(List<ASTNode> statements,String fun
 	// Compile each statement, putting result into r0
 	for (Int32 i = 0; i < statements.Count(); i++) {
 		ResetTempRegisters();
+		if (statements[i].Line() != 0) _emitter.set_CurrentLine(statements[i].Line());
 		CompileInto(statements[i], 0);
 	}
 
 	_emitter.Emit(Opcode::RETURN, nullptr);
 
 	FuncDef mainFunc = _emitter.Finalize(funcName);
+	mainFunc.set_FileName(FileName);
 	_functions[0] = mainFunc;
 	return mainFunc;
 }
@@ -992,6 +995,7 @@ Int32 CodeGeneratorStorage::Visit(FunctionNode node) {
 	CodeGenerator innerGen =  CodeGenerator::New(innerEmitter);
 	innerGen.set__functions(_functions);  // share the function list
 	innerGen.set_FunctionIndexOffset(FunctionIndexOffset);  // share the offset too
+	innerGen.set_FileName(FileName);      // share the source file name
 	innerGen.set_Errors(Errors);
 
 	// Reserve r0 for return value, then set up param registers (r1, r2, ...)
@@ -1027,8 +1031,9 @@ Int32 CodeGeneratorStorage::Visit(FunctionNode node) {
 	String funcName = StringUtils::Format("@f{0}", globalFuncIndex);
 	FuncDef funcDef = innerEmitter.Finalize(funcName);
 
-	// Set the note (docstring) if found
+	// Set the note (docstring) and file name
 	funcDef.set_Note(noteText);
+	funcDef.set_FileName(FileName);
 
 	// Set parameter info on the FuncDef
 	GC_PUSH_SCOPE();

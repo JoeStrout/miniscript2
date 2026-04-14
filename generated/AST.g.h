@@ -91,8 +91,19 @@ struct ASTNode {
 		return WrapperType(stor); 
 	}
 
+	public: Int32 Line(); // source line number (set by parser)
+	public: void set_Line(Int32 _v); // source line number (set by parser)
 	public: String ToStr();
 	public: ASTNode Simplify();
+
+	// Each node type should override this to provide a string representation
+
+	// Simplify this node (constant folding and other optimizations)
+	// Returns a simplified version of this node (may be a new node, or this node unchanged)
+
+	// Copy the source line from this node to the given node and return it.
+	// Call as `return CopyLine(new SomeNode(...));` inside Simplify() overrides.
+	protected: inline ASTNode CopyLine(ASTNode result);
 	public: Int32 Accept(IASTVisitor& visitor);
 }; // end of struct ASTNode
 
@@ -101,13 +112,19 @@ template<typename WrapperType, typename StorageType> WrapperType As(ASTNode inst
 class ASTNodeStorage : public std::enable_shared_from_this<ASTNodeStorage> {
 	friend struct ASTNode;
 	public: virtual ~ASTNodeStorage() {}
+	public: Int32 Line = 0; // source line number (set by parser)
 	public: virtual String ToStr() = 0;
 	public: virtual ASTNode Simplify() = 0;
-	public: virtual Int32 Accept(IASTVisitor& visitor) = 0;
+
 	// Each node type should override this to provide a string representation
 
 	// Simplify this node (constant folding and other optimizations)
 	// Returns a simplified version of this node (may be a new node, or this node unchanged)
+
+	// Copy the source line from this node to the given node and return it.
+	// Call as `return CopyLine(new SomeNode(...));` inside Simplify() overrides.
+	protected: ASTNode CopyLine(ASTNode result);
+	public: virtual Int32 Accept(IASTVisitor& visitor) = 0;
 
 	// Visitor pattern: accept a visitor and return the result (e.g., register number)
 }; // end of class ASTNodeStorage
@@ -1117,8 +1134,11 @@ struct ReturnNode : public ASTNode {
 // INLINE METHODS
 
 inline ASTNodeStorage* ASTNode::get() const { return static_cast<ASTNodeStorage*>(storage.get()); }
+inline Int32 ASTNode::Line() { return get()->Line; } // source line number (set by parser)
+inline void ASTNode::set_Line(Int32 _v) { get()->Line = _v; } // source line number (set by parser)
 inline String ASTNode::ToStr() { return get()->ToStr(); }
 inline ASTNode ASTNode::Simplify() { return get()->Simplify(); }
+inline ASTNode ASTNode::CopyLine(ASTNode result) { return get()->CopyLine(result); }
 inline Int32 ASTNode::Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 
 inline NumberNode::NumberNode(std::shared_ptr<NumberNodeStorage> stor) : ASTNode(stor) {}

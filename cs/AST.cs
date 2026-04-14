@@ -67,12 +67,21 @@ public interface IASTVisitor {
 // Base class for all AST nodes.
 // When transpiled to C++, these become shared_ptr-wrapped classes.
 public abstract class ASTNode {
+	public Int32 Line = 0;   // source line number (set by parser)
+
 	// Each node type should override this to provide a string representation
 	public abstract String ToStr();
 
 	// Simplify this node (constant folding and other optimizations)
 	// Returns a simplified version of this node (may be a new node, or this node unchanged)
 	public abstract ASTNode Simplify();
+
+	// Copy the source line from this node to the given node and return it.
+	// Call as `return CopyLine(new SomeNode(...));` inside Simplify() overrides.
+	protected ASTNode CopyLine(ASTNode result) {
+		result.Line = Line;
+		return result;
+	}
 
 	// Visitor pattern: accept a visitor and return the result (e.g., register number)
 	public abstract Int32 Accept(IASTVisitor visitor);
@@ -157,7 +166,7 @@ public class AssignmentNode : ASTNode {
 
 	public override ASTNode Simplify() {
 		ASTNode simplifiedValue = Value.Simplify();
-		return new AssignmentNode(Variable, simplifiedValue);
+		return CopyLine(new AssignmentNode(Variable, simplifiedValue));
 	}
 
 	public override Int32 Accept(IASTVisitor visitor) {
@@ -184,7 +193,7 @@ public class IndexedAssignmentNode : ASTNode {
 	}
 
 	public override ASTNode Simplify() {
-		return new IndexedAssignmentNode(Target.Simplify(), Index.Simplify(), Value.Simplify(), LHSName);
+		return CopyLine(new IndexedAssignmentNode(Target.Simplify(), Index.Simplify(), Value.Simplify(), LHSName));
 	}
 
 	public override Int32 Accept(IASTVisitor visitor) {
@@ -386,7 +395,7 @@ public class CallNode : ASTNode {
 		for (Int32 i = 0; i < Arguments.Count; i++) {
 			simplifiedArgs.Add(Arguments[i].Simplify());
 		}
-		return new CallNode(Function, simplifiedArgs);
+		return CopyLine(new CallNode(Function, simplifiedArgs));
 	}
 
 	public override Int32 Accept(IASTVisitor visitor) {
@@ -630,7 +639,7 @@ public class ExprCallNode : ASTNode {
 		for (Int32 i = 0; i < Arguments.Count; i++) {
 			simplifiedArgs.Add(Arguments[i].Simplify());
 		}
-		return new ExprCallNode(Function.Simplify(), simplifiedArgs);
+		return CopyLine(new ExprCallNode(Function.Simplify(), simplifiedArgs));
 	}
 
 	public override Int32 Accept(IASTVisitor visitor) {
@@ -663,7 +672,7 @@ public class WhileNode : ASTNode {
 		for (Int32 i = 0; i < Body.Count; i++) {
 			simplifiedBody.Add(Body[i].Simplify());
 		}
-		return new WhileNode(simplifiedCondition, simplifiedBody);
+		return CopyLine(new WhileNode(simplifiedCondition, simplifiedBody));
 	}
 
 	public override Int32 Accept(IASTVisitor visitor) {
@@ -710,7 +719,7 @@ public class IfNode : ASTNode {
 		for (Int32 i = 0; i < ElseBody.Count; i++) {
 			simplifiedElseBody.Add(ElseBody[i].Simplify());
 		}
-		return new IfNode(simplifiedCondition, simplifiedThenBody, simplifiedElseBody);
+		return CopyLine(new IfNode(simplifiedCondition, simplifiedThenBody, simplifiedElseBody));
 	}
 
 	public override Int32 Accept(IASTVisitor visitor) {
@@ -745,7 +754,7 @@ public class ForNode : ASTNode {
 		for (Int32 i = 0; i < Body.Count; i++) {
 			simplifiedBody.Add(Body[i].Simplify());
 		}
-		return new ForNode(Variable, simplifiedIterable, simplifiedBody);
+		return CopyLine(new ForNode(Variable, simplifiedIterable, simplifiedBody));
 	}
 
 	public override Int32 Accept(IASTVisitor visitor) {
@@ -833,7 +842,7 @@ public class FunctionNode : ASTNode {
 		for (Int32 i = 0; i < Body.Count; i++) {
 			simplifiedBody.Add(Body[i].Simplify());
 		}
-		return new FunctionNode(ParamNames, simplifiedDefaults, simplifiedBody);
+		return CopyLine(new FunctionNode(ParamNames, simplifiedDefaults, simplifiedBody));
 	}
 
 	public override Int32 Accept(IASTVisitor visitor) {
@@ -909,7 +918,7 @@ public class ReturnNode : ASTNode {
 	}
 
 	public override ASTNode Simplify() {
-		if (Value != null) return new ReturnNode(Value.Simplify());
+		if (Value != null) return CopyLine(new ReturnNode(Value.Simplify()));
 		return this;
 	}
 

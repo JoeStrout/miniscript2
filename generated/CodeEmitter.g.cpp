@@ -30,23 +30,23 @@ BytecodeEmitterStorage::BytecodeEmitterStorage() {
 }
 void BytecodeEmitterStorage::Emit(Opcode op,String comment) {
 	BytecodeUtil::CheckEmitPattern(op, EmitPattern::None);
-	PendingFunc.Code().Add(BytecodeUtil::INS(op));
+	PendingFunc.AddInstruction(BytecodeUtil::INS(op), CurrentLine);
 }
 void BytecodeEmitterStorage::EmitA(Opcode op,Int32 a,String comment) {
 	BytecodeUtil::CheckEmitPattern(op, EmitPattern::A);
-	PendingFunc.Code().Add(BytecodeUtil::INS_A(op, (Byte)a));
+	PendingFunc.AddInstruction(BytecodeUtil::INS_A(op, (Byte)a), CurrentLine);
 }
 void BytecodeEmitterStorage::EmitAB(Opcode op,Int32 a,Int32 bc,String comment) {
 	BytecodeUtil::CheckEmitPattern(op, EmitPattern::AB);
-	PendingFunc.Code().Add(BytecodeUtil::INS_AB(op, (Byte)a, (Int16)bc));
+	PendingFunc.AddInstruction(BytecodeUtil::INS_AB(op, (Byte)a, (Int16)bc), CurrentLine);
 }
 void BytecodeEmitterStorage::EmitBC(Opcode op,Int32 ab,Int32 c,String comment) {
 	BytecodeUtil::CheckEmitPattern(op, EmitPattern::BC);
-	PendingFunc.Code().Add(BytecodeUtil::INS_BC(op, (Int16)ab, (Byte)c));
+	PendingFunc.AddInstruction(BytecodeUtil::INS_BC(op, (Int16)ab, (Byte)c), CurrentLine);
 }
 void BytecodeEmitterStorage::EmitABC(Opcode op,Int32 a,Int32 b,Int32 c,String comment) {
 	BytecodeUtil::CheckEmitPattern(op, EmitPattern::ABC);
-	PendingFunc.Code().Add(BytecodeUtil::INS_ABC(op, (Byte)a, (Byte)b, (Byte)c));
+	PendingFunc.AddInstruction(BytecodeUtil::INS_ABC(op, (Byte)a, (Byte)b, (Byte)c), CurrentLine);
 }
 Int32 BytecodeEmitterStorage::CreateLabel() {
 	Int32 labelId = _nextLabelId;
@@ -65,7 +65,7 @@ void BytecodeEmitterStorage::EmitJump(Opcode op,Int32 labelId,String comment) {
 	labelRef.A = 0;
 	labelRef.IsABC = Boolean(true);  // 24-bit offset for JUMP_iABC
 	_labelRefs.Add(labelRef);
-	PendingFunc.Code().Add(BytecodeUtil::INS(op));  // placeholder
+	PendingFunc.AddInstruction(BytecodeUtil::INS(op), CurrentLine);  // placeholder
 }
 void BytecodeEmitterStorage::EmitBranch(Opcode op,Int32 reg,Int32 labelId,String comment) {
 	// Emit placeholder instruction for conditional branch, record for later patching
@@ -76,7 +76,7 @@ void BytecodeEmitterStorage::EmitBranch(Opcode op,Int32 reg,Int32 labelId,String
 	labelRef.A = reg;
 	labelRef.IsABC = Boolean(false);  // 16-bit offset for BRFALSE_rA_iBC, BRTRUE_rA_iBC
 	_labelRefs.Add(labelRef);
-	PendingFunc.Code().Add(BytecodeUtil::INS(op));  // placeholder
+	PendingFunc.AddInstruction(BytecodeUtil::INS(op), CurrentLine);  // placeholder
 }
 FuncDef BytecodeEmitterStorage::Finalize(String name) {
 	// Patch all label references

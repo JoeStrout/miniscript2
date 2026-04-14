@@ -71,6 +71,13 @@ public class Interpreter {
 	/// </summary>
 	public VM vm;
 
+	/// <summary>
+	/// SourceFile: the name of the file this interpreter loaded (e.g. "myScript.ms"),
+	/// or empty string for source provided directly as a string.
+	/// Used to populate FuncDef.FileName for stack traces.
+	/// </summary>
+	public String SourceFile = "";
+
 	protected String source;
 	protected Parser parser;
 	protected ErrorPool errors;
@@ -195,6 +202,7 @@ public class Interpreter {
 		CodeGenerator generator = new CodeGenerator(emitter);
 		generator.Errors = errors;
 		generator.FunctionIndexOffset = Intrinsic.Count();
+		generator.FileName = SourceFile;
 		generator.CompileProgram(statements, "@main");
 
 		if (errors.HasError()) {

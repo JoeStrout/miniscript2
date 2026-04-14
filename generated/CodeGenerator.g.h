@@ -27,6 +27,7 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 	private: List<Int32> _loopContinueLabels; // Stack of loop continue labels for continue
 	private: List<FuncDef> _functions; // All compiled functions (shared across inner generators)
 	public: Int32 FunctionIndexOffset; // Offset added to local function indices for FUNCREF emission
+	public: String FileName = ""; // Source file name, copied to each compiled FuncDef
 	public: ErrorPool Errors;
 
 	public: CodeGeneratorStorage(CodeEmitterBase emitter);
@@ -202,6 +203,8 @@ struct CodeGenerator : public IASTVisitor {
 	private: void set__functions(List<FuncDef> _v); // All compiled functions (shared across inner generators)
 	public: Int32 FunctionIndexOffset(); // Offset added to local function indices for FUNCREF emission
 	public: void set_FunctionIndexOffset(Int32 _v); // Offset added to local function indices for FUNCREF emission
+	public: String FileName(); // Source file name, copied to each compiled FuncDef
+	public: void set_FileName(String _v); // Source file name, copied to each compiled FuncDef
 	public: ErrorPool Errors();
 	public: void set_Errors(ErrorPool _v);
 
@@ -372,6 +375,8 @@ inline List<FuncDef> CodeGenerator::_functions() { return get()->_functions; } /
 inline void CodeGenerator::set__functions(List<FuncDef> _v) { get()->_functions = _v; } // All compiled functions (shared across inner generators)
 inline Int32 CodeGenerator::FunctionIndexOffset() { return get()->FunctionIndexOffset; } // Offset added to local function indices for FUNCREF emission
 inline void CodeGenerator::set_FunctionIndexOffset(Int32 _v) { get()->FunctionIndexOffset = _v; } // Offset added to local function indices for FUNCREF emission
+inline String CodeGenerator::FileName() { return get()->FileName; } // Source file name, copied to each compiled FuncDef
+inline void CodeGenerator::set_FileName(String _v) { get()->FileName = _v; } // Source file name, copied to each compiled FuncDef
 inline ErrorPool CodeGenerator::Errors() { return get()->Errors; }
 inline void CodeGenerator::set_Errors(ErrorPool _v) { get()->Errors = _v; }
 inline List<FuncDef> CodeGenerator::GetFunctions() { return get()->GetFunctions(); }

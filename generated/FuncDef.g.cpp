@@ -8,6 +8,22 @@
 
 namespace MiniScript {
 
+void FuncDefStorage::AddInstruction(UInt32 instruction,Int32 lineNumber) {
+	Code.Add(instruction);
+	Int32 count = _lineRLELine.Count();
+	if (count == 0 || _lineRLELine[count - 1] != lineNumber) {
+		_lineRLEPC.Add(Code.Count() - 1);
+		_lineRLELine.Add(lineNumber);
+	}
+}
+Int32 FuncDefStorage::GetLineNumber(Int32 pc) {
+	Int32 result = 0;
+	for (Int32 i = 0; i < _lineRLEPC.Count(); i++) {
+		if (_lineRLEPC[i] > pc) break;
+		result = _lineRLELine[i];
+	}
+	return result;
+}
 FuncDefStorage::FuncDefStorage() {
 }
 void FuncDefStorage::ReserveRegister(Int32 registerNumber) {

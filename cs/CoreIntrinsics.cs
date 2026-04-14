@@ -1114,9 +1114,10 @@ public static class CoreIntrinsics {
 		f.AddParam("seconds", val_one);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			double now = ctx.vm.ElapsedTime();
+			Value vSeconds;
 			if (partialResult.done) {
 				// Fresh call: calculate end time and return as partial result
-				Value vSeconds = ctx.GetArg(0);
+				vSeconds = ctx.GetArg(0);
 				if (is_error(vSeconds)) return ctx.vm.RaiseUncaughtError(vSeconds);
 				double interval = numeric_val(vSeconds);
 				return new IntrinsicResult(make_double(now + interval), false);
@@ -1136,6 +1137,38 @@ public static class CoreIntrinsics {
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			ctx.vm.yielding = true;
 			return IntrinsicResult.Null;
+		};
+
+		// stackTrace
+		//    Return the current call stack as a list of strings, innermost
+		//    (most recent) call first.  Each string has the form
+		//    "{file} line {lineNum}", e.g. "listUtil.ms line 42".
+		//    The file name is "(current program)" for source loaded without
+		//    a file name.
+		f = Intrinsic.Create("stackTrace");
+		f.Code = (Context ctx, IntrinsicResult partialResult) => {
+			Value result = make_list(8);
+			// Innermost frame: the function that called stackTrace.
+			// vm.PC was saved just before this intrinsic was invoked; the
+			// call instruction itself is at vm.PC - 1.
+			FuncDef curFunc = ctx.vm.CurrentFunction;
+			Int32 callSitePC = ctx.vm.PC - 1;
+			if (callSitePC < 0) callSitePC = 0;
+			String curFile = curFunc.FileName;
+			if (curFile == "") curFile = "(current program)";
+			list_push(result, make_string(StringUtils.Format("{0} line {1}", curFile, curFunc.GetLineNumber(callSitePC))));
+			// Walk the rest of the call stack, outermost last.
+			for (Int32 i = ctx.vm.CallStackDepth() - 1; i >= 0; i--) {
+				CallInfo ci = ctx.vm.GetCallStackFrame(i);
+				if (ci.ReturnFuncIndex < 0) break;
+				FuncDef callerFunc = ctx.vm.GetFuncDef(ci.ReturnFuncIndex);
+				Int32 callerPC = ci.ReturnPC - 1;
+				if (callerPC < 0) callerPC = 0;
+				String callerFile = callerFunc.FileName;
+				if (callerFile == "") callerFile = "(current program)";
+				list_push(result, make_string(StringUtils.Format("{0} line {1}", callerFile, callerFunc.GetLineNumber(callerPC))));
+			}
+			return new IntrinsicResult(result);
 		};
 
 	}

@@ -102,6 +102,7 @@ public struct App {
 						source += lines[i];
 					}
 					if (debugMode) IOHelper.Print(StringUtils.Format("Parsing {0} lines...", lines.Count));
+					interp.SourceFile = GetPathFilename(filePath);
 					interp.Reset(source);
 					RunInterpreter(interp);
 				}
@@ -119,6 +120,19 @@ public struct App {
 		}
 
 		IOHelper.Print("All done!");
+	}
+
+	// Return just the filename portion of a path (e.g. "/foo/bar.ms" -> "bar.ms").
+	private static String GetPathFilename(String filePath) {
+		//*** BEGIN CS_ONLY ***
+		return System.IO.Path.GetFileName(filePath);
+		//*** END CS_ONLY ***
+		/*** BEGIN CPP_ONLY ***
+		int pos = filePath.LastIndexOf('/');
+		int pos2 = filePath.LastIndexOf('\\');
+		if (pos2 >= 0 && (pos < 0 || pos2 > pos)) pos = pos2;
+		return (pos >= 0) ? filePath.Substring(pos + 1) : filePath;
+		*** END CPP_ONLY ***/
 	}
 
 	// Create an Interpreter with standard output wiring

@@ -32,6 +32,7 @@ class InterpreterStorage : public std::enable_shared_from_this<InterpreterStorag
 	public: TextOutputMethod errorOutput;
 	public: object hostData;
 	public: VM vm;
+	public: String SourceFile = "";
 	protected: String source;
 	protected: Parser parser;
 	protected: ErrorPool errors;
@@ -71,6 +72,12 @@ class InterpreterStorage : public std::enable_shared_from_this<InterpreterStorag
 	/// <summary>
 	/// vm: the virtual machine this interpreter is running.  Most applications
 	/// will not need to use this, but it's provided for advanced users.
+	/// </summary>
+
+	/// <summary>
+	/// SourceFile: the name of the file this interpreter loaded (e.g. "myScript.ms"),
+	/// or empty string for source provided directly as a string.
+	/// Used to populate FuncDef.FileName for stack traces.
 	/// </summary>
 
 	// REPL state
@@ -222,6 +229,8 @@ struct Interpreter {
 	public: void set_hostData(object _v);
 	public: VM vm();
 	public: void set_vm(VM _v);
+	public: String SourceFile();
+	public: void set_SourceFile(String _v);
 	protected: String source();
 	protected: void set_source(String _v);
 	protected: Parser parser();
@@ -268,6 +277,12 @@ struct Interpreter {
 	/// <summary>
 	/// vm: the virtual machine this interpreter is running.  Most applications
 	/// will not need to use this, but it's provided for advanced users.
+	/// </summary>
+
+	/// <summary>
+	/// SourceFile: the name of the file this interpreter loaded (e.g. "myScript.ms"),
+	/// or empty string for source provided directly as a string.
+	/// Used to populate FuncDef.FileName for stack traces.
 	/// </summary>
 
 	// REPL state
@@ -413,6 +428,8 @@ inline object Interpreter::hostData() { return get()->hostData; }
 inline void Interpreter::set_hostData(object _v) { get()->hostData = _v; }
 inline VM Interpreter::vm() { return get()->vm; }
 inline void Interpreter::set_vm(VM _v) { get()->vm = _v; }
+inline String Interpreter::SourceFile() { return get()->SourceFile; }
+inline void Interpreter::set_SourceFile(String _v) { get()->SourceFile = _v; }
 inline String Interpreter::source() { return get()->source; }
 inline void Interpreter::set_source(String _v) { get()->source = _v; }
 inline Parser Interpreter::parser() { return get()->parser; }

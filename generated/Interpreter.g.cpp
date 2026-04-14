@@ -81,6 +81,7 @@ void InterpreterStorage::Compile() {
 	CodeGenerator generator =  CodeGenerator::New(emitter);
 	generator.set_Errors(errors);
 	generator.set_FunctionIndexOffset(Intrinsic::Count());
+	generator.set_FileName(SourceFile);
 	generator.CompileProgram(statements, "@main");
 
 	if (errors.HasError()) {
@@ -244,9 +245,10 @@ void InterpreterStorage::REPL(String sourceLine,double timeLimit) {
 	}
 
 	// Implicit output: if last statement was a bare expression, report r0
+	// (unless we are in an error state).
 	GC_PUSH_SCOPE();
 	Value result; GC_PROTECT(&result);
-	if (hasImplicitOutput && !errors.HasError() && !IsNull(implicitOutput)) {
+	if (hasImplicitOutput && !errors.HasError() && String::IsNullOrEmpty(vm.RuntimeError()) && !IsNull(implicitOutput)) {
 		result = vm.GetStackValue(vm.BaseIndex());
 		if (!is_null(result)) {
 			implicitOutput(StringUtils::Format("{0}", result), Boolean(true));

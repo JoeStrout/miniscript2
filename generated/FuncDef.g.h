@@ -26,6 +26,22 @@ class FuncDefStorage : public std::enable_shared_from_this<FuncDefStorage> {
 	public: Int16 SuperReg = -1; // register for 'super' (-1 if not used)
 	public: String Note = "";
 	public: String SourceLoc = "";
+	public: String FileName = "";
+	private: List<Int32> _lineRLEPC = List<Int32>::New();
+	private: List<Int32> _lineRLELine = List<Int32>::New();
+
+	// RLE line-number table: _lineRLEPC[i] is the first bytecode PC whose source
+	// line is _lineRLELine[i].  The run continues until the next entry.
+	// Use AddInstruction (not Code.Add) when building bytecode so that this
+	// table is kept in sync.
+
+	// Append one bytecode instruction together with its source line number.
+	// Call this instead of Code.Add so the RLE line table is maintained.
+	public: void AddInstruction(UInt32 instruction, Int32 lineNumber);
+
+	// Return the source line number for the instruction at the given PC index.
+	// Returns 0 if no line information is available.
+	public: Int32 GetLineNumber(Int32 pc);
 	public: NativeCallbackDelegate NativeCallback = null;
 
 	// Native callback for intrinsic functions. When non-null, this FuncDef
@@ -77,6 +93,25 @@ struct FuncDef {
 	public: void set_Note(String _v);
 	public: String SourceLoc();
 	public: void set_SourceLoc(String _v);
+	public: String FileName();
+	public: void set_FileName(String _v);
+	private: List<Int32> _lineRLEPC();
+	private: void set__lineRLEPC(List<Int32> _v);
+	private: List<Int32> _lineRLELine();
+	private: void set__lineRLELine(List<Int32> _v);
+
+	// RLE line-number table: _lineRLEPC[i] is the first bytecode PC whose source
+	// line is _lineRLELine[i].  The run continues until the next entry.
+	// Use AddInstruction (not Code.Add) when building bytecode so that this
+	// table is kept in sync.
+
+	// Append one bytecode instruction together with its source line number.
+	// Call this instead of Code.Add so the RLE line table is maintained.
+	public: inline void AddInstruction(UInt32 instruction, Int32 lineNumber);
+
+	// Return the source line number for the instruction at the given PC index.
+	// Returns 0 if no line information is available.
+	public: inline Int32 GetLineNumber(Int32 pc);
 	public: NativeCallbackDelegate NativeCallback();
 	public: void set_NativeCallback(NativeCallbackDelegate _v);
 
@@ -121,6 +156,14 @@ inline String FuncDef::Note() { return get()->Note; }
 inline void FuncDef::set_Note(String _v) { get()->Note = _v; }
 inline String FuncDef::SourceLoc() { return get()->SourceLoc; }
 inline void FuncDef::set_SourceLoc(String _v) { get()->SourceLoc = _v; }
+inline String FuncDef::FileName() { return get()->FileName; }
+inline void FuncDef::set_FileName(String _v) { get()->FileName = _v; }
+inline List<Int32> FuncDef::_lineRLEPC() { return get()->_lineRLEPC; }
+inline void FuncDef::set__lineRLEPC(List<Int32> _v) { get()->_lineRLEPC = _v; }
+inline List<Int32> FuncDef::_lineRLELine() { return get()->_lineRLELine; }
+inline void FuncDef::set__lineRLELine(List<Int32> _v) { get()->_lineRLELine = _v; }
+inline void FuncDef::AddInstruction(UInt32 instruction,Int32 lineNumber) { return get()->AddInstruction(instruction, lineNumber); }
+inline Int32 FuncDef::GetLineNumber(Int32 pc) { return get()->GetLineNumber(pc); }
 inline NativeCallbackDelegate FuncDef::NativeCallback() { return get()->NativeCallback; }
 inline void FuncDef::set_NativeCallback(NativeCallbackDelegate _v) { get()->NativeCallback = _v; }
 inline void FuncDef::ReserveRegister(Int32 registerNumber) { return get()->ReserveRegister(registerNumber); }

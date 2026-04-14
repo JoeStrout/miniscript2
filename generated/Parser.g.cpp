@@ -593,23 +593,25 @@ ASTNode ParserStorage::ParseStatement() {
 		return nullptr;
 	}
 
+	Int32 stmtLine = _current.Line;
+	ASTNode result;
+
 	// Check for block statements
 	if (_current.Type == TokenType::WHILE) {
 		Advance();  // consume WHILE
-		return ParseWhileStatement();
-	}
-
-	if (_current.Type == TokenType::FOR) {
+		result = ParseWhileStatement();
+	} else if (_current.Type == TokenType::FOR) {
 		Advance();  // consume FOR
-		return ParseForStatement();
-	}
-
-	if (_current.Type == TokenType::IF) {
+		result = ParseForStatement();
+	} else if (_current.Type == TokenType::IF) {
 		Advance();  // consume IF
-		return ParseIfStatement();
+		result = ParseIfStatement();
+	} else {
+		result = ParseSimpleStatement();
 	}
 
-	return ParseSimpleStatement();
+	if (!IsNull(result)) result.set_Line(stmtLine);
+	return result;
 }
 List<ASTNode> ParserStorage::ParseProgram() {
 	List<ASTNode> statements =  List<ASTNode>::New();

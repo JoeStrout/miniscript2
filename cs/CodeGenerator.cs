@@ -26,6 +26,7 @@ public class CodeGenerator : IASTVisitor {
 	private List<Int32> _loopContinueLabels;  // Stack of loop continue labels for continue
 	private List<FuncDef> _functions;          // All compiled functions (shared across inner generators)
 	public Int32 FunctionIndexOffset;          // Offset added to local function indices for FUNCREF emission
+	public String FileName = "";               // Source file name, copied to each compiled FuncDef
 	public ErrorPool Errors;
 
 	public CodeGenerator(CodeEmitterBase emitter) {
@@ -174,6 +175,7 @@ public class CodeGenerator : IASTVisitor {
 	private void CompileBody(List<ASTNode> body) {
 		for (Int32 i = 0; i < body.Count; i++) {
 			ResetTempRegisters();
+			if (body[i].Line != 0) _emitter.CurrentLine = body[i].Line;
 			body[i].Accept(this);
 		}
 	}
@@ -210,12 +212,14 @@ public class CodeGenerator : IASTVisitor {
 		// Compile each statement, putting result into r0
 		for (Int32 i = 0; i < statements.Count; i++) {
 			ResetTempRegisters();
+			if (statements[i].Line != 0) _emitter.CurrentLine = statements[i].Line;
 			CompileInto(statements[i], 0);
 		}
 
 		_emitter.Emit(Opcode.RETURN, null);
 
 		FuncDef mainFunc = _emitter.Finalize(funcName);
+		mainFunc.FileName = FileName;
 		_functions[0] = mainFunc;
 		return mainFunc;
 	}
@@ -1054,6 +1058,7 @@ public class CodeGenerator : IASTVisitor {
 		CodeGenerator innerGen = new CodeGenerator(innerEmitter);
 		innerGen._functions = _functions;  // share the function list
 		innerGen.FunctionIndexOffset = FunctionIndexOffset;  // share the offset too
+		innerGen.FileName = FileName;      // share the source file name
 		innerGen.Errors = Errors;
 
 		// Reserve r0 for return value, then set up param registers (r1, r2, ...)
@@ -1089,8 +1094,9 @@ public class CodeGenerator : IASTVisitor {
 		String funcName = StringUtils.Format("@f{0}", globalFuncIndex);
 		FuncDef funcDef = innerEmitter.Finalize(funcName);
 
-		// Set the note (docstring) if found
+		// Set the note (docstring) and file name
 		funcDef.Note = noteText;
+		funcDef.FileName = FileName;
 
 		// Set parameter info on the FuncDef
 		Value defaultVal;

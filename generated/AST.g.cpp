@@ -27,6 +27,11 @@ const String Op::NOT = "NOT";
 const String Op::NEW = "NEW";
 const String Op::ISA = "ISA";
 
+ASTNode ASTNodeStorage::CopyLine(ASTNode result) {
+	result.set_Line(Line);
+	return result;
+}
+
 NumberNodeStorage::NumberNodeStorage(Double value) {
 	Value = value;
 }
@@ -81,7 +86,7 @@ String AssignmentNodeStorage::ToStr() {
 }
 ASTNode AssignmentNodeStorage::Simplify() {
 	ASTNode simplifiedValue = Value.Simplify();
-	return  AssignmentNode::New(Variable, simplifiedValue);
+	return CopyLine( AssignmentNode::New(Variable, simplifiedValue));
 }
 Int32 AssignmentNodeStorage::Accept(IASTVisitor& visitor) {
 	AssignmentNode _this(std::static_pointer_cast<AssignmentNodeStorage>(shared_from_this()));
@@ -98,7 +103,7 @@ String IndexedAssignmentNodeStorage::ToStr() {
 	return Target.ToStr() + "[" + Index.ToStr() + "] = " + Value.ToStr();
 }
 ASTNode IndexedAssignmentNodeStorage::Simplify() {
-	return  IndexedAssignmentNode::New(Target.Simplify(), Index.Simplify(), Value.Simplify(), LHSName);
+	return CopyLine( IndexedAssignmentNode::New(Target.Simplify(), Index.Simplify(), Value.Simplify(), LHSName));
 }
 Int32 IndexedAssignmentNodeStorage::Accept(IASTVisitor& visitor) {
 	IndexedAssignmentNode _this(std::static_pointer_cast<IndexedAssignmentNodeStorage>(shared_from_this()));
@@ -265,7 +270,7 @@ ASTNode CallNodeStorage::Simplify() {
 	for (Int32 i = 0; i < Arguments.Count(); i++) {
 		simplifiedArgs.Add(Arguments[i].Simplify());
 	}
-	return  CallNode::New(Function, simplifiedArgs);
+	return CopyLine( CallNode::New(Function, simplifiedArgs));
 }
 Int32 CallNodeStorage::Accept(IASTVisitor& visitor) {
 	CallNode _this(std::static_pointer_cast<CallNodeStorage>(shared_from_this()));
@@ -439,7 +444,7 @@ ASTNode ExprCallNodeStorage::Simplify() {
 	for (Int32 i = 0; i < Arguments.Count(); i++) {
 		simplifiedArgs.Add(Arguments[i].Simplify());
 	}
-	return  ExprCallNode::New(Function.Simplify(), simplifiedArgs);
+	return CopyLine( ExprCallNode::New(Function.Simplify(), simplifiedArgs));
 }
 Int32 ExprCallNodeStorage::Accept(IASTVisitor& visitor) {
 	ExprCallNode _this(std::static_pointer_cast<ExprCallNodeStorage>(shared_from_this()));
@@ -464,7 +469,7 @@ ASTNode WhileNodeStorage::Simplify() {
 	for (Int32 i = 0; i < Body.Count(); i++) {
 		simplifiedBody.Add(Body[i].Simplify());
 	}
-	return  WhileNode::New(simplifiedCondition, simplifiedBody);
+	return CopyLine( WhileNode::New(simplifiedCondition, simplifiedBody));
 }
 Int32 WhileNodeStorage::Accept(IASTVisitor& visitor) {
 	WhileNode _this(std::static_pointer_cast<WhileNodeStorage>(shared_from_this()));
@@ -500,7 +505,7 @@ ASTNode IfNodeStorage::Simplify() {
 	for (Int32 i = 0; i < ElseBody.Count(); i++) {
 		simplifiedElseBody.Add(ElseBody[i].Simplify());
 	}
-	return  IfNode::New(simplifiedCondition, simplifiedThenBody, simplifiedElseBody);
+	return CopyLine( IfNode::New(simplifiedCondition, simplifiedThenBody, simplifiedElseBody));
 }
 Int32 IfNodeStorage::Accept(IASTVisitor& visitor) {
 	IfNode _this(std::static_pointer_cast<IfNodeStorage>(shared_from_this()));
@@ -526,7 +531,7 @@ ASTNode ForNodeStorage::Simplify() {
 	for (Int32 i = 0; i < Body.Count(); i++) {
 		simplifiedBody.Add(Body[i].Simplify());
 	}
-	return  ForNode::New(Variable, simplifiedIterable, simplifiedBody);
+	return CopyLine( ForNode::New(Variable, simplifiedIterable, simplifiedBody));
 }
 Int32 ForNodeStorage::Accept(IASTVisitor& visitor) {
 	ForNode _this(std::static_pointer_cast<ForNodeStorage>(shared_from_this()));
@@ -597,7 +602,7 @@ ASTNode FunctionNodeStorage::Simplify() {
 	for (Int32 i = 0; i < Body.Count(); i++) {
 		simplifiedBody.Add(Body[i].Simplify());
 	}
-	return  FunctionNode::New(ParamNames, simplifiedDefaults, simplifiedBody);
+	return CopyLine( FunctionNode::New(ParamNames, simplifiedDefaults, simplifiedBody));
 }
 Int32 FunctionNodeStorage::Accept(IASTVisitor& visitor) {
 	FunctionNode _this(std::static_pointer_cast<FunctionNodeStorage>(shared_from_this()));
@@ -654,7 +659,7 @@ String ReturnNodeStorage::ToStr() {
 }
 ASTNode ReturnNodeStorage::Simplify() {
 	ReturnNode _this(std::static_pointer_cast<ReturnNodeStorage>(shared_from_this()));
-	if (!IsNull(Value)) return  ReturnNode::New(Value.Simplify());
+	if (!IsNull(Value)) return CopyLine( ReturnNode::New(Value.Simplify()));
 	return _this;
 }
 Int32 ReturnNodeStorage::Accept(IASTVisitor& visitor) {

@@ -43,12 +43,17 @@ struct CodeEmitterBase {
 
 	public: FuncDef PendingFunc();
 	public: void set_PendingFunc(FuncDef _v);
+	public: Int32 CurrentLine();
+	public: void set_CurrentLine(Int32 _v);
 	public: void Emit(Opcode op, String comment); // INS: opcode only
 	public: void EmitA(Opcode op, Int32 a, String comment); // INS_A: 8-bit A field
 	public: void EmitAB(Opcode op, Int32 a, Int32 bc, String comment); // INS_AB: 8-bit A + 16-bit BC
 	public: void EmitBC(Opcode op, Int32 ab, Int32 c, String comment); // INS_BC: 16-bit AB + 8-bit C
 	public: void EmitABC(Opcode op, Int32 a, Int32 b, Int32 c, String comment); // INS_ABC: 8-bit A + 8-bit B + 8-bit C
 	// The function definition being built
+
+	// Source line number to associate with the next emitted instruction.
+	// Set this before each statement's code generation.
 
 	// Emit instructions with varying operand patterns
 	// Method names match BytecodeUtil.INS_* patterns
@@ -75,12 +80,16 @@ class CodeEmitterBaseStorage : public std::enable_shared_from_this<CodeEmitterBa
 	friend struct CodeEmitterBase;
 	public: virtual ~CodeEmitterBaseStorage() {}
 	public: FuncDef PendingFunc;
+	public: Int32 CurrentLine = 0;
 	public: virtual void Emit(Opcode op, String comment) = 0; // INS: opcode only
 	public: virtual void EmitA(Opcode op, Int32 a, String comment) = 0; // INS_A: 8-bit A field
 	public: virtual void EmitAB(Opcode op, Int32 a, Int32 bc, String comment) = 0; // INS_AB: 8-bit A + 16-bit BC
 	public: virtual void EmitBC(Opcode op, Int32 ab, Int32 c, String comment) = 0; // INS_BC: 16-bit AB + 8-bit C
 	public: virtual void EmitABC(Opcode op, Int32 a, Int32 b, Int32 c, String comment) = 0; // INS_ABC: 8-bit A + 8-bit B + 8-bit C
 	// The function definition being built
+
+	// Source line number to associate with the next emitted instruction.
+	// Set this before each statement's code generation.
 
 	// Emit instructions with varying operand patterns
 	// Method names match BytecodeUtil.INS_* patterns
@@ -252,6 +261,8 @@ struct AssemblyEmitter : public CodeEmitterBase {
 inline CodeEmitterBaseStorage* CodeEmitterBase::get() const { return static_cast<CodeEmitterBaseStorage*>(storage.get()); }
 inline FuncDef CodeEmitterBase::PendingFunc() { return get()->PendingFunc; }
 inline void CodeEmitterBase::set_PendingFunc(FuncDef _v) { get()->PendingFunc = _v; }
+inline Int32 CodeEmitterBase::CurrentLine() { return get()->CurrentLine; }
+inline void CodeEmitterBase::set_CurrentLine(Int32 _v) { get()->CurrentLine = _v; }
 inline void CodeEmitterBase::Emit(Opcode op,String comment) { return get()->Emit(op, comment); } // INS: opcode only
 inline void CodeEmitterBase::EmitA(Opcode op,Int32 a,String comment) { return get()->EmitA(op, a, comment); } // INS_A: 8-bit A field
 inline void CodeEmitterBase::EmitAB(Opcode op,Int32 a,Int32 bc,String comment) { return get()->EmitAB(op, a, bc, comment); } // INS_AB: 8-bit A + 16-bit BC

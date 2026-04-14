@@ -368,6 +368,7 @@ Int32 VMStorage::AutoInvokeFuncRef(Value funcRefVal,Int32 resultReg,Int32 return
 			pendingSelf = val_null;
 			hasPendingContext = Boolean(false);
 		}
+		SaveState(returnPC, baseIndex, currentFuncIndex);
 		if (InvokeNativeCallback(callee.NativeCallback, calleeBase, selfParam, IntrinsicResult::Null, baseIndex + resultReg)) {
 			GC_POP_SCOPE();
 			return -1;  // done
@@ -1340,6 +1341,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				// Native intrinsic: invoke callback directly, no frame push
 				if (!IsNull(callee.NativeCallback)) {
 					pc = nextPC;
+					SaveState(pc, baseIndex, currentFuncIndex);
 					if (!InvokeNativeCallback(callee.NativeCallback, calleeBase, argCount + selfParam, IntrinsicResult::Null, baseIndex + resultReg)) {
 						cyclesLeft = 0;
 					}
@@ -1462,6 +1464,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 
 				// Native intrinsic: invoke callback directly, no frame push
 				if (!IsNull(callee.NativeCallback)) {
+					SaveState(pc, baseIndex, currentFuncIndex);
 					if (!InvokeNativeCallback(callee.NativeCallback, calleeBase, selfParam, IntrinsicResult::Null, baseIndex + a)) {
 						cyclesLeft = 0;
 					}

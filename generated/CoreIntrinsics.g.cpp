@@ -287,8 +287,7 @@ void CoreIntrinsics::Init() {
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		GC_PUSH_SCOPE();
 		Value v = ctx.GetArg(0); GC_PROTECT(&v);
-		if (is_error(v)) {
-			ctx.vm.RaiseUncaughtError(v);
+		if (is_error(v))  {
 			GC_POP_SCOPE();
 			return IntrinsicResult(v);
 		}
@@ -310,6 +309,10 @@ void CoreIntrinsics::Init() {
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		GC_PUSH_SCOPE();
 		Value v = ctx.GetArg(0); GC_PROTECT(&v);
+		if (is_error(v))  {
+			GC_POP_SCOPE();
+			return IntrinsicResult(v);
+		}
 		if (is_null(v))  {
 			GC_POP_SCOPE();
 			return IntrinsicResult(make_string(""));
@@ -322,21 +325,42 @@ void CoreIntrinsics::Init() {
 	f = Intrinsic::Create("upper");
 	f.AddParam("self");
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
-		return IntrinsicResult(string_upper(ctx.GetArg(0)));
+		GC_PUSH_SCOPE();
+		Value v = ctx.GetArg(0); GC_PROTECT(&v);
+		if (is_error(v))  {
+			GC_POP_SCOPE();
+			return IntrinsicResult(v);
+		}
+		GC_POP_SCOPE();
+		return IntrinsicResult(string_upper(v));
 	});
 
 	// lower(self)
 	f = Intrinsic::Create("lower");
 	f.AddParam("self");
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
-		return IntrinsicResult(string_lower(ctx.GetArg(0)));
+		GC_PUSH_SCOPE();
+		Value v = ctx.GetArg(0); GC_PROTECT(&v);
+		if (is_error(v))  {
+			GC_POP_SCOPE();
+			return IntrinsicResult(v);
+		}
+		GC_POP_SCOPE();
+		return IntrinsicResult(string_lower(v));
 	});
 
 	// char(codePoint=65)
 	f = Intrinsic::Create("char");
 	f.AddParam("codePoint", make_int(65));
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
-		int codePoint = (int)numeric_val(ctx.GetArg(0));
+		GC_PUSH_SCOPE();
+		Value v = ctx.GetArg(0); GC_PROTECT(&v);
+		if (is_error(v))  {
+			GC_POP_SCOPE();
+			return IntrinsicResult(v);
+		}
+		int codePoint = (int)numeric_val(v);
+		GC_POP_SCOPE();
 		return IntrinsicResult(string_from_code_point(codePoint));
 	});
 
@@ -344,7 +368,14 @@ void CoreIntrinsics::Init() {
 	f = Intrinsic::Create("code");
 	f.AddParam("self");
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
-		return IntrinsicResult(make_int(string_code_point(ctx.GetArg(0))));
+		GC_PUSH_SCOPE();
+		Value v = ctx.GetArg(0); GC_PROTECT(&v);
+		if (is_error(v))  {
+			GC_POP_SCOPE();
+			return IntrinsicResult(v);
+		}
+		GC_POP_SCOPE();
+		return IntrinsicResult(make_int(string_code_point(v)));
 	});
 
 	// len(x)
@@ -353,6 +384,10 @@ void CoreIntrinsics::Init() {
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		GC_PUSH_SCOPE();
 		Value container = ctx.GetArg(0); GC_PROTECT(&container);
+		if (is_error(container))  {
+			GC_POP_SCOPE();
+			return IntrinsicResult(container);
+		}
 		Value result = val_null; GC_PROTECT(&result);
 		if (is_list(container)) {
 			result = make_int(list_count(container));
@@ -372,6 +407,10 @@ void CoreIntrinsics::Init() {
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		GC_PUSH_SCOPE();
 		Value container = ctx.GetArg(0); GC_PROTECT(&container);
+		if (is_error(container))  {
+			GC_POP_SCOPE();
+			return ctx.vm.RaiseUncaughtError(container);
+		}
 		int result = 0;
 		if (is_list(container)) {
 			result = list_remove(container, as_int(ctx.GetArg(1))) ? 1 : 0;
@@ -388,7 +427,14 @@ void CoreIntrinsics::Init() {
 	f = Intrinsic::Create("freeze");
 	f.AddParam("x");
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
-		freeze_value(ctx.GetArg(0));
+		GC_PUSH_SCOPE();
+		Value v = ctx.GetArg(0); GC_PROTECT(&v);
+		if (is_error(v))  {
+			GC_POP_SCOPE();
+			return ctx.vm.RaiseUncaughtError(v);
+		}
+		freeze_value(v);
+		GC_POP_SCOPE();
 		return IntrinsicResult(val_null);
 	});
 
@@ -396,35 +442,70 @@ void CoreIntrinsics::Init() {
 	f = Intrinsic::Create("isFrozen");
 	f.AddParam("x");
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
-		return IntrinsicResult(make_int(is_frozen(ctx.GetArg(0))));
+		GC_PUSH_SCOPE();
+		Value v = ctx.GetArg(0); GC_PROTECT(&v);
+		if (is_error(v))  {
+			GC_POP_SCOPE();
+			return IntrinsicResult(v);
+		}
+		GC_POP_SCOPE();
+		return IntrinsicResult(make_int(is_frozen(v)));
 	});
 
 	// frozenCopy(x)
 	f = Intrinsic::Create("frozenCopy");
 	f.AddParam("x");
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
-		return IntrinsicResult(frozen_copy(ctx.GetArg(0)));
+		GC_PUSH_SCOPE();
+		Value v = ctx.GetArg(0); GC_PROTECT(&v);
+		if (is_error(v))  {
+			GC_POP_SCOPE();
+			return IntrinsicResult(v);
+		}
+		GC_POP_SCOPE();
+		return IntrinsicResult(frozen_copy(v));
 	});
 
 	// abs(x=0)
 	f = Intrinsic::Create("abs");
 	f.AddParam("x", val_zero);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
-		return IntrinsicResult(make_double(Math::Abs(numeric_val(ctx.GetArg(0)))));
+		GC_PUSH_SCOPE();
+		Value v = ctx.GetArg(0); GC_PROTECT(&v);
+		if (is_error(v))  {
+			GC_POP_SCOPE();
+			return IntrinsicResult(v);
+		}
+		GC_POP_SCOPE();
+		return IntrinsicResult(make_double(Math::Abs(numeric_val(v))));
 	});
 
 	// acos(x=0)
 	f = Intrinsic::Create("acos");
 	f.AddParam("x", val_zero);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
-		return IntrinsicResult(make_double(Math::Acos(numeric_val(ctx.GetArg(0)))));
+		GC_PUSH_SCOPE();
+		Value v = ctx.GetArg(0); GC_PROTECT(&v);
+		if (is_error(v))  {
+			GC_POP_SCOPE();
+			return IntrinsicResult(v);
+		}
+		GC_POP_SCOPE();
+		return IntrinsicResult(make_double(Math::Acos(numeric_val(v))));
 	});
 
 	// asin(x=0)
 	f = Intrinsic::Create("asin");
 	f.AddParam("x", val_zero);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
-		return IntrinsicResult(make_double(Math::Asin(numeric_val(ctx.GetArg(0)))));
+		GC_PUSH_SCOPE();
+		Value v = ctx.GetArg(0); GC_PROTECT(&v);
+		if (is_error(v))  {
+			GC_POP_SCOPE();
+			return IntrinsicResult(v);
+		}
+		GC_POP_SCOPE();
+		return IntrinsicResult(make_double(Math::Asin(numeric_val(v))));
 	});
 
 	// atan(y=0, x=1)
@@ -432,9 +513,24 @@ void CoreIntrinsics::Init() {
 	f.AddParam("y", val_zero);
 	f.AddParam("x", val_one);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
-		double y = numeric_val(ctx.GetArg(0));
-		double x = numeric_val(ctx.GetArg(1));
-		if (x == 1.0) return IntrinsicResult(make_double(Math::Atan(y)));
+		GC_PUSH_SCOPE();
+		Value vy = ctx.GetArg(0); GC_PROTECT(&vy);
+		if (is_error(vy))  {
+			GC_POP_SCOPE();
+			return IntrinsicResult(vy);
+		}
+		Value vx = ctx.GetArg(1); GC_PROTECT(&vx);
+		if (is_error(vx))  {
+			GC_POP_SCOPE();
+			return IntrinsicResult(vx);
+		}
+		double y = numeric_val(vy);
+		double x = numeric_val(vx);
+		if (x == 1.0)  {
+			GC_POP_SCOPE();
+			return IntrinsicResult(make_double(Math::Atan(y)));
+		}
+		GC_POP_SCOPE();
 		return IntrinsicResult(make_double(Math::Atan2(y, x)));
 	});
 
@@ -442,21 +538,42 @@ void CoreIntrinsics::Init() {
 	f = Intrinsic::Create("ceil");
 	f.AddParam("x", val_zero);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
-		return IntrinsicResult(make_double(Math::Ceiling(numeric_val(ctx.GetArg(0)))));
+		GC_PUSH_SCOPE();
+		Value v = ctx.GetArg(0); GC_PROTECT(&v);
+		if (is_error(v))  {
+			GC_POP_SCOPE();
+			return IntrinsicResult(v);
+		}
+		GC_POP_SCOPE();
+		return IntrinsicResult(make_double(Math::Ceiling(numeric_val(v))));
 	});
 
 	// cos(radians=0)
 	f = Intrinsic::Create("cos");
 	f.AddParam("radians", val_zero);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
-		return IntrinsicResult(make_double(Math::Cos(numeric_val(ctx.GetArg(0)))));
+		GC_PUSH_SCOPE();
+		Value v = ctx.GetArg(0); GC_PROTECT(&v);
+		if (is_error(v))  {
+			GC_POP_SCOPE();
+			return IntrinsicResult(v);
+		}
+		GC_POP_SCOPE();
+		return IntrinsicResult(make_double(Math::Cos(numeric_val(v))));
 	});
 
 	// floor(x=0)
 	f = Intrinsic::Create("floor");
 	f.AddParam("x", val_zero);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
-		return IntrinsicResult(make_double(Math::Floor(numeric_val(ctx.GetArg(0)))));
+		GC_PUSH_SCOPE();
+		Value v = ctx.GetArg(0); GC_PROTECT(&v);
+		if (is_error(v))  {
+			GC_POP_SCOPE();
+			return IntrinsicResult(v);
+		}
+		GC_POP_SCOPE();
+		return IntrinsicResult(make_double(Math::Floor(numeric_val(v))));
 	});
 
 	// log(x=0, base=10)
@@ -464,11 +581,23 @@ void CoreIntrinsics::Init() {
 	f.AddParam("x", val_zero);
 	f.AddParam("base", make_int(10));
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
-		double x = numeric_val(ctx.GetArg(0));
-		double b = numeric_val(ctx.GetArg(1));
+		GC_PUSH_SCOPE();
+		Value vx = ctx.GetArg(0); GC_PROTECT(&vx);
+		if (is_error(vx))  {
+			GC_POP_SCOPE();
+			return IntrinsicResult(vx);
+		}
+		Value vb = ctx.GetArg(1); GC_PROTECT(&vb);
+		if (is_error(vb))  {
+			GC_POP_SCOPE();
+			return IntrinsicResult(vb);
+		}
+		double x = numeric_val(vx);
+		double b = numeric_val(vb);
 		double result;
 		if (Math::Abs(b - 2.718282) < 0.000001) result = Math::Log(x);
 		else result = Math::Log(x) / Math::Log(b);
+		GC_POP_SCOPE();
 		return IntrinsicResult(make_double(result));
 	});
 
@@ -483,7 +612,13 @@ void CoreIntrinsics::Init() {
 	f.AddParam("x", val_zero);
 	f.AddParam("decimalPlaces", val_zero);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
-		double num = numeric_val(ctx.GetArg(0));
+		GC_PUSH_SCOPE();
+		Value vx = ctx.GetArg(0); GC_PROTECT(&vx);
+		if (is_error(vx))  {
+			GC_POP_SCOPE();
+			return IntrinsicResult(vx);
+		}
+		double num = numeric_val(vx);
 		int decimalPlaces = (int)numeric_val(ctx.GetArg(1));
 		if (decimalPlaces >= 0) {
 			if (decimalPlaces > 15) decimalPlaces = 15;
@@ -494,6 +629,7 @@ void CoreIntrinsics::Init() {
 			num = Math::Round(num);
 			num *= pow10;
 		}
+		GC_POP_SCOPE();
 		return IntrinsicResult(make_double(num));
 	});
 
@@ -501,7 +637,14 @@ void CoreIntrinsics::Init() {
 	f = Intrinsic::Create("rnd");
 	f.AddParam("seed");
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
-		int seed = is_null(ctx.GetArg(0)) ? 0 : (int)numeric_val(ctx.GetArg(0));
+		GC_PUSH_SCOPE();
+		Value v = ctx.GetArg(0); GC_PROTECT(&v);
+		if (is_error(v))  {
+			GC_POP_SCOPE();
+			return ctx.vm.RaiseUncaughtError(v);
+		}
+		int seed = is_null(v) ? 0 : (int)numeric_val(v);
+		GC_POP_SCOPE();
 		return IntrinsicResult(make_double(GetNextRandom(seed)));
 	});
 
@@ -509,28 +652,56 @@ void CoreIntrinsics::Init() {
 	f = Intrinsic::Create("sign");
 	f.AddParam("x", val_zero);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
-		return IntrinsicResult(make_int(Math::Sign(numeric_val(ctx.GetArg(0)))));
+		GC_PUSH_SCOPE();
+		Value v = ctx.GetArg(0); GC_PROTECT(&v);
+		if (is_error(v))  {
+			GC_POP_SCOPE();
+			return IntrinsicResult(v);
+		}
+		GC_POP_SCOPE();
+		return IntrinsicResult(make_int(Math::Sign(numeric_val(v))));
 	});
 
 	// sin(radians=0)
 	f = Intrinsic::Create("sin");
 	f.AddParam("radians", val_zero);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
-		return IntrinsicResult(make_double(Math::Sin(numeric_val(ctx.GetArg(0)))));
+		GC_PUSH_SCOPE();
+		Value v = ctx.GetArg(0); GC_PROTECT(&v);
+		if (is_error(v))  {
+			GC_POP_SCOPE();
+			return IntrinsicResult(v);
+		}
+		GC_POP_SCOPE();
+		return IntrinsicResult(make_double(Math::Sin(numeric_val(v))));
 	});
 
 	// sqrt(x=0)
 	f = Intrinsic::Create("sqrt");
 	f.AddParam("x", val_zero);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
-		return IntrinsicResult(make_double(Math::Sqrt(numeric_val(ctx.GetArg(0)))));
+		GC_PUSH_SCOPE();
+		Value v = ctx.GetArg(0); GC_PROTECT(&v);
+		if (is_error(v))  {
+			GC_POP_SCOPE();
+			return IntrinsicResult(v);
+		}
+		GC_POP_SCOPE();
+		return IntrinsicResult(make_double(Math::Sqrt(numeric_val(v))));
 	});
 
 	// tan(radians=0)
 	f = Intrinsic::Create("tan");
 	f.AddParam("radians", val_zero);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
-		return IntrinsicResult(make_double(Math::Tan(numeric_val(ctx.GetArg(0)))));
+		GC_PUSH_SCOPE();
+		Value v = ctx.GetArg(0); GC_PROTECT(&v);
+		if (is_error(v))  {
+			GC_POP_SCOPE();
+			return IntrinsicResult(v);
+		}
+		GC_POP_SCOPE();
+		return IntrinsicResult(make_double(Math::Tan(numeric_val(v))));
 	});
 	// push(self, value)
 	f = Intrinsic::Create("push");
@@ -539,6 +710,10 @@ void CoreIntrinsics::Init() {
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		GC_PUSH_SCOPE();
 		Value self = ctx.GetArg(0); GC_PROTECT(&self);
+		if (is_error(self))  {
+			GC_POP_SCOPE();
+			return ctx.vm.RaiseUncaughtError(self);
+		}
 		Value value = ctx.GetArg(1); GC_PROTECT(&value);
 		if (is_list(self)) {
 			list_push(self, value);
@@ -559,6 +734,10 @@ void CoreIntrinsics::Init() {
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		GC_PUSH_SCOPE();
 		Value self = ctx.GetArg(0); GC_PROTECT(&self);
+		if (is_error(self))  {
+			GC_POP_SCOPE();
+			return ctx.vm.RaiseUncaughtError(self);
+		}
 		Value result = val_null; GC_PROTECT(&result);
 		if (is_list(self)) {
 			result = list_pop(self);
@@ -583,6 +762,10 @@ void CoreIntrinsics::Init() {
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		GC_PUSH_SCOPE();
 		Value self = ctx.GetArg(0); GC_PROTECT(&self);
+		if (is_error(self))  {
+			GC_POP_SCOPE();
+			return ctx.vm.RaiseUncaughtError(self);
+		}
 		Value result = val_null; GC_PROTECT(&result);
 		if (is_list(self)) {
 			result = list_pull(self);
@@ -609,6 +792,10 @@ void CoreIntrinsics::Init() {
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		GC_PUSH_SCOPE();
 		Value self = ctx.GetArg(0); GC_PROTECT(&self);
+		if (is_error(self))  {
+			GC_POP_SCOPE();
+			return ctx.vm.RaiseUncaughtError(self);
+		}
 		int index = (int)numeric_val(ctx.GetArg(1));
 		Value value = ctx.GetArg(2); GC_PROTECT(&value);
 		if (is_list(self)) {
@@ -631,6 +818,10 @@ void CoreIntrinsics::Init() {
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		GC_PUSH_SCOPE();
 		Value self = ctx.GetArg(0); GC_PROTECT(&self);
+		if (is_error(self))  {
+			GC_POP_SCOPE();
+			return IntrinsicResult(self);
+		}
 		Value value = ctx.GetArg(1); GC_PROTECT(&value);
 		Value after = ctx.GetArg(2); GC_PROTECT(&after);
 		Value result = val_null; GC_PROTECT(&result);
@@ -684,6 +875,10 @@ void CoreIntrinsics::Init() {
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		GC_PUSH_SCOPE();
 		Value self = ctx.GetArg(0); GC_PROTECT(&self);
+		if (is_error(self))  {
+			GC_POP_SCOPE();
+			return ctx.vm.RaiseUncaughtError(self);
+		}
 		Value byKey = ctx.GetArg(1); GC_PROTECT(&byKey);
 		bool ascending = is_truthy(ctx.GetArg(2));
 		if (!is_list(self))  {
@@ -709,6 +904,10 @@ void CoreIntrinsics::Init() {
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		GC_PUSH_SCOPE();
 		Value self = ctx.GetArg(0); GC_PROTECT(&self);
+		if (is_error(self))  {
+			GC_POP_SCOPE();
+			return ctx.vm.RaiseUncaughtError(self);
+		}
 		Value temp; GC_PROTECT(&temp);
 		Value iterKey, iterVal; GC_PROTECT(&iterKey); GC_PROTECT(&iterVal);
 		if (is_list(self)) {
@@ -759,6 +958,10 @@ void CoreIntrinsics::Init() {
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		GC_PUSH_SCOPE();
 		Value self = ctx.GetArg(0); GC_PROTECT(&self);
+		if (is_error(self))  {
+			GC_POP_SCOPE();
+			return IntrinsicResult(self);
+		}
 		if (!is_list(self))  {
 			GC_POP_SCOPE();
 			return IntrinsicResult(self);
@@ -782,6 +985,10 @@ void CoreIntrinsics::Init() {
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		GC_PUSH_SCOPE();
 		Value self = ctx.GetArg(0); GC_PROTECT(&self);
+		if (is_error(self))  {
+			GC_POP_SCOPE();
+			return IntrinsicResult(self);
+		}
 		if (!is_string(self))  {
 			GC_POP_SCOPE();
 			return IntrinsicResult(val_null);
@@ -801,6 +1008,10 @@ void CoreIntrinsics::Init() {
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		GC_PUSH_SCOPE();
 		Value self = ctx.GetArg(0); GC_PROTECT(&self);
+		if (is_error(self))  {
+			GC_POP_SCOPE();
+			return ctx.vm.RaiseUncaughtError(self);
+		}
 		Value oldVal = ctx.GetArg(1); GC_PROTECT(&oldVal);
 		Value newVal = ctx.GetArg(2); GC_PROTECT(&newVal);
 		Value maxCountVal = ctx.GetArg(3); GC_PROTECT(&maxCountVal);
@@ -847,6 +1058,10 @@ void CoreIntrinsics::Init() {
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		GC_PUSH_SCOPE();
 		Value self = ctx.GetArg(0); GC_PROTECT(&self);
+		if (is_error(self))  {
+			GC_POP_SCOPE();
+			return IntrinsicResult(self);
+		}
 		Value iterVal; GC_PROTECT(&iterVal);
 		double total = 0;
 		if (is_list(self)) {
@@ -879,6 +1094,10 @@ void CoreIntrinsics::Init() {
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		GC_PUSH_SCOPE();
 		Value seq = ctx.GetArg(0); GC_PROTECT(&seq);
+		if (is_error(seq))  {
+			GC_POP_SCOPE();
+			return IntrinsicResult(seq);
+		}
 		int fromIdx = (int)numeric_val(ctx.GetArg(1));
 		if (is_list(seq)) {
 			int count = list_count(seq);
@@ -901,6 +1120,10 @@ void CoreIntrinsics::Init() {
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		GC_PUSH_SCOPE();
 		Value self = ctx.GetArg(0); GC_PROTECT(&self);
+		if (is_error(self))  {
+			GC_POP_SCOPE();
+			return IntrinsicResult(self);
+		}
 		Value result = val_null; GC_PROTECT(&result);
 		Value iterKey; GC_PROTECT(&iterKey);
 		if (is_list(self)) {
@@ -937,6 +1160,10 @@ void CoreIntrinsics::Init() {
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		GC_PUSH_SCOPE();
 		Value self = ctx.GetArg(0); GC_PROTECT(&self);
+		if (is_error(self))  {
+			GC_POP_SCOPE();
+			return IntrinsicResult(self);
+		}
 		Value index = ctx.GetArg(1); GC_PROTECT(&index);
 		if (is_list(self)) {
 			if (!is_number(index))  {
@@ -970,6 +1197,10 @@ void CoreIntrinsics::Init() {
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		GC_PUSH_SCOPE();
 		Value self = ctx.GetArg(0); GC_PROTECT(&self);
+		if (is_error(self))  {
+			GC_POP_SCOPE();
+			return IntrinsicResult(self);
+		}
 		Value result = self; GC_PROTECT(&result);
 		Value iterVal; GC_PROTECT(&iterVal);
 		if (is_map(self)) {
@@ -995,22 +1226,38 @@ void CoreIntrinsics::Init() {
 	f.AddParam("to", val_zero);
 	f.AddParam("step");
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
-		double fromVal = numeric_val(ctx.GetArg(0));
-		double toVal = numeric_val(ctx.GetArg(1));
+		GC_PUSH_SCOPE();
+		Value vFrom = ctx.GetArg(0); GC_PROTECT(&vFrom);
+		if (is_error(vFrom))  {
+			GC_POP_SCOPE();
+			return IntrinsicResult(vFrom);
+		}
+		Value vTo = ctx.GetArg(1); GC_PROTECT(&vTo);
+		if (is_error(vTo))  {
+			GC_POP_SCOPE();
+			return IntrinsicResult(vTo);
+		}
+		Value vStep = ctx.GetArg(2); GC_PROTECT(&vStep);
+		if (is_error(vStep))  {
+			GC_POP_SCOPE();
+			return IntrinsicResult(vStep);
+		}
+		double fromVal = numeric_val(vFrom);
+		double toVal = numeric_val(vTo);
 		double step;
-		if (is_null(ctx.GetArg(2)) || !is_number(ctx.GetArg(2))) {
+		if (is_null(vStep) || !is_number(vStep)) {
 			step = (toVal >= fromVal) ? 1 : -1;
 		} else {
-			step = numeric_val(ctx.GetArg(2));
+			step = numeric_val(vStep);
 		}
 		if (step == 0) {
 			IOHelper::Print("ERROR: range() step must not be 0");
+			GC_POP_SCOPE();
 			return IntrinsicResult(val_null);
 		}
 		int count = (int)((toVal - fromVal) / step) + 1;
 		if (count < 0) count = 0;
 		if (count > 1000000) count = 1000000;  // safety limit
-		GC_PUSH_SCOPE();
 		Value result = make_list(count); GC_PROTECT(&result);
 		double v = fromVal;
 		if (step > 0) {
@@ -1104,13 +1351,25 @@ void CoreIntrinsics::Init() {
 	f.AddParam("seconds", val_one);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		double now = ctx.vm.ElapsedTime();
+		GC_PUSH_SCOPE();
+		Value vSeconds; GC_PROTECT(&vSeconds);
 		if (partialResult.done) {
 			// Fresh call: calculate end time and return as partial result
-			double interval = numeric_val(ctx.GetArg(0));
+			vSeconds = ctx.GetArg(0);
+			if (is_error(vSeconds))  {
+				GC_POP_SCOPE();
+				return ctx.vm.RaiseUncaughtError(vSeconds);
+			}
+			double interval = numeric_val(vSeconds);
+			GC_POP_SCOPE();
 			return IntrinsicResult(make_double(now + interval), Boolean(false));
 		} else {
 			// Continuation: check if we've waited long enough
-			if (now > numeric_val(partialResult.result)) return IntrinsicResult::Null;
+			if (now > numeric_val(partialResult.result))  {
+				GC_POP_SCOPE();
+				return IntrinsicResult::Null;
+			}
+			GC_POP_SCOPE();
 			return partialResult;
 		}
 	});
@@ -1126,6 +1385,41 @@ void CoreIntrinsics::Init() {
 		return IntrinsicResult::Null;
 	});
 
+	// stackTrace
+	//    Return the current call stack as a list of strings, innermost
+	//    (most recent) call first.  Each string has the form
+	//    "{file} line {lineNum}", e.g. "listUtil.ms line 42".
+	//    The file name is "(current program)" for source loaded without
+	//    a file name.
+	f = Intrinsic::Create("stackTrace");
+	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
+		GC_PUSH_SCOPE();
+		Value result = make_list(8); GC_PROTECT(&result);
+		// Innermost frame: the function that called stackTrace.
+		// vm.PC was saved just before this intrinsic was invoked; the
+		// call instruction itself is at vm.PC - 1.
+		FuncDef curFunc = ctx.vm.CurrentFunction;
+		Int32 callSitePC = ctx.vm.PC - 1;
+		if (callSitePC < 0) callSitePC = 0;
+		String curFile = curFunc.FileName();
+		if (curFile == "") curFile = "(current program)";
+		list_push(result, make_string(StringUtils::Format("{0} line {1}", curFile, curFunc.GetLineNumber(callSitePC))));
+		// Walk the rest of the call stack, outermost last.
+		for (Int32 i = ctx.vm.CallStackDepth() - 1; i >= 0; i--) {
+			CallInfo ci = ctx.vm.GetCallStackFrame(i);
+			if (ci.ReturnFuncIndex < 0) break;
+			FuncDef callerFunc = ctx.vm.GetFuncDef(ci.ReturnFuncIndex);
+			Int32 callerPC = ci.ReturnPC - 1;
+			if (callerPC < 0) callerPC = 0;
+			String callerFile = callerFunc.FileName();
+			if (callerFile == "") callerFile = "(current program)";
+			list_push(result, make_string(StringUtils::Format("{0} line {1}", callerFile, callerFunc.GetLineNumber(callerPC))));
+		}
+		GC_POP_SCOPE();
+		return IntrinsicResult(result);
+	});
+
+	GC_POP_SCOPE();
 }
 void CoreIntrinsics::InvalidateTypeMaps() {
 	_listType = val_null;

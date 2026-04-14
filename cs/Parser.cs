@@ -694,23 +694,25 @@ public class Parser : IParser {
 			return null;
 		}
 
+		Int32 stmtLine = _current.Line;
+		ASTNode result;
+
 		// Check for block statements
 		if (_current.Type == TokenType.WHILE) {
 			Advance();  // consume WHILE
-			return ParseWhileStatement();
-		}
-
-		if (_current.Type == TokenType.FOR) {
+			result = ParseWhileStatement();
+		} else if (_current.Type == TokenType.FOR) {
 			Advance();  // consume FOR
-			return ParseForStatement();
-		}
-
-		if (_current.Type == TokenType.IF) {
+			result = ParseForStatement();
+		} else if (_current.Type == TokenType.IF) {
 			Advance();  // consume IF
-			return ParseIfStatement();
+			result = ParseIfStatement();
+		} else {
+			result = ParseSimpleStatement();
 		}
 
-		return ParseSimpleStatement();
+		if (result != null) result.Line = stmtLine;
+		return result;
 	}
 
 	// Parse a program (grammar: program : (eol | statement)* EOF)

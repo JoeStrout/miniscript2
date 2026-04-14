@@ -29,6 +29,36 @@ public class FuncDef {
 	public Int16 SuperReg = -1;  // register for 'super' (-1 if not used)
 	public String Note = "";
 	public String SourceLoc = "";
+	public String FileName = "";
+
+	// RLE line-number table: _lineRLEPC[i] is the first bytecode PC whose source
+	// line is _lineRLELine[i].  The run continues until the next entry.
+	// Use AddInstruction (not Code.Add) when building bytecode so that this
+	// table is kept in sync.
+	private List<Int32> _lineRLEPC = new List<Int32>();
+	private List<Int32> _lineRLELine = new List<Int32>();
+
+	// Append one bytecode instruction together with its source line number.
+	// Call this instead of Code.Add so the RLE line table is maintained.
+	public void AddInstruction(UInt32 instruction, Int32 lineNumber) {
+		Code.Add(instruction);
+		Int32 count = _lineRLELine.Count;
+		if (count == 0 || _lineRLELine[count - 1] != lineNumber) {
+			_lineRLEPC.Add(Code.Count - 1);
+			_lineRLELine.Add(lineNumber);
+		}
+	}
+
+	// Return the source line number for the instruction at the given PC index.
+	// Returns 0 if no line information is available.
+	public Int32 GetLineNumber(Int32 pc) {
+		Int32 result = 0;
+		for (Int32 i = 0; i < _lineRLEPC.Count; i++) {
+			if (_lineRLEPC[i] > pc) break;
+			result = _lineRLELine[i];
+		}
+		return result;
+	}
 
 	// Native callback for intrinsic functions. When non-null, this FuncDef
 	// represents a built-in function: CALL invokes the callback directly

@@ -101,6 +101,7 @@ void App::MainProgram(List<String> args) {
 					source += lines[i];
 				}
 				if (debugMode) IOHelper::Print(StringUtils::Format("Parsing {0} lines...", lines.Count()));
+				interp.set_SourceFile(GetPathFilename(filePath));
 				interp.Reset(source);
 				RunInterpreter(interp);
 			}
@@ -118,6 +119,12 @@ void App::MainProgram(List<String> args) {
 	}
 
 	IOHelper::Print("All done!");
+}
+String App::GetPathFilename(String filePath) {
+	int pos = filePath.LastIndexOf('/');
+	int pos2 = filePath.LastIndexOf('\\');
+	if (pos2 >= 0 && (pos < 0 || pos2 > pos)) pos = pos2;
+	return (pos >= 0) ? filePath.Substring(pos + 1) : filePath;
 }
 Interpreter App::CreateInterpreter() {
 	Interpreter interp =  Interpreter::New();

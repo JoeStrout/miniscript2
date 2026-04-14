@@ -15,6 +15,9 @@ struct App {
 	
 	public: static void MainProgram(List<String> args);
 
+	// Return just the filename portion of a path (e.g. "/foo/bar.ms" -> "bar.ms").
+	private: static String GetPathFilename(String filePath);
+
 	// Create an Interpreter with standard output wiring
 	private: static Interpreter CreateInterpreter();
 

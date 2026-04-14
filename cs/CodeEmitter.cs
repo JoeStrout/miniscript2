@@ -15,6 +15,10 @@ public abstract class CodeEmitterBase {
 	// The function definition being built
 	public FuncDef PendingFunc;
 
+	// Source line number to associate with the next emitted instruction.
+	// Set this before each statement's code generation.
+	public Int32 CurrentLine = 0;
+
 	// Emit instructions with varying operand patterns
 	// Method names match BytecodeUtil.INS_* patterns
 	public abstract void Emit(Opcode op, String comment);              // INS: opcode only
@@ -77,27 +81,27 @@ public class BytecodeEmitter : CodeEmitterBase {
 
 	public override void Emit(Opcode op, String comment) {
 		BytecodeUtil.CheckEmitPattern(op, EmitPattern.None);
-		PendingFunc.Code.Add(BytecodeUtil.INS(op));
+		PendingFunc.AddInstruction(BytecodeUtil.INS(op), CurrentLine);
 	}
 
 	public override void EmitA(Opcode op, Int32 a, String comment) {
 		BytecodeUtil.CheckEmitPattern(op, EmitPattern.A);
-		PendingFunc.Code.Add(BytecodeUtil.INS_A(op, (Byte)a));
+		PendingFunc.AddInstruction(BytecodeUtil.INS_A(op, (Byte)a), CurrentLine);
 	}
 
 	public override void EmitAB(Opcode op, Int32 a, Int32 bc, String comment) {
 		BytecodeUtil.CheckEmitPattern(op, EmitPattern.AB);
-		PendingFunc.Code.Add(BytecodeUtil.INS_AB(op, (Byte)a, (Int16)bc));
+		PendingFunc.AddInstruction(BytecodeUtil.INS_AB(op, (Byte)a, (Int16)bc), CurrentLine);
 	}
 
 	public override void EmitBC(Opcode op, Int32 ab, Int32 c, String comment) {
 		BytecodeUtil.CheckEmitPattern(op, EmitPattern.BC);
-		PendingFunc.Code.Add(BytecodeUtil.INS_BC(op, (Int16)ab, (Byte)c));
+		PendingFunc.AddInstruction(BytecodeUtil.INS_BC(op, (Int16)ab, (Byte)c), CurrentLine);
 	}
 
 	public override void EmitABC(Opcode op, Int32 a, Int32 b, Int32 c, String comment) {
 		BytecodeUtil.CheckEmitPattern(op, EmitPattern.ABC);
-		PendingFunc.Code.Add(BytecodeUtil.INS_ABC(op, (Byte)a, (Byte)b, (Byte)c));
+		PendingFunc.AddInstruction(BytecodeUtil.INS_ABC(op, (Byte)a, (Byte)b, (Byte)c), CurrentLine);
 	}
 
 	public override Int32 CreateLabel() {
@@ -119,7 +123,7 @@ public class BytecodeEmitter : CodeEmitterBase {
 		labelRef.A = 0;
 		labelRef.IsABC = true;  // 24-bit offset for JUMP_iABC
 		_labelRefs.Add(labelRef);
-		PendingFunc.Code.Add(BytecodeUtil.INS(op));  // placeholder
+		PendingFunc.AddInstruction(BytecodeUtil.INS(op), CurrentLine);  // placeholder
 	}
 
 	public override void EmitBranch(Opcode op, Int32 reg, Int32 labelId, String comment) {
@@ -131,7 +135,7 @@ public class BytecodeEmitter : CodeEmitterBase {
 		labelRef.A = reg;
 		labelRef.IsABC = false;  // 16-bit offset for BRFALSE_rA_iBC, BRTRUE_rA_iBC
 		_labelRefs.Add(labelRef);
-		PendingFunc.Code.Add(BytecodeUtil.INS(op));  // placeholder
+		PendingFunc.AddInstruction(BytecodeUtil.INS(op), CurrentLine);  // placeholder
 	}
 
 	public override FuncDef Finalize(String name) {

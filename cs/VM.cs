@@ -507,6 +507,7 @@ public class VM {
 				pendingSelf = val_null;
 				hasPendingContext = false;
 			}
+			SaveState(returnPC, baseIndex, currentFuncIndex);
 			if (InvokeNativeCallback(callee.NativeCallback, calleeBase, selfParam, IntrinsicResult.Null, baseIndex + resultReg)) {
 				return -1;  // done
 			}
@@ -1474,6 +1475,7 @@ public class VM {
 					// Native intrinsic: invoke callback directly, no frame push
 					if (callee.NativeCallback != null) {
 						pc = nextPC;
+						SaveState(pc, baseIndex, currentFuncIndex);
 						if (!InvokeNativeCallback(callee.NativeCallback, calleeBase, argCount + selfParam, IntrinsicResult.Null, baseIndex + resultReg)) {
 							cyclesLeft = 0;
 						}
@@ -1595,6 +1597,7 @@ public class VM {
 
 					// Native intrinsic: invoke callback directly, no frame push
 					if (callee.NativeCallback != null) {
+						SaveState(pc, baseIndex, currentFuncIndex);
 						if (!InvokeNativeCallback(callee.NativeCallback, calleeBase, selfParam, IntrinsicResult.Null, baseIndex + a)) {
 							cyclesLeft = 0;
 						}

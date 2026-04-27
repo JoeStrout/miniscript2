@@ -229,14 +229,18 @@ void InterpreterStorage::REPL(String sourceLine,double timeLimit) {
 		}
 	}
 
-	// Implicit output: if last statement was a bare expression, report r0
-	// (unless we are in an error state).
+	// Implicit output: if last statement was a bare expression, capture r0.
+	// Always update lastImplicitResult (null on error or no implicit output).
+	lastImplicitResult = val_null;
 	GC_PUSH_SCOPE();
 	Value result; GC_PROTECT(&result);
-	if (hasImplicitOutput && !hadRuntimeError && !IsNull(implicitOutput)) {
+	if (hasImplicitOutput && !hadRuntimeError) {
 		result = vm.GetStackValue(vm.BaseIndex());
 		if (!is_null(result)) {
-			implicitOutput(StringUtils::Format("{0}", result), Boolean(true));
+			lastImplicitResult = result;
+			if (!IsNull(implicitOutput)) {
+				implicitOutput(StringUtils::Format("{0}", result), Boolean(true));
+			}
 		}
 	}
 
@@ -270,6 +274,10 @@ Value InterpreterStorage::GetGlobalValue(String varName) {
 void InterpreterStorage::SetGlobalValue(String varName,Value value) {
 	// TODO: Implement when VM supports setting stack values by index.
 	// The current VM API only provides read access to the stack.
+}
+void InterpreterStorage::ResetReplGlobals() {
+	_replGlobals = val_null;
+	if (!IsNull(vm)) vm.set_ReplGlobals(val_null);
 }
 void InterpreterStorage::ReportError(Value error) {
 	String msg = StringUtils::Format("{0}", error_message(error));

@@ -37,6 +37,7 @@ class InterpreterStorage : public std::enable_shared_from_this<InterpreterStorag
 	protected: Parser parser;
 	protected: List<FuncDef> compiledFunctions;
 	public: Value Error;
+	public: Value lastImplicitResult = val_null;
 	private: String _pendingSource; // accumulated REPL lines so far
 	private: Value _replGlobals = val_null; // persistent globals VarMap
 
@@ -84,6 +85,13 @@ class InterpreterStorage : public std::enable_shared_from_this<InterpreterStorag
 	/// The most recent compiler or runtime error, as an error Value, or val_null
 	/// if there is no error.  Host code can inspect this (and its __isa chain)
 	/// to distinguish error types.
+	/// </summary>
+
+	/// <summary>
+	/// The Value produced by the last complete REPL interaction that had implicit
+	/// output (a bare expression as the last statement), or val_null otherwise.
+	/// Updated at the end of each complete REPL() call.  Host code (e.g. the
+	/// REPL loop in App.cs) reads this to push it into the _out history list.
 	/// </summary>
 
 	// REPL state
@@ -199,6 +207,13 @@ class InterpreterStorage : public std::enable_shared_from_this<InterpreterStorag
 	public: void SetGlobalValue(String varName, Value value);
 
 	/// <summary>
+	/// Discard the persistent REPL globals VarMap.  The next REPL() call will
+	/// rebuild it from scratch, effectively clearing all user-defined globals.
+	/// Called by the `reset` intrinsic to take effect immediately during execution.
+	/// </summary>
+	public: void ResetReplGlobals();
+
+	/// <summary>
 	/// Report an error value to the user via errorOutput.  The default
 	/// implementation formats the error message as a string and calls
 	/// ReportError(String).  Subclass and override to do something different
@@ -249,6 +264,8 @@ struct Interpreter {
 	protected: void set_compiledFunctions(List<FuncDef> _v);
 	public: Value Error();
 	public: void set_Error(Value _v);
+	public: Value lastImplicitResult();
+	public: void set_lastImplicitResult(Value _v);
 	private: String _pendingSource(); // accumulated REPL lines so far
 	private: void set__pendingSource(String _v); // accumulated REPL lines so far
 	private: Value _replGlobals(); // persistent globals VarMap
@@ -299,6 +316,13 @@ struct Interpreter {
 	/// The most recent compiler or runtime error, as an error Value, or val_null
 	/// if there is no error.  Host code can inspect this (and its __isa chain)
 	/// to distinguish error types.
+	/// </summary>
+
+	/// <summary>
+	/// The Value produced by the last complete REPL interaction that had implicit
+	/// output (a bare expression as the last statement), or val_null otherwise.
+	/// Updated at the end of each complete REPL() call.  Host code (e.g. the
+	/// REPL loop in App.cs) reads this to push it into the _out history list.
 	/// </summary>
 
 	// REPL state
@@ -418,6 +442,13 @@ struct Interpreter {
 	public: inline void SetGlobalValue(String varName, Value value);
 
 	/// <summary>
+	/// Discard the persistent REPL globals VarMap.  The next REPL() call will
+	/// rebuild it from scratch, effectively clearing all user-defined globals.
+	/// Called by the `reset` intrinsic to take effect immediately during execution.
+	/// </summary>
+	public: inline void ResetReplGlobals();
+
+	/// <summary>
 	/// Report an error value to the user via errorOutput.  The default
 	/// implementation formats the error message as a string and calls
 	/// ReportError(String).  Subclass and override to do something different
@@ -458,6 +489,8 @@ inline List<FuncDef> Interpreter::compiledFunctions() { return get()->compiledFu
 inline void Interpreter::set_compiledFunctions(List<FuncDef> _v) { get()->compiledFunctions = _v; }
 inline Value Interpreter::Error() { return get()->Error; }
 inline void Interpreter::set_Error(Value _v) { get()->Error = _v; }
+inline Value Interpreter::lastImplicitResult() { return get()->lastImplicitResult; }
+inline void Interpreter::set_lastImplicitResult(Value _v) { get()->lastImplicitResult = _v; }
 inline String Interpreter::_pendingSource() { return get()->_pendingSource; } // accumulated REPL lines so far
 inline void Interpreter::set__pendingSource(String _v) { get()->_pendingSource = _v; } // accumulated REPL lines so far
 inline Value Interpreter::_replGlobals() { return get()->_replGlobals; } // persistent globals VarMap
@@ -475,6 +508,7 @@ inline bool Interpreter::Running() { return get()->Running(); }
 inline bool Interpreter::NeedMoreInput() { return get()->NeedMoreInput(); }
 inline Value Interpreter::GetGlobalValue(String varName) { return get()->GetGlobalValue(varName); }
 inline void Interpreter::SetGlobalValue(String varName,Value value) { return get()->SetGlobalValue(varName, value); }
+inline void Interpreter::ResetReplGlobals() { return get()->ResetReplGlobals(); }
 inline void Interpreter::ReportError(Value error) { return get()->ReportError(error); }
 inline void Interpreter::ReportError(String message) { return get()->ReportError(message); }
 

@@ -748,9 +748,9 @@ Today I'm doing some work on UX for the C++ command-line build (worrying less ab
 
 The next level (which should apply to both C# and C++) is visible input/output history.  Here's how it should work:
 
-- We keep two lists, accessible within MiniScript itself as `_in` and `_out`.
+- We keep two lists, accessible within MiniScript itself as `_in` and `_out`.  `_in` tracks user input (strings); `_out` holds implicit output (any type).
 - The input prompt looks like ` _in[0]: ` for the first input, with `0` replaced with the current length of the input list.  In a more-input-needed context, the prompt is `   ...: `; all lines of additional input get concatenated with the base line.
-- Output is prefixed with `_out[0]: `, with `0` showing the index of the last output.
+- Output is prefixed with `_out[0]: `, with `0` showing the index of the last output.  Note that if the implicit output is null (or there is an error), it's not printed.
 - These prefixes are drawn in the subdued style; user input happens in the normal style; and output is drawn in the strong style (defined in IOHelper).
 - If the user input starts with '!', this is a special history metacommand, such as:
   - `!123`: repeat input 123
@@ -760,5 +760,9 @@ The next level (which should apply to both C# and C++) is visible input/output h
   - `!? foo`: show last 15 inputs that contain "foo"
   - `!?20 foo`: show last 20 inputs that contain "foo"
 - A `reset` intrinsic will reset all global variables, and also clear out the _in and _out lists.
+
+It works!  Pretty nice.  I do wonder a little bit if it's less friendly than the simple '>' and '...>' prompts in MiniScript 1.x; I also worry a little bit about making the examples in _Learn To Code in 30 Days_ a little bit off.  But the latter could be addressed with an insert or erratum; and as for the former... well I'm not sure.  If it's an issue we could have a switch or environment variable to toggle the simple and advanced prompts.  But I dunno, I think it's fairly unobtrusive and probably fine.
+
+
 
 

@@ -19,6 +19,7 @@ using static MiniScript.ValueHelpers;
 // H: #include "gc.h"
 // CPP: #include "StringUtils.g.h"
 // CPP: #include "Intrinsic.g.h" // ToDo: remove this once we've refactored set_FunctionIndexOffset away
+// CPP: #include "CoreIntrinsics.g.h"
 
 namespace MiniScript {
 
@@ -88,6 +89,14 @@ public class Interpreter {
 	/// to distinguish error types.
 	/// </summary>
 	public Value Error;
+
+	/// <summary>
+	/// The Value produced by the last complete REPL interaction that had implicit
+	/// output (a bare expression as the last statement), or val_null otherwise.
+	/// Updated at the end of each complete REPL() call.  Host code (e.g. the
+	/// REPL loop in App.cs) reads this to push it into the _out history list.
+	/// </summary>
+	public Value lastImplicitResult = val_null;
 
 	// REPL state
 	private String _pendingSource;       // accumulated REPL lines so far
@@ -392,13 +401,17 @@ public class Interpreter {
 			}
 		}
 
-		// Implicit output: if last statement was a bare expression, report r0
-		// (unless we are in an error state).
+		// Implicit output: if last statement was a bare expression, capture r0.
+		// Always update lastImplicitResult (null on error or no implicit output).
+		lastImplicitResult = val_null;
 		Value result;
-		if (hasImplicitOutput && !hadRuntimeError && implicitOutput != null) {
+		if (hasImplicitOutput && !hadRuntimeError) {
 			result = vm.GetStackValue(vm.BaseIndex);
 			if (!is_null(result)) {
-				implicitOutput.Invoke(StringUtils.Format("{0}", result), true);
+				lastImplicitResult = result;
+				if (implicitOutput != null) {
+					implicitOutput.Invoke(StringUtils.Format("{0}", result), true);
+				}
 			}
 		}
 
@@ -454,6 +467,16 @@ public class Interpreter {
 	public void SetGlobalValue(String varName, Value value) {
 		// TODO: Implement when VM supports setting stack values by index.
 		// The current VM API only provides read access to the stack.
+	}
+
+	/// <summary>
+	/// Discard the persistent REPL globals VarMap.  The next REPL() call will
+	/// rebuild it from scratch, effectively clearing all user-defined globals.
+	/// Called by the `reset` intrinsic to take effect immediately during execution.
+	/// </summary>
+	public void ResetReplGlobals() {
+		_replGlobals = val_null;
+		if (vm != null) vm.ReplGlobals = val_null;
 	}
 
 	/// <summary>

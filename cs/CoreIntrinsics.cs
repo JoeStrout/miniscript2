@@ -174,6 +174,10 @@ public static class CoreIntrinsics {
 
 	private static Value _EOL = make_string("\n");
 
+	// REPL history lists, set by App.RunREPL at startup and by the reset intrinsic.
+	public static Value replInList = val_null;
+	public static Value replOutList = val_null;
+
 	// H: static void MarkRoots(void* user_data);
 
 	public static void Init() {
@@ -1151,6 +1155,48 @@ public static class CoreIntrinsics {
 			return new IntrinsicResult(ctx.vm.BuildStackTrace());
 		};
 
+		// _in
+		//    Return the REPL input history list.  Each entry is a string
+		//    containing one complete (possibly multi-line) REPL interaction.
+		//    Only meaningful when running in REPL mode; otherwise returns null.
+		f = Intrinsic.Create("_in");
+		f.Code = (Context ctx, IntrinsicResult partialResult) => {
+			return new IntrinsicResult(replInList);
+		};
+
+		// _out
+		//    Return the REPL output history list.  Each entry corresponds to
+		//    the implicit (expression-result) output of the matching _in entry,
+		//    or null if that interaction produced no implicit output.
+		//    Only meaningful when running in REPL mode; otherwise returns null.
+		f = Intrinsic.Create("_out");
+		f.Code = (Context ctx, IntrinsicResult partialResult) => {
+			return new IntrinsicResult(replOutList);
+		};
+
+		// _
+		//    Always equals the most recent implicit REPL result, i.e. _out[-1].
+		//    Returns null if no implicit output has been produced yet.
+		f = Intrinsic.Create("_");
+		f.Code = (Context ctx, IntrinsicResult partialResult) => {
+			Int32 n = list_count(replOutList);
+			if (n == 0) return IntrinsicResult.Null;
+			return new IntrinsicResult(list_get(replOutList, n - 1));
+		};
+
+		// reset
+		//    Clear all user-defined globals and reset the REPL history lists.
+		//    Takes effect immediately: any code following reset in the same
+		//    statement sees the cleared state.
+		f = Intrinsic.Create("reset");
+		f.Code = (Context ctx, IntrinsicResult partialResult) => {
+			replInList = make_list(0);
+			replOutList = make_list(0);
+			Interpreter interp = ctx.vm.GetInterpreter();
+			if (interp != null) interp.ResetReplGlobals();
+			return IntrinsicResult.Null;
+		};
+
 	}
 
 	public static void InvalidateTypeMaps() {
@@ -1172,6 +1218,8 @@ public static class CoreIntrinsics {
 		gc_mark_value(_numberType);
 		gc_mark_value(_functionType);
 		gc_mark_value(_errorType);
+		gc_mark_value(replInList);
+		gc_mark_value(replOutList);
 	}
 	*** END CPP_ONLY ***/
 

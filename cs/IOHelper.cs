@@ -24,13 +24,13 @@ public static class IOHelper {
 
 	public static String GetStyleTermCode(TextStyle style) {
 		if (style == TextStyle.Normal) {
-			return "\u001b[0m";		// CPP: return "\033[0m";
+			return "\x1b[0m";
 		} else if (style == TextStyle.Subdued) {
-			return"\u001b[90m";		// CPP: return "\033[90m";
+			return "\x1b[0;90m";
 		} else if (style == TextStyle.Strong) {
-			return"\u001b[1m";		// CPP: return "\033[1m";
+			return "\x1b[0;1m";
 		} else if (style == TextStyle.Error) {
-			return"\u001b[31m";		// CPP: return "\033[31m";
+			return "\x1b[0;31m";
 		} else {
 			return "";
 		}

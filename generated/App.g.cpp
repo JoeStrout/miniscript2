@@ -19,6 +19,7 @@
 #include "IOHelper.g.h"
 #include "Interpreter.g.h"
 #include "Intrinsic.g.h" // ToDo: remove this once we've refactored set_FunctionIndexOffset away
+#include "CoreIntrinsics.g.h"
 #include <thread>
 #include <chrono>
 #if USE_EDITLINE
@@ -351,38 +352,166 @@ void App::RunInterpreter(Interpreter interp) {
 
 	if (is_null(vm.Error())) {
 		IOHelper::Print("\nVM execution complete. Result in r0:");
-		IOHelper::Print(StringUtils::Format("\u001b[1;93m{0}\u001b[0m", result)); // (bold bright yellow)
+		IOHelper::Print(StringUtils::Format("\x1b[1;93m{0}\x1b[0m", result)); // (bold bright yellow)
 	}
 	GC_POP_SCOPE();
 }
 String App::GetREPLInput(Interpreter interp) {
-	String prompt = interp.NeedMoreInput() ? ">>> " : "> ";
-	String line;
-	#if USE_EDITLINE
-	prompt = IOHelper::GetStyleTermCode(TextStyle::Subdued) + prompt + 
-	  IOHelper::GetStyleTermCode(TextStyle::Normal);
-	char* rawLine = readline(prompt.c_str());
-	IOHelper::NoteStyleSet(TextStyle::Normal);
-	if (!rawLine) return rawLine;
-	line = rawLine;
-	if (rawLine[0] != '\0') add_history(rawLine);
-	free(rawLine);
-	#else
-	line = IOHelper::Input(prompt, TextStyle::Subdued, TextStyle::Normal);
-	#endif
-	return line;
+	while (Boolean(true)) {
+		// Build prompt: " _in[N]: " for a fresh line, or a matching-width
+		// continuation prompt whose spaces align with the _in prompt.
+		Int32 idx = list_count(CoreIntrinsics::replInList);
+		String prompt;
+		if (interp.NeedMoreInput()) {
+			// Width of " _in[N]: " = 8 + digits(N).  Use (3+digits(N)) spaces before "...:".
+			String idxStr = StringUtils::Format("{0}", idx);
+			String padding = StringUtils::Spaces(idxStr.Length() + 3);
+			prompt = padding + "...:   ";
+		} else {
+			prompt = StringUtils::Format(" _in[{0}]: ", idx);
+		}
+		IOHelper::Print("");  // blank line before the input prompt
+
+		// Read one raw line.
+		String line;
+		#if USE_EDITLINE
+		String styledPrompt = IOHelper::GetStyleTermCode(TextStyle::Subdued) + prompt +
+		  IOHelper::GetStyleTermCode(TextStyle::Normal);
+		char* rawLine = readline(styledPrompt.c_str());
+		IOHelper::NoteStyleSet(TextStyle::Normal);
+		if (!rawLine) return String(nullptr);
+		line = rawLine;
+		if (rawLine[0] != '\0') add_history(rawLine);
+		free(rawLine);
+		#else
+		line = IOHelper::Input(prompt, TextStyle::Subdued, TextStyle::Normal);
+		#endif
+
+		if (IsNull(line)) return String(nullptr);
+
+		// Handle ! metacommands (only valid on the first line of an interaction).
+		if (!interp.NeedMoreInput() && line.Length() > 0 && line[0] == '!') {
+			String meta = line.Substring(1).Trim();
+			// !? [count] [search] — show history
+			if (meta.StartsWith("?")) {
+				HandleHistorySearch(meta.Substring(1).Trim());
+				continue; // prompt again
+			}
+			// !N or !-N — replay a prior input
+			String recalled = RecallInput(meta);
+			if (IsNull(recalled)) {
+				IOHelper::Print(StringUtils::Format("No such history entry: {0}", meta), TextStyle::Error);
+				continue;
+			}
+			IOHelper::Print(recalled, TextStyle::Subdued); // show what we're replaying
+			return recalled;
+		}
+
+		return line;
+	}
+}
+Int32 App::ParseInt(String s) {
+	if (s.Length() == 0) return -1;
+	Int32 result = 0;
+	for (Int32 ci = 0; ci < s.Length(); ci++) {
+		Int32 d = (Int32)(unsigned char)s[ci] - (Int32)'0';
+		if (d < 0 || d > 9) return -1;
+		result = result * 10 + d;
+	}
+	return result;
+}
+void App::HandleHistorySearch(String metaRest) {
+	Int32 count = 15;
+	String search = nullptr;
+
+	// Parse optional leading integer count, then optional search term.
+	Int32 spacePos = metaRest.IndexOf(' ');
+	String countPart = spacePos >= 0 ? metaRest.Substring(0, spacePos) : metaRest;
+	String rest = spacePos >= 0 ? metaRest.Substring(spacePos + 1).Trim() : "";
+	Int32 parsed = ParseInt(countPart);
+	if (parsed > 0) {
+		count = parsed;
+		if (rest.Length() > 0) search = rest;
+	} else {
+		// No leading number: treat whole metaRest as search term.
+		if (metaRest.Length() > 0) search = metaRest;
+	}
+
+	Int32 total = list_count(CoreIntrinsics::replInList);
+	// First pass (backward): find the oldest index among the last `count` matches.
+	Int32 remaining = count;
+	Int32 firstIdx = total;
+	for (Int32 i = total - 1; i >= 0 && remaining > 0; i--) {
+		String entry = as_cstring(list_get(CoreIntrinsics::replInList, i));
+		if (!IsNull(search) && entry.IndexOf(search) < 0) continue;
+		remaining--;
+		firstIdx = i;
+	}
+	// Second pass (forward): display in ascending order.
+	Int32 shown = 0;
+	for (Int32 i = firstIdx; i < total && shown < count; i++) {
+		String entry = as_cstring(list_get(CoreIntrinsics::replInList, i));
+		if (!IsNull(search) && entry.IndexOf(search) < 0) continue;
+		IOHelper::Print(StringUtils::Format(" _in[{0}]: {1}", i, entry), TextStyle::Subdued);
+		shown++;
+	}
+	if (shown == 0) IOHelper::Print("(no matching history)", TextStyle::Subdued);
+}
+String App::RecallInput(String indexStr) {
+	Int32 total = list_count(CoreIntrinsics::replInList);
+	if (total == 0) return nullptr;
+	bool negative = indexStr.Length() > 0 && indexStr[0] == '-';
+	Int32 idx = ParseInt(negative ? indexStr.Substring(1) : indexStr);
+	if (idx < 0) return nullptr;
+	if (negative) idx = total - idx;
+	if (idx < 0 || idx >= total) return nullptr;
+	return as_cstring(list_get(CoreIntrinsics::replInList, idx));
 }
 void App::RunREPL() {
+	CoreIntrinsics::replInList = make_list(0);
+	CoreIntrinsics::replOutList = make_list(0);
+
 	Interpreter interp =  Interpreter::New();
 	interp.set_standardOutput([](String s, Boolean) { IOHelper::Print(s, TextStyle::Strong); });
-	interp.set_implicitOutput([](String s, Boolean) { IOHelper::Print(s, TextStyle::Strong); });
 	interp.set_errorOutput([](String s, Boolean) { IOHelper::Print(s, TextStyle::Error); });
 
+	String currentInput = nullptr;
+	GC_PUSH_SCOPE();
+	Value inListBefore; GC_PROTECT(&inListBefore);
+	Value implVal; GC_PROTECT(&implVal);
 	while (Boolean(true)) {
+		bool needingMoreBefore = interp.NeedMoreInput();
 		String line = GetREPLInput(interp);
 		if (IsNull(line)) break;
+
+		// Accumulate multi-line input.
+		if (!needingMoreBefore) {
+			currentInput = line;
+		} else {
+			currentInput = currentInput + "\n" + line;
+		}
+
+		inListBefore = CoreIntrinsics::replInList;
 		interp.REPL(line, 60);
+
+		// When the interaction completes, record it and display implicit output.
+		// Skip recording if reset was called (it replaces the lists with fresh ones).
+		if (!interp.NeedMoreInput()) {
+			bool wasReset = !value_identical(CoreIntrinsics::replInList, inListBefore);
+			if (!wasReset) {
+				Int32 idx = list_count(CoreIntrinsics::replInList);
+				implVal = interp.lastImplicitResult();
+				list_push(CoreIntrinsics::replInList, make_string(currentInput));
+				list_push(CoreIntrinsics::replOutList, implVal);
+				if (!is_null(implVal)) {
+					IOHelper::PrintNoCR(StringUtils::Format("_out[{0}]: ", idx), TextStyle::Subdued);
+					IOHelper::Print(StringUtils::Format("{0}", implVal), TextStyle::Strong);
+				}
+			}
+			currentInput = nullptr;
+		}
 	}
+	GC_POP_SCOPE();
 }
 
 } // end of namespace MiniScript

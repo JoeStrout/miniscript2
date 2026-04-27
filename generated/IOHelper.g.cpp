@@ -13,13 +13,13 @@ namespace MiniScript {
 TextStyle IOHelper::currentStyle = TextStyle::Normal;
 String IOHelper::GetStyleTermCode(TextStyle style) {
 	if (style == TextStyle::Normal) {
-		return "\033[0m";
+		return "\x1b[0m";
 	} else if (style == TextStyle::Subdued) {
-		return "\033[90m";
+		return "\x1b[0;90m";
 	} else if (style == TextStyle::Strong) {
-		return "\033[1m";
+		return "\x1b[0;1m";
 	} else if (style == TextStyle::Error) {
-		return "\033[31m";
+		return "\x1b[0;31m";
 	} else {
 		return "";
 	}

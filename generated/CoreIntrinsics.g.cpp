@@ -122,6 +122,8 @@ Value CoreIntrinsics::ErrorType() {
 }
 Value CoreIntrinsics::_errorType = val_null;
 Value CoreIntrinsics::_EOL = make_string("\n");
+Value CoreIntrinsics::replInList = val_null;
+Value CoreIntrinsics::replOutList = val_null;
 void CoreIntrinsics::Init() {
 	gc_register_mark_callback(CoreIntrinsics::MarkRoots, nullptr);
 
@@ -1396,6 +1398,48 @@ void CoreIntrinsics::Init() {
 		return IntrinsicResult(ctx.vm.BuildStackTrace());
 	});
 
+	// _in
+	//    Return the REPL input history list.  Each entry is a string
+	//    containing one complete (possibly multi-line) REPL interaction.
+	//    Only meaningful when running in REPL mode; otherwise returns null.
+	f = Intrinsic::Create("_in");
+	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
+		return IntrinsicResult(replInList);
+	});
+
+	// _out
+	//    Return the REPL output history list.  Each entry corresponds to
+	//    the implicit (expression-result) output of the matching _in entry,
+	//    or null if that interaction produced no implicit output.
+	//    Only meaningful when running in REPL mode; otherwise returns null.
+	f = Intrinsic::Create("_out");
+	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
+		return IntrinsicResult(replOutList);
+	});
+
+	// _
+	//    Always equals the most recent implicit REPL result, i.e. _out[-1].
+	//    Returns null if no implicit output has been produced yet.
+	f = Intrinsic::Create("_");
+	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
+		Int32 n = list_count(replOutList);
+		if (n == 0) return IntrinsicResult::Null;
+		return IntrinsicResult(list_get(replOutList, n - 1));
+	});
+
+	// reset
+	//    Clear all user-defined globals and reset the REPL history lists.
+	//    Takes effect immediately: any code following reset in the same
+	//    statement sees the cleared state.
+	f = Intrinsic::Create("reset");
+	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
+		replInList = make_list(0);
+		replOutList = make_list(0);
+		Interpreter interp = ctx.vm.GetInterpreter();
+		if (!IsNull(interp)) interp.ResetReplGlobals();
+		return IntrinsicResult::Null;
+	});
+
 }
 void CoreIntrinsics::InvalidateTypeMaps() {
 	_listType = val_null;
@@ -1414,6 +1458,8 @@ void CoreIntrinsics::MarkRoots(void* user_data) {
 	gc_mark_value(_numberType);
 	gc_mark_value(_functionType);
 	gc_mark_value(_errorType);
+	gc_mark_value(replInList);
+	gc_mark_value(replOutList);
 }
 
 } // end of namespace MiniScript

@@ -33,9 +33,20 @@ struct App {
 	// Run an Interpreter that has already been compiled or loaded with functions.
 	private: static void RunInterpreter(Interpreter interp);
 
-	// Get one line of REPL input from the user.  Return it as a String,
-	// or return null if we reach end-of-input (e.g. control-D).
+	// Get one line of REPL input.  Builds the history-aware prompt, handles !
+	// metacommands, and returns the line to hand to the interpreter — or null on EOF.
 	private: static String GetREPLInput(Interpreter interp);
+
+	// Parse a non-negative integer from a string.  Returns -1 on failure.
+	private: static Int32 ParseInt(String s);
+
+	// Display REPL input history entries matching an optional count and search term.
+	// metaRest is everything after "!?" with leading whitespace stripped.
+	private: static void HandleHistorySearch(String metaRest);
+
+	// Recall a history entry by index string ("5", "-2", etc.).
+	// Returns the source string, or null if the index is out of range.
+	private: static String RecallInput(String indexStr);
 
 	private: static void RunREPL();
 

@@ -64,7 +64,11 @@ class CoreIntrinsics {
 	public: static Value ErrorType();
 	private: static Value _errorType;
 	private: static Value _EOL;
+	public: static Value replInList;
+	public: static Value replOutList;
 	static void MarkRoots(void* user_data);
+
+	// REPL history lists, set by App.RunREPL at startup and by the reset intrinsic.
 
 	public: static void Init();
 

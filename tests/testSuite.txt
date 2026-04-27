@@ -3802,7 +3802,7 @@ return globals
 end function
 print f
 ---------------------------------
-{"g": 99, "f": FuncRef(#58, closure)}
+{"g": 99, "f": FuncRef(#62, closure)}
 ================================
 ==== outer from a nested function
 ================================
@@ -3816,7 +3816,7 @@ return inner
 end function
 print f
 ---------------------------------
-{"a": 10, "inner": FuncRef(#59, closure)}
+{"a": 10, "inner": FuncRef(#63, closure)}
 ================================
 ==== outer at global scope equals globals
 ================================

@@ -11,24 +11,35 @@
 namespace MiniScript {
 
 TextStyle IOHelper::currentStyle = TextStyle::Normal;
+String IOHelper::GetStyleTermCode(TextStyle style) {
+	if (style == TextStyle::Normal) {
+		return "\033[0m";
+	} else if (style == TextStyle::Subdued) {
+		return "\033[90m";
+	} else if (style == TextStyle::Strong) {
+		return "\033[1m";
+	} else if (style == TextStyle::Error) {
+		return "\033[31m";
+	} else {
+		return "";
+	}
+}
 void IOHelper::SetStyle(TextStyle style) {
 	if (style == currentStyle) return;
-
-	if (style == TextStyle::Normal) {
-		std::cout << "\033[0m";
-	} else if (style == TextStyle::Subdued) {
-		std::cout << "\033[90m";
-	} else if (style == TextStyle::Strong) {
-		std::cout << "\033[1m";
-	} else if (style == TextStyle::Error) {
-		std::cout << "\033[31m";
-	}
-
+	std::cout << GetStyleTermCode(style);
+	currentStyle = style;
+}
+void IOHelper::NoteStyleSet(TextStyle style) {
+	// (Used when other code has manually set the style via GetStyleTermCode)
 	currentStyle = style;
 }
 void IOHelper::Print(String message,TextStyle style) {
 	SetStyle(style);
 	std::cout << message.c_str() << std::endl;
+}
+void IOHelper::PrintNoCR(String message,TextStyle style) {
+	SetStyle(style);
+	std::cout << message.c_str() << std::flush;
 }
 String IOHelper::Input(String prompt,TextStyle promptStyle,TextStyle inputStyle) {
 	SetStyle(promptStyle);

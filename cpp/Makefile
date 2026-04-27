@@ -20,14 +20,15 @@ else
     OPT_FLAGS = -O3 -DNDEBUG
 endif
 
-CXXFLAGS = -std=gnu++11 -Wall -Wextra $(OPT_FLAGS) -Icore -I$(GENDIR) $(GOTO_FLAG) -MMD -MP
+CXXFLAGS = -std=gnu++11 -Wall -Wextra $(OPT_FLAGS) -Icore -I$(GENDIR) -I. $(GOTO_FLAG) $(EDITLINE_DEFINE) -MMD -MP
 CFLAGS = -std=c99 -Wall -Wextra $(OPT_FLAGS) -Icore $(GOTO_FLAG) -MMD -MP
 
 # AddressSanitizer flags for debugging
-ASAN_CXXFLAGS = -std=gnu++11 -Wall -Wextra -O0 -g -fsanitize=address -Icore -I$(GENDIR) $(GOTO_FLAG) -MMD -MP
+ASAN_CXXFLAGS = -std=gnu++11 -Wall -Wextra -O0 -g -fsanitize=address -Icore -I$(GENDIR) -I. $(GOTO_FLAG) $(EDITLINE_DEFINE) -MMD -MP
 ASAN_CFLAGS = -std=c99 -Wall -Wextra -O0 -g -fsanitize=address -Icore $(GOTO_FLAG) -MMD -MP
 ASAN_LDFLAGS = -fsanitize=address
 COREDIR = core
+EDITLINEDIR = editline
 GENDIR = ../generated
 BUILDDIR = ../build/cpp
 OBJDIR = $(BUILDDIR)/obj
@@ -39,12 +40,25 @@ CORE_CPP_OBJECTS = $(CORE_CPP_SOURCES:$(COREDIR)/%.cpp=$(OBJDIR)/core_%.o)
 CORE_C_OBJECTS = $(CORE_C_SOURCES:$(COREDIR)/%.c=$(OBJDIR)/core_%.o)
 CORE_OBJECTS = $(CORE_CPP_OBJECTS) $(CORE_C_OBJECTS)
 
+# editline sources - only on non-Windows (Unix/macOS/Linux)
+ifneq ($(OS),Windows_NT)
+    EDITLINE_OBJECTS = $(OBJDIR)/editline_editline.o \
+                       $(OBJDIR)/editline_sysunix.o \
+                       $(OBJDIR)/editline_complete.o
+    EDITLINE_CFLAGS = -I$(EDITLINEDIR)
+    EDITLINE_DEFINE = -DUSE_EDITLINE=1
+else
+    EDITLINE_OBJECTS =
+    EDITLINE_CFLAGS =
+    EDITLINE_DEFINE =
+endif
+
 # Generated C++ files (transpiled code)
 GEN_SOURCES = $(wildcard $(GENDIR)/*.g.cpp)
 GEN_OBJECTS = $(GEN_SOURCES:$(GENDIR)/%.g.cpp=$(OBJDIR)/gen_%.o)
 
 # All objects
-OBJECTS = $(CORE_OBJECTS) $(GEN_OBJECTS)
+OBJECTS = $(CORE_OBJECTS) $(GEN_OBJECTS) $(EDITLINE_OBJECTS)
 
 # Target executable
 TARGET = $(BUILDDIR)/miniscript2
@@ -62,7 +76,14 @@ ASAN_CORE_CPP_OBJECTS = $(CORE_CPP_SOURCES:$(COREDIR)/%.cpp=$(ASAN_OBJDIR)/core_
 ASAN_CORE_C_OBJECTS = $(CORE_C_SOURCES:$(COREDIR)/%.c=$(ASAN_OBJDIR)/core_%.o)
 ASAN_CORE_OBJECTS = $(ASAN_CORE_CPP_OBJECTS) $(ASAN_CORE_C_OBJECTS)
 ASAN_GEN_OBJECTS = $(GEN_SOURCES:$(GENDIR)/%.g.cpp=$(ASAN_OBJDIR)/gen_%.o)
-ASAN_OBJECTS = $(ASAN_CORE_OBJECTS) $(ASAN_GEN_OBJECTS)
+ifneq ($(OS),Windows_NT)
+    ASAN_EDITLINE_OBJECTS = $(ASAN_OBJDIR)/editline_editline.o \
+                            $(ASAN_OBJDIR)/editline_sysunix.o \
+                            $(ASAN_OBJDIR)/editline_complete.o
+else
+    ASAN_EDITLINE_OBJECTS =
+endif
+ASAN_OBJECTS = $(ASAN_CORE_OBJECTS) $(ASAN_GEN_OBJECTS) $(ASAN_EDITLINE_OBJECTS)
 ASAN_TARGET = $(BUILDDIR)/miniscript2_asan
 
 .PHONY: all clean test_string_pool test_simple test_debug_basic test_trivial debug_trivial asan
@@ -112,6 +133,10 @@ $(OBJDIR)/core_%.o: $(COREDIR)/%.c | $(OBJDIR)
 $(OBJDIR)/gen_%.o: $(GENDIR)/%.g.cpp | $(OBJDIR)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
+# editline C object files (Unix/macOS only)
+$(OBJDIR)/editline_%.o: $(EDITLINEDIR)/%.c | $(OBJDIR)
+	$(CC) -std=c99 -Wall $(OPT_FLAGS) $(EDITLINE_CFLAGS) -c $< -o $@
+
 # ASAN target
 $(ASAN_TARGET): $(ASAN_OBJECTS) | $(BUILDDIR)
 	$(CXX) $(ASAN_LDFLAGS) $(ASAN_OBJECTS) -o $@
@@ -127,6 +152,10 @@ $(ASAN_OBJDIR)/core_%.o: $(COREDIR)/%.c | $(ASAN_OBJDIR)
 # ASAN Generated C++ object files
 $(ASAN_OBJDIR)/gen_%.o: $(GENDIR)/%.g.cpp | $(ASAN_OBJDIR)
 	$(CXX) $(ASAN_CXXFLAGS) -c $< -o $@
+
+# ASAN editline C object files (Unix/macOS only)
+$(ASAN_OBJDIR)/editline_%.o: $(EDITLINEDIR)/%.c | $(ASAN_OBJDIR)
+	$(CC) -std=c99 -Wall -O0 -g -fsanitize=address $(EDITLINE_CFLAGS) -c $< -o $@
 
 $(ASAN_OBJDIR):
 	mkdir -p $(ASAN_OBJDIR)

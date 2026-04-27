@@ -21,6 +21,9 @@
 #include "Intrinsic.g.h" // ToDo: remove this once we've refactored set_FunctionIndexOffset away
 #include <thread>
 #include <chrono>
+#if USE_EDITLINE
+#include "editline/editline.h"
+#endif
 using namespace MiniScript;
 
 int main(int argc, const char* argv[]) {
@@ -352,15 +355,31 @@ void App::RunInterpreter(Interpreter interp) {
 	}
 	GC_POP_SCOPE();
 }
+String App::GetREPLInput(Interpreter interp) {
+	String prompt = interp.NeedMoreInput() ? ">>> " : "> ";
+	String line;
+	#if USE_EDITLINE
+	prompt = IOHelper::GetStyleTermCode(TextStyle::Subdued) + prompt + 
+	  IOHelper::GetStyleTermCode(TextStyle::Normal);
+	char* rawLine = readline(prompt.c_str());
+	IOHelper::NoteStyleSet(TextStyle::Normal);
+	if (!rawLine) return rawLine;
+	line = rawLine;
+	if (rawLine[0] != '\0') add_history(rawLine);
+	free(rawLine);
+	#else
+	line = IOHelper::Input(prompt, TextStyle::Subdued, TextStyle::Normal);
+	#endif
+	return line;
+}
 void App::RunREPL() {
 	Interpreter interp =  Interpreter::New();
 	interp.set_standardOutput([](String s, Boolean) { IOHelper::Print(s, TextStyle::Strong); });
 	interp.set_implicitOutput([](String s, Boolean) { IOHelper::Print(s, TextStyle::Strong); });
 	interp.set_errorOutput([](String s, Boolean) { IOHelper::Print(s, TextStyle::Error); });
-	
+
 	while (Boolean(true)) {
-		String prompt = interp.NeedMoreInput() ? ">>> " : "> ";
-		String line = IOHelper::Input(prompt, TextStyle::Subdued, TextStyle::Normal);
+		String line = GetREPLInput(interp);
 		if (IsNull(line)) break;
 		interp.REPL(line, 60);
 	}

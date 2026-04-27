@@ -33,6 +33,10 @@ struct App {
 	// Run an Interpreter that has already been compiled or loaded with functions.
 	private: static void RunInterpreter(Interpreter interp);
 
+	// Get one line of REPL input from the user.  Return it as a String,
+	// or return null if we reach end-of-input (e.g. control-D).
+	private: static String GetREPLInput(Interpreter interp);
+
 	private: static void RunREPL();
 
 }; // end of struct App

@@ -24,6 +24,11 @@ using static MiniScript.ValueHelpers;
 // CPP: #include "Intrinsic.g.h" // ToDo: remove this once we've refactored set_FunctionIndexOffset away
 // CPP: #include <thread>
 // CPP: #include <chrono>
+/*** BEGIN CPP_ONLY ***
+#if USE_EDITLINE
+#include "editline/editline.h"
+#endif
+*** END CPP_ONLY ***/
 // CPP: using namespace MiniScript;
 
 namespace MiniScript {
@@ -370,6 +375,31 @@ public struct App {
 		}
 	}
 
+	// Get one line of REPL input from the user.  Return it as a String,
+	// or return null if we reach end-of-input (e.g. control-D).
+	private static String GetREPLInput(Interpreter interp) {
+		String prompt = interp.NeedMoreInput() ? ">>> " : "> ";
+		//*** BEGIN CS_ONLY ***
+		return IOHelper.Input(prompt, TextStyle.Subdued, TextStyle.Normal);
+		//*** END CS_ONLY ***
+		/*** BEGIN CPP_ONLY ***
+		String line;
+		#if USE_EDITLINE
+		prompt = IOHelper::GetStyleTermCode(TextStyle::Subdued) + prompt + 
+		  IOHelper::GetStyleTermCode(TextStyle::Normal);
+		char* rawLine = readline(prompt.c_str());
+		IOHelper::NoteStyleSet(TextStyle::Normal);
+		if (!rawLine) return rawLine;
+		line = rawLine;
+		if (rawLine[0] != '\0') add_history(rawLine);
+		free(rawLine);
+		#else
+		line = IOHelper::Input(prompt, TextStyle::Subdued, TextStyle::Normal);
+		#endif
+		return line;
+		*** END CPP_ONLY ***/	
+	}
+
 	private static void RunREPL() {
 		Interpreter interp = new Interpreter();
 		//*** BEGIN CS_ONLY ***
@@ -382,11 +412,10 @@ public struct App {
 		interp.set_implicitOutput([](String s, Boolean) { IOHelper::Print(s, TextStyle::Strong); });
 		interp.set_errorOutput([](String s, Boolean) { IOHelper::Print(s, TextStyle::Error); });
 		*** END CPP_ONLY ***/
-		
+
 		while (true) {
-			String prompt = interp.NeedMoreInput() ? ">>> " : "> ";
-			String line = IOHelper.Input(prompt, TextStyle.Subdued, TextStyle.Normal);
-			if (line == null) break;
+			String line = GetREPLInput(interp);
+			if (line == null) break; // CPP: if (IsNull(line)) break;
 			interp.REPL(line, 60);
 		}
 	}

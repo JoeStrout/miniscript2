@@ -740,4 +740,25 @@ So, the next step is to attach a stack trace to errors when they are created.  .
 So now I'm examining the overall error infrastructure.  I think we over-engineered a bit with ErrorPool, because all I really want is to track a single error (the first one encountered in any compilation or run).  And at the same time, we didn't provide enough helpful infrastructure for reporting common types of errors.  I'm going to rework all that a bit, based now on error values.
 
 
+## Apr 27, 2026
+
+Error infrastructure has been reworked; ErrorPool is no more.  Much better.
+
+Today I'm doing some work on UX for the C++ command-line build (worrying less about C# here, since it's unlikely anyone will actually use the C# command-line build except for testing/debugging of MiniScript itself).  First up: line editing.  Again bundling the editline library, as we did in MS1.  This provides history and gnu-style editing.
+
+The next level (which should apply to both C# and C++) is visible input/output history.  Here's how it should work:
+
+- We keep two lists, accessible within MiniScript itself as `_in` and `_out`.
+- The input prompt looks like ` _in[0]: ` for the first input, with `0` replaced with the current length of the input list.  In a more-input-needed context, the prompt is `   ...: `; all lines of additional input get concatenated with the base line.
+- Output is prefixed with `_out[0]: `, with `0` showing the index of the last output.
+- These prefixes are drawn in the subdued style; user input happens in the normal style; and output is drawn in the strong style (defined in IOHelper).
+- If the user input starts with '!', this is a special history metacommand, such as:
+  - `!123`: repeat input 123
+  - `!-4`: repeat the input 4th from the end
+  - `!?`: show last 15 inputs, with their index numbers
+  - `!?20`: show last 20 inputs, with their index numbers
+  - `!? foo`: show last 15 inputs that contain "foo"
+  - `!?20 foo`: show last 20 inputs that contain "foo"
+- A `reset` intrinsic will reset all global variables, and also clear out the _in and _out lists.
+
 

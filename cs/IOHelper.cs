@@ -22,25 +22,39 @@ public static class IOHelper {
 
 	private static TextStyle currentStyle = TextStyle.Normal;
 
-	private static void SetStyle(TextStyle style) {
-		if (style == currentStyle) return;
-
+	public static String GetStyleTermCode(TextStyle style) {
 		if (style == TextStyle.Normal) {
-			Console.Write("\u001b[0m");			// CPP: std::cout << "\033[0m";
+			return "\u001b[0m";		// CPP: return "\033[0m";
 		} else if (style == TextStyle.Subdued) {
-			Console.Write("\u001b[90m");		// CPP: std::cout << "\033[90m";
+			return"\u001b[90m";		// CPP: return "\033[90m";
 		} else if (style == TextStyle.Strong) {
-			Console.Write("\u001b[1m");			// CPP: std::cout << "\033[1m";
+			return"\u001b[1m";		// CPP: return "\033[1m";
 		} else if (style == TextStyle.Error) {
-			Console.Write("\u001b[31m");		// CPP: std::cout << "\033[31m";
+			return"\u001b[31m";		// CPP: return "\033[31m";
+		} else {
+			return "";
 		}
+	}
+		
+	public static void SetStyle(TextStyle style) {
+		if (style == currentStyle) return;
+		Console.Write(GetStyleTermCode(style)); // CPP: std::cout << GetStyleTermCode(style);
+		currentStyle = style;
+	}
 
+	public static void NoteStyleSet(TextStyle style) {
+		// (Used when other code has manually set the style via GetStyleTermCode)
 		currentStyle = style;
 	}
 
 	public static void Print(String message, TextStyle style=TextStyle.Normal) {
 		SetStyle(style);
 		Console.WriteLine(message);  // CPP: std::cout << message.c_str() << std::endl;
+	}
+	
+	public static void PrintNoCR(String message, TextStyle style=TextStyle.Normal) {
+		SetStyle(style);
+		Console.Write(message);  // CPP: std::cout << message.c_str() << std::flush;
 	}
 	
 	public static String Input(String prompt, TextStyle promptStyle=TextStyle.Normal, TextStyle inputStyle=TextStyle.Normal) {

@@ -390,8 +390,8 @@ public struct App {
 				prompt = padding + "...:   ";
 			} else {
 				prompt = StringUtils.Format(" _in[{0}]: ", idx);
+				IOHelper.Print("");  // blank line before the input prompt
 			}
-			IOHelper.Print("");  // blank line before the input prompt
 
 			// Read one raw line.
 			String line;

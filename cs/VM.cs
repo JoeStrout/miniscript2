@@ -88,8 +88,12 @@ public class VM {
 		return interpreter; // CPP: return Interpreter(interpreter);
 	}
 
+	// callStack is indexed by execution depth: callStack[0] is always @main's execution
+	// context (globals live here), callStack[1] is the first user function call, etc.
+	// callStackTop is the index of the next free slot (== current depth + 1).
+	// Invariant: callStackTop >= 1 during all execution (set up in Reset).
 	private List<CallInfo> callStack;
-	private Int32 callStackTop;	   // Index of next free call stack slot
+	private Int32 callStackTop;
 
 	private List<FuncDef> functions; // functions addressed by CALLF
 	/*** BEGIN H_ONLY ***
@@ -310,6 +314,12 @@ public class VM {
 		CurrentFunction = mainFunc;
 		IsRunning = true;
 		callStackTop = 0;
+		// Push @main's own execution-context frame at callStack[0] so that
+		// globals (= @main's locals) are always accessible via callStack[0].
+		// This means real function calls start at callStack[1], callStack[2], etc.
+		// ReturnFuncIndex is set to mainIdx so GetGlobalsVarMap can find @main's MaxRegs.
+		callStack[0] = new CallInfo(0, 0, mainIdx);
+		callStackTop = 1;
 		Error = val_null;
 		pendingSelf = val_null;
 		pendingSuper = val_null;
@@ -387,9 +397,9 @@ public class VM {
 		String curFile = CurrentFunction.FileName;
 		if (curFile == "") curFile = "(current program)";
 		list_push(result, make_string(StringUtils.Format("{0} line {1}", curFile, CurrentFunction.GetLineNumber(callSitePC))));
-		for (Int32 i = CallStackDepth() - 1; i >= 0; i--) {
+		// callStack[0] is @main's own frame (not a caller), so stop at i=1.
+		for (Int32 i = CallStackDepth() - 1; i >= 1; i--) {
 			CallInfo ci = GetCallStackFrame(i);
-			if (ci.ReturnFuncIndex < 0) break;
 			FuncDef callerFunc = GetFuncDef(ci.ReturnFuncIndex);
 			Int32 callerPC = ci.ReturnPC - 1;
 			if (callerPC < 0) callerPC = 0;
@@ -1013,31 +1023,43 @@ public class VM {
 				}
 
 				case Opcode.LOCALS_rA: {
-					// Create VarMap for local variables and store in R[A]
+					// Create VarMap for local variables and store in R[A].
+					// Temporarily clear this register's name while building the VarMap, so that
+					// the destination register does not appear as a self-referential entry (e.g.,
+					// "locals" pointing to the VarMap itself).  Restore afterward so that if the
+					// user wrote `myLocals = locals`, the name "myLocals" remains findable.
 					Byte a = BytecodeUtil.Au(instruction);
+					val = names[baseIndex + a];  // saved name
+					names[baseIndex + a] = val_null;   // temporarily clear it
 					localStack[a] = GetCurrentLocalVarMap(baseIndex, curFunc.MaxRegs); // CPP: localStack[a] = GetCurrentLocalVarMap(baseIndex, curFuncRaw->MaxRegs);
-					names[baseIndex+a] = val_null;
+					names[baseIndex + a] = val;  // restore name
 					break;
 				}
 
 				case Opcode.OUTER_rA: {
-					// Return VarMap for outer scope; fall back to globals if none
+					// Return VarMap for outer scope; fall back to globals if none.
+					// Same temporary-clear pattern as LOCALS_rA (see above).
 					Byte a = BytecodeUtil.Au(instruction);
+					val = names[baseIndex + a];  // saved name
+					names[baseIndex + a] = val_null;   // temporarily clear it
 					if (callStackTop > 0 && !is_null(callStack[callStackTop - 1].OuterVarMap)) {
 						localStack[a] = callStack[callStackTop - 1].OuterVarMap;
 					} else {
 						// No enclosing scope or at global scope: outer == globals
 						localStack[a] = GetGlobalsVarMap();
 					}
-					names[baseIndex+a] = val_null;
+					names[baseIndex + a] = val;   // restore name
 					break;
 				}
 
 				case Opcode.GLOBALS_rA: {
-					// Return VarMap for global variables
+					// Return VarMap for global variables.
+					// Same temporary-clear pattern as LOCALS_rA (see above).
 					Byte a = BytecodeUtil.Au(instruction);
+					val = names[baseIndex + a];  // saved name
+					names[baseIndex + a] = val_null;   // temporarily clear it
 					localStack[a] = GetGlobalsVarMap();
-					names[baseIndex+a] = val_null;
+					names[baseIndex + a] = val;  // restore name
 					break;
 				}
 
@@ -1850,14 +1872,9 @@ public class VM {
 				case Opcode.RETURN: {
 					// Return value convention: value is in base[0]
 					val = stack[baseIndex];
-					if (callStackTop == 0) {
-						// Returning from main function
-						SaveState(pc, baseIndex, currentFuncIndex);
-						IsRunning = false;
-						return val;
-					}
-					
-					// If current call frame had a locals VarMap, gather it up
+
+					// Gather the current execution-context frame's locals VarMap if one exists
+					// (makes closure values survive beyond the function's lifetime).
 					CallInfo frame = callStack[callStackTop - 1];
 					if (!is_null(frame.LocalVarMap)) {
 						varmap_gather(frame.LocalVarMap);
@@ -1865,15 +1882,23 @@ public class VM {
 						callStack[callStackTop - 1] = frame;  // write back (CallInfo is a struct)
 					}
 
-					// Pop call stack
+					// Pop the current execution-context frame.
 					callStackTop--;
+					if (callStackTop == 0) {
+						// We just popped @main's frame — execution is complete.
+						SaveState(pc, baseIndex, currentFuncIndex);
+						IsRunning = false;
+						return val;
+					}
+
+					// Restore the caller's execution state from its frame.
 					CallInfo callInfo = callStack[callStackTop];
 					pc = callInfo.ReturnPC;
 					baseIndex = callInfo.ReturnBase;
-					currentFuncIndex = callInfo.ReturnFuncIndex; // Restore the caller's function
+					currentFuncIndex = callInfo.ReturnFuncIndex;
 					SwitchFrame(currentFuncIndex, baseIndex, ref curFunc, ref codeCount, ref curCode, ref curConstants, ref localStack); // CPP:
 					// CPP: SwitchFrame(currentFuncIndex, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack, stackPtr);
-					
+
 					if (callInfo.CopyResultToReg >= 0) {
 						stack[baseIndex + callInfo.CopyResultToReg] = val;
 					}
@@ -1955,33 +1980,26 @@ public class VM {
 	*** END CPP_ONLY ***/
 
 	// Get the globals VarMap.  In REPL mode, returns the persistent ReplGlobals.
-	// Otherwise, lazily creates one from callStack[0].
+	// Otherwise, builds a fresh VarMap from @main's registers each call.  A fresh
+	// scan is required because variables may be assigned (and added to names[]) after
+	// @main's callStack[0].LocalVarMap was first created by a FUNCREF closure, so a
+	// cached map would miss them.  callStack[0].ReturnFuncIndex holds @main's own
+	// function index (by convention for this slot), used to find @main's MaxRegs.
 	private Value GetGlobalsVarMap() {
 		if (!is_null(ReplGlobals)) return ReplGlobals;
 		CallInfo gframe = callStack[0];
-		Int32 regCount;
-		if (callStackTop == 0) {
-			regCount = CurrentFunction.MaxRegs;
-		} else {
-			regCount = functions[gframe.ReturnFuncIndex].MaxRegs;
-		}
-		Value globalMap = gframe.GetLocalVarMap(stack, names, 0, regCount);
-		callStack[0] = gframe;  // write back (CallInfo is a struct)
-		return globalMap;
+		Int32 regCount = functions[gframe.ReturnFuncIndex].MaxRegs;
+		return make_varmap(stack, names, 0, regCount); // CPP: return make_varmap(&stack[0], &names[0], 0, regCount);
 	}
 
 	// Get or create a VarMap for the current call frame's local variables.
-	// At global scope (callStackTop == 0), creates a VarMap directly.
+	// callStack[callStackTop-1] is always the current execution-context frame
+	// (callStackTop >= 1 is guaranteed since @main's frame is always at callStack[0]).
 	[MethodImpl(AggressiveInlining)]
 	private Value GetCurrentLocalVarMap(Int32 baseIndex, UInt16 maxRegs) {
-		Value result;
-		if (callStackTop > 0) {
-			CallInfo frame = callStack[callStackTop - 1];
-			result = frame.GetLocalVarMap(stack, names, baseIndex, maxRegs);
-			callStack[callStackTop - 1] = frame;  // write back (CallInfo is a struct)
-		} else {
-			result = make_varmap(stack, names, baseIndex, maxRegs); // CPP: result = make_varmap(&stack[0], &names[0], baseIndex, maxRegs);
-		}
+		CallInfo frame = callStack[callStackTop - 1];
+		Value result = frame.GetLocalVarMap(stack, names, baseIndex, maxRegs);
+		callStack[callStackTop - 1] = frame;  // write back (CallInfo is a struct)
 		return result;
 	}
 

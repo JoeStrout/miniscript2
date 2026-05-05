@@ -22,6 +22,7 @@ using static MiniScript.ValueHelpers;
 // CPP: #include "IOHelper.g.h"
 // CPP: #include "Interpreter.g.h"
 // CPP: #include "Intrinsic.g.h" // ToDo: remove this once we've refactored set_FunctionIndexOffset away
+// CPP: #include "CoreIntrinsics.g.h"
 // CPP: #include <thread>
 // CPP: #include <chrono>
 /*** BEGIN CPP_ONLY ***

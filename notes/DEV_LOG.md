@@ -763,6 +763,39 @@ The next level (which should apply to both C# and C++) is visible input/output h
 
 It works!  Pretty nice.  I do wonder a little bit if it's less friendly than the simple '>' and '...>' prompts in MiniScript 1.x; I also worry a little bit about making the examples in _Learn To Code in 30 Days_ a little bit off.  But the latter could be addressed with an insert or erratum; and as for the former... well I'm not sure.  If it's an issue we could have a switch or environment variable to toggle the simple and advanced prompts.  But I dunno, I think it's fairly unobtrusive and probably fine.
 
+## May 1, 2026
 
+Next week I'm planning a couple of optimization tasks:
 
+1. I want to measure whether it is actually worth having a separate `int` type under the hood, or whether all numbers should be `double`.  I suspect the latter, as it will allow us to more easily do stuff like:
+
+2. I want to add a couple of bit flags to the list type, including `allNumeric`.  That flag will be updated whenever we easily can; it won't be guaranteed to be correct if for example you add and then remove a string to an otherwise numeric list.  But when the flag is set, we can take a faster path, maybe even do vector operations where hardware supports it.
+
+3. Another flag can indicate a *computed* list, where what we actually store is start, end, and step; then the length and values by index are computed on the fly.  This will be really handy when somebody does something like `for i in range(1E9)`.  We'll be able to maintain this form when the user deletes the first or last element; and *maybe* when inserting a new first or last, if it happens to match the pattern; any other mutation will just materialize it into a regular list.  (Way better than Python!)
+
+Unrelated, but something to think about for the future: apparently Zig can automatically generate bindings to C libraries on the fly, like:
+
+```
+// build.zig
+const raylib = b.addTranslateC(.{
+    .root_source_file = b.path("src/raylib.h"),
+    .target = target,
+    .optimize = optimize,
+    .link_libc = true,
+});
+
+exe.addImport("raylib", raylib.createModule());
+```
+
+That's a cool trick, and something we should think about including in command-line MiniScript (and related builds) at some point.
+
+## May 2, 2026
+
+One of our new benchmarks uncovered a bug in the VM: when an inner function referenced a global variable, it would not find it (and, another bug: RaiseRuntimeError caused the VM to exit cleanly but never actually reported the error).
+
+The ultimate cause turned out to be inconsistency in how we were treating `callStack` in the VM.  It was a stack of *return* frames, not execution frames.  So GetLocalVarMap would cache the varmap representing the locals for frame 1 in frame 0.  But that left us no safe place to store the globals (it was also using frame 0).
+
+So we're factoring it so that callStack now represents execution frames, and callStack[0] is the global (main program) context.
+
+Then I need to remember to fix the error reporting too.
 

@@ -201,6 +201,12 @@ void VMStorage::Reset(List<FuncDef> allFunctions,Value replGlobals) {
 	CurrentFunction = mainFunc;
 	IsRunning = Boolean(true);
 	callStackTop = 0;
+	// Push @main's own execution-context frame at callStack[0] so that
+	// globals (= @main's locals) are always accessible via callStack[0].
+	// This means real function calls start at callStack[1], callStack[2], etc.
+	// ReturnFuncIndex is set to mainIdx so GetGlobalsVarMap can find @main's MaxRegs.
+	callStack[0] = CallInfo(0, 0, mainIdx);
+	callStackTop = 1;
 	Error = val_null;
 	pendingSelf = val_null;
 	pendingSuper = val_null;
@@ -263,9 +269,9 @@ Value VMStorage::BuildStackTrace() {
 	String curFile = CurrentFunction.FileName();
 	if (curFile == "") curFile = "(current program)";
 	list_push(result, make_string(StringUtils::Format("{0} line {1}", curFile, CurrentFunction.GetLineNumber(callSitePC))));
-	for (Int32 i = CallStackDepth() - 1; i >= 0; i--) {
+	// callStack[0] is @main's own frame (not a caller), so stop at i=1.
+	for (Int32 i = CallStackDepth() - 1; i >= 1; i--) {
 		CallInfo ci = GetCallStackFrame(i);
-		if (ci.ReturnFuncIndex < 0) break;
 		FuncDef callerFunc = GetFuncDef(ci.ReturnFuncIndex);
 		Int32 callerPC = ci.ReturnPC - 1;
 		if (callerPC < 0) callerPC = 0;
@@ -867,31 +873,43 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 			}
 
 			VM_CASE(LOCALS_rA) {
-				// Create VarMap for local variables and store in R[A]
+				// Create VarMap for local variables and store in R[A].
+				// Temporarily clear this register's name while building the VarMap, so that
+				// the destination register does not appear as a self-referential entry (e.g.,
+				// "locals" pointing to the VarMap itself).  Restore afterward so that if the
+				// user wrote `myLocals = locals`, the name "myLocals" remains findable.
 				Byte a = BytecodeUtil::Au(instruction);
+				val = names[baseIndex + a];  // saved name
+				names[baseIndex + a] = val_null;   // temporarily clear it
 				localStack[a] = GetCurrentLocalVarMap(baseIndex, curFuncRaw->MaxRegs);
-				names[baseIndex+a] = val_null;
+				names[baseIndex + a] = val;  // restore name
 				VM_NEXT();
 			}
 
 			VM_CASE(OUTER_rA) {
-				// Return VarMap for outer scope; fall back to globals if none
+				// Return VarMap for outer scope; fall back to globals if none.
+				// Same temporary-clear pattern as LOCALS_rA (see above).
 				Byte a = BytecodeUtil::Au(instruction);
+				val = names[baseIndex + a];  // saved name
+				names[baseIndex + a] = val_null;   // temporarily clear it
 				if (callStackTop > 0 && !is_null(callStack[callStackTop - 1].OuterVarMap)) {
 					localStack[a] = callStack[callStackTop - 1].OuterVarMap;
 				} else {
 					// No enclosing scope or at global scope: outer == globals
 					localStack[a] = GetGlobalsVarMap();
 				}
-				names[baseIndex+a] = val_null;
+				names[baseIndex + a] = val;   // restore name
 				VM_NEXT();
 			}
 
 			VM_CASE(GLOBALS_rA) {
-				// Return VarMap for global variables
+				// Return VarMap for global variables.
+				// Same temporary-clear pattern as LOCALS_rA (see above).
 				Byte a = BytecodeUtil::Au(instruction);
+				val = names[baseIndex + a];  // saved name
+				names[baseIndex + a] = val_null;   // temporarily clear it
 				localStack[a] = GetGlobalsVarMap();
-				names[baseIndex+a] = val_null;
+				names[baseIndex + a] = val;  // restore name
 				VM_NEXT();
 			}
 
@@ -1710,15 +1728,9 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 			VM_CASE(RETURN) {
 				// Return value convention: value is in base[0]
 				val = stack[baseIndex];
-				if (callStackTop == 0) {
-					// Returning from main function
-					SaveState(pc, baseIndex, currentFuncIndex);
-					IsRunning = Boolean(false);
-					GC_POP_SCOPE();
-					return val;
-				}
-				
-				// If current call frame had a locals VarMap, gather it up
+
+				// Gather the current execution-context frame's locals VarMap if one exists
+				// (makes closure values survive beyond the function's lifetime).
 				CallInfo frame = callStack[callStackTop - 1];
 				if (!is_null(frame.LocalVarMap)) {
 					varmap_gather(frame.LocalVarMap);
@@ -1726,14 +1738,23 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 					callStack[callStackTop - 1] = frame;  // write back (CallInfo is a struct)
 				}
 
-				// Pop call stack
+				// Pop the current execution-context frame.
 				callStackTop--;
+				if (callStackTop == 0) {
+					// We just popped @main's frame — execution is complete.
+					SaveState(pc, baseIndex, currentFuncIndex);
+					IsRunning = Boolean(false);
+					GC_POP_SCOPE();
+					return val;
+				}
+
+				// Restore the caller's execution state from its frame.
 				CallInfo callInfo = callStack[callStackTop];
 				pc = callInfo.ReturnPC;
 				baseIndex = callInfo.ReturnBase;
-				currentFuncIndex = callInfo.ReturnFuncIndex; // Restore the caller's function
+				currentFuncIndex = callInfo.ReturnFuncIndex;
 				SwitchFrame(currentFuncIndex, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack, stackPtr);
-				
+
 				if (callInfo.CopyResultToReg >= 0) {
 					stack[baseIndex + callInfo.CopyResultToReg] = val;
 				}
@@ -1785,17 +1806,8 @@ FORCE_INLINE void VMStorage::SwitchFrame(Int32 currentFuncIndex, Int32 baseIndex
 Value VMStorage::GetGlobalsVarMap() {
 	if (!is_null(ReplGlobals)) return ReplGlobals;
 	CallInfo gframe = callStack[0];
-	Int32 regCount;
-	if (callStackTop == 0) {
-		regCount = CurrentFunction.MaxRegs();
-	} else {
-		regCount = functions[gframe.ReturnFuncIndex].MaxRegs();
-	}
-	GC_PUSH_SCOPE();
-	Value globalMap = gframe.GetLocalVarMap(stack, names, 0, regCount); GC_PROTECT(&globalMap);
-	callStack[0] = gframe;  // write back (CallInfo is a struct)
-	GC_POP_SCOPE();
-	return globalMap;
+	Int32 regCount = functions[gframe.ReturnFuncIndex].MaxRegs();
+	return make_varmap(&stack[0], &names[0], 0, regCount);
 }
 Value VMStorage::LookupParamByName(String varName) {
 	// Look up a parameter by name in the current frame.  This is provided

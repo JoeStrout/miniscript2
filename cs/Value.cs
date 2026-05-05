@@ -182,34 +182,36 @@ public readonly struct Value {
 		if (IsList) {
 			var valueList = HandlePool.Get(Handle()) as ValueList;
 			if (valueList == null) return "<list?>";
-			
-			var items = new string[valueList.Count];
-			for (int i = 0; i < valueList.Count; i++) {
-				Value item = valueList.Get(i);
-				// ToDo: watch out for recursion, or maybe just limit our depth in
-				// general.  I think MS1.0 limits nesting to 16 levels deep.  But
-				// whatever we do, we shouldn't just crash with a stack overflow.
-				items[i] = ValueHelpers.value_repr(item).ToString();
+			if (ValueHelpers._reprDepth >= ValueHelpers._reprMaxDepth) return "[...]";
+			ValueHelpers._reprDepth++;
+			try {
+				var items = new string[valueList.Count];
+				for (int i = 0; i < valueList.Count; i++) {
+					items[i] = ValueHelpers.value_repr(valueList.Get(i)).ToString();
+				}
+				return "[" + string.Join(", ", items) + "]";
+			} finally {
+				ValueHelpers._reprDepth--;
 			}
-			return "[" + string.Join(", ", items) + "]";
 		}
 		if (IsMap) {
 			var valueMap = HandlePool.Get(Handle()) as ValueMap;
 			if (valueMap == null) return "<map?>";
-
-			var items = new string[valueMap.Count];
-			int i = 0;
-			foreach (var kvp in valueMap.Items) {
-				// ToDo: watch out for recursion, or maybe just limit our depth in
-				// general.  I think MS1.0 limits nesting to 16 levels deep.  But
-				// whatever we do, we shouldn't just crash with a stack overflow.
-				string keyStr = ValueHelpers.value_repr(kvp.Key).ToString();
-				string valueStr = ValueHelpers.value_repr(kvp.Value).ToString();
-				items[i] = keyStr + ": " + valueStr;
-				i++;
+			if (ValueHelpers._reprDepth >= ValueHelpers._reprMaxDepth) return "{...}";
+			ValueHelpers._reprDepth++;
+			try {
+				var items = new string[valueMap.Count];
+				int i = 0;
+				foreach (var kvp in valueMap.Items) {
+					string keyStr = ValueHelpers.value_repr(kvp.Key).ToString();
+					string valueStr = ValueHelpers.value_repr(kvp.Value).ToString();
+					items[i] = keyStr + ": " + valueStr;
+					i++;
+				}
+				return "{" + string.Join(", ", items) + "}";
+			} finally {
+				ValueHelpers._reprDepth--;
 			}
-
-			return "{" + string.Join(", ", items) + "}";
 		}
 		if (IsFuncRef) {
 			var funcRefObj = AsFuncRefObject();
@@ -906,6 +908,12 @@ public static class ValueHelpers {
 		}
 		return v;
 	}
+
+	// Depth guard for Value.ToString() / value_repr() to prevent stack overflow
+	// when printing circular structures (e.g. g = globals; print g).
+	// MiniScript 1.x limits nesting to 16 levels; we use the same limit.
+	[ThreadStatic] internal static int _reprDepth;
+	internal const int _reprMaxDepth = 16;
 
 	// Value representation function (for literal representation)
 	public static Value value_repr(Value v) {

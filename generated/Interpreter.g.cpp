@@ -4,6 +4,7 @@
 #include "Interpreter.g.h"
 #include "StringUtils.g.h"
 #include "Intrinsic.g.h" // ToDo: remove this once we've refactored set_FunctionIndexOffset away
+#include "CoreIntrinsics.g.h"
 
 namespace MiniScript {
 

@@ -46,7 +46,7 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	public: void SetInterpreter(Interpreter interp); // NO_INLINE
 	public: Interpreter GetInterpreter(); // NO_INLINE
 	private: List<CallInfo> callStack;
-	private: Int32 callStackTop; // Index of next free call stack slot
+	private: Int32 callStackTop;
 	private: List<FuncDef> functions; // functions addressed by CALLF
 	private: std::vector<FuncDefStorage*> functionsRaw;
 	private: Dictionary<String, Value> _intrinsics; // intrinsic name -> FuncRef Value
@@ -66,6 +66,11 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	private: Int32 _pendingResultIndex; // absolute stack index for result (and partial result)
 	public: bool yielding;
 	private: std::chrono::steady_clock::time_point _startTime;
+
+	// callStack is indexed by execution depth: callStack[0] is always @main's execution
+	// context (globals live here), callStack[1] is the first user function call, etc.
+	// callStackTop is the index of the next free slot (== current depth + 1).
+	// Invariant: callStackTop >= 1 during all execution (set up in Reset).
 
 	
 
@@ -199,11 +204,16 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	// Switch all frame-local execution state to the function at currentFuncIndex.
 
 	// Get the globals VarMap.  In REPL mode, returns the persistent ReplGlobals.
-	// Otherwise, lazily creates one from callStack[0].
+	// Otherwise, builds a fresh VarMap from @main's registers each call.  A fresh
+	// scan is required because variables may be assigned (and added to names[]) after
+	// @main's callStack[0].LocalVarMap was first created by a FUNCREF closure, so a
+	// cached map would miss them.  callStack[0].ReturnFuncIndex holds @main's own
+	// function index (by convention for this slot), used to find @main's MaxRegs.
 	private: Value GetGlobalsVarMap();
 
 	// Get or create a VarMap for the current call frame's local variables.
-	// At global scope (callStackTop == 0), creates a VarMap directly.
+	// callStack[callStackTop-1] is always the current execution-context frame
+	// (callStackTop >= 1 is guaranteed since @main's frame is always at callStack[0]).
 	private: Value GetCurrentLocalVarMap(Int32 baseIndex, UInt16 maxRegs);
 
 	private: void SaveState(Int32 pc, Int32 baseIndex, Int32 currentFuncIndex);
@@ -239,8 +249,8 @@ struct VM {
 	public: Interpreter GetInterpreter(); // NO_INLINE
 	private: List<CallInfo> callStack();
 	private: void set_callStack(List<CallInfo> _v);
-	private: Int32 callStackTop(); // Index of next free call stack slot
-	private: void set_callStackTop(Int32 _v); // Index of next free call stack slot
+	private: Int32 callStackTop();
+	private: void set_callStackTop(Int32 _v);
 	private: List<FuncDef> functions(); // functions addressed by CALLF
 	private: void set_functions(List<FuncDef> _v); // functions addressed by CALLF
 	private: Dictionary<String, Value> _intrinsics(); // intrinsic name -> FuncRef Value
@@ -275,6 +285,11 @@ struct VM {
 	private: void set__pendingResultIndex(Int32 _v); // absolute stack index for result (and partial result)
 	public: bool yielding();
 	public: void set_yielding(bool _v);
+
+	// callStack is indexed by execution depth: callStack[0] is always @main's execution
+	// context (globals live here), callStack[1] is the first user function call, etc.
+	// callStackTop is the index of the next free slot (== current depth + 1).
+	// Invariant: callStackTop >= 1 during all execution (set up in Reset).
 
 	
 
@@ -408,11 +423,16 @@ struct VM {
 	// Switch all frame-local execution state to the function at currentFuncIndex.
 
 	// Get the globals VarMap.  In REPL mode, returns the persistent ReplGlobals.
-	// Otherwise, lazily creates one from callStack[0].
+	// Otherwise, builds a fresh VarMap from @main's registers each call.  A fresh
+	// scan is required because variables may be assigned (and added to names[]) after
+	// @main's callStack[0].LocalVarMap was first created by a FUNCREF closure, so a
+	// cached map would miss them.  callStack[0].ReturnFuncIndex holds @main's own
+	// function index (by convention for this slot), used to find @main's MaxRegs.
 	private: inline Value GetGlobalsVarMap();
 
 	// Get or create a VarMap for the current call frame's local variables.
-	// At global scope (callStackTop == 0), creates a VarMap directly.
+	// callStack[callStackTop-1] is always the current execution-context frame
+	// (callStackTop >= 1 is guaranteed since @main's frame is always at callStack[0]).
 	private: inline Value GetCurrentLocalVarMap(Int32 baseIndex, UInt16 maxRegs);
 
 	private: inline void SaveState(Int32 pc, Int32 baseIndex, Int32 currentFuncIndex);
@@ -433,8 +453,8 @@ inline List<Value> VM::names() { return get()->names; } // Variable names parall
 inline void VM::set_names(List<Value> _v) { get()->names = _v; } // Variable names parallel to stack (null if unnamed)
 inline List<CallInfo> VM::callStack() { return get()->callStack; }
 inline void VM::set_callStack(List<CallInfo> _v) { get()->callStack = _v; }
-inline Int32 VM::callStackTop() { return get()->callStackTop; } // Index of next free call stack slot
-inline void VM::set_callStackTop(Int32 _v) { get()->callStackTop = _v; } // Index of next free call stack slot
+inline Int32 VM::callStackTop() { return get()->callStackTop; }
+inline void VM::set_callStackTop(Int32 _v) { get()->callStackTop = _v; }
 inline List<FuncDef> VM::functions() { return get()->functions; } // functions addressed by CALLF
 inline void VM::set_functions(List<FuncDef> _v) { get()->functions = _v; } // functions addressed by CALLF
 inline Dictionary<String, Value> VM::_intrinsics() { return get()->_intrinsics; } // intrinsic name -> FuncRef Value
@@ -513,15 +533,10 @@ inline void VMStorage::EnsureFrame(Int32 baseIndex,UInt16 neededRegs) {
 inline Value VM::GetGlobalsVarMap() { return get()->GetGlobalsVarMap(); }
 inline Value VM::GetCurrentLocalVarMap(Int32 baseIndex,UInt16 maxRegs) { return get()->GetCurrentLocalVarMap(baseIndex, maxRegs); }
 inline Value VMStorage::GetCurrentLocalVarMap(Int32 baseIndex,UInt16 maxRegs) {
+	CallInfo frame = callStack[callStackTop - 1];
 	GC_PUSH_SCOPE();
-	Value result; GC_PROTECT(&result);
-	if (callStackTop > 0) {
-		CallInfo frame = callStack[callStackTop - 1];
-		result = frame.GetLocalVarMap(stack, names, baseIndex, maxRegs);
-		callStack[callStackTop - 1] = frame;  // write back (CallInfo is a struct)
-	} else {
-		result = make_varmap(&stack[0], &names[0], baseIndex, maxRegs);
-	}
+	Value result = frame.GetLocalVarMap(stack, names, baseIndex, maxRegs); GC_PROTECT(&result);
+	callStack[callStackTop - 1] = frame;  // write back (CallInfo is a struct)
 	GC_POP_SCOPE();
 	return result;
 }

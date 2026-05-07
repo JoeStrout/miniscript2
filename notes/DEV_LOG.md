@@ -799,3 +799,14 @@ So we're factoring it so that callStack now represents execution frames, and cal
 
 Then I need to remember to fix the error reporting too.
 
+## May 7, 2026
+
+I've started documenting major architecture decisions in ADRs (in notes/adr).  ADRs are _meant_ to be written when they are made, not retroactively, but I figure better late than never.
+
+The first two ADRs cover the decision to transpile C# to C++, and the decision to use NaN-boxing for our Value type.  But reviewing the code and consequences for the latter has turned up an implication I had not fully grasped: in our C# version, we have effectively disabled GC for all MiniScript objects.  This is because the NaN box can't contain a true reference; it can't contain a pointer (even if we could get a pointer to an object, C#'s GC is liable to move objects in the heap); and so it contains just an index into a separate Handle array.  This Handle array must contain strong references to the objects, since it will often be the _only_ reference that C# sees.  And we have no way of clearing it out.
+
+Possibly we could periodically sweep our Handle array.  This would be similar to the mark-and-sweep operation the C++ GC does.  It would require knowing all the roots, just like the C++ code.  Unlike the C++ code, we would not have to do this at allocation time; we could have somewhat more control over when it's done (for example, only within a `yield` or `wait`).
+
+If the periodic sweep does not work, or is too expensive, then we might have to instead change our Value representation in C# to something like a union struct, so that C# can see the references and manage GC normally.
+
+I consider this a serious issue, and a high priority to tackle.  Probably right after deciding whether to keep ints as a separate type.

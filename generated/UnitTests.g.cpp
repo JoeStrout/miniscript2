@@ -232,7 +232,7 @@ Boolean UnitTests::TestValueMap() {
 	Value key1 = make_string("name"); GC_PROTECT(&key1);
 	Value value1 = make_string("John"); GC_PROTECT(&value1);
 	Value key2 = make_string("age"); GC_PROTECT(&key2);
-	Value value2 = make_int(30); GC_PROTECT(&value2);
+	Value value2 = make_double(30.0); GC_PROTECT(&value2);
 
 	Boolean insertOk = map_set(map, key1, value1)
 		&& map_set(map, key2, value2)
@@ -247,8 +247,8 @@ Boolean UnitTests::TestValueMap() {
 	Value retrieved1 = map_get(map, key1); GC_PROTECT(&retrieved1);
 	Value retrieved2 = map_get(map, key2); GC_PROTECT(&retrieved2);
 	Boolean lookupOk = Assert(is_string(retrieved1), "Retrieved value should be string")
-		&& Assert(is_int(retrieved2), "Retrieved value should be int")
-		&& AssertEqual(as_int(retrieved2), 30);
+		&& Assert(is_double(retrieved2), "Retrieved value should be number")
+		&& AssertEqual((int)as_double(retrieved2), 30);
 
 	if (!lookupOk)  {
 		GC_POP_SCOPE();

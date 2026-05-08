@@ -32,7 +32,6 @@ public readonly struct Value {
 	private const ulong NANISH_MASK     = 0xFFFF_0000_0000_0000UL;
 	private const ulong NULL_VALUE      = 0xFFF1_0000_0000_0000UL; // null singleton (our lowest reserved NaN pattern)
 	private const ulong ERROR_TAG       = 0xFFF9_0000_0000_0000UL; // error reference tag
-	private const ulong INTEGER_TAG     = 0xFFFA_0000_0000_0000UL; // Int32 tag
 	private const ulong FUNCREF_TAG     = 0xFFFB_0000_0000_0000UL; // function reference tag
 	private const ulong MAP_TAG         = 0xFFFC_0000_0000_0000UL; // map tag
 	private const ulong LIST_TAG        = 0xFFFD_0000_0000_0000UL; // list tag
@@ -44,7 +43,7 @@ public readonly struct Value {
 	public static Value Null() => new(NULL_VALUE);
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value FromInt(int i) => new(INTEGER_TAG | (uint)i);
+	public static Value FromInt(int i) => FromDouble((double)i);
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value FromDouble(double d) {
@@ -110,8 +109,7 @@ public readonly struct Value {
 
 	// ==== TYPE PREDICATES =================================================
 	public bool IsNull   { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => _u == NULL_VALUE; }
-	public bool IsInt	{ [MethodImpl(MethodImplOptions.AggressiveInlining)] get => (_u & NANISH_MASK) == INTEGER_TAG; }
-	public bool IsTiny   { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => (_u & TINY_STRING_TAG) == TINY_STRING_TAG && (_u & NANISH_MASK) != STRING_TAG && (_u & NANISH_MASK) != LIST_TAG && (_u & NANISH_MASK) != MAP_TAG && (_u & NANISH_MASK) != INTEGER_TAG && (_u & NANISH_MASK) != FUNCREF_TAG && _u != NULL_VALUE; }
+	public bool IsTiny   { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => (_u & TINY_STRING_TAG) == TINY_STRING_TAG && (_u & NANISH_MASK) != STRING_TAG && (_u & NANISH_MASK) != LIST_TAG && (_u & NANISH_MASK) != MAP_TAG && (_u & NANISH_MASK) != FUNCREF_TAG && _u != NULL_VALUE; }
 	public bool IsHeapString { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => (_u & NANISH_MASK) == STRING_TAG; }
 	public bool IsString { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => (_u & STRING_TAG) == STRING_TAG; }
 	public bool IsFuncRef { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => (_u & NANISH_MASK) == FUNCREF_TAG; }
@@ -122,7 +120,7 @@ public readonly struct Value {
 
 	// ==== ACCESSORS =======================================================
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public int AsInt() => (int)_u;
+	public int AsInt() => (int)AsDouble();
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public ValueFuncRef AsFuncRefObject() => HandlePool.Get(Handle()) as ValueFuncRef;
@@ -151,7 +149,6 @@ public readonly struct Value {
 
 	public override string ToString()  {
 		if (IsNull) return "null";
-		if (IsInt) return AsInt().ToString();
 		if (IsDouble) {
 			double value = AsDouble();
 			if (value % 1.0 == 0.0) {
@@ -234,15 +231,8 @@ public readonly struct Value {
 	public static Value Add(Value a, Value b) {
 		if (a.IsError) return a;
 		if (b.IsError) return b;
-		if (a.IsInt && b.IsInt) {
-			long r = (long)a.AsInt() + b.AsInt();
-			if ((uint)r == r) return FromInt((int)r);
-			return FromDouble((double)r);
-		}
-		if ((a.IsInt || a.IsDouble) && (b.IsInt || b.IsDouble)) {
-			double da = a.IsInt ? a.AsInt() : a.AsDouble();
-			double db = b.IsInt ? b.AsInt() : b.AsDouble();
-			return FromDouble(da + db);
+		if (a.IsDouble && b.IsDouble) {
+			return FromDouble(a.AsDouble() + b.AsDouble());
 		}
 		// Handle string concatenation: any type + string or string + any type
 		// Null is treated as empty string in concatenation (string + null = string)
@@ -265,31 +255,12 @@ public readonly struct Value {
 	public static Value Multiply(Value a, Value b) {
 		if (a.IsError) return a;
 		if (b.IsError) return b;
-		if (a.IsInt && b.IsInt) {
-			long r = (long)a.AsInt() * b.AsInt();
-			if ((uint)r == r) return FromInt((int)r);
-			return FromDouble((double)r);
+		if (a.IsDouble && b.IsDouble) {
+			return FromDouble(a.AsDouble() * b.AsDouble());
 		}
-		if (is_number(a) && is_number(b)) {
-			double da = a.IsInt ? a.AsInt() : a.AsDouble();
-			double db = b.IsInt ? b.AsInt() : b.AsDouble();
-			return FromDouble(da * db);
-		}
-		// TODO: String support not added yet!
 
-		// Handle string repetition: string * int or int * string
-		if (a.IsString && b.IsInt) {
-			int count = b.AsInt();
-			if (count <= 0) return FromString("");
-			if (count == 1) return a;
-			
-			// Build repeated string
-			Value result = a;
-			for (int i = 1; i < count; i++) {
-				result = ValueHelpers.string_concat(result, a);
-			}
-			return result;
-		} else if (is_string(a) && is_double(b)) {
+		// Handle string repetition: string * number
+		if (is_string(a) && is_double(b)) {
 			int repeats = 0;
 			int extraChars = 0;
 			double factor = as_double(b);
@@ -307,8 +278,8 @@ public readonly struct Value {
 			return result;
 		}
 		// List replication: list * number
-		if (a.IsList && is_number(b)) {
-			double factor = b.IsInt ? b.AsInt() : b.AsDouble();
+		if (a.IsList && b.IsDouble) {
+			double factor = b.AsDouble();
 			if (double.IsNaN(factor) || double.IsInfinity(factor)) return Null();
 			int len = ValueHelpers.list_count(a);
 			if (factor <= 0 || len == 0) return ValueHelpers.make_list(0);
@@ -333,18 +304,16 @@ public readonly struct Value {
 		if (a.IsError) return a;
 		if (b.IsError) return b;
 		// MiniScript division always returns a float/double
-		if ((a.IsInt || a.IsDouble) && (b.IsInt || b.IsDouble)) {
-			double da = a.IsInt ? a.AsInt() : a.AsDouble();
-			double db = b.IsInt ? b.AsInt() : b.AsDouble();
-			return FromDouble(da / db);
+		if (a.IsDouble && b.IsDouble) {
+			return FromDouble(a.AsDouble() / b.AsDouble());
 		}
-		if (is_string(a) && is_number(b)) {
+		if (is_string(a) && b.IsDouble) {
 			// We'll just call through to value_mult for this, with a factor of 1/b.
 			return value_mult(a, value_div(make_double(1), b));
 		}
 		// List division: list / number (same as list * (1/number))
-		if (a.IsList && is_number(b)) {
-			double db = b.IsInt ? b.AsInt() : b.AsDouble();
+		if (a.IsList && b.IsDouble) {
+			double db = b.AsDouble();
 			if (db == 0 || double.IsNaN(db) || double.IsInfinity(db)) return Null();
 			return value_mult(a, value_div(make_double(1), b));
 		}
@@ -355,32 +324,17 @@ public readonly struct Value {
 	public static Value Mod(Value a, Value b) {
 		if (a.IsError) return a;
 		if (b.IsError) return b;
-		if (a.IsInt && b.IsInt) {
-			long r = (long)a.AsInt() % b.AsInt();
-			if ((uint)r == r) return FromInt((int)r);
-			return FromDouble((double)r);
+		if (a.IsDouble && b.IsDouble) {
+			return FromDouble(a.AsDouble() % b.AsDouble());
 		}
-		if ((a.IsInt || a.IsDouble) && (b.IsInt || b.IsDouble)) {
-			double da = a.IsInt ? a.AsInt() : a.AsDouble();
-			double db = b.IsInt ? b.AsInt() : b.AsDouble();
-			return FromDouble(da % db);
-		}
-		// TODO: String support not added yet!
-		// string concat, list append, etc. can be added here.
 		return Null();
 	}
 
 	public static Value Pow(Value a, Value b) {
 		if (a.IsError) return a;
 		if (b.IsError) return b;
-		if ((a.IsInt || a.IsDouble) && (b.IsInt || b.IsDouble)) {
-			double da = a.IsInt ? a.AsInt() : a.AsDouble();
-			double db = b.IsInt ? b.AsInt() : b.AsDouble();
-			double result = Math.Pow(da, db);
-			if (a.IsInt && b.IsInt && db >= 0 && result == (int)result) {
-				return FromInt((int)result);
-			}
-			return FromDouble(result);
+		if (a.IsDouble && b.IsDouble) {
+			return FromDouble(Math.Pow(a.AsDouble(), b.AsDouble()));
 		}
 		return Null();
 	}
@@ -389,15 +343,8 @@ public readonly struct Value {
 	public static Value Sub(Value a, Value b) {
 		if (a.IsError) return a;
 		if (b.IsError) return b;
-		if (a.IsInt && b.IsInt) {
-			long r = (long)a.AsInt() - b.AsInt();
-			if (r >= int.MinValue && r <= int.MaxValue) return FromInt((int)r);
-			return FromDouble((double)r);
-		}
-		if ((a.IsInt || a.IsDouble) && (b.IsInt || b.IsDouble)) {
-			double da = a.IsInt ? a.AsInt() : a.AsDouble();
-			double db = b.IsInt ? b.AsInt() : b.AsDouble();
-			return FromDouble(da - db);
+		if (a.IsDouble && b.IsDouble) {
+			return FromDouble(a.AsDouble() - b.AsDouble());
 		}
 		if (a.IsString && b.IsString) {
 			string sa = a.IsTiny ? a.ToString() : HandlePool.Get(a.Handle()) as string;
@@ -412,10 +359,8 @@ public readonly struct Value {
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool LessThan(Value a, Value b) {
-		if ((a.IsInt || a.IsDouble) && (b.IsInt || b.IsDouble)) {
-			double da = a.IsInt ? a.AsInt() : a.AsDouble();
-			double db = b.IsInt ? b.AsInt() : b.AsDouble();
-			return da < db;
+		if (a.IsDouble && b.IsDouble) {
+			return a.AsDouble() < b.AsDouble();
 		}
 		// Handle string comparison
 		if (a.IsString && b.IsString) {
@@ -426,10 +371,8 @@ public readonly struct Value {
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool LessThanOrEqual(Value a, Value b) {
-		if ((a.IsInt || a.IsDouble) && (b.IsInt || b.IsDouble)) {
-			double da = a.IsInt ? a.AsInt() : a.AsDouble();
-			double db = b.IsInt ? b.AsInt() : b.AsDouble();
-			return da <= db;
+		if (a.IsDouble && b.IsDouble) {
+			return a.AsDouble() <= b.AsDouble();
 		}
 		// Handle string comparison
 		if (a.IsString && b.IsString) {
@@ -448,11 +391,9 @@ public readonly struct Value {
 		// Fast path: identical bits
 		if (a._u == b._u) return true;
 
-		// If both numeric, compare numerically (handles int/double mix)
-		if ((a.IsInt || a.IsDouble) && (b.IsInt || b.IsDouble)) {
-			double da = a.IsInt ? a.AsInt() : a.AsDouble();
-			double db = b.IsInt ? b.AsInt() : b.AsDouble();
-			return da == db; // Note: NaN == NaN is false, matching IEEE
+		// If both numeric, compare numerically
+		if (a.IsDouble && b.IsDouble) {
+			return a.AsDouble() == b.AsDouble(); // Note: NaN == NaN is false, matching IEEE
 		}
 
 		// Both tiny strings => byte compare via bits when lengths equal
@@ -512,8 +453,8 @@ public static class ValueHelpers {
 
 	// Common constant values (matching value.h)
 	public static Value val_null = Value.Null();
-	public static Value val_zero = Value.FromInt(0);
-	public static Value val_one = Value.FromInt(1);
+	public static Value val_zero = Value.FromDouble(0.0);
+	public static Value val_one = Value.FromDouble(1.0);
 	public static Value val_empty_string = Value.FromString("");
 	public static Value val_isa_key = Value.FromString("__isa");
 	public static Value val_self = Value.FromString("self");
@@ -521,10 +462,10 @@ public static class ValueHelpers {
 
 	// Core value creation functions (matching value.h)
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value make_int(int i) => Value.FromInt(i);
+	public static Value make_int(int i) => Value.FromDouble((double)i);
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value make_int(bool b) => Value.FromInt(b ? 1 : 0);
+	public static Value make_int(bool b) => Value.FromDouble(b ? 1.0 : 0.0);
 	
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value make_double(double d) => Value.FromDouble(d);
@@ -930,16 +871,14 @@ public static class ValueHelpers {
 
 	// Core value extraction functions (matching value.h)
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static int as_int(Value v) => v.AsInt();
+	public static int as_int(Value v) => (int)v.AsDouble();
 	
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static double as_double(Value v) => v.AsDouble();
 
-	// Get the numeric value as a double, whether stored as int or double.
-	// Returns 0 for non-numeric types (null, string, list, map, etc.).
+	// Get the numeric value as a double, or 0 for non-numeric types.
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static double numeric_val(Value v) {
-		if (v.IsInt) return v.AsInt();
 		if (v.IsDouble) return v.AsDouble();
 		if (v.IsError) VM.ActiveVM().RaiseUncaughtError(v);
 		return 0.0;
@@ -950,7 +889,7 @@ public static class ValueHelpers {
 	public static bool is_null(Value v) => v.IsNull;
 	
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool is_int(Value v) => v.IsInt;
+	public static bool is_int(Value v) => false;
 	
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool is_double(Value v) => v.IsDouble;
@@ -1032,12 +971,11 @@ public static class ValueHelpers {
 	}
 	
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool is_number(Value v) => v.IsInt || v.IsDouble;
+	public static bool is_number(Value v) => v.IsDouble;
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool is_truthy(Value v) => (!is_null(v) &&
-			((is_int(v) && as_int(v) != 0) ||
-			(is_double(v) && as_double(v) != 0.0) ||
+			((is_double(v) && as_double(v) != 0.0) ||
 			(is_string(v) && ValueHelpers.string_length(v) != 0)
 			));
 	
@@ -1065,9 +1003,7 @@ public static class ValueHelpers {
 	// Helper: convert a value to a fuzzy truth value (0-1)
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Double ToFuzzyBool(Value v) {
-		if (is_int(v)) return (Double)as_int(v);
 		if (is_double(v)) return as_double(v);
-		// For non-numeric values, use boolean truth: truthy = 1, falsey = 0
 		return is_truthy(v) ? 1.0 : 0.0;
 	}
 
@@ -1132,10 +1068,7 @@ public static class ValueHelpers {
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value to_number(Value a) {
 		try {
-			double result = double.Parse(a.ToString());
-			if (result % 1 == 0 && Int32.MinValue <= result 
-				&& result <= Int32.MaxValue) return make_int((int)result);
-			return make_double(result);
+			return make_double(double.Parse(a.ToString()));
 		} catch {
 			return val_zero;
 		}

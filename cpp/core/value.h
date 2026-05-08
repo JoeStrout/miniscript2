@@ -65,7 +65,6 @@ typedef struct ValueMap {
 #define NANISH_MASK       0xffff000000000000ULL
 #define NULL_VALUE        0xfff1000000000000ULL  // our lowest reserved NaN pattern
 #define ERROR_TAG         0xfff9000000000000ULL
-#define INTEGER_TAG       0xfffa000000000000ULL
 #define FUNCREF_TAG       0xfffb000000000000ULL
 #define MAP_TAG           0xfffc000000000000ULL
 #define LIST_TAG          0xfffd000000000000ULL
@@ -76,8 +75,8 @@ typedef struct ValueMap {
 
 // Common constant values (initialized by value_init_constants in value.c)
 #define val_null ((Value)NULL_VALUE)
-#define val_zero ((Value)INTEGER_TAG)  
-#define val_one ((Value)(INTEGER_TAG | 1))
+#define val_zero ((Value)0x0000000000000000ULL)  // double 0.0
+#define val_one  ((Value)0x3FF0000000000000ULL)  // double 1.0
 #define val_empty_string ((Value)TINY_STRING_TAG)
 extern Value val_isa_key;  // "__isa" (tiny string, no GC needed)
 extern Value val_self;     // "self" (tiny string, no GC needed)
@@ -115,7 +114,7 @@ static inline bool is_error(Value v) {
 }
 
 static inline bool is_int(Value v) {
-    return (v & NANISH_MASK) == INTEGER_TAG;
+    return false;
 }
 
 static inline bool is_tiny_string(Value v) {
@@ -152,7 +151,7 @@ static inline bool is_double(Value v) {
 }
 
 static inline bool is_number(Value v) {
-    return is_int(v) || is_double(v);
+    return is_double(v);
 }
 
 bool is_truthy(Value v);
@@ -162,16 +161,16 @@ static inline Value make_null(void) {
     return val_null;
 }
 
-static inline Value make_int(int32_t i) {
-    return INTEGER_TAG | (uint64_t)(uint32_t)i;
-}
-
 static inline Value make_double(double d) {
 	// This looks expensive, but it's the only 100% portable way, and modern
 	// compilers will recognize it as a bit-cast and emit a single move instruction.
     Value v;
     memcpy(&v, &d, sizeof v);   // bitwise copy; aliasing-safe
     return v;
+}
+
+static inline Value make_int(int32_t i) {
+    return make_double((double)i);
 }
 
 typedef struct {
@@ -257,10 +256,6 @@ static inline Value make_funcref(int32_t funcIndex, Value outerVars) {
 }
 
 // Core value extraction functions
-static inline int32_t as_int(Value v) {
-    return (int32_t)v;
-}
-
 static inline double as_double(Value v) {
 	// See comments in make_double.
     double d;
@@ -268,10 +263,12 @@ static inline double as_double(Value v) {
     return d;
 }
 
-// Get the numeric value as a double, whether stored as int or double.
-// Returns 0 for non-numeric types (null, string, list, map, etc.).
+static inline int32_t as_int(Value v) {
+    return (int32_t)as_double(v);
+}
+
+// Get the numeric value as a double, or 0 for non-numeric types.
 static inline double numeric_val(Value v) {
-    if (is_int(v)) return (double)as_int(v);
     if (is_double(v)) return as_double(v);
     return 0.0;
 }
@@ -295,25 +292,9 @@ Value to_number(Value v);
 static inline Value value_add(Value a, Value b) {
     if (is_error(a)) return a;
     if (is_error(b)) return b;
-    // Handle integer + integer case
-    if (is_int(a) && is_int(b)) {
-        // Use int64_t to detect overflow
-        int64_t result = (int64_t)as_int(a) + (int64_t)as_int(b);
-        if (result >= INT32_MIN && result <= INT32_MAX) {
-            return make_int((int32_t)result);
-        } else {
-            // Overflow to double
-            return make_double((double)result);
-        }
+    if (is_double(a) && is_double(b)) {
+        return make_double(as_double(a) + as_double(b));
     }
-    
-    // Handle mixed integer/double or double/double cases
-    if (is_number(a) && is_number(b)) {
-        double da = is_int(a) ? (double)as_int(a) : as_double(a);
-        double db = is_int(b) ? (double)as_int(b) : as_double(b);
-        return make_double(da + db);
-    }
-    
     // Handle string concatenation: any type + string or string + any type
     // Null is treated as empty string in concatenation
     if (is_string(a)) {
@@ -324,71 +305,29 @@ static inline Value value_add(Value a, Value b) {
         if (is_null(a)) return b;
         return string_concat(to_string(a), b);
     }
-    
-    // Handle list concatenation
-    if (is_list(a) && is_list(b)) {
-    	return list_concat(a, b);
-    }
-
-    // Handle map addition
-    if (is_map(a) && is_map(b)) {
-    	return map_concat(a, b);
-    }
-
-    // For now, return nil for unsupported operations
+    if (is_list(a) && is_list(b)) return list_concat(a, b);
+    if (is_map(a) && is_map(b)) return map_concat(a, b);
     return val_null;
 }
 
 static inline Value value_sub(Value a, Value b) {
     if (is_error(a)) return a;
     if (is_error(b)) return b;
-    // Handle integer - integer case
-    if (is_int(a) && is_int(b)) {
-        // Use int64_t to detect overflow/underflow
-        int64_t result = (int64_t)as_int(a) - (int64_t)as_int(b);
-        if (result >= INT32_MIN && result <= INT32_MAX) {
-            return make_int((int32_t)result);
-        } else {
-            // Overflow/underflow to double
-            return make_double((double)result);
-        }
+    if (is_double(a) && is_double(b)) {
+        return make_double(as_double(a) - as_double(b));
     }
-    
-    // Handle mixed integer/double or double/double cases
-    if (is_number(a) && is_number(b)) {
-        double da = is_int(a) ? (double)as_int(a) : as_double(a);
-        double db = is_int(b) ? (double)as_int(b) : as_double(b);
-        return make_double(da - db);
-    }
-    
-    if (is_string(a) && is_string(b)) {
-    	return string_sub(a, b);
-    }
-    
-    // Return nil for unsupported operations
+    if (is_string(a) && is_string(b)) return string_sub(a, b);
     return val_null;
 }
 
 
 
-// Most critical comparison function (inlined for performance)
 // NOTE: if either operand is an error, value_lt returns false.  Callers that
 // care about error propagation (arithmetic LT/LE opcodes, branch opcodes)
 // must check is_error() on the operands first.
 static inline bool value_lt(Value a, Value b) {
-    // Handle numeric comparisons
-    if (is_number(a) && is_number(b)) {
-        double da = is_int(a) ? (double)as_int(a) : as_double(a);
-        double db = is_int(b) ? (double)as_int(b) : as_double(b);
-        return da < db;
-    }
-    
-    // Handle string comparisons (Unicode-aware)
-    if (is_string(a) && is_string(b)) {
-        return string_compare(a, b) < 0;
-    }
-    
-    // For now, return false for unsupported comparisons
+    if (is_double(a) && is_double(b)) return as_double(a) < as_double(b);
+    if (is_string(a) && is_string(b)) return string_compare(a, b) < 0;
     return false;
 }
 
@@ -396,41 +335,19 @@ extern Value value_mult_nonnumeric(Value a, Value b);
 static inline Value value_mult(Value a, Value b) {
     if (is_error(a)) return a;
     if (is_error(b)) return b;
-    // Handle integer * integer case
-    if (is_int(a) && is_int(b)) {
-        // Use int64_t to detect overflow
-        int64_t result = (int64_t)as_int(a) * (int64_t)as_int(b);
-        if (result >= INT32_MIN && result <= INT32_MAX) {
-            return make_int((int32_t)result);
-        } else {
-            // Overflow to double
-            return make_double((double)result);
-        }
+    if (is_double(a) && is_double(b)) {
+        return make_double(as_double(a) * as_double(b));
     }
-    
-    // Handle mixed integer/double or double/double cases
-    if (is_number(a) && is_number(b)) {
-        double da = is_int(a) ? (double)as_int(a) : as_double(a);
-        double db = is_int(b) ? (double)as_int(b) : as_double(b);
-        return make_double(da * db);
-    }
-    
-    // Everything else, go to the non-numeric handler
     return value_mult_nonnumeric(a, b);
 }
 
 static inline Value value_div(Value a, Value b) {
 	if (is_error(a)) return a;
 	if (is_error(b)) return b;
-	if (is_number(b)) {
-		if (is_number(a)) {	// common number/number case
-			double da = is_int(a) ? (double)as_int(a) : as_double(a);
-			double db = is_int(b) ? (double)as_int(b) : as_double(b);
-			return make_double(da / db);
-		} else { // probably string/number or list/number
-			// We'll just call through to value_mult for this, with a factor of 1/b.
-			return value_mult_nonnumeric(a, value_div(make_double(1), b));
-		}
+	if (is_double(b)) {
+		if (is_double(a)) return make_double(as_double(a) / as_double(b));
+		// string/number or list/number
+		return value_mult_nonnumeric(a, value_div(make_double(1), b));
     }
     return val_null;
 }
@@ -438,39 +355,14 @@ static inline Value value_div(Value a, Value b) {
 static inline Value value_mod(Value a, Value b) {
     if (is_error(a)) return a;
     if (is_error(b)) return b;
-    // Handle integer % integer case
-    if (is_int(a) && is_int(b)) {
-        // Use int64_t to detect overflow
-        int64_t result = (int64_t)as_int(a) % (int64_t)as_int(b);
-        if (result >= INT32_MIN && result <= INT32_MAX) {
-            return make_int((int32_t)result);
-        } else {
-            // Overflow to double
-            return make_double((double)result);
-        }
-    }
-    
-    // Handle mixed integer/double or double/double cases
-    if (is_number(a) && is_number(b)) {
-        double da = is_int(a) ? (double)as_int(a) : as_double(a);
-        double db = is_int(b) ? (double)as_int(b) : as_double(b);
-        return make_double(fmod(da, db));
-    }
+    if (is_double(a) && is_double(b)) return make_double(fmod(as_double(a), as_double(b)));
     return val_null;
 }
 
 static inline Value value_pow(Value a, Value b) {
     if (is_error(a)) return a;
     if (is_error(b)) return b;
-    if (is_number(a) && is_number(b)) {
-        double da = is_int(a) ? (double)as_int(a) : as_double(a);
-        double db = is_int(b) ? (double)as_int(b) : as_double(b);
-        double result = pow(da, db);
-        if (is_int(a) && is_int(b) && db >= 0 && result == (int32_t)result) {
-            return make_int((int32_t)result);
-        }
-        return make_double(result);
-    }
+    if (is_double(a) && is_double(b)) return make_double(pow(as_double(a), as_double(b)));
     return val_null;
 }
 
@@ -483,9 +375,7 @@ int value_compare(Value a, Value b);  // <0 if a<b, 0 if a==b, >0 if a>b
 
 // Helper methods
 static inline double ToFuzzyBool(Value v) {
-	if (is_int(v)) return (double)as_int(v);
 	if (is_double(v)) return as_double(v);
-	// For non-numeric values, use boolean truth: truthy = 1, falsey = 0
 	return is_truthy(v) ? 1.0 : 0.0;
 }
 

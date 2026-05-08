@@ -184,7 +184,6 @@ public static class StringUtils {
 	// Value type support
 	inline static String makeString(Value v) {
 		if (is_null(v)) return String("null");
-		if (is_int(v)) return makeString(as_int(v));
 		if (is_double(v)) {
 			// Use the proper MiniScript number formatting
 			Value strVal = to_string(v);

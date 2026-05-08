@@ -131,7 +131,6 @@ public struct VMVis {
 
 	private String GetValueTypeCode(Value v) {
 		if (is_null(v)) return "nul";
-		if (is_int(v)) return "int";
 		if (is_double(v)) return "dbl";
 		if (is_string(v)) return "str";
 		if (is_list(v)) return "lst";

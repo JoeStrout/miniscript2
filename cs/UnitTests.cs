@@ -240,7 +240,7 @@ public static class UnitTests {
 		Value key1 = make_string("name");
 		Value value1 = make_string("John");
 		Value key2 = make_string("age");
-		Value value2 = make_int(30);
+		Value value2 = make_double(30.0);
 
 		Boolean insertOk = map_set(map, key1, value1)
 			&& map_set(map, key2, value2)
@@ -252,8 +252,8 @@ public static class UnitTests {
 		Value retrieved1 = map_get(map, key1);
 		Value retrieved2 = map_get(map, key2);
 		Boolean lookupOk = Assert(is_string(retrieved1), "Retrieved value should be string")
-			&& Assert(is_int(retrieved2), "Retrieved value should be int")
-			&& AssertEqual(as_int(retrieved2), 30);
+			&& Assert(is_double(retrieved2), "Retrieved value should be number")
+			&& AssertEqual((int)as_double(retrieved2), 30);
 
 		if (!lookupOk) return false;
 

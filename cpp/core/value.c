@@ -41,19 +41,8 @@ void value_init_constants(void) {
 // Note: value_add() and value_sub() are now inlined in value.h
 
 Value value_mult_nonnumeric(Value a, Value b) {
-    // Handle string repetition: string * int or int * string
-    if (is_string(a) && is_int(b)) {
-        int count = as_int(b);
-        if (count <= 0) return val_empty_string;
-        if (count == 1) return a;
-        
-        // Build repeated string
-        Value result = a;
-        for (int i = 1; i < count; i++) {
-            result = string_concat(result, a);
-        }
-        return result;
-    } else if (is_string(a) && is_double(b)) {
+    // Handle string repetition: string * number
+    if (is_string(a) && is_double(b)) {
         int repeats = 0;
         int extraChars = 0;
         double factor = as_double(b);
@@ -72,8 +61,8 @@ Value value_mult_nonnumeric(Value a, Value b) {
     }
     
     // Handle list replication: list * number
-    if (is_list(a) && is_number(b)) {
-        double factor = is_int(b) ? (double)as_int(b) : as_double(b);
+    if (is_list(a) && is_double(b)) {
+        double factor = as_double(b);
         int factorClass = fpclassify(factor);
         if (factorClass == FP_NAN || factorClass == FP_INFINITE) return val_null;
         int len = list_count(a);
@@ -99,39 +88,19 @@ Value value_mult_nonnumeric(Value a, Value b) {
 
 // ToDo: inline the following too.
 bool value_le(Value a, Value b) {
-    // Handle numeric comparisons
-    if (is_number(a) && is_number(b)) {
-        double da = is_int(a) ? (double)as_int(a) : as_double(a);
-        double db = is_int(b) ? (double)as_int(b) : as_double(b);
-        return da <= db;
-    }
-    
-    // Handle string comparisons (Unicode-aware)
-    if (is_string(a) && is_string(b)) {
-        return string_compare(a, b) <= 0;
-    }
-    
-    // For now, return false for unsupported comparisons
+    if (is_double(a) && is_double(b)) return as_double(a) <= as_double(b);
+    if (is_string(a) && is_string(b)) return string_compare(a, b) <= 0;
     return false;
 }
 
 bool value_equal(Value a, Value b) {
 	bool sameType = ((a & NANISH_MASK) == (b & NANISH_MASK));
-	
-    if (is_int(a) && sameType) {
-        return as_int(a) == as_int(b);
-    }
-    if (is_double(a) && sameType) {
+
+    if (is_double(a) && is_double(b)) {
         return as_double(a) == as_double(b);
     }
     if (is_string(a) && sameType) {
         return string_equals(a, b);
-    }
-    // Mixed int/double comparison
-    if (is_number(a) && is_number(b)) {
-        double da = is_int(a) ? (double)as_int(a) : as_double(a);
-        double db = is_int(b) ? (double)as_int(b) : as_double(b);
-        return da == db;
     }
     // Nulls
     if (is_null(a) && sameType) {
@@ -323,9 +292,6 @@ Value to_string(Value v) {
             if (i+1 < strlen(buf)) buf[i+1] = '\0';
             return make_string(buf);
         }
-    } else if (is_int(v)) {
-        snprintf(buf, sizeof buf, "%d", as_int(v));
-        return make_string(buf);
     } else if (is_list(v)) {
         return list_to_string(v);
     } else if (is_map(v)) {
@@ -368,11 +334,6 @@ Value to_number(Value v) {
 		return val_zero;
 	}
 
-	// Check if the result can be represented as int32 and has no fractional part
-	if (result >= INT32_MIN && result <= INT32_MAX && result == (double)(int32_t)result) {
-		return make_int((int32_t)result);
-	}
-
 	return make_double(result);
 }
 
@@ -380,11 +341,10 @@ Value to_number(Value v) {
 // ToDo: get this into a header somewhere, so it can be inlined
 bool is_truthy(Value v) {
     return (!is_null(v) &&
-                ((is_int(v) && as_int(v) != 0) ||
-                (is_double(v) && as_double(v) != 0.0) ||
+                ((is_double(v) && as_double(v) != 0.0) ||
                 (is_string(v) && string_length(v) != 0)
                 ));
-    }
+}
 
 // Hash function for Values
 uint32_t value_hash(Value v) {

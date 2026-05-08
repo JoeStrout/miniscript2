@@ -22,8 +22,6 @@
 void debug_print_value(Value v) {
     if (is_null(v)) {
         printf("null");
-    } else if (is_int(v)) {
-        printf("int(%d)", as_int(v));
     } else if (is_double(v)) {
         printf("double(%g)", as_double(v));
     } else if (is_tiny_string(v)) {
@@ -55,7 +53,6 @@ void debug_print_value(Value v) {
 
 const char* value_type_name(Value v) {
     if (is_null(v)) return "nil";
-    if (is_int(v)) return "int";
     if (is_double(v)) return "double";
     if (is_tiny_string(v)) return "tiny_string";
     if (is_heap_string(v)) return "heap_string";

@@ -810,3 +810,19 @@ Possibly we could periodically sweep our Handle array.  This would be similar to
 If the periodic sweep does not work, or is too expensive, then we might have to instead change our Value representation in C# to something like a union struct, so that C# can see the references and manage GC normally.
 
 I consider this a serious issue, and a high priority to tackle.  Probably right after deciding whether to keep ints as a separate type.
+
+
+## May 8, 2026
+
+Two updates for today:
+
+1. I thought all night about the GC issue above, and came up with a plan.  It boils down to: we do our own mark & sweep GC only for certain MiniScript types (list, map, string, error, and "handle", meaning wrapper for some native object) -- and we do it for both C++ and C#.  I've prototyped this in a new MS2Proto2 subproject, and it seems to work fine, with relatively simple code.  So we'll probably move to that soon.
+
+2. Meanwhile, I had Claude remove `int` as a separate numeric type, and ran benchmarks of that vs. the previous `int`-tracking code.  See the results in the [ADR](adrs/0003-no-int-type.md).  It turns out there is no performance difference between having it or not, but _not_ having `int` makes the code shorter and simpler, so we're going with that.
+
+And, attempting to run the benchmarks brought to the forefront a couple of bugs:
+
+- Runtime errors are not displayed when running a MiniScript file, as noted on May 2nd.
+- Our `locals == globals` comparison now returns false, probably as a result of the May 2nd shenanigans; we need to spend a day carefully digging into how locals/globals/outer are handled.
+- We don't yet have `import` nor any shell intrinsics like `file`.  Not really a bug; technically these aren't even part of the MiniScript core.  But they are needed to run some of the benchmarks, so we should add them soon.
+

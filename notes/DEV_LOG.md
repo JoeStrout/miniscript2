@@ -826,3 +826,10 @@ And, attempting to run the benchmarks brought to the forefront a couple of bugs:
 - Our `locals == globals` comparison now returns false, probably as a result of the May 2nd shenanigans; we need to spend a day carefully digging into how locals/globals/outer are handled.
 - We don't yet have `import` nor any shell intrinsics like `file`.  Not really a bug; technically these aren't even part of the MiniScript core.  But they are needed to run some of the benchmarks, so we should add them soon.
 
+
+## May 9, 2026
+
+Fixed the unreported runtime error.
+
+Also, added a command completion script for tools/build.sh, which will be a minor QOL improvement for me (I type things like `tools/build.sh transpile` a lot).
+

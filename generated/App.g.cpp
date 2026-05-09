@@ -353,6 +353,8 @@ void App::RunInterpreter(Interpreter interp) {
 	if (is_null(vm.Error())) {
 		IOHelper::Print("\nVM execution complete. Result in r0:");
 		IOHelper::Print(StringUtils::Format("\x1b[1;93m{0}\x1b[0m", result)); // (bold bright yellow)
+	} else {
+		vm.ReportRuntimeError();
 	}
 	GC_POP_SCOPE();
 }

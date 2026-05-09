@@ -73,7 +73,7 @@ Value map_iter_entry(Value map_val, int iter);
 uint32_t map_hash(Value map_val);
 
 // String conversion for runtime (returns GC-managed Value)
-Value map_to_string(Value map_val);
+Value map_to_string(Value map_val, void* vm);
 
 #ifdef __cplusplus
 } // extern "C"

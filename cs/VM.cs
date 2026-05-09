@@ -84,6 +84,8 @@ public class VM {
 		interpreter = interp; // CPP: interpreter = interp.get_storage();
 	}
 	// H_WRAPPER: public: void SetInterpreter(InterpreterStorage* p) { get()->interpreter = p; }
+	// H_WRAPPER: public: operator void*() { return storage.get(); }
+	// H_WRAPPER: // Allows passing a VM where void* vm is expected, same as VMStorage.
 	public Interpreter GetInterpreter() { // NO_INLINE
 		return interpreter; // CPP: return Interpreter(interpreter);
 	}
@@ -192,6 +194,17 @@ public class VM {
 		return functions[funcIndex];
 	}
 
+	public String FindShortName(Value v) {
+		// Search global variable names directly on the stack — allocation-free and GC-safe.
+		Int32 regCount = functions[callStack[0].ReturnFuncIndex].MaxRegs;
+		for (Int32 i = 0; i < regCount; i++) {
+			if (!is_null(names[i]) && value_identical(stack[i], v) && !value_identical(names[i], v))
+				return as_cstring(names[i]);
+		}
+		// Fall back to the intrinsic short-name registry (type maps, etc.)
+		return Intrinsic.GetShortName(v);
+	}
+
 	public VM(Int32 stackSlots=1024, Int32 callSlots=256) {
 		InitVM(stackSlots, callSlots);
 	}
@@ -234,6 +247,9 @@ public class VM {
 
 	// H: static void MarkRoots(void* user_data);
 	// H: public: ~VMStorage() { CleanupVM(); }
+	// H: public: operator void*() { return this; }
+	// H: // Allows passing ctx.vm (VMStorage&) where void* vm is expected (e.g. to_string,
+	// H: // string_insert, etc.) without explicit casts at every call site.
 	/*** BEGIN CPP_ONLY ***
 	// GC mark callback responsible for protecting our stack and names
 	// from garbage collection
@@ -838,7 +854,7 @@ public class VM {
 					Byte a = BytecodeUtil.Au(instruction);
 					Byte b = BytecodeUtil.Bu(instruction);
 					Byte c = BytecodeUtil.Cu(instruction);
-					localStack[a] = value_add(localStack[b], localStack[c]);
+					localStack[a] = value_add(localStack[b], localStack[c], this);
 					break;
 				}
 

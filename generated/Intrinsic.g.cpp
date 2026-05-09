@@ -8,6 +8,22 @@ namespace MiniScript {
 
 	List<Intrinsic> IntrinsicStorage::_all;
 	Boolean IntrinsicStorage::_initialized;
+	List<Value> IntrinsicStorage::_shortNameKeys;
+	List<String> IntrinsicStorage::_shortNameVals;
+void IntrinsicStorage::AddShortName(Value v,String name) {
+	_shortNameKeys.Add(v);
+	_shortNameVals.Add(name);
+}
+void IntrinsicStorage::ClearShortNames() {
+	_shortNameKeys.Clear();
+	_shortNameVals.Clear();
+}
+String IntrinsicStorage::GetShortName(Value v) {
+	for (Int32 i = 0; i < _shortNameKeys.Count(); i++) {
+		if (value_identical(_shortNameKeys[i], v)) return _shortNameVals[i];
+	}
+	return nullptr;
+}
 Int32 IntrinsicStorage::Count() {
 	if (!_initialized) {
 		CoreIntrinsics::Init();

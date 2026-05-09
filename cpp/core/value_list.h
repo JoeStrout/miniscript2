@@ -60,7 +60,7 @@ void list_sort_by_key(Value list_val, Value byKey, bool ascending);
 uint32_t list_hash(Value list_val);
 
 // String conversion for runtime (returns GC-managed Value)
-Value list_to_string(Value list_val);
+Value list_to_string(Value list_val, void* vm);
 
 #ifdef __cplusplus
 } // extern "C"

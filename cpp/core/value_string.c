@@ -657,7 +657,7 @@ Value string_sub(Value a, Value b) {
 }
 
 
-Value string_insert(Value str, int index, Value value) {
+Value string_insert(Value str, int index, Value value, void* vm) {
     GC_PUSH_SCOPE();
 
     Value result = val_null;
@@ -671,7 +671,7 @@ Value string_insert(Value str, int index, Value value) {
     }
 
     // Convert the value to insert into a string
-    Value insertVal = to_string(value);
+    Value insertVal = to_string(value, vm);
     GC_PROTECT(&insertVal);
 
     int strLenB = string_lengthB(str);

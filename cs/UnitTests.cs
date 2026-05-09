@@ -283,11 +283,11 @@ public static class UnitTests {
 		// Test string conversion (runtime C functions)
 		Value singleMap = make_empty_map();
 		map_set(singleMap, make_string("test"), make_int(42));
-		Value singleStr = to_string(singleMap);
+		Value singleStr = to_string(singleMap, null);
 		Boolean singleStrOk = Assert(is_string(singleStr), "Map toString should return string")
 			&& AssertEqual(as_cstring(singleStr), "{\"test\": 42}");
 		if (!singleStrOk) return false;
-		String result = StringUtils.Format("{0}", singleMap);
+		String result = as_cstring(to_string(singleMap, null));
 		if (!AssertEqual(result, "{\"test\": 42}")) return false;
 
 		// Note: We have successfully implemented and tested both conversion approaches:

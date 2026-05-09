@@ -284,12 +284,15 @@ static inline double numeric_val(Value v) {
 
 // Conversion functions
 
-Value to_string(Value v);
-Value value_repr(Value v);  // Quoted representation for literals
+// Source-code form: strings quoted, containers depth-limited.
+// recursion_limit: -1=unlimited/no-short-name, 0=truncate, >0=render+short-name when <3.
+Value code_form(Value v, void* vm, int recursion_limit);
+Value to_string(Value v, void* vm);   // Raw string for strings; code_form(3) for others.
+Value value_repr(Value v, void* vm);  // code_form(-1): fully expanded, strings quoted.
 Value to_number(Value v);
 
 // Arithmetic operations (inlined for performance)
-static inline Value value_add(Value a, Value b) {
+static inline Value value_add(Value a, Value b, void* vm) {
     if (is_error(a)) return a;
     if (is_error(b)) return b;
     if (is_double(a) && is_double(b)) {
@@ -300,10 +303,10 @@ static inline Value value_add(Value a, Value b) {
     if (is_string(a)) {
         if (is_null(b)) return a;
         if (is_string(b)) return string_concat(a, b);
-        return string_concat(a, to_string(b));
+        return string_concat(a, to_string(b, vm));
     } else if (is_string(b)) {
         if (is_null(a)) return b;
-        return string_concat(to_string(a), b);
+        return string_concat(to_string(a, vm), b);
     }
     if (is_list(a) && is_list(b)) return list_concat(a, b);
     if (is_map(a) && is_map(b)) return map_concat(a, b);

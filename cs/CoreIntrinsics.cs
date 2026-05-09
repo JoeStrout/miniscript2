@@ -77,6 +77,7 @@ public static class CoreIntrinsics {
 			AddIntrinsicToMap(_listType, "remove");
 			AddIntrinsicToMap(_listType, "replace");
 			AddIntrinsicToMap(_listType, "values");
+			Intrinsic.AddShortName(_listType, "list");
 		}
 		return _listType;
 	}
@@ -102,6 +103,7 @@ public static class CoreIntrinsics {
 			AddIntrinsicToMap(_stringType, "split");
 			AddIntrinsicToMap(_stringType, "upper");
 			AddIntrinsicToMap(_stringType, "values");
+			Intrinsic.AddShortName(_stringType, "string");
 		}
 		return _stringType;
 	}
@@ -126,6 +128,7 @@ public static class CoreIntrinsics {
 			AddIntrinsicToMap(_mapType, "remove");
 			AddIntrinsicToMap(_mapType, "replace");
 			AddIntrinsicToMap(_mapType, "values");
+			Intrinsic.AddShortName(_mapType, "map");
 		}
 		return _mapType;
 	}
@@ -137,6 +140,7 @@ public static class CoreIntrinsics {
 	public static Value NumberType() {
 		if (is_null(_numberType)) {
 			_numberType = make_map(4);
+			Intrinsic.AddShortName(_numberType, "number");
 		}
 		return _numberType;
 	}
@@ -148,6 +152,7 @@ public static class CoreIntrinsics {
 	public static Value FunctionType() {
 		if (is_null(_functionType)) {
 			_functionType = make_map(4);
+			Intrinsic.AddShortName(_functionType, "funcRef");
 		}
 		return _functionType;
 	}
@@ -167,6 +172,7 @@ public static class CoreIntrinsics {
 			if (errMethod != null) {
 				map_set(_errorType, make_string("err"), errMethod.GetFunc());
 			}
+			Intrinsic.AddShortName(_errorType, "error");
 		}
 		return _errorType;
 	}
@@ -199,7 +205,7 @@ public static class CoreIntrinsics {
 		f.AddParam("s", make_string(""));
 		f.AddParam("delimiter", _EOL);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
-			String s = StringUtils.Format("{0}", ctx.GetArg(0));
+			String s = as_cstring(to_string(ctx.GetArg(0), ctx.vm));
 			Value delimiterVal = ctx.GetArg(1);
 			Interpreter interp = ctx.vm.GetInterpreter();
 			if (interp != null && interp.standardOutput != null) {
@@ -238,7 +244,7 @@ public static class CoreIntrinsics {
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value msg = ctx.GetArg(0);
 			Value inner = ctx.GetArg(1);
-			if (!is_string(msg)) msg = to_string(msg);
+			if (!is_string(msg)) msg = to_string(msg, ctx.vm);
 			return new IntrinsicResult(make_error(msg, inner, ctx.vm.BuildStackTrace(), val_null));
 		};
 
@@ -256,7 +262,7 @@ public static class CoreIntrinsics {
 				ctx.vm.RaiseRuntimeError("err method called on non-error value");
 				return IntrinsicResult.Null;
 			}
-			if (!is_string(msg)) msg = to_string(msg);
+			if (!is_string(msg)) msg = to_string(msg, ctx.vm);
 			// Build the new error with self as __isa.  Then verify no cycle.
 			Value newErr = make_error(msg, inner, ctx.vm.BuildStackTrace(), self);
 			// Walk chain from newErr to check for loop (if newErr appears again).
@@ -346,7 +352,7 @@ public static class CoreIntrinsics {
 			Value v = ctx.GetArg(0);
 			if (is_error(v)) return new IntrinsicResult(v);
 			if (is_null(v)) return new IntrinsicResult(make_string(""));
-			return new IntrinsicResult(make_string(StringUtils.Format("{0}", v)));
+			return new IntrinsicResult(to_string(v, ctx.vm));
 		};
 
 		// upper(self)
@@ -679,7 +685,7 @@ public static class CoreIntrinsics {
 				list_insert(self, index, value);
 				return new IntrinsicResult(self);
 			} else if (is_string(self)) {
-				return new IntrinsicResult(string_insert(self, index, value));
+				return new IntrinsicResult(string_insert(self, index, value, ctx.vm));
 			}
 			return new IntrinsicResult(val_null);
 		};
@@ -1206,6 +1212,7 @@ public static class CoreIntrinsics {
 		_numberType = val_null;
 		_functionType = val_null;
 		_errorType = val_null;
+		Intrinsic.ClearShortNames();
 	}
 
 	/*** BEGIN CPP_ONLY ***

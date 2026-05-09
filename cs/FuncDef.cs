@@ -83,7 +83,7 @@ public class FuncDef {
 			defaultVal = ParamDefaults[i];
 			if (!is_null(defaultVal)) {
 				result += "=";
-				result += as_cstring(value_repr(defaultVal));
+				result += as_cstring(value_repr(defaultVal, null));
 			}
 		}
 		result += ")";

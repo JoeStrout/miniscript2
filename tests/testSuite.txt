@@ -4041,6 +4041,39 @@ lst[2:e]
 ---------------------------------
 Runtime Error: Uncaught DOH
 ================================
+==== display: __isa pointing to built-in type map shows short name
+================================
+x = {}
+x["__isa"] = list
+x["foo"] = 42
+print x
+--------------------------------
+{"__isa": list, "foo": 42}
+================================
+==== display: __isa pointing to user global shows global name
+================================
+Animal = {"legs": 4}
+fido = new Animal
+print fido
+--------------------------------
+{"__isa": Animal}
+================================
+==== display: str() respects short names
+================================
+Animal = {"legs": 4}
+fido = new Animal
+print str(fido)
+--------------------------------
+{"__isa": Animal}
+================================
+==== display: nested maps use short names for __isa
+================================
+Animal = {"legs": 4}
+zoo = {"animals": [new Animal, new Animal]}
+print zoo
+--------------------------------
+{"animals": [{"__isa": Animal}, {"__isa": Animal}]}
+================================
 ==== END OF TESTS
 ================================================================================
 

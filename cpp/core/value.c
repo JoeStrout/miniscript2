@@ -206,102 +206,143 @@ Value value_shl(Value v, int shift) {
 
 // Conversion functions
 
+// Stub for VM short-name lookup; wired up when VM.FindShortName is implemented.
+// Returns a borrowed C string (valid until next GC), or NULL if none found.
+static const char* find_short_name(void* vm, Value v) {
+    (void)vm; (void)v;
+    return NULL; // ToDo: call VM callback
+}
 
-// TODO: Consider inlining this.
-// TODO: Add support for lists and maps
-// Using raw C-String
-// Convert value to quoted representation (for literals)
-Value value_repr(Value v) {
-    if (is_string(v)) {
-        // For strings, return quoted representation with internal quotes doubled
-        const char* content = as_cstring(v);
-        if (!content) content = "";
-
-        // Count quotes to determine output size
-        int quote_count = 0;
-        for (const char* p = content; *p; p++) {
-            if (*p == '"') quote_count++;
-        }
-
-        // Allocate buffer: original length + 2 (outer quotes) + quote_count (doubled quotes)
-        int orig_len = strlen(content);
-        int new_len = orig_len + 2 + quote_count;
-        char* escaped = malloc(new_len + 1);
-
-        // Build escaped string
-        escaped[0] = '"';
-        char* out = escaped + 1;
-        for (const char* p = content; *p; p++) {
-            if (*p == '"') {
-                *out++ = '"';  // First quote
-                *out++ = '"';  // Doubled quote
-            } else {
-                *out++ = *p;
-            }
-        }
-        *out++ = '"';
-        *out = '\0';
-
-        Value result = make_string(escaped);
-        free(escaped);
-        return result;
+// Format a double into buf (size >= 32) using MiniScript number rules.
+static void format_double(double value, char* buf) {
+    if (fmod(value, 1.0) == 0.0) {
+        snprintf(buf, 32, "%.0f", value);
+        if (strcmp(buf, "-0") == 0) { buf[0] = '0'; buf[1] = '\0'; }
+    } else if (value > 1E10 || value < -1E10 || (value < 1E-6 && value > -1E-6)) {
+        snprintf(buf, 32, "%.6E", value);
+        char* e = strchr(buf, 'E');
+        if (e && (e[1] == '+' || e[1] == '-') && e[2] == '0' && e[3] == '0' && e[4] != '\0')
+            memmove(e + 3, e + 4, strlen(e + 4) + 1);
     } else {
-        // For everything else, use normal string representation
-        return to_string(v);
+        size_t i;
+        snprintf(buf, 32, "%.6f", value);
+        i = strlen(buf) - 1;
+        while (i > 1 && buf[i] == '0' && buf[i-1] != '.') i--;
+        if (i + 1 < strlen(buf)) buf[i + 1] = '\0';
     }
 }
 
-Value to_string(Value v) {
+// Return a quoted string Value with internal double-quotes escaped ("" style).
+static Value quote_string(Value v) {
+    const char* content = as_cstring(v);
+    if (!content) content = "";
+    int quote_count = 0;
+    for (const char* p = content; *p; p++) if (*p == '"') quote_count++;
+    int orig_len = (int)strlen(content);
+    int new_len = orig_len + 2 + quote_count;
+    char* escaped = (char*)malloc(new_len + 1);
+    escaped[0] = '"';
+    char* out = escaped + 1;
+    for (const char* p = content; *p; p++) {
+        if (*p == '"') { *out++ = '"'; *out++ = '"'; }
+        else *out++ = *p;
+    }
+    *out++ = '"'; *out = '\0';
+    Value result = make_string(escaped);
+    free(escaped);
+    return result;
+}
+
+// Source-code form of a value: strings quoted, containers recursion-limited.
+// recursion_limit: -1 = unlimited (no short-name, no truncation)
+//                   0 = truncate (emit "[...]" / "{...}")
+//                  >0 = render; try short-name when limit < 3
+Value code_form(Value v, void* vm, int recursion_limit) {
     char buf[32];
 
-    if (is_string(v)) return v;
+    if (is_null(v)) return make_string("null");
+
     if (is_double(v)) {
-        double value = as_double(v);
-        if (fmod(value, 1.0) == 0.0) {
-            // integer values as integers
-            snprintf(buf, sizeof buf, "%.0f", value);
-            // Handle negative zero
-            if (strcmp(buf, "-0") == 0) buf[0] = '0', buf[1] = '\0';
-            return make_string(buf);
-        } else if (value > 1E10 || value < -1E10 || (value < 1E-6 && value > -1E-6)) {
-            // very large/small numbers in exponential form
-            snprintf(buf, sizeof buf, "%.6E", value);
-            // Clean up 3-digit exponents: E+00N -> E+0N, E-00N -> E-0N
-            // (Some platforms produce 3-digit exponents; we want 2-digit minimum)
-            char* e = strchr(buf, 'E');
-            if (e && (e[1] == '+' || e[1] == '-') && e[2] == '0' && e[3] == '0' && e[4] != '\0') {
-                // Found E±00N pattern, remove one leading zero from exponent
-                memmove(e + 3, e + 4, strlen(e + 4) + 1);
-            }
-            return make_string(buf);
-        } else {
-            // all others in decimal form, with 1-6 digits past the decimal point
+        format_double(as_double(v), buf);
+        return make_string(buf);
+    }
 
-            // Old MiniScript 1.0 code:
-                //String s = String::Format(value, "%.6f");
-                //long i = s.LengthB() - 1;
-                //while (i > 1 && s[i] == '0' && s[i-1] != '.') i--;
-                //if (i+1 < s.LengthB()) s = s.SubstringB(0, i+1);
-                //
-            // Converted code:
-            size_t i;
+    if (is_string(v)) return quote_string(v);
 
-            snprintf(buf, sizeof buf, "%.6f", value);
-            i = strlen(buf) - 1;
-            while (i > 1 && buf[i] == '0' && buf[i-1] != '.') i--;
-            if (i+1 < strlen(buf)) buf[i+1] = '\0';
-            return make_string(buf);
+    if (is_list(v)) {
+        if (recursion_limit == 0) return make_string("[...]");
+        if (recursion_limit > 0 && recursion_limit < 3 && vm != NULL) {
+            const char* sn = find_short_name(vm, v);
+            if (sn) return make_string(sn);
         }
-    } else if (is_list(v)) {
-        return list_to_string(v);
-    } else if (is_map(v)) {
-        return map_to_string(v);
-    } else if (is_error(v)) {
+        ValueList* list = as_list(v);
+        if (!list) return make_string("[???]");
+        Value result = make_string("[");
+        Value item_str = val_null;
+        for (int i = 0; i < list->count; i++) {
+            if (i > 0) result = string_concat(result, make_string(", "));
+            Value item = list->items[i];
+            item_str = is_null(item) ? make_string("null")
+                                     : code_form(item, vm, recursion_limit - 1);
+            result = string_concat(result, item_str);
+        }
+        return string_concat(result, make_string("]"));
+    }
+
+    if (is_map(v)) {
+        if (recursion_limit == 0) return make_string("{...}");
+        if (recursion_limit > 0 && recursion_limit < 3 && vm != NULL) {
+            const char* sn = find_short_name(vm, v);
+            if (sn) return make_string(sn);
+        }
+        if (map_count(v) == 0) return make_string("{}");
+        Value result = make_string("{");
+        MapIterator iter = map_iterator(v);
+        Value key = val_null, val = val_null;
+        Value key_str = val_null, val_str = val_null;
+        bool first = true;
+        while (map_iterator_next(&iter, &key, &val)) {
+            if (!first) result = string_concat(result, make_string(", "));
+            first = false;
+            int next_limit = recursion_limit - 1;
+            if (value_equal(key, val_isa_key)) next_limit = 1;
+            key_str = code_form(key, vm, next_limit);
+            val_str = is_null(val) ? make_string("null") : code_form(val, vm, next_limit);
+            result = string_concat(result, key_str);
+            result = string_concat(result, make_string(": "));
+            result = string_concat(result, val_str);
+        }
+        return string_concat(result, make_string("}"));
+    }
+
+    if (is_funcref(v)) {
+        int32_t idx = funcref_index(v);
+        Value outer = funcref_outer_vars(v);
+        if (!is_null(outer))
+            snprintf(buf, sizeof buf, "FuncRef(#%d, closure)", idx);
+        else
+            snprintf(buf, sizeof buf, "FuncRef(#%d)", idx);
+        return make_string(buf);
+    }
+
+    if (is_error(v)) {
         Value msg = error_message(v);
         if (is_string(msg)) return string_concat(make_string("error: "), msg);
         return make_string("error");
     }
-    return val_empty_string;
+
+    return make_string("<value>");
+}
+
+// to_string: raw string for string values; code_form(3) for everything else.
+Value to_string(Value v, void* vm) {
+    if (is_string(v)) return v;
+    return code_form(v, vm, 3);
+}
+
+// value_repr: source-code form with full depth (no truncation or short-name substitution).
+Value value_repr(Value v, void* vm) {
+    return code_form(v, vm, -1);
 }
 
 Value to_number(Value v) {

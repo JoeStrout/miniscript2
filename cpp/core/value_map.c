@@ -661,40 +661,8 @@ uint32_t map_hash(Value map_val) {
 }
 
 // Convert map to string representation for runtime (returns GC-managed Value)
-Value map_to_string(Value map_val) {
-    ValueMap* map = as_map(map_val);
-    if (!map) return make_string("{}");
-
-    if (map->count - map->freeCount == 0 && map->varmap_data == NULL) return make_string("{}");
-
-    Value result = make_string("{");
-
-    MapIterator iter = map_iterator(map_val);
-    Value key, value;
-    bool first = true;
-
-	// ToDo: instead of repeatedly calling string_concat, gather all
-	// the items in a list, and use join.
-    while (map_iterator_next(&iter, &key, &value)) {
-        if (!first) {
-            Value comma = make_string(", ");
-            result = string_concat(result, comma);
-        }
-        first = false;
-
-        Value key_str = value_repr(key);
-        Value value_str = value_repr(value);
-
-        result = string_concat(result, key_str);
-        Value colon = make_string(": ");
-        result = string_concat(result, colon);
-        result = string_concat(result, value_str);
-    }
-
-    Value close = make_string("}");
-    result = string_concat(result, close);
-
-    return result;
+Value map_to_string(Value map_val, void* vm) {
+    return code_form(map_val, vm, 3);
 }
 
 // VarMap creation and management

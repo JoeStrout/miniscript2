@@ -94,6 +94,16 @@ FuncDef VMStorage::GetFuncDef(Int32 funcIndex) {
 	if (funcIndex < 0 || funcIndex >= functions.Count()) return  FuncDef::New();
 	return functions[funcIndex];
 }
+String VMStorage::FindShortName(Value v) {
+	// Search global variable names directly on the stack — allocation-free and GC-safe.
+	Int32 regCount = functions[callStack[0].ReturnFuncIndex].MaxRegs();
+	for (Int32 i = 0; i < regCount; i++) {
+		if (!is_null(names[i]) && value_identical(stack[i], v) && !value_identical(names[i], v))
+			return as_cstring(names[i]);
+	}
+	// Fall back to the intrinsic short-name registry (type maps, etc.)
+	return Intrinsic::GetShortName(v);
+}
 VMStorage::VMStorage(Int32 stackSlots,Int32 callSlots) {
 	InitVM(stackSlots, callSlots);
 }
@@ -483,6 +493,7 @@ Value VMStorage::Run(UInt32 maxCycles) {
 	return runResult;
 }
 Value VMStorage::RunInner(UInt32 maxCycles) {
+	VM _this(std::static_pointer_cast<VMStorage>(shared_from_this()));
 	// Copy instance variables to locals for performance
 	Int32 pc = PC;
 	Int32 baseIndex = BaseIndex;
@@ -688,7 +699,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				Byte c = BytecodeUtil::Cu(instruction);
-				localStack[a] = value_add(localStack[b], localStack[c]);
+				localStack[a] = value_add(localStack[b], localStack[c], _this);
 				VM_NEXT();
 			}
 

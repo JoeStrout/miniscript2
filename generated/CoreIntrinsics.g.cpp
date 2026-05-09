@@ -51,6 +51,7 @@ Value CoreIntrinsics::ListType() {
 		AddIntrinsicToMap(_listType, "remove");
 		AddIntrinsicToMap(_listType, "replace");
 		AddIntrinsicToMap(_listType, "values");
+		Intrinsic::AddShortName(_listType, "list");
 	}
 	return _listType;
 }
@@ -71,6 +72,7 @@ Value CoreIntrinsics::StringType() {
 		AddIntrinsicToMap(_stringType, "split");
 		AddIntrinsicToMap(_stringType, "upper");
 		AddIntrinsicToMap(_stringType, "values");
+		Intrinsic::AddShortName(_stringType, "string");
 	}
 	return _stringType;
 }
@@ -90,6 +92,7 @@ Value CoreIntrinsics::MapType() {
 		AddIntrinsicToMap(_mapType, "remove");
 		AddIntrinsicToMap(_mapType, "replace");
 		AddIntrinsicToMap(_mapType, "values");
+		Intrinsic::AddShortName(_mapType, "map");
 	}
 	return _mapType;
 }
@@ -97,6 +100,7 @@ Value CoreIntrinsics::_mapType = val_null;
 Value CoreIntrinsics::NumberType() {
 	if (is_null(_numberType)) {
 		_numberType = make_map(4);
+		Intrinsic::AddShortName(_numberType, "number");
 	}
 	return _numberType;
 }
@@ -104,6 +108,7 @@ Value CoreIntrinsics::_numberType = val_null;
 Value CoreIntrinsics::FunctionType() {
 	if (is_null(_functionType)) {
 		_functionType = make_map(4);
+		Intrinsic::AddShortName(_functionType, "funcRef");
 	}
 	return _functionType;
 }
@@ -117,6 +122,7 @@ Value CoreIntrinsics::ErrorType() {
 		if (!IsNull(errMethod)) {
 			map_set(_errorType, make_string("err"), errMethod.GetFunc());
 		}
+		Intrinsic::AddShortName(_errorType, "error");
 	}
 	return _errorType;
 }
@@ -143,7 +149,7 @@ void CoreIntrinsics::Init() {
 	f.AddParam("s", make_string(""));
 	f.AddParam("delimiter", _EOL);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
-		String s = StringUtils::Format("{0}", ctx.GetArg(0));
+		String s = as_cstring(to_string(ctx.GetArg(0), ctx.vm));
 		GC_PUSH_SCOPE();
 		Value delimiterVal = ctx.GetArg(1); GC_PROTECT(&delimiterVal);
 		Interpreter interp = ctx.vm.GetInterpreter();
@@ -185,7 +191,7 @@ void CoreIntrinsics::Init() {
 		GC_PUSH_SCOPE();
 		Value msg = ctx.GetArg(0); GC_PROTECT(&msg);
 		Value inner = ctx.GetArg(1); GC_PROTECT(&inner);
-		if (!is_string(msg)) msg = to_string(msg);
+		if (!is_string(msg)) msg = to_string(msg, ctx.vm);
 		GC_POP_SCOPE();
 		return IntrinsicResult(make_error(msg, inner, ctx.vm.BuildStackTrace(), val_null));
 	});
@@ -206,7 +212,7 @@ void CoreIntrinsics::Init() {
 			GC_POP_SCOPE();
 			return IntrinsicResult::Null;
 		}
-		if (!is_string(msg)) msg = to_string(msg);
+		if (!is_string(msg)) msg = to_string(msg, ctx.vm);
 		// Build the new error with self as __isa.  Then verify no cycle.
 		Value newErr = make_error(msg, inner, ctx.vm.BuildStackTrace(), self); GC_PROTECT(&newErr);
 		// Walk chain from newErr to check for loop (if newErr appears again).
@@ -320,7 +326,7 @@ void CoreIntrinsics::Init() {
 			return IntrinsicResult(make_string(""));
 		}
 		GC_POP_SCOPE();
-		return IntrinsicResult(make_string(StringUtils::Format("{0}", v)));
+		return IntrinsicResult(to_string(v, ctx.vm));
 	});
 
 	// upper(self)
@@ -806,7 +812,7 @@ void CoreIntrinsics::Init() {
 			return IntrinsicResult(self);
 		} else if (is_string(self)) {
 			GC_POP_SCOPE();
-			return IntrinsicResult(string_insert(self, index, value));
+			return IntrinsicResult(string_insert(self, index, value, ctx.vm));
 		}
 		GC_POP_SCOPE();
 		return IntrinsicResult(val_null);
@@ -1448,6 +1454,7 @@ void CoreIntrinsics::InvalidateTypeMaps() {
 	_numberType = val_null;
 	_functionType = val_null;
 	_errorType = val_null;
+	Intrinsic::ClearShortNames();
 }
 // GC mark callback to protect our static type maps from collection.
 void CoreIntrinsics::MarkRoots(void* user_data) {

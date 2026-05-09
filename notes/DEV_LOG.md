@@ -833,3 +833,4 @@ Fixed the unreported runtime error.
 
 Also, added a command completion script for tools/build.sh, which will be a minor QOL improvement for me (I type things like `tools/build.sh transpile` a lot).
 
+Then, spent most of today reworking how values (especially lists and maps) convert to strings, to mimic MS1's behavior.  This involved a fair bit of new plumbing, since those conversion methods need a reference to the VM so that we can look up short names in the globals (and intrinsics).  But it seems to be working nicely now.

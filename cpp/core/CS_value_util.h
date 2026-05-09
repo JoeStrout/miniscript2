@@ -23,7 +23,7 @@ static inline Value make_string(String s) {
 
 // Convert Value to CS_String (host string)
 static inline String to_String(Value v) {
-    return String(as_cstring(to_string(v)));
+    return String(as_cstring(to_string(v, NULL)));
 }
 
 #ifdef __cplusplus

@@ -16,7 +16,7 @@ public class ValueEqualityComparer : IEqualityComparer<Value> {
 	public int GetHashCode(Value obj) {
 		// For strings, hash the string content rather than the handle
 		if (obj.IsString) {
-			string str = obj.ToString();
+			string str = as_cstring(obj);
 			return str.GetHashCode();
 		}
 		// For other types, use the bits as hash
@@ -48,13 +48,13 @@ public class VarMap : ValueMap {
 			// ToDo: watch out for recursion, or maybe just limit our depth in
 			// general.  I think MS1.0 limits nesting to 16 levels deep.  But
 			// whatever we do, we shouldn't just crash with a stack overflow.
-			string keyStr = ValueHelpers.value_repr(kvp.Key).ToString();
-			string valueStr = ValueHelpers.value_repr(kvp.Value).ToString();
+			string keyStr = ValueHelpers.as_cstring(ValueHelpers.value_repr(kvp.Key));
+			string valueStr = ValueHelpers.as_cstring(ValueHelpers.value_repr(kvp.Value));
 			IOHelper.Print($"  - {keyStr}: {valueStr}");
 		}
 		IOHelper.Print("_regMap:");
 		foreach (var kv in _regMap) {
-			string keyStr = ValueHelpers.value_repr(kv.Key).ToString();
+			string keyStr = ValueHelpers.as_cstring(ValueHelpers.value_repr(kv.Key));
 			IOHelper.Print($"  - {keyStr} --> r{kv.Value}");
 		}
 		IOHelper.Print("_registers and _names (for non-null names):");

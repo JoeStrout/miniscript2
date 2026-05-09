@@ -290,14 +290,14 @@ Boolean UnitTests::TestValueMap() {
 	// Test string conversion (runtime C functions)
 	Value singleMap = make_empty_map(); GC_PROTECT(&singleMap);
 	map_set(singleMap, make_string("test"), make_int(42));
-	Value singleStr = to_string(singleMap); GC_PROTECT(&singleStr);
+	Value singleStr = to_string(singleMap, nullptr); GC_PROTECT(&singleStr);
 	Boolean singleStrOk = Assert(is_string(singleStr), "Map toString should return string")
 		&& AssertEqual(as_cstring(singleStr), "{\"test\": 42}");
 	if (!singleStrOk)  {
 		GC_POP_SCOPE();
 		return Boolean(false);
 	}
-	String result = StringUtils::Format("{0}", singleMap);
+	String result = as_cstring(to_string(singleMap, nullptr));
 	if (!AssertEqual(result, "{\"test\": 42}"))  {
 		GC_POP_SCOPE();
 		return Boolean(false);

@@ -115,6 +115,8 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 
 	public: FuncDef GetFuncDef(Int32 funcIndex);
 
+	public: String FindShortName(Value v);
+
 	public: VMStorage(Int32 stackSlots=1024, Int32 callSlots=256);
 
 	private: void InitVM(Int32 stackSlots, Int32 callSlots);
@@ -122,6 +124,9 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	private: void CleanupVM();
 	static void MarkRoots(void* user_data);
 	public: ~VMStorage() { CleanupVM(); }
+	public: operator void*() { return this; }
+	// Allows passing ctx.vm (VMStorage&) where void* vm is expected (e.g. to_string,
+	// string_insert, etc.) without explicit casts at every call site.
 
 	public: void RegisterFunction(FuncDef funcDef);
 
@@ -246,6 +251,8 @@ struct VM {
 	// circular-header-dependency issues.)  The same Get/Set interface works on both C#/C++.
 	public: void SetInterpreter(Interpreter interp); // NO_INLINE
 	public: void SetInterpreter(InterpreterStorage* p) { get()->interpreter = p; }
+	public: operator void*() { return storage.get(); }
+	// Allows passing a VM where void* vm is expected, same as VMStorage.
 	public: Interpreter GetInterpreter(); // NO_INLINE
 	private: List<CallInfo> callStack();
 	private: void set_callStack(List<CallInfo> _v);
@@ -334,6 +341,8 @@ struct VM {
 	public: inline String GetFunctionName(Int32 funcIndex);
 
 	public: inline FuncDef GetFuncDef(Int32 funcIndex);
+
+	public: inline String FindShortName(Value v);
 
 	public: static VM New(Int32 stackSlots=1024, Int32 callSlots=256) {
 		return VM(std::make_shared<VMStorage>(stackSlots, callSlots));
@@ -501,6 +510,7 @@ inline Value VM::GetStackName(Int32 index) { return get()->GetStackName(index); 
 inline CallInfo VM::GetCallStackFrame(Int32 index) { return get()->GetCallStackFrame(index); }
 inline String VM::GetFunctionName(Int32 funcIndex) { return get()->GetFunctionName(funcIndex); }
 inline FuncDef VM::GetFuncDef(Int32 funcIndex) { return get()->GetFuncDef(funcIndex); }
+inline String VM::FindShortName(Value v) { return get()->FindShortName(v); }
 inline void VM::InitVM(Int32 stackSlots,Int32 callSlots) { return get()->InitVM(stackSlots, callSlots); }
 inline void VM::CleanupVM() { return get()->CleanupVM(); }
 inline void VM::RegisterFunction(FuncDef funcDef) { return get()->RegisterFunction(funcDef); }

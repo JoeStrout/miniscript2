@@ -390,30 +390,6 @@ uint32_t list_hash(Value list_val) {
 }
 
 // Convert list to string representation for runtime (returns GC-managed Value)
-Value list_to_string(Value list_val) {
-    ValueList* list = as_list(list_val);
-    if (!list) return make_string("[]");
-
-    if (list->count == 0) return make_string("[]");
-
-    // Build string: [item1, item2, ...]
-    // For now: a simple approach: build each part and concatenate.
-    // ToDo: a more efficient approach using Join
-    Value result = make_string("[");
-
-    for (int i = 0; i < list->count; i++) {
-        if (i > 0) {
-            Value comma = make_string(", ");
-            result = string_concat(result, comma);
-        }
-
-        // Get repr of item (quotes strings, may call recursively for nested lists)
-        Value item_str = value_repr(list->items[i]);
-        result = string_concat(result, item_str);
-    }
-
-    Value close = make_string("]");
-    result = string_concat(result, close);
-
-    return result;
+Value list_to_string(Value list_val, void* vm) {
+    return code_form(list_val, vm, 3);
 }

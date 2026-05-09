@@ -26,6 +26,16 @@ class IntrinsicStorage : public std::enable_shared_from_this<IntrinsicStorage> {
 	private: Int32 _funcIndex = -1;
 	private: static List<Intrinsic> _all;
 	private: static Boolean _initialized;
+	private: static List<Value> _shortNameKeys;
+	private: static List<String> _shortNameVals;
+
+	// Short-name registry: maps known Values (e.g. type maps) to display names.
+
+	public: static void AddShortName(Value v, String name);
+
+	public: static void ClearShortNames();
+
+	public: static String GetShortName(Value v);
 	public: IntrinsicStorage() {}
 
 	// Return the number of intrinsics (initializing them if needed).
@@ -73,6 +83,18 @@ struct Intrinsic {
 	private: void set__all(List<Intrinsic> _v);
 	private: Boolean _initialized();
 	private: void set__initialized(Boolean _v);
+	private: List<Value> _shortNameKeys();
+	private: void set__shortNameKeys(List<Value> _v);
+	private: List<String> _shortNameVals();
+	private: void set__shortNameVals(List<String> _v);
+
+	// Short-name registry: maps known Values (e.g. type maps) to display names.
+
+	public: static void AddShortName(Value v, String name) { return IntrinsicStorage::AddShortName(v, name); }
+
+	public: static void ClearShortNames() { return IntrinsicStorage::ClearShortNames(); }
+
+	public: static String GetShortName(Value v) { return IntrinsicStorage::GetShortName(v); }
 	public: static Intrinsic New() {
 		return Intrinsic(std::make_shared<IntrinsicStorage>());
 	}
@@ -115,6 +137,10 @@ inline List<Intrinsic> Intrinsic::_all() { return get()->_all; }
 inline void Intrinsic::set__all(List<Intrinsic> _v) { get()->_all = _v; }
 inline Boolean Intrinsic::_initialized() { return get()->_initialized; }
 inline void Intrinsic::set__initialized(Boolean _v) { get()->_initialized = _v; }
+inline List<Value> Intrinsic::_shortNameKeys() { return get()->_shortNameKeys; }
+inline void Intrinsic::set__shortNameKeys(List<Value> _v) { get()->_shortNameKeys = _v; }
+inline List<String> Intrinsic::_shortNameVals() { return get()->_shortNameVals; }
+inline void Intrinsic::set__shortNameVals(List<String> _v) { get()->_shortNameVals = _v; }
 inline void Intrinsic::AddParam(String name) { return get()->AddParam(name); }
 inline void Intrinsic::AddParam(String name,Value defaultValue) { return get()->AddParam(name, defaultValue); }
 inline Value Intrinsic::GetFunc() { return get()->GetFunc(); }

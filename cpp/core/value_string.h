@@ -39,7 +39,7 @@ Value string_split_max(Value str, Value delimiter, int maxCount);
 Value string_substring(Value str, int startIndex, int len);
 Value string_slice(Value str, int start, int end);
 Value string_sub(Value a, Value b);
-Value string_insert(Value str, int index, Value value);
+Value string_insert(Value str, int index, Value value, void* vm);
 
 // Case conversion and Unicode code point functions
 Value string_upper(Value str);

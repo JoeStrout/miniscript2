@@ -25,6 +25,27 @@ public class Intrinsic {
 	private static List<Intrinsic> _all = new List<Intrinsic>();
 	private static Boolean _initialized = false;
 
+	// Short-name registry: maps known Values (e.g. type maps) to display names.
+	private static List<Value> _shortNameKeys = new List<Value>();
+	private static List<String> _shortNameVals = new List<String>();
+
+	public static void AddShortName(Value v, String name) {
+		_shortNameKeys.Add(v);
+		_shortNameVals.Add(name);
+	}
+
+	public static void ClearShortNames() {
+		_shortNameKeys.Clear();
+		_shortNameVals.Clear();
+	}
+
+	public static String GetShortName(Value v) {
+		for (Int32 i = 0; i < _shortNameKeys.Count; i++) {
+			if (value_identical(_shortNameKeys[i], v)) return _shortNameVals[i];
+		}
+		return null;
+	}
+
 	public Intrinsic() {}
 
 	// Return the number of intrinsics (initializing them if needed).

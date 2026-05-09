@@ -147,7 +147,18 @@ public readonly struct Value {
 		for (int i = 0; i < len; i++) dst[i] = (byte)((_u >> (8 * (i + 1))) & 0xFF);
 	}
 
-	public override string ToString()  {
+	public String ToString(VM vm)  {
+		if (IsString) return as_cstring(this);
+		return CodeForm(vm, 3);
+	}
+
+	[Obsolete("Pass the VM context: use ToString(vm) instead")]
+	public override string ToString() => ToString(null);
+
+	// Return the given string in its source-code form: strings quoted, etc.
+	// Provide a VM reference in order to enable shortening of map references
+	// (once a few levels deep).
+	public string CodeForm(VM vm, int recursionLimit=-1)  {
 		if (IsNull) return "null";
 		if (IsDouble) {
 			double value = AsDouble();
@@ -169,46 +180,44 @@ public readonly struct Value {
 			}
 		}
 		if (IsString) {
-			if (IsTiny) {
-				Span<byte> b = stackalloc byte[5];
-				TinyCopyTo(b);
-				return System.Text.Encoding.ASCII.GetString(b[..TinyLen()]);
-			}
-			return HandlePool.Get(Handle()) as string ?? "<str?>";
+			String s = as_cstring(this);
+			s = s.Replace("\"", "\"\"");
+			return "\"" + s + "\"";
 		}
 		if (IsList) {
-			var valueList = HandlePool.Get(Handle()) as ValueList;
-			if (valueList == null) return "<list?>";
-			if (ValueHelpers._reprDepth >= ValueHelpers._reprMaxDepth) return "[...]";
-			ValueHelpers._reprDepth++;
-			try {
-				var items = new string[valueList.Count];
-				for (int i = 0; i < valueList.Count; i++) {
-					items[i] = ValueHelpers.value_repr(valueList.Get(i)).ToString();
-				}
-				return "[" + string.Join(", ", items) + "]";
-			} finally {
-				ValueHelpers._reprDepth--;
+			if (recursionLimit == 0) return "[...]";
+			if (recursionLimit > 0 && recursionLimit < 3 && vm != null) {
+				string shortName = vm.FindShortName(this);
+				if (shortName != null) return shortName;
 			}
+			var values = HandlePool.Get(Handle()) as ValueList;
+			if (values == null) return "[???]"; // (should never happen)
+			//return valueList.Get(index);
+			var strs = new string[values.Count];
+			for (var i = 0; i < values.Count; i++) {
+				Value val_i = values.Get(i);
+				if (val_i.IsNull) strs[i] = "null";
+				else strs[i] = val_i.CodeForm(vm, recursionLimit - 1);
+			}
+			return "[" + string.Join(", ", strs) + "]";
 		}
 		if (IsMap) {
-			var valueMap = HandlePool.Get(Handle()) as ValueMap;
-			if (valueMap == null) return "<map?>";
-			if (ValueHelpers._reprDepth >= ValueHelpers._reprMaxDepth) return "{...}";
-			ValueHelpers._reprDepth++;
-			try {
-				var items = new string[valueMap.Count];
-				int i = 0;
-				foreach (var kvp in valueMap.Items) {
-					string keyStr = ValueHelpers.value_repr(kvp.Key).ToString();
-					string valueStr = ValueHelpers.value_repr(kvp.Value).ToString();
-					items[i] = keyStr + ": " + valueStr;
-					i++;
-				}
-				return "{" + string.Join(", ", items) + "}";
-			} finally {
-				ValueHelpers._reprDepth--;
+			if (recursionLimit == 0) return "{...}";
+			if (recursionLimit > 0 && recursionLimit < 3 && vm != null) {
+				string shortName = vm.FindShortName(this);
+				if (shortName != null) return shortName;
 			}
+			var map = HandlePool.Get(Handle()) as ValueMap;
+			if (map == null) return "{???}"; // (should never happen)
+			var strs = new string[map.Count];
+			int i = 0;
+			foreach (KeyValuePair<Value, Value> kv in map.Items) {
+				int nextRecurLimit = recursionLimit - 1;
+				if (Value.Equal(kv.Key, val_isa_key)) nextRecurLimit = 1;
+				strs[i++] = string.Format("{0}: {1}", kv.Key.CodeForm(vm, nextRecurLimit), 
+					kv.Value.IsNull ? "null" : kv.Value.CodeForm(vm, nextRecurLimit));
+			}
+			return "{" + String.Join(", ", strs) + "}";
 		}
 		if (IsFuncRef) {
 			var funcRefObj = AsFuncRefObject();
@@ -218,7 +227,7 @@ public readonly struct Value {
 		if (IsError) {
 			var errObj = AsErrorObject();
 			if (errObj == null) return "<error?>";
-			string msg = ValueHelpers.is_string(errObj.Message) ? ValueHelpers.as_cstring(errObj.Message) : errObj.Message.ToString();
+			string msg = ValueHelpers.is_string(errObj.Message) ? ValueHelpers.as_cstring(errObj.Message) : errObj.Message.ToString(vm);
 			return "error: " + msg;
 		}
 		return "<value>";
@@ -228,7 +237,7 @@ public readonly struct Value {
 
 	// ==== ARITHMETIC & COMPARISON (subset; extend as needed) ==============
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value Add(Value a, Value b) {
+	public static Value Add(Value a, Value b, VM vm = null) {
 		if (a.IsError) return a;
 		if (b.IsError) return b;
 		if (a.IsDouble && b.IsDouble) {
@@ -239,10 +248,10 @@ public readonly struct Value {
 		if (a.IsString) {
 			if (b.IsNull) return a;
 			if (b.IsString) return ValueHelpers.string_concat(a, b);
-			return ValueHelpers.string_concat(a, ValueHelpers.make_string(b.ToString()));
+			return ValueHelpers.string_concat(a, ValueHelpers.make_string(b.ToString(vm)));
 		} else if (b.IsString) {
 			if (a.IsNull) return b;
-			return ValueHelpers.string_concat(ValueHelpers.make_string(a.ToString()), b);
+			return ValueHelpers.string_concat(ValueHelpers.make_string(a.ToString(vm)), b);
 		}
 		// List concatenation
 		if (a.IsList && b.IsList) return ValueHelpers.list_concat(a, b);
@@ -347,8 +356,8 @@ public readonly struct Value {
 			return FromDouble(a.AsDouble() - b.AsDouble());
 		}
 		if (a.IsString && b.IsString) {
-			string sa = a.IsTiny ? a.ToString() : HandlePool.Get(a.Handle()) as string;
-			string sb = b.IsTiny ? b.ToString() : HandlePool.Get(b.Handle()) as string;
+			string sa = as_cstring(a);
+			string sb = as_cstring(b);
 			if (sb.Length > 0 && sa.EndsWith(sb)) {
 				return FromString(sa.Substring(0, sa.Length - sb.Length));
 			}
@@ -401,8 +410,8 @@ public readonly struct Value {
 
 		// Heap strings via handle indirection
 		if (a.IsString && b.IsString) {
-			string sa = a.IsTiny ? a.ToString() : HandlePool.Get(a.Handle()) as string;
-			string sb = b.IsTiny ? b.ToString() : HandlePool.Get(b.Handle()) as string;
+			string sa = as_cstring(a);
+			string sb = as_cstring(b);
 			return string.Equals(sa, sb, StringComparison.Ordinal);
 		}
 
@@ -850,24 +859,8 @@ public static class ValueHelpers {
 		return v;
 	}
 
-	// Depth guard for Value.ToString() / value_repr() to prevent stack overflow
-	// when printing circular structures (e.g. g = globals; print g).
-	// MiniScript 1.x limits nesting to 16 levels; we use the same limit.
-	[ThreadStatic] internal static int _reprDepth;
-	internal const int _reprMaxDepth = 16;
-
 	// Value representation function (for literal representation)
-	public static Value value_repr(Value v) {
-		if (v.IsString) {
-			// For strings, return quoted representation with internal quotes doubled
-			string content = v.ToString();
-			string escaped = content.Replace("\"", "\"\"");  // Double internal quotes
-			return make_string("\"" + escaped + "\"");
-		} else {
-			// For everything else, use normal string representation
-			return make_string(v.ToString());
-		}
-	}
+	public static Value value_repr(Value v, VM vm = null) => make_string(v.CodeForm(vm));
 
 	// Core value extraction functions (matching value.h)
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -982,7 +975,7 @@ public static class ValueHelpers {
 	
 	// Arithmetic operations (matching value.h)
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value value_add(Value a, Value b) => Value.Add(a, b);
+	public static Value value_add(Value a, Value b, VM vm = null) => Value.Add(a, b, vm);
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value value_mult(Value a, Value b) => Value.Multiply(a, b);
@@ -1063,12 +1056,12 @@ public static class ValueHelpers {
 
 	// Conversion operations (matching value.h)
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value to_string(Value a) => make_string(a.ToString());
+	public static Value to_string(Value a, VM vm = null) => make_string(a.ToString(vm));
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value to_number(Value a) {
 		try {
-			return make_double(double.Parse(a.ToString()));
+			return make_double(double.Parse(a.ToString(null)));
 		} catch {
 			return val_zero;
 		}
@@ -1082,7 +1075,12 @@ public static class ValueHelpers {
 	// String helper
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private static string GetStringValue(Value val) {
-		if (val.IsTiny) return val.ToString();
+		if (val.IsTiny) {
+			int len = val.TinyLen();
+			Span<byte> tmp = stackalloc byte[5];
+			val.TinyCopyTo(tmp);
+			return System.Text.Encoding.ASCII.GetString(tmp[..len]);
+		}
 		if (val.IsHeapString) return HandlePool.Get(val.Handle()) as string ?? "";
 		return "";
 	}
@@ -1269,10 +1267,10 @@ public static class ValueHelpers {
 		return make_string(result);
 	}
 
-	public static Value string_insert(Value str, int index, Value value) {
+	public static Value string_insert(Value str, int index, Value value, VM vm = null) {
 		if (!str.IsString) return str;
 		string s = GetStringValue(str);
-		string insertStr = value.ToString();
+		string insertStr = value.ToString(vm);
 		if (index < 0) index += s.Length + 1;
 		if (index < 0) index = 0;
 		if (index > s.Length) index = s.Length;

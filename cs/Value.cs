@@ -14,31 +14,35 @@ namespace MiniScript {
 // NOTE: Align the TAG MASK constants below with your C value.h.
 // The layout mirrors a NaN-box: 64-bit payload that is either:
 // - a real double (no matching tag), OR
-// - an encoded immediate (int, tiny string), OR
-// - a tagged 32-bit handle to heap-managed objects (string/list/map).
+// - an encoded immediate (null, tiny string), OR
+// - a GC-managed object: GC_TAG | (gcSet << 32) | itemIndex
+//
+// GCSet assignments (must match GCManager constants):
+//   STRING_SET  = 0  → 0xFFFE_0000_0000_XXXX
+//   LIST_SET    = 1  → 0xFFFE_0001_0000_XXXX
+//   MAP_SET     = 2  → 0xFFFE_0002_0000_XXXX
+//   ERROR_SET   = 3  → 0xFFFE_0003_0000_XXXX
+//   FUNCREF_SET = 4  → 0xFFFE_0004_0000_XXXX
 //
 // Keep Value at 8 bytes, blittable, and aggressively inlined.
 
 [StructLayout(LayoutKind.Explicit, Size = 8)]
 public readonly struct Value {
-	// Overlaid views enable single-move bit casts on CoreCLR.
 	[FieldOffset(0)] private readonly ulong _u;
 	[FieldOffset(0)] private readonly double _d;
 
 	private Value(ulong u) { _d = 0; _u = u; }
 
-	// ==== TAGS & MASKS (EDIT TO MATCH YOUR C EXACTLY) =====================
-	// High 16 bits used to tag NaN-ish payloads.
+	// ==== TAGS & MASKS =======================================================
 	private const ulong NANISH_MASK     = 0xFFFF_0000_0000_0000UL;
-	private const ulong NULL_VALUE      = 0xFFF1_0000_0000_0000UL; // null singleton (our lowest reserved NaN pattern)
-	private const ulong ERROR_TAG       = 0xFFF9_0000_0000_0000UL; // error reference tag
-	private const ulong FUNCREF_TAG     = 0xFFFB_0000_0000_0000UL; // function reference tag
-	private const ulong MAP_TAG         = 0xFFFC_0000_0000_0000UL; // map tag
-	private const ulong LIST_TAG        = 0xFFFD_0000_0000_0000UL; // list tag
-	private const ulong STRING_TAG      = 0xFFFE_0000_0000_0000UL; // heap string tag
-	private const ulong TINY_STRING_TAG = 0xFFFF_0000_0000_0000UL; // tiny string tag
+	private const ulong NULL_VALUE      = 0xFFF1_0000_0000_0000UL;
+	// Bits 34-32 carry the GCSet index (0-7); bits 31-0 carry the item index.
+	public  const ulong GC_TAG          = 0xFFFE_0000_0000_0000UL;
+	private const ulong TINY_STRING_TAG = 0xFFFF_0000_0000_0000UL;
+	// Mask that covers the top 16-bit tag plus the 3-bit GCSet field.
+	private const ulong GC_TYPE_MASK    = NANISH_MASK | 0x0000_0007_0000_0000UL;
 
-	// ==== CONSTRUCTORS ====================================================
+	// ==== CONSTRUCTORS =======================================================
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value Null() => new(NULL_VALUE);
 
@@ -47,27 +51,25 @@ public readonly struct Value {
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value FromDouble(double d) {
-		// Unity/Mono/IL2CPP-safe: use BitConverter, no Unsafe dependency.
 		ulong bits = (ulong)BitConverter.DoubleToInt64Bits(d);
 		return new(bits);
 	}
 
-	// Tiny ASCII string: stores length (low 8 bits) + up to 5 bytes data in bits 8..48.
-	// High bits carry TINY_STRING_TAG so the tag check is a single AND/compare.
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value FromTinyAscii(ReadOnlySpan<byte> s) {
 		int len = s.Length;
 		if ((uint)len > 5u) throw new ArgumentOutOfRangeException(nameof(s), "Tiny string max 5 bytes");
 		ulong u = TINY_STRING_TAG | (ulong)((uint)len & 0xFFU);
-		for (int i = 0; i < len; i++) {
-			u |= (ulong)((byte)s[i]) << (8 * (i + 1));
-		}
+		for (int i = 0; i < len; i++) u |= (ulong)((byte)s[i]) << (8 * (i + 1));
 		return new(u);
 	}
 
-	// ToDo: remove this method, and others here, as they don't transpile and
-	// we are repeatedly tempted to use them in code that needs to transpile.
-	// All code should be instead using make_string (etc.).
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static Value MakeGC(int gcSet, int itemIdx) =>
+		new(GC_TAG | ((ulong)gcSet << 32) | (uint)itemIdx);
+
+	// Legacy factory kept for compatibility (used by some C# callers).
+	// New code should call make_string / make_list / etc. from ValueHelpers.
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value FromString(string s) {
 		if (s.Length <= 5 && IsAllAscii(s)) {
@@ -75,58 +77,34 @@ public readonly struct Value {
 			for (int i = 0; i < s.Length; i++) tmp[i] = (byte)s[i];
 			return FromTinyAscii(tmp[..s.Length]);
 		}
-		int h = HandlePool.Add(s);
-		return FromHandle(STRING_TAG, h);
+		return gc.NewString(s);
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value FromList(object list) { // typically List<Value> or a custom IList
-		int h = HandlePool.Add(list);
-		return FromHandle(LIST_TAG, h);
-	}
+	// ==== TYPE PREDICATES ====================================================
+	public bool IsNull     { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => _u == NULL_VALUE; }
+	public bool IsTiny     { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => (_u & NANISH_MASK) == TINY_STRING_TAG; }
+	public bool IsGCObject { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => (_u & NANISH_MASK) == GC_TAG; }
+	public bool IsDouble   { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => (_u & NANISH_MASK) < NULL_VALUE; }
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value FromMap(object map) {// typically Dictionary<Value,Value> or custom
-		int h = HandlePool.Add(map);
-		return FromHandle(MAP_TAG, h);
-	}
+	// Per-type GC checks: single AND + compare using GC_TYPE_MASK.
+	public bool IsString  { [MethodImpl(MethodImplOptions.AggressiveInlining)] get =>
+		IsTiny || (_u & GC_TYPE_MASK) == (GC_TAG | ((ulong)GCManager.STRING_SET  << 32)); }
+	public bool IsList    { [MethodImpl(MethodImplOptions.AggressiveInlining)] get =>
+		(_u & GC_TYPE_MASK) == (GC_TAG | ((ulong)GCManager.LIST_SET    << 32)); }
+	public bool IsMap     { [MethodImpl(MethodImplOptions.AggressiveInlining)] get =>
+		(_u & GC_TYPE_MASK) == (GC_TAG | ((ulong)GCManager.MAP_SET     << 32)); }
+	public bool IsError   { [MethodImpl(MethodImplOptions.AggressiveInlining)] get =>
+		(_u & GC_TYPE_MASK) == (GC_TAG | ((ulong)GCManager.ERROR_SET   << 32)); }
+	public bool IsFuncRef { [MethodImpl(MethodImplOptions.AggressiveInlining)] get =>
+		(_u & GC_TYPE_MASK) == (GC_TAG | ((ulong)GCManager.FUNCREF_SET << 32)); }
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value FromFuncRef(ValueFuncRef funcRefObj) {
-		int h = HandlePool.Add(funcRefObj);
-		return FromHandle(FUNCREF_TAG, h);
-	}
+	// Kept for compatibility — true for non-tiny heap strings.
+	public bool IsHeapString { [MethodImpl(MethodImplOptions.AggressiveInlining)] get =>
+		(_u & GC_TYPE_MASK) == (GC_TAG | ((ulong)GCManager.STRING_SET  << 32)); }
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value FromError(ValueError errorObj) {
-		int h = HandlePool.Add(errorObj);
-		return FromHandle(ERROR_TAG, h);
-	}
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value FromHandle(ulong tagMask, int handle)
-		=> new(tagMask | (uint)handle);
-
-	// ==== TYPE PREDICATES =================================================
-	public bool IsNull   { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => _u == NULL_VALUE; }
-	public bool IsTiny   { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => (_u & TINY_STRING_TAG) == TINY_STRING_TAG && (_u & NANISH_MASK) != STRING_TAG && (_u & NANISH_MASK) != LIST_TAG && (_u & NANISH_MASK) != MAP_TAG && (_u & NANISH_MASK) != FUNCREF_TAG && _u != NULL_VALUE; }
-	public bool IsHeapString { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => (_u & NANISH_MASK) == STRING_TAG; }
-	public bool IsString { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => (_u & STRING_TAG) == STRING_TAG; }
-	public bool IsFuncRef { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => (_u & NANISH_MASK) == FUNCREF_TAG; }
-	public bool IsError  { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => (_u & NANISH_MASK) == ERROR_TAG; }
-	public bool IsList   { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => (_u & NANISH_MASK) == LIST_TAG; }
-	public bool IsMap	{ [MethodImpl(MethodImplOptions.AggressiveInlining)] get => (_u & NANISH_MASK) == MAP_TAG; }
-	public bool IsDouble { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => (_u & NANISH_MASK) < NULL_VALUE; }
-
-	// ==== ACCESSORS =======================================================
+	// ==== ACCESSORS ==========================================================
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public int AsInt() => (int)AsDouble();
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public ValueFuncRef AsFuncRefObject() => HandlePool.Get(Handle()) as ValueFuncRef;
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public ValueError AsErrorObject() => HandlePool.Get(Handle()) as ValueError;
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public double AsDouble() {
@@ -134,10 +112,17 @@ public readonly struct Value {
 		return BitConverter.Int64BitsToDouble(bits);
 	}
 
+	/// <summary>GCSet index (0-4); only meaningful when IsGCObject.</summary>
+	public int GCSetIndex { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => (int)((_u >> 32) & 0x7); }
+
+	/// <summary>Item index within its GCSet; only meaningful when IsGCObject.</summary>
+	public int ItemIndex  { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => (int)_u; }
+
+	/// <summary>Alias for ItemIndex; kept for call-site compatibility.</summary>
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public int Handle() => (int)_u;
 
-	// Tiny decode helpers
+	// Tiny-string helpers
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public int TinyLen() => (int)(_u & 0xFF);
 
@@ -147,7 +132,7 @@ public readonly struct Value {
 		for (int i = 0; i < len; i++) dst[i] = (byte)((_u >> (8 * (i + 1))) & 0xFF);
 	}
 
-	public String ToString(VM vm)  {
+	public String ToString(VM vm) {
 		if (IsString) return as_cstring(this);
 		return CodeForm(vm, 3);
 	}
@@ -155,25 +140,19 @@ public readonly struct Value {
 	[Obsolete("Pass the VM context: use ToString(vm) instead")]
 	public override string ToString() => ToString(null);
 
-	// Return the given string in its source-code form: strings quoted, etc.
-	// Provide a VM reference in order to enable shortening of map references
-	// (once a few levels deep).
-	public string CodeForm(VM vm, int recursionLimit=-1)  {
+	public string CodeForm(VM vm, int recursionLimit = -1) {
 		if (IsNull) return "null";
 		if (IsDouble) {
 			double value = AsDouble();
 			if (value % 1.0 == 0.0) {
-				// integer values as integers
 				string result = value.ToString("0", CultureInfo.InvariantCulture);
 				if (result == "-0") result = "0";
 				return result;
 			} else if (value > 1E10 || value < -1E10 || (value < 1E-6 && value > -1E-6)) {
-				// very large/small numbers in exponential form
 				string s = value.ToString("E6", CultureInfo.InvariantCulture);
 				s = s.Replace("E-00", "E-0");
 				return s;
 			} else {
-				// all others in decimal form, with 1-6 digits past the decimal point
 				string result = value.ToString("0.0#####", CultureInfo.InvariantCulture);
 				if (result == "-0") result = "0";
 				return result;
@@ -190,14 +169,11 @@ public readonly struct Value {
 				string shortName = vm.FindShortName(this);
 				if (shortName != null) return shortName;
 			}
-			var values = HandlePool.Get(Handle()) as ValueList;
-			if (values == null) return "[???]"; // (should never happen)
-			//return valueList.Get(index);
-			var strs = new string[values.Count];
-			for (var i = 0; i < values.Count; i++) {
-				Value val_i = values.Get(i);
-				if (val_i.IsNull) strs[i] = "null";
-				else strs[i] = val_i.CodeForm(vm, recursionLimit - 1);
+			ref GCList list = ref gc.Lists.Get(ItemIndex);
+			var strs = new string[list.Count];
+			for (int i = 0; i < list.Count; i++) {
+				Value val_i = list.Get(i);
+				strs[i] = val_i.IsNull ? "null" : val_i.CodeForm(vm, recursionLimit - 1);
 			}
 			return "[" + string.Join(", ", strs) + "]";
 		}
@@ -207,56 +183,51 @@ public readonly struct Value {
 				string shortName = vm.FindShortName(this);
 				if (shortName != null) return shortName;
 			}
-			var map = HandlePool.Get(Handle()) as ValueMap;
-			if (map == null) return "{???}"; // (should never happen)
-			var strs = new string[map.Count];
-			int i = 0;
-			foreach (KeyValuePair<Value, Value> kv in map.Items) {
+			ref GCMap map = ref gc.Maps.Get(ItemIndex);
+			var strs = new List<string>(map.Count);
+			for (int iter = map.NextEntry(-1); iter != -1; iter = map.NextEntry(iter)) {
+				Value key = map.KeyAt(iter);
+				Value val = map.ValueAt(iter);
 				int nextRecurLimit = recursionLimit - 1;
-				if (Value.Equal(kv.Key, val_isa_key)) nextRecurLimit = 1;
-				strs[i++] = string.Format("{0}: {1}", kv.Key.CodeForm(vm, nextRecurLimit), 
-					kv.Value.IsNull ? "null" : kv.Value.CodeForm(vm, nextRecurLimit));
+				if (Equal(key, val_isa_key)) nextRecurLimit = 1;
+				strs.Add(string.Format("{0}: {1}", key.CodeForm(vm, nextRecurLimit),
+					val.IsNull ? "null" : val.CodeForm(vm, nextRecurLimit)));
 			}
 			return "{" + String.Join(", ", strs) + "}";
 		}
 		if (IsFuncRef) {
-			var funcRefObj = AsFuncRefObject();
-			if (funcRefObj == null) return "<funcref?>";
-			return funcRefObj.ToString();
+			ref GCFuncRef fr = ref gc.FuncRefs.Get(ItemIndex);
+			if (fr.FuncIndex < 0) return "<funcref?>";
+			return is_null(fr.OuterVars)
+				? StringUtils.Format("FuncRef(#{0})", fr.FuncIndex)
+				: StringUtils.Format("FuncRef(#{0}, closure)", fr.FuncIndex);
 		}
 		if (IsError) {
-			var errObj = AsErrorObject();
-			if (errObj == null) return "<error?>";
-			string msg = ValueHelpers.is_string(errObj.Message) ? ValueHelpers.as_cstring(errObj.Message) : errObj.Message.ToString(vm);
+			ref GCError err = ref gc.Errors.Get(ItemIndex);
+			string msg = is_string(err.Message) ? as_cstring(err.Message) : err.Message.ToString(vm);
 			return "error: " + msg;
 		}
 		return "<value>";
 	}
 
-	public ulong Bits => _u; // sometimes useful for hashing/equality
+	public ulong Bits => _u;
 
-	// ==== ARITHMETIC & COMPARISON (subset; extend as needed) ==============
+	// ==== ARITHMETIC & COMPARISON ============================================
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value Add(Value a, Value b, VM vm = null) {
 		if (a.IsError) return a;
 		if (b.IsError) return b;
-		if (a.IsDouble && b.IsDouble) {
-			return FromDouble(a.AsDouble() + b.AsDouble());
-		}
-		// Handle string concatenation: any type + string or string + any type
-		// Null is treated as empty string in concatenation (string + null = string)
+		if (a.IsDouble && b.IsDouble) return FromDouble(a.AsDouble() + b.AsDouble());
 		if (a.IsString) {
 			if (b.IsNull) return a;
-			if (b.IsString) return ValueHelpers.string_concat(a, b);
-			return ValueHelpers.string_concat(a, ValueHelpers.make_string(b.ToString(vm)));
+			if (b.IsString) return string_concat(a, b);
+			return string_concat(a, make_string(b.ToString(vm)));
 		} else if (b.IsString) {
 			if (a.IsNull) return b;
-			return ValueHelpers.string_concat(ValueHelpers.make_string(a.ToString(vm)), b);
+			return string_concat(make_string(a.ToString(vm)), b);
 		}
-		// List concatenation
-		if (a.IsList && b.IsList) return ValueHelpers.list_concat(a, b);
-		// Map addition
-		if (a.IsMap && b.IsMap) return ValueHelpers.map_concat(a, b);
+		if (a.IsList && b.IsList) return list_concat(a, b);
+		if (a.IsMap  && b.IsMap)  return map_concat(a, b);
 		return Null();
 	}
 
@@ -264,45 +235,29 @@ public readonly struct Value {
 	public static Value Multiply(Value a, Value b) {
 		if (a.IsError) return a;
 		if (b.IsError) return b;
-		if (a.IsDouble && b.IsDouble) {
-			return FromDouble(a.AsDouble() * b.AsDouble());
-		}
-
-		// Handle string repetition: string * number
+		if (a.IsDouble && b.IsDouble) return FromDouble(a.AsDouble() * b.AsDouble());
 		if (is_string(a) && is_double(b)) {
-			int repeats = 0;
-			int extraChars = 0;
 			double factor = as_double(b);
 			if (double.IsNaN(factor) || double.IsInfinity(factor)) return Null();
 			if (factor <= 0) return val_empty_string;
-			repeats = (int)factor;
-			// TODO: Do we need to check Max length of a string like in 1.0?
-
+			int repeats = (int)factor;
 			Value result = val_empty_string;
-			for (int i = 0; i < repeats; i++) {
-				result = ValueHelpers.string_concat(result, a);
-			}
-			extraChars = (int)(ValueHelpers.string_length(a) * (factor - repeats));
-			if (extraChars > 0) result = ValueHelpers.string_concat(result, ValueHelpers.string_substring(a, 0, extraChars));
+			for (int i = 0; i < repeats; i++) result = string_concat(result, a);
+			int extraChars = (int)(string_length(a) * (factor - repeats));
+			if (extraChars > 0) result = string_concat(result, string_substring(a, 0, extraChars));
 			return result;
 		}
-		// List replication: list * number
 		if (a.IsList && b.IsDouble) {
 			double factor = b.AsDouble();
 			if (double.IsNaN(factor) || double.IsInfinity(factor)) return Null();
-			int len = ValueHelpers.list_count(a);
-			if (factor <= 0 || len == 0) return ValueHelpers.make_list(0);
+			int len = list_count(a);
+			if (factor <= 0 || len == 0) return make_list(0);
 			int fullCopies = (int)factor;
 			int extraItems = (int)(len * (factor - fullCopies));
-			Value result = ValueHelpers.make_list(fullCopies * len + extraItems);
-			for (int c = 0; c < fullCopies; c++) {
-				for (int i = 0; i < len; i++) {
-					ValueHelpers.list_push(result, ValueHelpers.list_get(a, i));
-				}
-			}
-			for (int i = 0; i < extraItems; i++) {
-				ValueHelpers.list_push(result, ValueHelpers.list_get(a, i));
-			}
+			Value result = make_list(fullCopies * len + extraItems);
+			for (int c = 0; c < fullCopies; c++)
+				for (int i = 0; i < len; i++) list_push(result, list_get(a, i));
+			for (int i = 0; i < extraItems; i++) list_push(result, list_get(a, i));
 			return result;
 		}
 		return Null();
@@ -312,15 +267,8 @@ public readonly struct Value {
 	public static Value Divide(Value a, Value b) {
 		if (a.IsError) return a;
 		if (b.IsError) return b;
-		// MiniScript division always returns a float/double
-		if (a.IsDouble && b.IsDouble) {
-			return FromDouble(a.AsDouble() / b.AsDouble());
-		}
-		if (is_string(a) && b.IsDouble) {
-			// We'll just call through to value_mult for this, with a factor of 1/b.
-			return value_mult(a, value_div(make_double(1), b));
-		}
-		// List division: list / number (same as list * (1/number))
+		if (a.IsDouble && b.IsDouble) return FromDouble(a.AsDouble() / b.AsDouble());
+		if (is_string(a) && b.IsDouble) return value_mult(a, value_div(make_double(1), b));
 		if (a.IsList && b.IsDouble) {
 			double db = b.AsDouble();
 			if (db == 0 || double.IsNaN(db) || double.IsInfinity(db)) return Null();
@@ -333,18 +281,14 @@ public readonly struct Value {
 	public static Value Mod(Value a, Value b) {
 		if (a.IsError) return a;
 		if (b.IsError) return b;
-		if (a.IsDouble && b.IsDouble) {
-			return FromDouble(a.AsDouble() % b.AsDouble());
-		}
+		if (a.IsDouble && b.IsDouble) return FromDouble(a.AsDouble() % b.AsDouble());
 		return Null();
 	}
 
 	public static Value Pow(Value a, Value b) {
 		if (a.IsError) return a;
 		if (b.IsError) return b;
-		if (a.IsDouble && b.IsDouble) {
-			return FromDouble(Math.Pow(a.AsDouble(), b.AsDouble()));
-		}
+		if (a.IsDouble && b.IsDouble) return FromDouble(Math.Pow(a.AsDouble(), b.AsDouble()));
 		return Null();
 	}
 
@@ -352,15 +296,12 @@ public readonly struct Value {
 	public static Value Sub(Value a, Value b) {
 		if (a.IsError) return a;
 		if (b.IsError) return b;
-		if (a.IsDouble && b.IsDouble) {
-			return FromDouble(a.AsDouble() - b.AsDouble());
-		}
+		if (a.IsDouble && b.IsDouble) return FromDouble(a.AsDouble() - b.AsDouble());
 		if (a.IsString && b.IsString) {
 			string sa = as_cstring(a);
 			string sb = as_cstring(b);
-			if (sb.Length > 0 && sa.EndsWith(sb)) {
+			if (sb.Length > 0 && sa.EndsWith(sb))
 				return FromString(sa.Substring(0, sa.Length - sb.Length));
-			}
 			return a;
 		}
 		return Null();
@@ -368,58 +309,30 @@ public readonly struct Value {
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool LessThan(Value a, Value b) {
-		if (a.IsDouble && b.IsDouble) {
-			return a.AsDouble() < b.AsDouble();
-		}
-		// Handle string comparison
-		if (a.IsString && b.IsString) {
-			return ValueHelpers.string_compare(a, b) < 0;
-		}
+		if (a.IsDouble && b.IsDouble) return a.AsDouble() < b.AsDouble();
+		if (a.IsString && b.IsString) return string_compare(a, b) < 0;
 		return false;
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool LessThanOrEqual(Value a, Value b) {
-		if (a.IsDouble && b.IsDouble) {
-			return a.AsDouble() <= b.AsDouble();
-		}
-		// Handle string comparison
-		if (a.IsString && b.IsString) {
-			return ValueHelpers.string_compare(a, b) <= 0;
-		}
+		if (a.IsDouble && b.IsDouble) return a.AsDouble() <= b.AsDouble();
+		if (a.IsString && b.IsString) return string_compare(a, b) <= 0;
 		return false;
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool Identical(Value a, Value b)  {
-		return (a._u == b._u);
-	}
+	public static bool Identical(Value a, Value b) => a._u == b._u;
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool Equal(Value a, Value b)  {
-		// Fast path: identical bits
+	public static bool Equal(Value a, Value b) {
 		if (a._u == b._u) return true;
-
-		// If both numeric, compare numerically
-		if (a.IsDouble && b.IsDouble) {
-			return a.AsDouble() == b.AsDouble(); // Note: NaN == NaN is false, matching IEEE
-		}
-
-		// Both tiny strings => byte compare via bits when lengths equal
-		if (a.IsTiny && b.IsTiny) return a._u == b._u;
-
-		// Heap strings via handle indirection
+		if (a.IsDouble && b.IsDouble) return a.AsDouble() == b.AsDouble();
+		if (a.IsTiny   && b.IsTiny)   return a._u == b._u;
 		if (a.IsString && b.IsString) {
-			string sa = as_cstring(a);
-			string sb = as_cstring(b);
-			return string.Equals(sa, sb, StringComparison.Ordinal);
+			return string.Equals(as_cstring(a), as_cstring(b), StringComparison.Ordinal);
 		}
-
-		// Null only equals Null
 		if (a.IsNull || b.IsNull) return a.IsNull && b.IsNull;
-
-		// Lists: compare by content
-		// (ToDo: limit recursion in case of circular references)
 		if (a.IsList && b.IsList) {
 			int countA = list_count(a);
 			if (countA != list_count(b)) return false;
@@ -428,25 +341,22 @@ public readonly struct Value {
 			}
 			return true;
 		}
-
-		// Maps: compare by content
-		// (ToDo: limit recursion in case of circular references)
 		if (a.IsMap && b.IsMap) {
-			var mapA = HandlePool.Get(a.Handle()) as ValueMap;
-			var mapB = HandlePool.Get(b.Handle()) as ValueMap;
-			if (mapA == null || mapB == null) return false;
+			ref GCMap mapA = ref gc.Maps.Get(a.ItemIndex);
+			ref GCMap mapB = ref gc.Maps.Get(b.ItemIndex);
 			if (mapA.Count != mapB.Count) return false;
-			foreach (var kvp in mapA.Items) {
-				if (!mapB.HasKey(kvp.Key)) return false;
-				if (!value_equal(kvp.Value, mapB.Get(kvp.Key))) return false;
+			for (int iter = mapA.NextEntry(-1); iter != -1; iter = mapA.NextEntry(iter)) {
+				Value key = mapA.KeyAt(iter);
+				Value val = mapA.ValueAt(iter);
+				if (!mapB.TryGet(key, out Value bVal)) return false;
+				if (!value_equal(val, bVal)) return false;
 			}
 			return true;
 		}
-
 		return false;
 	}
 
-	// ==== HELPERS =========================================================
+	// ==== HELPERS ============================================================
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private static bool IsAllAscii(string s) {
 		foreach (char c in s) if (c > 0x7F) return false;
@@ -454,422 +364,146 @@ public readonly struct Value {
 	}
 }
 
-// Global helper functions to match C++ value.h interface
-// ToDo: take out most of the stuff above and have *only* these interfaces,
-// so we don't have two ways to do things in the C# code (only one of which
-// actually works in any transpiled code).
+// =============================================================================
+// Global helper functions matching the C++ value.h interface
+// =============================================================================
 public static class ValueHelpers {
 
-	// Common constant values (matching value.h)
-	public static Value val_null = Value.Null();
-	public static Value val_zero = Value.FromDouble(0.0);
-	public static Value val_one = Value.FromDouble(1.0);
-	public static Value val_empty_string = Value.FromString("");
-	public static Value val_isa_key = Value.FromString("__isa");
-	public static Value val_self = Value.FromString("self");
-	public static Value val_super = Value.FromString("super");
+	// The single GC manager for this process.
+	public static readonly GCManager gc = new GCManager();
 
-	// Core value creation functions (matching value.h)
+	// Common constant values
+	public static Value val_null         = Value.Null();
+	public static Value val_zero         = Value.FromDouble(0.0);
+	public static Value val_one          = Value.FromDouble(1.0);
+	public static Value val_empty_string = Value.FromString("");
+	public static Value val_isa_key      = Value.FromString("__isa");
+	public static Value val_self         = Value.FromString("self");
+	public static Value val_super        = Value.FromString("super");
+
+	// ── Core value creation ──────────────────────────────────────────────────
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value make_int(int i) => Value.FromDouble((double)i);
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value make_int(bool b) => Value.FromDouble(b ? 1.0 : 0.0);
-	
+
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value make_double(double d) => Value.FromDouble(d);
-	
+
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value make_string(string str) => Value.FromString(str);
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static String to_String(Value v) => as_cstring(to_string(v));
-	
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value make_list(int initial_capacity) {
-		var list = new ValueList();
-		return Value.FromList(list);
-	}
-	
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value make_empty_list() => make_list(0);
-	
-	// List operations (matching value_list.h)
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static int list_count(Value list_val) {
-		if (!list_val.IsList) return 0;
-		var valueList = HandlePool.Get(list_val.Handle()) as ValueList;
-		return valueList?.Count ?? 0;
-	}
-	
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value list_get(Value list_val, int index) {
-		if (!list_val.IsList) return val_null;
-		var valueList = HandlePool.Get(list_val.Handle()) as ValueList;
-		return valueList?.Get(index) ?? val_null;
-	}
-	
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static void list_set(Value list_val, int index, Value item) {
-		if (!list_val.IsList) return;
-		var valueList = HandlePool.Get(list_val.Handle()) as ValueList;
-		if (valueList == null) return;
-		if (valueList.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return; }
-		valueList.Set(index, item);
-	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static void list_push(Value list_val, Value item) {
-		if (!list_val.IsList) return;
-		var valueList = HandlePool.Get(list_val.Handle()) as ValueList;
-		if (valueList == null) return;
-		if (valueList.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return; }
-		valueList.Add(item);
-	}
+	public static Value make_list(int initial_capacity) => gc.NewList(initial_capacity);
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool list_remove(Value list_val, int index) {
-		if (!list_val.IsList) return false;
-		var valueList = HandlePool.Get(list_val.Handle()) as ValueList;
-		if (valueList == null) return false;
-		if (valueList.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return false; }
-		return valueList.Remove(index);
-	}
-
-	// Map functions (matching value_map.h)
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value make_map(int initial_capacity) {
-		var map = new ValueMap();
-		return Value.FromMap(map);
-	}
+	public static Value make_empty_list() => gc.NewList(0);
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value make_empty_map() => make_map(8);
+	public static Value make_empty_map() => gc.NewMap(8);
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value make_funcref(Int32 funcIndex, Value outerVars) => Value.FromFuncRef(new ValueFuncRef(funcIndex, outerVars));
+	public static Value make_map(int initial_capacity) => gc.NewMap(initial_capacity);
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static Value make_funcref(Int32 funcIndex, Value outerVars) => gc.NewFuncRef(funcIndex, outerVars);
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Int32 funcref_index(Value v) {
-		var funcRefObj = v.AsFuncRefObject();
-		return funcRefObj?.FuncIndex ?? -1;
+		if (!v.IsFuncRef) return -1;
+		return gc.FuncRefs.Get(v.ItemIndex).FuncIndex;
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value funcref_outer_vars(Value v) {
-		var funcRefObj = v.AsFuncRefObject();
-		return funcRefObj?.OuterVars ?? val_null;
+		if (!v.IsFuncRef) return val_null;
+		return gc.FuncRefs.Get(v.ItemIndex).OuterVars;
 	}
 
-	public static int map_count(Value map_val) {
-		if (!map_val.IsMap) return 0;
-		var valueMap = HandlePool.Get(map_val.Handle()) as ValueMap;
-		return valueMap?.Count ?? 0;
+	// ── Error operations ─────────────────────────────────────────────────────
+
+	public static Value make_error(Value message, Value inner, Value stack, Value isa) {
+		if (is_null(stack)) {
+			stack = make_list(0);
+			freeze_value(stack);
+		}
+		return gc.NewError(message, inner, stack, isa);
 	}
 
-	public static Value map_get(Value map_val, Value key) {
-		if (!map_val.IsMap) return val_null;
-		var valueMap = HandlePool.Get(map_val.Handle()) as ValueMap;
-		return valueMap?.Get(key) ?? val_null;
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static Value error_message(Value v) {
+		if (!v.IsError) return val_null;
+		return gc.Errors.Get(v.ItemIndex).Message;
 	}
 
-	// Look up a key directly in map_val only (not walking the __isa chain).
-	// Returns true if found (with value in out parameter), false otherwise.
-	public static bool map_try_get(Value map_val, Value key, out Value value) {
-		value = val_null;
-		if (!map_val.IsMap) return false;
-		var valueMap = HandlePool.Get(map_val.Handle()) as ValueMap;
-		if (valueMap == null) return false;
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static Value error_inner(Value v) {
+		if (!v.IsError) return val_null;
+		return gc.Errors.Get(v.ItemIndex).Inner;
+	}
 
-		if (valueMap.HasKey(key)) {
-			value = valueMap.Get(key);
-			return true;
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static Value error_stack(Value v) {
+		if (!v.IsError) return val_null;
+		return gc.Errors.Get(v.ItemIndex).Stack;
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static Value error_isa(Value v) {
+		if (!v.IsError) return val_null;
+		return gc.Errors.Get(v.ItemIndex).Isa;
+	}
+
+	public static bool error_isa_contains(Value err, Value target) {
+		if (!err.IsError) return false;
+		Value current = gc.Errors.Get(err.ItemIndex).Isa;
+		for (int depth = 0; depth < 256; depth++) {
+			if (is_null(current)) return false;
+			if (value_identical(current, target)) return true;
+			if (!is_error(current)) return false;
+			current = gc.Errors.Get(current.ItemIndex).Isa;
 		}
 		return false;
 	}
 
-	// Look up a key in a map, walking the __isa chain if needed.
-	// Returns true if found (with value in out parameter), false otherwise.
-	public static bool map_lookup(Value map_val, Value key, out Value value) {
-		value = val_null;
-		Value isaKey = val_isa_key;
-		Value current = map_val;
-		for (Int32 depth = 0; depth < 256; depth++) {
-			if (!is_map(current)) return false;
-			var valueMap = HandlePool.Get(current.Handle()) as ValueMap;
-			if (valueMap == null) return false;
-			if (valueMap.HasKey(key)) {
-				value = valueMap.Get(key);
-				return true;
-			}
-			// Walk up __isa chain
-			if (!valueMap.HasKey(isaKey)) return false;
-			current = valueMap.Get(isaKey);
-		}
-		return false;
-	}
+	// ── Type predicates ──────────────────────────────────────────────────────
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static bool is_null(Value v) => v.IsNull;
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static bool is_int(Value v) => false;
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static bool is_double(Value v) => v.IsDouble;
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static bool is_string(Value v) => v.IsString;
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static bool is_map(Value v) => v.IsMap;
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static bool is_list(Value v) => v.IsList;
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static bool is_funcref(Value v) => v.IsFuncRef;
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static bool is_error(Value v) => v.IsError;
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static bool is_tiny_string(Value v) => v.IsTiny;
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static bool is_number(Value v) => v.IsDouble;
 
-	// Look up a key in a map walking the __isa chain, and also return the __isa
-	// of the map where the key was found (for computing 'super').
-	// Returns true if found, false otherwise.
-	public static bool map_lookup_with_origin(Value map_val, Value key, out Value value, out Value superVal) {
-		value = val_null;
-		superVal = val_null;
-		Value isaKey = val_isa_key;
-		Value current = map_val;
-		for (Int32 depth = 0; depth < 256; depth++) {
-			if (!is_map(current)) return false;
-			var valueMap = HandlePool.Get(current.Handle()) as ValueMap;
-			if (valueMap == null) return false;
-			if (valueMap.HasKey(key)) {
-				value = valueMap.Get(key);
-				// super = the __isa of the map where we found it
-				if (valueMap.HasKey(isaKey)) {
-					superVal = valueMap.Get(isaKey);
-				}
-				return true;
-			}
-			// Walk up __isa chain
-			if (!valueMap.HasKey(isaKey)) return false;
-			current = valueMap.Get(isaKey);
-		}
-		return false;
-	}
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static bool is_truthy(Value v) => !is_null(v) &&
+		((is_double(v) && as_double(v) != 0.0) ||
+		 (is_string(v) && string_length(v) != 0));
 
-	public static bool map_set(Value map_val, Value key, Value value) {
-		if (!map_val.IsMap) return false;
-		var valueMap = HandlePool.Get(map_val.Handle()) as ValueMap;
-		if (valueMap == null) return false;
-		if (valueMap.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen map"); return false; }
-		return valueMap.Set(key, value);
-	}
-
-	public static bool map_remove(Value map_val, Value key) {
-		if (!map_val.IsMap) return false;
-		var valueMap = HandlePool.Get(map_val.Handle()) as ValueMap;
-		if (valueMap == null) return false;
-		if (valueMap.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen map"); return false; }
-		return valueMap.Remove(key);
-	}
-
-	public static bool map_has_key(Value map_val, Value key) {
-		if (!map_val.IsMap) return false;
-		var valueMap = HandlePool.Get(map_val.Handle()) as ValueMap;
-		return valueMap?.HasKey(key) ?? false;
-	}
-
-	public static void map_clear(Value map_val) {
-		if (!map_val.IsMap) return;
-		var valueMap = HandlePool.Get(map_val.Handle()) as ValueMap;
-		if (valueMap == null) return;
-		if (valueMap.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen map"); return; }
-		valueMap.Clear();
-	}
-
-	// Return the Nth key-value pair from a map as a {"key":k, "value":v} mini-map.
-	// TODO: Counting from the beginning every time is O(n) per call, making full
-	// iteration O(n^2) for large maps. We may want to optimize this later, e.g.
-	// by caching an iterator or using an ordered backing store.
-	public static Value map_nth_entry(Value map_val, int n) {
-		if (!map_val.IsMap) return val_null;
-		var valueMap = HandlePool.Get(map_val.Handle()) as ValueMap;
-		if (valueMap == null) return val_null;
-		int i = 0;
-		foreach (var kvp in valueMap.Items) {
-			if (i == n) {
-				Value result = make_map(4);
-				map_set(result, make_string("key"), kvp.Key);
-				map_set(result, make_string("value"), kvp.Value);
-				return result;
-			}
-			i++;
-		}
-		return val_null;
-	}
-
-	// MapIterator: lightweight struct for iterating over map entries.
-	// Mirrors the C++ MapIterator in value_map.h.
-	// In C#, we use an enumerator over the ValueMap.Items dictionary;
-	// the C++ side uses index-based traversal over hash table slots.
-	public struct MapIterator {
-		public ValueMap map;
-		public IEnumerator<KeyValuePair<Value, Value>> enumerator;
-		public bool started;
-		public Value Key;
-		public Value Val;
-	}
-
-	public static MapIterator map_iterator(Value map_val) {
-		MapIterator iter = new MapIterator();
-		iter.Key = val_null;
-		iter.Val = val_null;
-		if (map_val.IsMap) {
-			ValueMap valueMap = HandlePool.Get(map_val.Handle()) as ValueMap;
-			if (valueMap != null) {
-				iter.map = valueMap;
-				iter.enumerator = valueMap.Items.GetEnumerator();
-			}
-		}
-		return iter;
-	}
-
-	public static bool map_iterator_next(ref MapIterator iter) {
-		if (iter.enumerator == null) return false;
-		if (!iter.enumerator.MoveNext()) return false;
-		iter.Key = iter.enumerator.Current.Key;
-		iter.Val = iter.enumerator.Current.Value;
-		return true;
-	}
-
-	public const int MAP_ITER_DONE = Int32.MinValue;
-
-	/// <summary>
-	/// Advance a map iterator to the next entry. Returns the new iterator value,
-	/// or MAP_ITER_DONE if there are no more entries.
-	/// Iterator encoding: -1 = not started; values &lt;= -2 encode VarMap register
-	/// entries (reg index i → iter -(i+2)); values &gt;= 0 are indices into the
-	/// key cache for base map entries.
-	/// </summary>
-	public static int map_iter_next(Value map_val, int iter) {
-		if (!map_val.IsMap) return MAP_ITER_DONE;
-		ValueMap valueMap = HandlePool.Get(map_val.Handle()) as ValueMap;
-		if (valueMap == null) return MAP_ITER_DONE;
-
-		VarMap varMap = valueMap as VarMap;
-
-		// Phase 1: VarMap register entries (iter <= -1)
-		if (varMap != null && iter <= -1) {
-			int startIdx = (iter == -1) ? 0 : -(iter) - 2 + 1;
-			for (int i = startIdx; i < varMap.RegEntryCount; i++) {
-				if (varMap.IsRegEntryAssigned(i)) {
-					return -(i + 2);
-				}
-			}
-			// Exhausted register entries; reset for phase 2
-			iter = -1;
-		}
-
-		// Phase 2: Base map entries via key cache
-		iter++;
-		List<Value> keys = valueMap.GetKeyCache();
-		if (iter < keys.Count) return iter;
-		return MAP_ITER_DONE;
-	}
-
-	/// <summary>
-	/// Get the entry for a given map iterator value as a {"key":k, "value":v} mini-map.
-	/// </summary>
-	public static Value map_iter_entry(Value map_val, int iter) {
-		if (!map_val.IsMap) return val_null;
-		ValueMap valueMap = HandlePool.Get(map_val.Handle()) as ValueMap;
-		if (valueMap == null) return val_null;
-
-		// Negative iter (< -1) means a VarMap register entry
-		if (iter < -1) {
-			VarMap varMap = valueMap as VarMap;
-			if (varMap == null) return val_null;
-			int regMapIdx = -(iter) - 2;
-			return varMap.GetRegEntry(regMapIdx);
-		}
-
-		// Non-negative iter: index into key cache, then look up value by key
-		List<Value> keys = valueMap.GetKeyCache();
-		if (iter < 0 || iter >= keys.Count) return val_null;
-		Value key = keys[iter];
-		Value val = valueMap.Get(key);
-		Value result = make_map(4);
-		map_set(result, make_string("key"), key);
-		map_set(result, make_string("value"), val);
-		return result;
-	}
-
-	public static void varmap_gather(Value map_val) {
-		if (!map_val.IsMap) return;
-		var varMap = HandlePool.Get(map_val.Handle()) as VarMap;
-		varMap?.Gather();
-	}
-
-	public static void varmap_rebind(Value map_val, List<Value> registers, List<Value> names) {
-		if (!map_val.IsMap) return;
-		var varMap = HandlePool.Get(map_val.Handle()) as VarMap;
-		varMap?.Rebind(registers, names);
-	}
-
-	public static void varmap_map_to_register(Value map_val, Value varName, List<Value> registers, int regIndex) {
-		if (!map_val.IsMap) return;
-		var varMap = HandlePool.Get(map_val.Handle()) as VarMap;
-		varMap?.MapToRegister(varName, registers, regIndex);
-	}
-
-	// Frozen value helpers
-	public static bool is_frozen(Value v) {
-		if (v.IsList) {
-			var valueList = HandlePool.Get(v.Handle()) as ValueList;
-			return valueList != null && valueList.Frozen;
-		}
-		if (v.IsMap) {
-			var valueMap = HandlePool.Get(v.Handle()) as ValueMap;
-			return valueMap != null && valueMap.Frozen;
-		}
-		return false;
-	}
-
-	public static void freeze_value(Value v) {
-		if (v.IsList) {
-			var valueList = HandlePool.Get(v.Handle()) as ValueList;
-			if (valueList == null || valueList.Frozen) return;
-			valueList.Frozen = true;
-			for (int i = 0; i < valueList.Count; i++) {
-				freeze_value(valueList.Get(i));
-			}
-		} else if (v.IsMap) {
-			var valueMap = HandlePool.Get(v.Handle()) as ValueMap;
-			if (valueMap == null || valueMap.Frozen) return;
-			valueMap.Frozen = true;
-			foreach (var kvp in valueMap.Items) {
-				freeze_value(kvp.Key);
-				freeze_value(kvp.Value);
-			}
-		}
-	}
-
-	public static Value frozen_copy(Value v) {
-		if (v.IsList) {
-			var valueList = HandlePool.Get(v.Handle()) as ValueList;
-			if (valueList == null || valueList.Frozen) return v;
-			Value newList = make_list(valueList.Count);
-			var newValueList = HandlePool.Get(newList.Handle()) as ValueList;
-			newValueList.Frozen = true;
-			for (int i = 0; i < valueList.Count; i++) {
-				newValueList.Add(frozen_copy(valueList.Get(i)));
-			}
-			return newList;
-		}
-		if (v.IsMap) {
-			var valueMap = HandlePool.Get(v.Handle()) as ValueMap;
-			if (valueMap == null || valueMap.Frozen) return v;
-			Value newMap = make_map(valueMap.Count);
-			var newValueMap = HandlePool.Get(newMap.Handle()) as ValueMap;
-			newValueMap.Frozen = true;
-			foreach (var kvp in valueMap.Items) {
-				newValueMap.Set(frozen_copy(kvp.Key), frozen_copy(kvp.Value));
-			}
-			return newMap;
-		}
-		return v;
-	}
-
-	// Value representation function (for literal representation)
-	public static Value value_repr(Value v, VM vm = null) => make_string(v.CodeForm(vm));
-
-	// Core value extraction functions (matching value.h)
+	// ── Numeric accessors ────────────────────────────────────────────────────
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static int as_int(Value v) => (int)v.AsDouble();
-	
+
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static double as_double(Value v) => v.AsDouble();
 
-	// Get the numeric value as a double, or 0 for non-numeric types.
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static double numeric_val(Value v) {
 		if (v.IsDouble) return v.AsDouble();
@@ -877,215 +511,487 @@ public static class ValueHelpers {
 		return 0.0;
 	}
 
-	// Core type checking functions (matching value.h)
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool is_null(Value v) => v.IsNull;
-	
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool is_int(Value v) => false;
-	
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool is_double(Value v) => v.IsDouble;
-	
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool is_string(Value v) => v.IsString;
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool is_map(Value v) => v.IsMap;
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool is_list(Value v) => v.IsList;
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool is_funcref(Value v) => v.IsFuncRef;
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool is_error(Value v) => v.IsError;
-
-	// Create a new error Value.  message should be a string; inner and isa may be val_null.
-	// stack is a list (frozen); pass val_null for a stubbed empty stack.
-	public static Value make_error(Value message, Value inner, Value stack, Value isa) {
-		if (is_null(stack)) {
-			stack = make_list(0);
-			freeze_value(stack);
-		}
-		return Value.FromError(new ValueError(message, inner, stack, isa));
-	}
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value error_message(Value v) {
-		ValueError e = v.AsErrorObject();
-		return e != null ? e.Message : val_null;
-	}
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value error_inner(Value v) {
-		ValueError e = v.AsErrorObject();
-		return e != null ? e.Inner : val_null;
-	}
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value error_stack(Value v) {
-		ValueError e = v.AsErrorObject();
-		return e != null ? e.Stack : val_null;
-	}
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value error_isa(Value v) {
-		ValueError e = v.AsErrorObject();
-		return e != null ? e.Isa : val_null;
-	}
-
-	// Walk the __isa chain of err looking for identity with target.
-	// Does not consider err itself (the ISA opcode handles identity separately).
-	// Returns true if target found in chain, false otherwise.  Stops after 256 levels.
-	public static bool error_isa_contains(Value err, Value target) {
-		ValueError ce = err.AsErrorObject();
-		if (ce == null) return false;
-		Value current = ce.Isa;
-		for (int depth = 0; depth < 256; depth++) {
-			if (is_null(current)) return false;
-			if (value_identical(current, target)) return true;
-			if (!is_error(current)) return false;
-			ValueError nc = current.AsErrorObject();
-			if (nc == null) return false;
-			current = nc.Isa;
-		}
-		return false;
-	}
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool is_tiny_string(Value v) => v.IsTiny;
-
+	// ── String accessors ─────────────────────────────────────────────────────
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static String as_cstring(Value v) {
 		if (!v.IsString) return "";
 		return GetStringValue(v);
 	}
-	
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool is_number(Value v) => v.IsDouble;
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool is_truthy(Value v) => (!is_null(v) &&
-			((is_double(v) && as_double(v) != 0.0) ||
-			(is_string(v) && ValueHelpers.string_length(v) != 0)
-			));
-	
-	
-	// Arithmetic operations (matching value.h)
+	private static string GetStringValue(Value val) {
+		if (val.IsTiny) {
+			int len = val.TinyLen();
+			if (len == 0) return "";
+			var chars = new char[len];
+			for (int i = 0; i < len; i++) chars[i] = (char)((val.Bits >> (8 * (i + 1))) & 0xFF);
+			return new string(chars);
+		}
+		if (val.IsHeapString) return gc.Strings.Get(val.ItemIndex).Data ?? "";
+		return "";
+	}
+
+	// ── List operations ──────────────────────────────────────────────────────
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static int list_count(Value list_val) {
+		if (!list_val.IsList) return 0;
+		return gc.Lists.Get(list_val.ItemIndex).Count;
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static Value list_get(Value list_val, int index) {
+		if (!list_val.IsList) return val_null;
+		return gc.Lists.Get(list_val.ItemIndex).Get(index);
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static void list_set(Value list_val, int index, Value item) {
+		if (!list_val.IsList) return;
+		ref GCList list = ref gc.Lists.Get(list_val.ItemIndex);
+		if (list.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return; }
+		list.Set(index, item);
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static void list_push(Value list_val, Value item) {
+		if (!list_val.IsList) return;
+		ref GCList list = ref gc.Lists.Get(list_val.ItemIndex);
+		if (list.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return; }
+		list.Push(item);
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static bool list_remove(Value list_val, int index) {
+		if (!list_val.IsList) return false;
+		ref GCList list = ref gc.Lists.Get(list_val.ItemIndex);
+		if (list.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return false; }
+		return list.Remove(index);
+	}
+
+	public static void list_insert(Value list_val, int index, Value item) {
+		if (!list_val.IsList) return;
+		ref GCList list = ref gc.Lists.Get(list_val.ItemIndex);
+		if (list.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return; }
+		list.Insert(index, item);
+	}
+
+	public static Value list_pop(Value list_val) {
+		if (!list_val.IsList) return val_null;
+		ref GCList list = ref gc.Lists.Get(list_val.ItemIndex);
+		if (list.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return val_null; }
+		return list.Pop();
+	}
+
+	public static Value list_pull(Value list_val) {
+		if (!list_val.IsList) return val_null;
+		ref GCList list = ref gc.Lists.Get(list_val.ItemIndex);
+		if (list.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return val_null; }
+		return list.Pull();
+	}
+
+	public static int list_indexOf(Value list_val, Value item, int afterIdx) {
+		if (!list_val.IsList) return -1;
+		return gc.Lists.Get(list_val.ItemIndex).IndexOf(item, afterIdx);
+	}
+
+	public static void list_sort(Value list_val, bool ascending) {
+		if (!list_val.IsList) return;
+		ref GCList list = ref gc.Lists.Get(list_val.ItemIndex);
+		if (list.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return; }
+		SortList(ref list, ascending);
+	}
+
+	public static void list_sort_by_key(Value list_val, Value byKey, bool ascending) {
+		if (!list_val.IsList) return;
+		ref GCList list = ref gc.Lists.Get(list_val.ItemIndex);
+		if (list.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return; }
+		SortListByKey(ref list, byKey, ascending);
+	}
+
+	public static Value list_slice(Value list_val, int start, int end) {
+		int len = list_count(list_val);
+		if (start < 0) start += len;
+		if (end < 0)   end   += len;
+		if (start < 0) start = 0;
+		if (end > len) end   = len;
+		if (start >= end) return make_list(0);
+		Value result = make_list(end - start);
+		for (int i = start; i < end; i++) list_push(result, list_get(list_val, i));
+		return result;
+	}
+
+	public static Value list_concat(Value a, Value b) {
+		int lenA = list_count(a);
+		int lenB = list_count(b);
+		Value result = make_list(lenA + lenB);
+		for (int i = 0; i < lenA; i++) list_push(result, list_get(a, i));
+		for (int i = 0; i < lenB; i++) list_push(result, list_get(b, i));
+		return result;
+	}
+
+	private static void SortList(ref GCList list, bool ascending) {
+		if (list.Items == null || list.Count < 2) return;
+		Array.Sort(list.Items, 0, list.Count, Comparer<Value>.Create((a, b) => {
+			int cmp;
+			if (is_number(a) && is_number(b)) {
+				cmp = numeric_val(a).CompareTo(numeric_val(b));
+			} else if (is_string(a) && is_string(b)) {
+				cmp = string_compare(a, b);
+			} else {
+				int ta = is_number(a) ? 0 : is_string(a) ? 1 : 2;
+				int tb = is_number(b) ? 0 : is_string(b) ? 1 : 2;
+				cmp = ta.CompareTo(tb);
+			}
+			return ascending ? cmp : -cmp;
+		}));
+	}
+
+	private static void SortListByKey(ref GCList list, Value byKey, bool ascending) {
+		int count = list.Count;
+		if (count < 2) return;
+		Value[] keys = new Value[count];
+		for (int i = 0; i < count; i++) {
+			Value elem = list.Get(i);
+			if (is_map(elem)) {
+				keys[i] = map_get(elem, byKey);
+			} else if (is_list(elem) && is_number(byKey)) {
+				keys[i] = list_get(elem, (int)numeric_val(byKey));
+			} else {
+				keys[i] = val_null;
+			}
+		}
+		int[] indices = new int[count];
+		for (int i = 0; i < count; i++) indices[i] = i;
+		Array.Sort(indices, (ia, ib) => {
+			Value ka = keys[ia]; Value kb = keys[ib];
+			int cmp;
+			if (is_number(ka) && is_number(kb)) {
+				cmp = numeric_val(ka).CompareTo(numeric_val(kb));
+			} else if (is_string(ka) && is_string(kb)) {
+				cmp = string_compare(ka, kb);
+			} else {
+				int ta = is_number(ka) ? 0 : is_string(ka) ? 1 : 2;
+				int tb = is_number(kb) ? 0 : is_string(kb) ? 1 : 2;
+				cmp = ta.CompareTo(tb);
+			}
+			return ascending ? cmp : -cmp;
+		});
+		Value[] sorted = new Value[count];
+		for (int i = 0; i < count; i++) sorted[i] = list.Get(indices[i]);
+		for (int i = 0; i < count; i++) list.Set(i, sorted[i]);
+	}
+
+	// ── Map operations ────────────────────────────────────────────────────────
+	public static int map_count(Value map_val) {
+		if (!map_val.IsMap) return 0;
+		return gc.Maps.Get(map_val.ItemIndex).Count;
+	}
+
+	public static Value map_get(Value map_val, Value key) {
+		if (!map_val.IsMap) return val_null;
+		gc.Maps.Get(map_val.ItemIndex).TryGet(key, out Value result);
+		return result;
+	}
+
+	public static bool map_try_get(Value map_val, Value key, out Value value) {
+		value = val_null;
+		if (!map_val.IsMap) return false;
+		return gc.Maps.Get(map_val.ItemIndex).TryGet(key, out value);
+	}
+
+	public static bool map_lookup(Value map_val, Value key, out Value value) {
+		value = val_null;
+		Value isaKey = val_isa_key;
+		Value current = map_val;
+		for (Int32 depth = 0; depth < 256; depth++) {
+			if (!is_map(current)) return false;
+			ref GCMap m = ref gc.Maps.Get(current.ItemIndex);
+			if (m.TryGet(key, out value)) return true;
+			if (!m.TryGet(isaKey, out Value isa)) return false;
+			current = isa;
+		}
+		return false;
+	}
+
+	public static bool map_lookup_with_origin(Value map_val, Value key, out Value value, out Value superVal) {
+		value    = val_null;
+		superVal = val_null;
+		Value isaKey = val_isa_key;
+		Value current = map_val;
+		for (Int32 depth = 0; depth < 256; depth++) {
+			if (!is_map(current)) return false;
+			ref GCMap m = ref gc.Maps.Get(current.ItemIndex);
+			if (m.TryGet(key, out value)) {
+				m.TryGet(isaKey, out superVal);
+				return true;
+			}
+			if (!m.TryGet(isaKey, out Value isa)) return false;
+			current = isa;
+		}
+		return false;
+	}
+
+	public static bool map_set(Value map_val, Value key, Value value) {
+		if (!map_val.IsMap) return false;
+		ref GCMap m = ref gc.Maps.Get(map_val.ItemIndex);
+		if (m.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen map"); return false; }
+		m.Set(key, value);
+		return true;
+	}
+
+	public static bool map_remove(Value map_val, Value key) {
+		if (!map_val.IsMap) return false;
+		ref GCMap m = ref gc.Maps.Get(map_val.ItemIndex);
+		if (m.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen map"); return false; }
+		return m.Remove(key);
+	}
+
+	public static bool map_has_key(Value map_val, Value key) {
+		if (!map_val.IsMap) return false;
+		return gc.Maps.Get(map_val.ItemIndex).HasKey(key);
+	}
+
+	public static void map_clear(Value map_val) {
+		if (!map_val.IsMap) return;
+		ref GCMap m = ref gc.Maps.Get(map_val.ItemIndex);
+		if (m.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen map"); return; }
+		m.Clear();
+	}
+
+	public static Value map_nth_entry(Value map_val, int n) {
+		if (!map_val.IsMap) return val_null;
+		ref GCMap m = ref gc.Maps.Get(map_val.ItemIndex);
+		int count = 0;
+		for (int iter = m.NextEntry(-1); iter != -1; iter = m.NextEntry(iter)) {
+			if (count == n) {
+				Value result = make_map(4);
+				map_set(result, make_string("key"),   m.KeyAt(iter));
+				map_set(result, make_string("value"), m.ValueAt(iter));
+				return result;
+			}
+			count++;
+		}
+		return val_null;
+	}
+
+	// ── Map iteration ─────────────────────────────────────────────────────────
+	// iter = -1: not started.  iter < -1: VarMap register entry index (see GCMap).
+	// iter >= 0: hash-table slot.  MAP_ITER_DONE: exhausted.
+
+	public const int MAP_ITER_DONE = Int32.MinValue;
+
+	public static int map_iter_next(Value map_val, int iter) {
+		if (!map_val.IsMap || iter == MAP_ITER_DONE) return MAP_ITER_DONE;
+		int next = gc.Maps.Get(map_val.ItemIndex).NextEntry(iter);
+		return next == -1 ? MAP_ITER_DONE : next;
+	}
+
+	public static Value map_iter_entry(Value map_val, int iter) {
+		if (!map_val.IsMap || iter == MAP_ITER_DONE) return val_null;
+		ref GCMap m = ref gc.Maps.Get(map_val.ItemIndex);
+		Value key = m.KeyAt(iter);
+		Value val = m.ValueAt(iter);
+		Value result = make_map(4);
+		map_set(result, make_string("key"),   key);
+		map_set(result, make_string("value"), val);
+		return result;
+	}
+
+	// Legacy struct-based iterator (kept for any call sites that use it).
+	public struct MapIterator {
+		public int MapIndex;
+		public int Iter;
+		public Value Key;
+		public Value Val;
+	}
+
+	public static MapIterator map_iterator(Value map_val) {
+		MapIterator it = new MapIterator();
+		it.Key = val_null;
+		it.Val = val_null;
+		if (map_val.IsMap) {
+			it.MapIndex = map_val.ItemIndex;
+			it.Iter     = -1;
+		} else {
+			it.MapIndex = -1;
+			it.Iter     = MAP_ITER_DONE;
+		}
+		return it;
+	}
+
+	public static bool map_iterator_next(ref MapIterator iter) {
+		if (iter.MapIndex < 0 || iter.Iter == MAP_ITER_DONE) return false;
+		int next = gc.Maps.Get(iter.MapIndex).NextEntry(iter.Iter);
+		if (next == -1) { iter.Iter = MAP_ITER_DONE; return false; }
+		iter.Iter = next;
+		ref GCMap m = ref gc.Maps.Get(iter.MapIndex);
+		iter.Key = m.KeyAt(next);
+		iter.Val = m.ValueAt(next);
+		return true;
+	}
+
+	// ── VarMap operations ─────────────────────────────────────────────────────
+	public static Value make_varmap(List<Value> registers, List<Value> names, int baseIdx, int count) {
+		VarMapBacking vmb = new VarMapBacking(registers, names, baseIdx, baseIdx + count - 1);
+		return gc.NewVarMap(vmb);
+	}
+
+	public static void varmap_gather(Value map_val) {
+		if (!map_val.IsMap) return;
+		ref GCMap m = ref gc.Maps.Get(map_val.ItemIndex);
+		m._vmb?.Gather(ref m);
+	}
+
+	public static void varmap_rebind(Value map_val, List<Value> registers, List<Value> names) {
+		if (!map_val.IsMap) return;
+		ref GCMap m = ref gc.Maps.Get(map_val.ItemIndex);
+		m._vmb?.Rebind(ref m, registers, names);
+	}
+
+	public static void varmap_map_to_register(Value map_val, Value varName, List<Value> registers, int regIndex) {
+		if (!map_val.IsMap) return;
+		ref GCMap m = ref gc.Maps.Get(map_val.ItemIndex);
+		m._vmb?.MapToRegister(ref m, varName, registers, regIndex);
+	}
+
+	// ── Freeze operations ─────────────────────────────────────────────────────
+	public static bool is_frozen(Value v) {
+		if (v.IsList) return gc.Lists.Get(v.ItemIndex).Frozen;
+		if (v.IsMap)  return gc.Maps.Get(v.ItemIndex).Frozen;
+		return false;
+	}
+
+	public static void freeze_value(Value v) {
+		if (v.IsList) {
+			ref GCList list = ref gc.Lists.Get(v.ItemIndex);
+			if (list.Frozen) return;
+			list.Frozen = true;
+			for (int i = 0; i < list.Count; i++) freeze_value(list.Get(i));
+		} else if (v.IsMap) {
+			ref GCMap map = ref gc.Maps.Get(v.ItemIndex);
+			if (map.Frozen) return;
+			map.Frozen = true;
+			for (int iter = map.NextEntry(-1); iter != -1; iter = map.NextEntry(iter)) {
+				freeze_value(map.KeyAt(iter));
+				freeze_value(map.ValueAt(iter));
+			}
+		}
+	}
+
+	public static Value frozen_copy(Value v) {
+		if (v.IsList) {
+			ref GCList src = ref gc.Lists.Get(v.ItemIndex);
+			if (src.Frozen) return v;
+			Value newList = make_list(src.Count);
+			ref GCList dst = ref gc.Lists.Get(newList.ItemIndex);
+			dst.Frozen = true;
+			for (int i = 0; i < src.Count; i++) dst.Push(frozen_copy(src.Get(i)));
+			return newList;
+		}
+		if (v.IsMap) {
+			ref GCMap src = ref gc.Maps.Get(v.ItemIndex);
+			if (src.Frozen) return v;
+			Value newMap = make_map(src.Count);
+			ref GCMap dst = ref gc.Maps.Get(newMap.ItemIndex);
+			dst.Frozen = true;
+			// Iterate src and copy entries into dst.
+			for (int iter = src.NextEntry(-1); iter != -1; iter = src.NextEntry(iter)) {
+				Value key = src.KeyAt(iter);
+				Value val = src.ValueAt(iter);
+				dst.Set(frozen_copy(key), frozen_copy(val));
+			}
+			return newMap;
+		}
+		return v;
+	}
+
+	// ── Map concat ────────────────────────────────────────────────────────────
+	public static Value map_concat(Value a, Value b) {
+		Value result = make_map(0);
+		if (a.IsMap) {
+			ref GCMap mapA = ref gc.Maps.Get(a.ItemIndex);
+			for (int iter = mapA.NextEntry(-1); iter != -1; iter = mapA.NextEntry(iter))
+				map_set(result, mapA.KeyAt(iter), mapA.ValueAt(iter));
+		}
+		if (b.IsMap) {
+			ref GCMap mapB = ref gc.Maps.Get(b.ItemIndex);
+			for (int iter = mapB.NextEntry(-1); iter != -1; iter = mapB.NextEntry(iter))
+				map_set(result, mapB.KeyAt(iter), mapB.ValueAt(iter));
+		}
+		return result;
+	}
+
+	// ── Arithmetic operations ─────────────────────────────────────────────────
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value value_add(Value a, Value b, VM vm = null) => Value.Add(a, b, vm);
-
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value value_mult(Value a, Value b) => Value.Multiply(a, b);
-
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value value_div(Value a, Value b) => Value.Divide(a, b);
-
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value value_mod(Value a, Value b) => Value.Mod(a, b);
-
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value value_pow(Value a, Value b) => Value.Pow(a, b);
-	
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value value_sub(Value a, Value b) => Value.Sub(a, b);
 
-	// Fuzzy logic operations
-	// Helper: convert a value to a fuzzy truth value (0-1)
+	// ── Fuzzy logic ───────────────────────────────────────────────────────────
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Double ToFuzzyBool(Value v) {
 		if (is_double(v)) return as_double(v);
 		return is_truthy(v) ? 1.0 : 0.0;
 	}
 
-	// Helper: take the absolute value, and then clamp to [0-1]
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Double AbsClamp01(Double d) {
 		if (d < 0) d = -d;
-		if (d > 1) return 1;
-		return d;
+		return d > 1 ? 1 : d;
 	}
 
-
-	// AND: AbsClamp01(a * b)
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value value_and(Value a, Value b) {
 		if (a.IsError) return a;
 		if (b.IsError) return b;
-		Double fA = ToFuzzyBool(a);
-		Double fB = ToFuzzyBool(b);
-		return make_double(AbsClamp01(fA * fB));
+		return make_double(AbsClamp01(ToFuzzyBool(a) * ToFuzzyBool(b)));
 	}
 
-	// OR: AbsClamp01(a + b - a*b)
-	// Error semantics: `e or x` evaluates to x (fallback idiom).
-	// `x or e` propagates e (like other binary operators).
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value value_or(Value a, Value b) {
 		if (a.IsError) return b;
 		if (b.IsError) return b;
-		Double fA = ToFuzzyBool(a);
-		Double fB = ToFuzzyBool(b);
+		double fA = ToFuzzyBool(a), fB = ToFuzzyBool(b);
 		return make_double(AbsClamp01(fA + fB - fA * fB));
 	}
 
-	// NOT: 1 - AbsClamp01(a)
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value value_not(Value a) {
 		if (a.IsError) return a;
-		Double fA = ToFuzzyBool(a);
-		return make_double(1.0 - AbsClamp01(fA));
+		return make_double(1.0 - AbsClamp01(ToFuzzyBool(a)));
 	}
 
-	// Comparison operations (matching value.h)
+	// ── Comparison ────────────────────────────────────────────────────────────
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool value_identical(Value a, Value b) => Value.Identical(a, b);
-
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool value_lt(Value a, Value b) => Value.LessThan(a, b);
-
-	// Comparison operations (matching value.h)
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool value_le(Value a, Value b) => Value.LessThanOrEqual(a, b);
-
-	// Comparison operations (matching value.h)
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool value_equal(Value a, Value b) => Value.Equal(a, b);		
+	public static bool value_equal(Value a, Value b) => Value.Equal(a, b);
 
-	// Conversion operations (matching value.h)
+	// ── Conversion ────────────────────────────────────────────────────────────
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value to_string(Value a, VM vm = null) => make_string(a.ToString(vm));
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value to_number(Value a) {
-		try {
-			return make_double(double.Parse(a.ToString(null)));
-		} catch {
-			return val_zero;
-		}
-	}
-	
-	public static Value make_varmap(List<Value> registers, List<Value> names, int baseIdx, int count) {
-		VarMap varmap = new VarMap(registers, names, baseIdx, baseIdx + count - 1);
-		return Value.FromMap(varmap);
+		try { return make_double(double.Parse(a.ToString(null))); }
+		catch { return val_zero; }
 	}
 
-	// String helper
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static string GetStringValue(Value val) {
-		if (val.IsTiny) {
-			int len = val.TinyLen();
-			Span<byte> tmp = stackalloc byte[5];
-			val.TinyCopyTo(tmp);
-			return System.Text.Encoding.ASCII.GetString(tmp[..len]);
-		}
-		if (val.IsHeapString) return HandlePool.Get(val.Handle()) as string ?? "";
-		return "";
-	}
+	public static Value value_repr(Value v, VM vm = null) => make_string(v.CodeForm(vm));
 
-	// String operations (matching value_string.h)
+	// ── String operations ─────────────────────────────────────────────────────
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static int string_length(Value v) {
 		if (!v.IsString) return 0;
@@ -1095,9 +1001,7 @@ public static class ValueHelpers {
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static int string_indexOf(Value haystack, Value needle, int start_pos) {
 		if (!haystack.IsString || !needle.IsString) return -1;
-		string h = GetStringValue(haystack);
-		string n = GetStringValue(needle);
-		return h.IndexOf(n, start_pos);
+		return GetStringValue(haystack).IndexOf(GetStringValue(needle), start_pos, StringComparison.Ordinal);
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1111,160 +1015,47 @@ public static class ValueHelpers {
 		string s = GetStringValue(str);
 		int len = s.Length;
 		if (start < 0) start += len;
-		if (end < 0) end += len;
+		if (end   < 0) end   += len;
 		if (start < 0) start = 0;
-		if (end > len) end = len;
+		if (end > len) end   = len;
 		if (start >= end) return val_empty_string;
 		return make_string(s.Substring(start, end - start));
-	}
-
-	public static Value list_slice(Value list_val, int start, int end) {
-		int len = list_count(list_val);
-		if (start < 0) start += len;
-		if (end < 0) end += len;
-		if (start < 0) start = 0;
-		if (end > len) end = len;
-		if (start >= end) return make_list(0);
-		Value result = make_list(end - start);
-		for (int i = start; i < end; i++) {
-			list_push(result, list_get(list_val, i));
-		}
-		return result;
-	}
-
-	public static Value map_concat(Value a, Value b) {
-		Value result = make_map(0);
-		ValueMap mapA = HandlePool.Get(a.Handle()) as ValueMap;
-		if (mapA != null) {
-			foreach (var kvp in mapA.Items) {
-				map_set(result, kvp.Key, kvp.Value);
-			}
-		}
-		ValueMap mapB = HandlePool.Get(b.Handle()) as ValueMap;
-		if (mapB != null) {
-			foreach (var kvp in mapB.Items) {
-				map_set(result, kvp.Key, kvp.Value);
-			}
-		}
-		return result;
-	}
-
-	public static void list_insert(Value list_val, int index, Value item) {
-		if (!list_val.IsList) return;
-		var valueList = HandlePool.Get(list_val.Handle()) as ValueList;
-		if (valueList == null) return;
-		if (valueList.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return; }
-		valueList.Insert(index, item);
-	}
-
-	public static Value list_pop(Value list_val) {
-		if (!list_val.IsList) return val_null;
-		var valueList = HandlePool.Get(list_val.Handle()) as ValueList;
-		if (valueList == null) return val_null;
-		if (valueList.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return val_null; }
-		return valueList.Pop();
-	}
-
-	public static Value list_pull(Value list_val) {
-		if (!list_val.IsList) return val_null;
-		var valueList = HandlePool.Get(list_val.Handle()) as ValueList;
-		if (valueList == null) return val_null;
-		if (valueList.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return val_null; }
-		return valueList.Pull();
-	}
-
-	public static int list_indexOf(Value list_val, Value item, int afterIdx) {
-		if (!list_val.IsList) return -1;
-		var valueList = HandlePool.Get(list_val.Handle()) as ValueList;
-		if (valueList == null) return -1;
-		return valueList.IndexOf(item, afterIdx);
-	}
-
-	public static void list_sort(Value list_val, bool ascending) {
-		if (!list_val.IsList) return;
-		var valueList = HandlePool.Get(list_val.Handle()) as ValueList;
-		if (valueList == null) return;
-		if (valueList.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return; }
-		valueList.Sort(ascending);
-	}
-
-	public static void list_sort_by_key(Value list_val, Value byKey, bool ascending) {
-		if (!list_val.IsList) return;
-		var valueList = HandlePool.Get(list_val.Handle()) as ValueList;
-		if (valueList == null) return;
-		if (valueList.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return; }
-		valueList.SortByKey(byKey, ascending);
-	}
-
-	public static Value list_concat(Value a, Value b) {
-		int lenA = list_count(a);
-		int lenB = list_count(b);
-		Value result = make_list(lenA + lenB);
-		for (int i = 0; i < lenA; i++) {
-			list_push(result, list_get(a, i));
-		}
-		for (int i = 0; i < lenB; i++) {
-			list_push(result, list_get(b, i));
-		}
-		return result;
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value string_concat(Value a, Value b) {
 		if (!a.IsString || !b.IsString) return val_null;
-		string sa = GetStringValue(a);
-		string sb = GetStringValue(b);
-		return make_string(sa + sb);
+		return make_string(GetStringValue(a) + GetStringValue(b));
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static int string_compare(Value a, Value b) {
 		if (!a.IsString || !b.IsString) return 0;
-		string sa = GetStringValue(a);
-		string sb = GetStringValue(b);
-		return string.Compare(sa, sb, StringComparison.Ordinal);
+		return string.Compare(GetStringValue(a), GetStringValue(b), StringComparison.Ordinal);
 	}
 
 	public static Value string_split(Value str, Value delimiter) {
 		if (!str.IsString || !delimiter.IsString) return val_null;
-
 		string s = GetStringValue(str);
 		string delim = GetStringValue(delimiter);
-
 		string[] parts;
 		if (delim == "") {
-			// Split into characters
 			parts = new string[s.Length];
-			for (int i = 0; i < s.Length; i++) {
-				parts[i] = s[i].ToString();
-			}
+			for (int i = 0; i < s.Length; i++) parts[i] = s[i].ToString();
 		} else {
 			parts = s.Split(new string[] { delim }, StringSplitOptions.None);
 		}
-
 		Value list = make_list(parts.Length);
-		foreach (string part in parts) {
-			list_push(list, make_string(part));
-		}
-
+		foreach (string part in parts) list_push(list, make_string(part));
 		return list;
 	}
 
 	public static Value string_replace(Value str, Value from, Value to) {
 		if (!str.IsString || !from.IsString || !to.IsString) return val_null;
-
 		string s = GetStringValue(str);
 		string fromStr = GetStringValue(from);
-		string toStr = GetStringValue(to);
-
-		if (fromStr == "") {
-			return str; // Can't replace empty string
-		}
-		if (!s.Contains(fromStr)) {
-			return str; // Return original if no match
-		}
-		string result = s.Replace(fromStr, toStr);
-		return make_string(result);
+		if (fromStr == "" || !s.Contains(fromStr)) return str;
+		return make_string(s.Replace(fromStr, GetStringValue(to)));
 	}
 
 	public static Value string_insert(Value str, int index, Value value, VM vm = null) {
@@ -1279,14 +1070,10 @@ public static class ValueHelpers {
 
 	public static Value string_split_max(Value str, Value delimiter, int maxCount) {
 		if (!str.IsString || !delimiter.IsString) return val_null;
-
 		string s = GetStringValue(str);
 		string delim = GetStringValue(delimiter);
-
 		Value list = make_list(8);
-
 		if (delim == "") {
-			// Split into characters
 			int count = 0;
 			for (int i = 0; i < s.Length; i++) {
 				if (maxCount > 0 && count >= maxCount - 1) {
@@ -1298,11 +1085,9 @@ public static class ValueHelpers {
 			}
 			return list;
 		}
-
-		int pos = 0;
-		int found = 0;
+		int pos = 0; int found = 0;
 		while (pos <= s.Length) {
-			int next = s.IndexOf(delim, pos);
+			int next = s.IndexOf(delim, pos, StringComparison.Ordinal);
 			if (next < 0 || (maxCount > 0 && found >= maxCount - 1)) {
 				list_push(list, make_string(s.Substring(pos)));
 				break;
@@ -1311,29 +1096,21 @@ public static class ValueHelpers {
 			pos = next + delim.Length;
 			found++;
 			if (pos > s.Length) break;
-			if (pos == s.Length) {
-				list_push(list, make_string(""));
-				break;
-			}
+			if (pos == s.Length) { list_push(list, make_string("")); break; }
 		}
-
 		return list;
 	}
 
 	public static Value string_replace_max(Value str, Value from, Value to, int maxCount) {
 		if (!str.IsString || !from.IsString || !to.IsString) return val_null;
-
 		string s = GetStringValue(str);
 		string fromStr = GetStringValue(from);
-		string toStr = GetStringValue(to);
-
+		string toStr   = GetStringValue(to);
 		if (fromStr == "") return str;
-
-		int pos = 0;
-		int count = 0;
-		System.Text.StringBuilder sb = new System.Text.StringBuilder();
+		int pos = 0; int count = 0;
+		var sb = new System.Text.StringBuilder();
 		while (pos < s.Length) {
-			int next = s.IndexOf(fromStr, pos);
+			int next = s.IndexOf(fromStr, pos, StringComparison.Ordinal);
 			if (next < 0 || (maxCount > 0 && count >= maxCount)) {
 				sb.Append(s.Substring(pos));
 				break;
@@ -1356,214 +1133,16 @@ public static class ValueHelpers {
 		return make_string(GetStringValue(str).ToLower());
 	}
 
-	public static Value string_from_code_point(int codePoint) {
-		return make_string(char.ConvertFromUtf32(codePoint));
-	}
+	public static Value string_from_code_point(int codePoint) =>
+		make_string(char.ConvertFromUtf32(codePoint));
 
 	public static int string_code_point(Value str) {
 		if (!str.IsString) return 0;
-		String s = GetStringValue(str);
+		string s = GetStringValue(str);
 		if (s.Length == 0) return 0;
 		return char.ConvertToUtf32(s, 0);
 	}
 }
 
-// A minimal, fast handle table. Stores actual C# objects referenced by Value.
-// All heap-backed Value variants carry a 32-bit index into this pool.
-internal static class HandlePool {
-	private static object[] _objs = new object[1024];
-	private static int _count;
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static int Add(object o) {
-		int idx = _count;
-		if ((uint)idx >= (uint)_objs.Length)
-			Array.Resize(ref _objs, _objs.Length << 1);
-		_objs[idx] = o;
-		_count = idx + 1;
-		return idx;
-	}
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static object Get(int h) => (uint)h < (uint)_count ? _objs[h] : null;
-	
-	public static int GetCount() => _count;
 }
-
-// List implementation for Value lists
-public class ValueList {
-	private List<Value> _items = new List<Value>();
-	public bool Frozen;
-
-	public int Count => _items.Count;
-	
-	public void Add(Value item) => _items.Add(item);
-	
-	public Value Get(int index) {
-		if (index < 0) index += _items.Count;
-		if (index < 0 || index >= _items.Count) return val_null;
-		return _items[index];
-	}
-	
-	public void Set(int index, Value value) {
-		if (index < 0) index += _items.Count;
-		if (index >= 0 && index < _items.Count)
-			_items[index] = value;
-	}
-	
-	public int IndexOf(Value item) {
-		for (int i = 0; i < _items.Count; i++) {
-			if (Value.Equal(_items[i], item)) return i;
-		}
-		return -1;
-	}
-	
-	public bool Remove(int index) {
-		if (index < 0) index += _items.Count;
-		if (index < 0 || index >= _items.Count) return false;
-		_items.RemoveAt(index);
-		return true;
-	}
-
-	public void Insert(int index, Value item) {
-		if (index < 0) index += _items.Count + 1;
-		if (index < 0) index = 0;
-		if (index > _items.Count) index = _items.Count;
-		_items.Insert(index, item);
-	}
-
-	public Value Pop() {
-		if (_items.Count == 0) return val_null;
-		Value result = _items[_items.Count - 1];
-		_items.RemoveAt(_items.Count - 1);
-		return result;
-	}
-
-	public Value Pull() {
-		if (_items.Count == 0) return val_null;
-		Value result = _items[0];
-		_items.RemoveAt(0);
-		return result;
-	}
-
-	public int IndexOf(Value item, int afterIdx) {
-		for (int i = afterIdx + 1; i < _items.Count; i++) {
-			if (Value.Equal(_items[i], item)) return i;
-		}
-		return -1;
-	}
-
-	public void Sort(bool ascending) {
-		_items.Sort((Value a, Value b) => {
-			int cmp;
-			if (is_number(a) && is_number(b)) {
-				double da = numeric_val(a);
-				double db = numeric_val(b);
-				cmp = da.CompareTo(db);
-			} else if (is_string(a) && is_string(b)) {
-				cmp = string_compare(a, b);
-			} else {
-				// Mixed types: numbers < strings < others
-				int ta = is_number(a) ? 0 : is_string(a) ? 1 : 2;
-				int tb = is_number(b) ? 0 : is_string(b) ? 1 : 2;
-				cmp = ta.CompareTo(tb);
-			}
-			return ascending ? cmp : -cmp;
-		});
-	}
-
-	public void SortByKey(Value byKey, bool ascending) {
-		// Build (sortKey, value) pairs
-		int count = _items.Count;
-		Value[] keys = new Value[count];
-		for (int i = 0; i < count; i++) {
-			Value elem = _items[i];
-			if (is_map(elem)) {
-				keys[i] = map_get(elem, byKey);
-			} else if (is_list(elem) && is_number(byKey)) {
-				int ki = (int)numeric_val(byKey);
-				keys[i] = list_get(elem, ki);
-			} else {
-				keys[i] = val_null;
-			}
-		}
-		// Build index array and sort by keys
-		int[] indices = new int[count];
-		for (int i = 0; i < count; i++) indices[i] = i;
-		Array.Sort(indices, (int ia, int ib) => {
-			Value a = keys[ia];
-			Value b = keys[ib];
-			int cmp;
-			if (is_number(a) && is_number(b)) {
-				double da = numeric_val(a);
-				double db = numeric_val(b);
-				cmp = da.CompareTo(db);
-			} else if (is_string(a) && is_string(b)) {
-				cmp = string_compare(a, b);
-			} else {
-				int ta = is_number(a) ? 0 : is_string(a) ? 1 : 2;
-				int tb = is_number(b) ? 0 : is_string(b) ? 1 : 2;
-				cmp = ta.CompareTo(tb);
-			}
-			return ascending ? cmp : -cmp;
-		});
-		// Rebuild list in sorted order
-		List<Value> sorted = new List<Value>(count);
-		for (int i = 0; i < count; i++) sorted.Add(_items[indices[i]]);
-		_items = sorted;
-	}
-
-}
-
-public class ValueMap {
-	protected Dictionary<Value, Value> _items = new Dictionary<Value, Value>(new ValueEqualityComparer());
-	public bool Frozen;
-
-	// Lazily-populated cache of _items keys for O(1) indexed iteration.
-	// Cleared on any mutation; rebuilt on next iteration access.
-	protected List<Value> _keyCache;
-
-	public virtual int Count => _items.Count;
-
-	public virtual Value Get(Value key) {
-		if (_items.TryGetValue(key, out Value value)) {
-			return value;
-		}
-		return val_null;
-	}
-
-	public virtual bool Set(Value key, Value value) {
-		_keyCache = null;
-		_items[key] = value;
-		return true;
-	}
-
-	public virtual bool Remove(Value key) {
-		_keyCache = null;
-		return _items.Remove(key);
-	}
-
-	public virtual bool HasKey(Value key) {
-		return _items.ContainsKey(key);
-	}
-
-	public virtual void Clear() {
-		_keyCache = null;
-		_items.Clear();
-	}
-
-	// For iteration support
-	public virtual IEnumerable<KeyValuePair<Value, Value>> Items => _items;
-
-	/// <summary>
-	/// Get or rebuild the key cache for indexed iteration of base entries.
-	/// </summary>
-	public List<Value> GetKeyCache() {
-		if (_keyCache == null) {
-			_keyCache = new List<Value>(_items.Keys);
-		}
-		return _keyCache;
-	}
-}
-
-}
+//*** END CS_ONLY ***

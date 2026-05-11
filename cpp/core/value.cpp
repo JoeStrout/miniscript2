@@ -182,12 +182,20 @@ int value_compare(Value a, Value b) {
     return (ta < tb) ? -1 : (ta > tb) ? 1 : 0;
 }
 
-// ── Bitwise ops (legacy stubs; these always operated on 32-bit ints) ────
+// ── Bitwise ops (cast to int64, operate, cast back to double) ────────────
 
-Value value_xor(Value /*a*/, Value /*b*/) { return val_null; }
-Value value_unary(Value /*a*/)            { return val_null; }
-Value value_shr(Value /*v*/, int /*shift*/) { return val_null; }
-Value value_shl(Value /*v*/, int /*shift*/) { return val_null; }
+Value value_xor(Value a, Value b) {
+    return make_double((double)((int64_t)as_double(a) ^ (int64_t)as_double(b)));
+}
+Value value_unary(Value a) {
+    return make_double((double)(~(int64_t)as_double(a)));
+}
+Value value_shr(Value v, int shift) {
+    return make_double((double)((int64_t)as_double(v) >> shift));
+}
+Value value_shl(Value v, int shift) {
+    return make_double((double)((int64_t)as_double(v) << shift));
+}
 
 // ── code_form / to_string / to_number ───────────────────────────────────
 

@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using static MiniScript.ValueHelpers;
-// CPP: #include "gc.h"
 // CPP: #include "Assembler.g.h"
 // CPP: #include "Bytecode.g.h"
 // CPP: #include "FuncDef.g.h"

@@ -62,7 +62,10 @@ CPP_OBJECTS = $(BUILD_DIR)/main.o \
               $(BUILD_DIR)/CS_String.o \
               $(BUILD_DIR)/CS_List.o \
               $(BUILD_DIR)/CS_Math.o \
-              $(BUILD_DIR)/CS_value_util.o
+              $(BUILD_DIR)/CS_value_util.o \
+              $(BUILD_DIR)/GCManager.o \
+              $(BUILD_DIR)/GCItems.o \
+              $(BUILD_DIR)/VarMapBacking.o
 
 C_OBJECTS = $(BUILD_DIR)/value.o \
             $(BUILD_DIR)/value_string.o \
@@ -70,7 +73,6 @@ C_OBJECTS = $(BUILD_DIR)/value.o \
             $(BUILD_DIR)/value_map.o \
             $(BUILD_DIR)/StringStorage.o \
             $(BUILD_DIR)/unicodeUtil.o \
-            $(BUILD_DIR)/gc.o \
             $(BUILD_DIR)/hashing.o
 
 ALL_OBJECTS = $(CPP_OBJECTS) $(C_OBJECTS)
@@ -182,13 +184,22 @@ $(BUILD_DIR)/unicodeUtil.o: $(CPP_CORE)/unicodeUtil.c
 	@mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-$(BUILD_DIR)/gc.o: $(CPP_CORE)/gc.c
-	@mkdir -p $(BUILD_DIR)
-	$(CC) $(CFLAGS) -c -o $@ $<
 
 $(BUILD_DIR)/hashing.o: $(CPP_CORE)/hashing.c
 	@mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(BUILD_DIR)/GCManager.o: $(CPP_CORE)/GCManager.cpp
+	@mkdir -p $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
+$(BUILD_DIR)/GCItems.o: $(CPP_CORE)/GCItems.cpp
+	@mkdir -p $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
+$(BUILD_DIR)/VarMapBacking.o: $(CPP_CORE)/VarMapBacking.cpp
+	@mkdir -p $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 # Run the tests
 test:

@@ -2,7 +2,6 @@
 // Transpiled from: VMTest.cs
 
 #include "VMTest.g.h"
-#include "gc.h"
 #include "Assembler.g.h"
 #include "Bytecode.g.h"
 #include "FuncDef.g.h"
@@ -41,7 +40,7 @@ Boolean VMTest::TestLoadAndReturn() {
 	// Run VM
 	VM vm =  VM::New();
 	vm.Reset(functions);
-	Value result = vm.Run(); GC_PROTECT(&result);
+	Value result = vm.Run();
 
 	ok = TestFramework::AssertEqual(as_int(result), 42, "return value is 42") && ok;
 	ok = TestFramework::AssertEqual(vm.IsRunning(), Boolean(false), "VM stopped after return") && ok;
@@ -64,7 +63,7 @@ Boolean VMTest::TestArithmetic() {
 
 	VM vm =  VM::New();
 	vm.Reset(functions);
-	Value result = vm.Run(); GC_PROTECT(&result);
+	Value result = vm.Run();
 
 	ok = TestFramework::AssertEqual(as_int(result), 13, "10 + 3 = 13") && ok;
 
@@ -85,7 +84,7 @@ Boolean VMTest::TestSubtraction() {
 
 	VM vm =  VM::New();
 	vm.Reset(functions);
-	Value result = vm.Run(); GC_PROTECT(&result);
+	Value result = vm.Run();
 
 	ok = TestFramework::AssertEqual(as_int(result), 7, "10 - 3 = 7") && ok;
 
@@ -106,7 +105,7 @@ Boolean VMTest::TestMultiplication() {
 
 	VM vm =  VM::New();
 	vm.Reset(functions);
-	Value result = vm.Run(); GC_PROTECT(&result);
+	Value result = vm.Run();
 
 	ok = TestFramework::AssertEqual(as_int(result), 42, "6 * 7 = 42") && ok;
 
@@ -131,7 +130,7 @@ Boolean VMTest::TestConditionalJump() {
 
 	VM vm =  VM::New();
 	vm.Reset(functions);
-	Value result = vm.Run(); GC_PROTECT(&result);
+	Value result = vm.Run();
 
 	ok = TestFramework::AssertEqual(as_int(result), 1, "5 < 10 is true, return 1") && ok;
 
@@ -158,7 +157,7 @@ Boolean VMTest::TestSimpleLoop() {
 
 	VM vm =  VM::New();
 	vm.Reset(functions);
-	Value result = vm.Run(); GC_PROTECT(&result);
+	Value result = vm.Run();
 
 	// 1 + 2 + 3 + 4 + 5 = 15
 	ok = TestFramework::AssertEqual(as_int(result), 15, "sum 1..5 = 15") && ok;

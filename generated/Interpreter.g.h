@@ -40,199 +40,199 @@ class InterpreterStorage : public std::enable_shared_from_this<InterpreterStorag
 	private: String _pendingSource; // accumulated REPL lines so far
 	private: Value _replGlobals = val_null; // persistent globals VarMap
 
-	/// <summary>
-	/// standardOutput: receives the output of the "print" intrinsic.
-	/// </summary>
+	// 
+	// standardOutput: receives the output of the "print" intrinsic.
+	// 
 	
-	/// <summary>
-	/// implicitOutput: receives the value of expressions entered when
-	/// in REPL mode.  If you're not using the REPL() method, you can
-	/// safely ignore this.
-	/// </summary>
+	// 
+	// implicitOutput: receives the value of expressions entered when
+	// in REPL mode.  If you're not using the REPL() method, you can
+	// safely ignore this.
+	// 
 
-	/// <summary>
-	/// errorOutput: receives error messages from the compiler or runtime.
-	/// (This happens via the ReportError method, which is virtual; so if you
-	/// want to catch the actual errors differently, you can subclass
-	/// Interpreter and override that method.)
-	/// </summary>
+	// 
+	// errorOutput: receives error messages from the compiler or runtime.
+	// (This happens via the ReportError method, which is virtual; so if you
+	// want to catch the actual errors differently, you can subclass
+	// Interpreter and override that method.)
+	// 
 
-	/// <summary>
-	/// hostData is just a convenient place for you to attach some arbitrary
-	/// data to the interpreter.  It gets passed through to the context object,
-	/// so you can access it inside your custom intrinsic functions.  Use it
-	/// for whatever you like (or don't, if you don't feel the need).
-	/// </summary>
+	// 
+	// hostData is just a convenient place for you to attach some arbitrary
+	// data to the interpreter.  It gets passed through to the context object,
+	// so you can access it inside your custom intrinsic functions.  Use it
+	// for whatever you like (or don't, if you don't feel the need).
+	// 
 
-	/// <summary>
-	/// done: returns true when we don't have a virtual machine, or we do have
-	/// one and it is done (has reached the end of its code).
-	/// </summary>
+	// 
+	// done: returns true when we don't have a virtual machine, or we do have
+	// one and it is done (has reached the end of its code).
+	// 
 
-	/// <summary>
-	/// vm: the virtual machine this interpreter is running.  Most applications
-	/// will not need to use this, but it's provided for advanced users.
-	/// </summary>
+	// 
+	// vm: the virtual machine this interpreter is running.  Most applications
+	// will not need to use this, but it's provided for advanced users.
+	// 
 
-	/// <summary>
-	/// SourceFile: the name of the file this interpreter loaded (e.g. "myScript.ms"),
-	/// or empty string for source provided directly as a string.
-	/// Used to populate FuncDef.FileName for stack traces.
-	/// </summary>
+	// 
+	// SourceFile: the name of the file this interpreter loaded (e.g. "myScript.ms"),
+	// or empty string for source provided directly as a string.
+	// Used to populate FuncDef.FileName for stack traces.
+	// 
 
-	/// <summary>
-	/// The most recent compiler or runtime error, as an error Value, or val_null
-	/// if there is no error.  Host code can inspect this (and its __isa chain)
-	/// to distinguish error types.
-	/// </summary>
+	// 
+	// The most recent compiler or runtime error, as an error Value, or val_null
+	// if there is no error.  Host code can inspect this (and its __isa chain)
+	// to distinguish error types.
+	// 
 
-	/// <summary>
-	/// The Value produced by the last complete REPL interaction that had implicit
-	/// output (a bare expression as the last statement), or val_null otherwise.
-	/// Updated at the end of each complete REPL() call.  Host code (e.g. the
-	/// REPL loop in App.cs) reads this to push it into the _out history list.
-	/// </summary>
+	// 
+	// The Value produced by the last complete REPL interaction that had implicit
+	// output (a bare expression as the last statement), or val_null otherwise.
+	// Updated at the end of each complete REPL() call.  Host code (e.g. the
+	// REPL loop in App.cs) reads this to push it into the _out history list.
+	// 
 
 	// REPL state
 
   
-	/// <summary>
-	/// Constructor taking some MiniScript source code, and the output delegates.
-	/// </summary>
+	// 
+	// Constructor taking some MiniScript source code, and the output delegates.
+	// 
 	public: InterpreterStorage(String source=nullptr, TextOutputMethod standardOutput=nullptr, TextOutputMethod errorOutput=nullptr);
 	
 	private: void Init(String _source, TextOutputMethod _standardOutput, TextOutputMethod _errorOutput);
 
-	/// <summary>
-	/// Constructor taking source code in the form of a list of strings.
-	/// </summary>
+	// 
+	// Constructor taking source code in the form of a list of strings.
+	// 
 	public: InterpreterStorage(List<String> sourceList, TextOutputMethod standardOutput=nullptr, TextOutputMethod errorOutput=nullptr);
 	public: virtual ~InterpreterStorage() = default;
 	
 	
 
-	/// <summary>
-	/// Stop the virtual machine, and jump to the end of the program code.
-	/// Also reset the parser, in case it's stuck waiting for a block ender.
-	/// </summary>
+	// 
+	// Stop the virtual machine, and jump to the end of the program code.
+	// Also reset the parser, in case it's stuck waiting for a block ender.
+	// 
 	public: void Stop();
 
-	/// <summary>
-	/// Reset the interpreter with the given source code.
-	/// </summary>
+	// 
+	// Reset the interpreter with the given source code.
+	// 
 	public: void Reset(String _source="");
 
-	/// <summary>
-	/// Reset the interpreter with pre-compiled functions (e.g. from an assembler).
-	/// The list must contain a FuncDef named "@main".
-	/// </summary>
+	// 
+	// Reset the interpreter with pre-compiled functions (e.g. from an assembler).
+	// The list must contain a FuncDef named "@main".
+	// 
 	public: void Reset(List<FuncDef> functions);
 
-	/// <summary>
-	/// Compile our source code, if we haven't already done so, so that we are
-	/// either ready to run, or generate compiler errors (reported via errorOutput).
-	/// </summary>
+	// 
+	// Compile our source code, if we haven't already done so, so that we are
+	// either ready to run, or generate compiler errors (reported via errorOutput).
+	// 
 	public: void Compile();
 
-	/// <summary>
-	/// Reset the virtual machine to the beginning of the code.  Note that this
-	/// does *not* recompile; it simply resets the VM with the same functions.
-	/// Useful in cases where you have a short script you want to run over and
-	/// over, without recompiling every time.
-	/// </summary>
+	// 
+	// Reset the virtual machine to the beginning of the code.  Note that this
+	// does *not* recompile; it simply resets the VM with the same functions.
+	// Useful in cases where you have a short script you want to run over and
+	// over, without recompiling every time.
+	// 
 	public: void Restart();
 
-	/// <summary>
-	/// Run the compiled code until we either reach the end, or we reach the
-	/// specified time limit.  In the latter case, you can then call RunUntilDone
-	/// again to continue execution right from where it left off.
+	// 
+	// Run the compiled code until we either reach the end, or we reach the
+	// specified time limit.  In the latter case, you can then call RunUntilDone
+	// again to continue execution right from where it left off.
 	///
-	/// Or, if returnEarly is true, we will also return if the VM is yielding
-	/// (i.e., an intrinsic needs to wait for something).  Again, call
-	/// RunUntilDone again later to continue.
+	// Or, if returnEarly is true, we will also return if the VM is yielding
+	// (i.e., an intrinsic needs to wait for something).  Again, call
+	// RunUntilDone again later to continue.
 	///
-	/// Note that this method first compiles the source code if it wasn't compiled
-	/// already, and in that case, may generate compiler errors.  And of course
-	/// it may generate runtime errors while running.  In either case, these are
-	/// reported via errorOutput.
-	/// </summary>
-	/// <param name="timeLimit">maximum amount of time to run before returning, in seconds</param>
-	/// <param name="returnEarly">if true, return as soon as the VM yields</param>
+	// Note that this method first compiles the source code if it wasn't compiled
+	// already, and in that case, may generate compiler errors.  And of course
+	// it may generate runtime errors while running.  In either case, these are
+	// reported via errorOutput.
+	// 
+	// <param name="timeLimit">maximum amount of time to run before returning, in seconds</param>
+	// <param name="returnEarly">if true, return as soon as the VM yields</param>
 	public: void RunUntilDone(double timeLimit=60, bool returnEarly=Boolean(true));
 
-	/// <summary>
-	/// Run one step (small batch) of the virtual machine.  This method is not
-	/// very useful except in special cases; usually you will use RunUntilDone instead.
-	/// </summary>
+	// 
+	// Run one step (small batch) of the virtual machine.  This method is not
+	// very useful except in special cases; usually you will use RunUntilDone instead.
+	// 
 	public: void Step();
 
-	/// <summary>
-	/// Read Eval Print Loop.  Run the given source until it either terminates,
-	/// or hits the given time limit.  When it terminates, if we have new
-	/// implicit output, print that to the implicitOutput stream.
-	/// </summary>
-	/// <param name="sourceLine">line of source code to parse and run</param>
-	/// <param name="timeLimit">time limit in seconds</param>
+	// 
+	// Read Eval Print Loop.  Run the given source until it either terminates,
+	// or hits the given time limit.  When it terminates, if we have new
+	// implicit output, print that to the implicitOutput stream.
+	// 
+	// <param name="sourceLine">line of source code to parse and run</param>
+	// <param name="timeLimit">time limit in seconds</param>
 	public: void REPL(String sourceLine, double timeLimit=60);
 
-	/// <summary>
-	/// Report whether the virtual machine is still running, that is,
-	/// whether it has not yet reached the end of the program code.
-	/// </summary>
+	// 
+	// Report whether the virtual machine is still running, that is,
+	// whether it has not yet reached the end of the program code.
+	// 
 	public: bool Running();
 
-	/// <summary>
-	/// Return whether the parser needs more input, for example because we have
-	/// run out of source code in the middle of an "if" block.  This is typically
-	/// used with REPL for making an interactive console, so you can change the
-	/// prompt when more input is expected.
-	/// </summary>
+	// 
+	// Return whether the parser needs more input, for example because we have
+	// run out of source code in the middle of an "if" block.  This is typically
+	// used with REPL for making an interactive console, so you can change the
+	// prompt when more input is expected.
+	// 
 	public: bool NeedMoreInput();
 
-	/// <summary>
-	/// Get a value from the global namespace of this interpreter.
-	/// Searches the @main frame's named registers for the given variable name.
-	/// </summary>
-	/// <param name="varName">name of global variable to get</param>
-	/// <returns>Value of the named variable, or val_null if not found</returns>
+	// 
+	// Get a value from the global namespace of this interpreter.
+	// Searches the @main frame's named registers for the given variable name.
+	// 
+	// <param name="varName">name of global variable to get</param>
+	// <returns>Value of the named variable, or val_null if not found</returns>
 	public: Value GetGlobalValue(String varName);
 
-	/// <summary>
-	/// Set a value in the global namespace of this interpreter.
-	/// Searches the @main frame's named registers and updates the first match.
-	/// </summary>
-	/// <param name="varName">name of global variable to set</param>
-	/// <param name="value">value to set</param>
+	// 
+	// Set a value in the global namespace of this interpreter.
+	// Searches the @main frame's named registers and updates the first match.
+	// 
+	// <param name="varName">name of global variable to set</param>
+	// <param name="value">value to set</param>
 	public: void SetGlobalValue(String varName, Value value);
 
-	/// <summary>
-	/// Discard the persistent REPL globals VarMap.  The next REPL() call will
-	/// rebuild it from scratch, effectively clearing all user-defined globals.
-	/// Called by the `reset` intrinsic to take effect immediately during execution.
-	/// </summary>
+	// 
+	// Discard the persistent REPL globals VarMap.  The next REPL() call will
+	// rebuild it from scratch, effectively clearing all user-defined globals.
+	// Called by the `reset` intrinsic to take effect immediately during execution.
+	// 
 	public: void ResetReplGlobals();
 
-	/// <summary>
-	/// Report an error value to the user via errorOutput.  The default
-	/// implementation formats the error message as a string and calls
-	/// ReportError(String).  Subclass and override to do something different
-	/// (e.g. inspect the error type or store it for later retrieval).
-	/// </summary>
-	/// <param name="error">error Value to report</param>
+	// 
+	// Report an error value to the user via errorOutput.  The default
+	// implementation formats the error message as a string and calls
+	// ReportError(String).  Subclass and override to do something different
+	// (e.g. inspect the error type or store it for later retrieval).
+	// 
+	// <param name="error">error Value to report</param>
 	protected: virtual void ReportError(Value error);
 
-	/// <summary>
-	/// Report a single error string to the user via errorOutput.  The default
-	/// implementation simply invokes errorOutput.  If you want to do something
-	/// different, subclass Interpreter and override this method.
-	/// </summary>
-	/// <param name="message">error message</param>
+	// 
+	// Report a single error string to the user via errorOutput.  The default
+	// implementation simply invokes errorOutput.  If you want to do something
+	// different, subclass Interpreter and override this method.
+	// 
+	// <param name="message">error message</param>
 	protected: virtual void ReportError(String message);
 }; // end of class InterpreterStorage
 
-/// <summary>
-/// Interpreter: an object that contains and runs one MiniScript script.
-/// </summary>
+// 
+// Interpreter: an object that contains and runs one MiniScript script.
+// 
 struct Interpreter {
 	friend class InterpreterStorage;
 	protected: std::shared_ptr<InterpreterStorage> storage;
@@ -271,74 +271,74 @@ struct Interpreter {
 	private: void set__replGlobals(Value _v); // persistent globals VarMap
 	public: Interpreter(InterpreterStorage* p) : storage(p ? p->shared_from_this() : nullptr) {}  
 
-	/// <summary>
-	/// standardOutput: receives the output of the "print" intrinsic.
-	/// </summary>
+	// 
+	// standardOutput: receives the output of the "print" intrinsic.
+	// 
 	
-	/// <summary>
-	/// implicitOutput: receives the value of expressions entered when
-	/// in REPL mode.  If you're not using the REPL() method, you can
-	/// safely ignore this.
-	/// </summary>
+	// 
+	// implicitOutput: receives the value of expressions entered when
+	// in REPL mode.  If you're not using the REPL() method, you can
+	// safely ignore this.
+	// 
 
-	/// <summary>
-	/// errorOutput: receives error messages from the compiler or runtime.
-	/// (This happens via the ReportError method, which is virtual; so if you
-	/// want to catch the actual errors differently, you can subclass
-	/// Interpreter and override that method.)
-	/// </summary>
+	// 
+	// errorOutput: receives error messages from the compiler or runtime.
+	// (This happens via the ReportError method, which is virtual; so if you
+	// want to catch the actual errors differently, you can subclass
+	// Interpreter and override that method.)
+	// 
 
-	/// <summary>
-	/// hostData is just a convenient place for you to attach some arbitrary
-	/// data to the interpreter.  It gets passed through to the context object,
-	/// so you can access it inside your custom intrinsic functions.  Use it
-	/// for whatever you like (or don't, if you don't feel the need).
-	/// </summary>
+	// 
+	// hostData is just a convenient place for you to attach some arbitrary
+	// data to the interpreter.  It gets passed through to the context object,
+	// so you can access it inside your custom intrinsic functions.  Use it
+	// for whatever you like (or don't, if you don't feel the need).
+	// 
 
-	/// <summary>
-	/// done: returns true when we don't have a virtual machine, or we do have
-	/// one and it is done (has reached the end of its code).
-	/// </summary>
+	// 
+	// done: returns true when we don't have a virtual machine, or we do have
+	// one and it is done (has reached the end of its code).
+	// 
 
-	/// <summary>
-	/// vm: the virtual machine this interpreter is running.  Most applications
-	/// will not need to use this, but it's provided for advanced users.
-	/// </summary>
+	// 
+	// vm: the virtual machine this interpreter is running.  Most applications
+	// will not need to use this, but it's provided for advanced users.
+	// 
 
-	/// <summary>
-	/// SourceFile: the name of the file this interpreter loaded (e.g. "myScript.ms"),
-	/// or empty string for source provided directly as a string.
-	/// Used to populate FuncDef.FileName for stack traces.
-	/// </summary>
+	// 
+	// SourceFile: the name of the file this interpreter loaded (e.g. "myScript.ms"),
+	// or empty string for source provided directly as a string.
+	// Used to populate FuncDef.FileName for stack traces.
+	// 
 
-	/// <summary>
-	/// The most recent compiler or runtime error, as an error Value, or val_null
-	/// if there is no error.  Host code can inspect this (and its __isa chain)
-	/// to distinguish error types.
-	/// </summary>
+	// 
+	// The most recent compiler or runtime error, as an error Value, or val_null
+	// if there is no error.  Host code can inspect this (and its __isa chain)
+	// to distinguish error types.
+	// 
 
-	/// <summary>
-	/// The Value produced by the last complete REPL interaction that had implicit
-	/// output (a bare expression as the last statement), or val_null otherwise.
-	/// Updated at the end of each complete REPL() call.  Host code (e.g. the
-	/// REPL loop in App.cs) reads this to push it into the _out history list.
-	/// </summary>
+	// 
+	// The Value produced by the last complete REPL interaction that had implicit
+	// output (a bare expression as the last statement), or val_null otherwise.
+	// Updated at the end of each complete REPL() call.  Host code (e.g. the
+	// REPL loop in App.cs) reads this to push it into the _out history list.
+	// 
 
 	// REPL state
 
   
-	/// <summary>
-	/// Constructor taking some MiniScript source code, and the output delegates.
-	/// </summary>
+	// 
+	// Constructor taking some MiniScript source code, and the output delegates.
+	// 
 	public: static Interpreter New(String source=nullptr, TextOutputMethod standardOutput=nullptr, TextOutputMethod errorOutput=nullptr) {
 		return Interpreter(std::make_shared<InterpreterStorage>(source, standardOutput, errorOutput));
 	}
 	
 	private: inline void Init(String _source, TextOutputMethod _standardOutput, TextOutputMethod _errorOutput);
 
-	/// <summary>
-	/// Constructor taking source code in the form of a list of strings.
-	/// </summary>
+	// 
+	// Constructor taking source code in the form of a list of strings.
+	// 
 	public: static Interpreter New(List<String> sourceList, TextOutputMethod standardOutput=nullptr, TextOutputMethod errorOutput=nullptr) {
 		return Interpreter(std::make_shared<InterpreterStorage>(sourceList, standardOutput, errorOutput));
 	}
@@ -346,122 +346,122 @@ struct Interpreter {
 	
 	
 
-	/// <summary>
-	/// Stop the virtual machine, and jump to the end of the program code.
-	/// Also reset the parser, in case it's stuck waiting for a block ender.
-	/// </summary>
+	// 
+	// Stop the virtual machine, and jump to the end of the program code.
+	// Also reset the parser, in case it's stuck waiting for a block ender.
+	// 
 	public: inline void Stop();
 
-	/// <summary>
-	/// Reset the interpreter with the given source code.
-	/// </summary>
+	// 
+	// Reset the interpreter with the given source code.
+	// 
 	public: inline void Reset(String _source="");
 
-	/// <summary>
-	/// Reset the interpreter with pre-compiled functions (e.g. from an assembler).
-	/// The list must contain a FuncDef named "@main".
-	/// </summary>
+	// 
+	// Reset the interpreter with pre-compiled functions (e.g. from an assembler).
+	// The list must contain a FuncDef named "@main".
+	// 
 	public: inline void Reset(List<FuncDef> functions);
 
-	/// <summary>
-	/// Compile our source code, if we haven't already done so, so that we are
-	/// either ready to run, or generate compiler errors (reported via errorOutput).
-	/// </summary>
+	// 
+	// Compile our source code, if we haven't already done so, so that we are
+	// either ready to run, or generate compiler errors (reported via errorOutput).
+	// 
 	public: inline void Compile();
 
-	/// <summary>
-	/// Reset the virtual machine to the beginning of the code.  Note that this
-	/// does *not* recompile; it simply resets the VM with the same functions.
-	/// Useful in cases where you have a short script you want to run over and
-	/// over, without recompiling every time.
-	/// </summary>
+	// 
+	// Reset the virtual machine to the beginning of the code.  Note that this
+	// does *not* recompile; it simply resets the VM with the same functions.
+	// Useful in cases where you have a short script you want to run over and
+	// over, without recompiling every time.
+	// 
 	public: inline void Restart();
 
-	/// <summary>
-	/// Run the compiled code until we either reach the end, or we reach the
-	/// specified time limit.  In the latter case, you can then call RunUntilDone
-	/// again to continue execution right from where it left off.
+	// 
+	// Run the compiled code until we either reach the end, or we reach the
+	// specified time limit.  In the latter case, you can then call RunUntilDone
+	// again to continue execution right from where it left off.
 	///
-	/// Or, if returnEarly is true, we will also return if the VM is yielding
-	/// (i.e., an intrinsic needs to wait for something).  Again, call
-	/// RunUntilDone again later to continue.
+	// Or, if returnEarly is true, we will also return if the VM is yielding
+	// (i.e., an intrinsic needs to wait for something).  Again, call
+	// RunUntilDone again later to continue.
 	///
-	/// Note that this method first compiles the source code if it wasn't compiled
-	/// already, and in that case, may generate compiler errors.  And of course
-	/// it may generate runtime errors while running.  In either case, these are
-	/// reported via errorOutput.
-	/// </summary>
-	/// <param name="timeLimit">maximum amount of time to run before returning, in seconds</param>
-	/// <param name="returnEarly">if true, return as soon as the VM yields</param>
+	// Note that this method first compiles the source code if it wasn't compiled
+	// already, and in that case, may generate compiler errors.  And of course
+	// it may generate runtime errors while running.  In either case, these are
+	// reported via errorOutput.
+	// 
+	// <param name="timeLimit">maximum amount of time to run before returning, in seconds</param>
+	// <param name="returnEarly">if true, return as soon as the VM yields</param>
 	public: inline void RunUntilDone(double timeLimit=60, bool returnEarly=Boolean(true));
 
-	/// <summary>
-	/// Run one step (small batch) of the virtual machine.  This method is not
-	/// very useful except in special cases; usually you will use RunUntilDone instead.
-	/// </summary>
+	// 
+	// Run one step (small batch) of the virtual machine.  This method is not
+	// very useful except in special cases; usually you will use RunUntilDone instead.
+	// 
 	public: inline void Step();
 
-	/// <summary>
-	/// Read Eval Print Loop.  Run the given source until it either terminates,
-	/// or hits the given time limit.  When it terminates, if we have new
-	/// implicit output, print that to the implicitOutput stream.
-	/// </summary>
-	/// <param name="sourceLine">line of source code to parse and run</param>
-	/// <param name="timeLimit">time limit in seconds</param>
+	// 
+	// Read Eval Print Loop.  Run the given source until it either terminates,
+	// or hits the given time limit.  When it terminates, if we have new
+	// implicit output, print that to the implicitOutput stream.
+	// 
+	// <param name="sourceLine">line of source code to parse and run</param>
+	// <param name="timeLimit">time limit in seconds</param>
 	public: inline void REPL(String sourceLine, double timeLimit=60);
 
-	/// <summary>
-	/// Report whether the virtual machine is still running, that is,
-	/// whether it has not yet reached the end of the program code.
-	/// </summary>
+	// 
+	// Report whether the virtual machine is still running, that is,
+	// whether it has not yet reached the end of the program code.
+	// 
 	public: inline bool Running();
 
-	/// <summary>
-	/// Return whether the parser needs more input, for example because we have
-	/// run out of source code in the middle of an "if" block.  This is typically
-	/// used with REPL for making an interactive console, so you can change the
-	/// prompt when more input is expected.
-	/// </summary>
+	// 
+	// Return whether the parser needs more input, for example because we have
+	// run out of source code in the middle of an "if" block.  This is typically
+	// used with REPL for making an interactive console, so you can change the
+	// prompt when more input is expected.
+	// 
 	public: inline bool NeedMoreInput();
 
-	/// <summary>
-	/// Get a value from the global namespace of this interpreter.
-	/// Searches the @main frame's named registers for the given variable name.
-	/// </summary>
-	/// <param name="varName">name of global variable to get</param>
-	/// <returns>Value of the named variable, or val_null if not found</returns>
+	// 
+	// Get a value from the global namespace of this interpreter.
+	// Searches the @main frame's named registers for the given variable name.
+	// 
+	// <param name="varName">name of global variable to get</param>
+	// <returns>Value of the named variable, or val_null if not found</returns>
 	public: inline Value GetGlobalValue(String varName);
 
-	/// <summary>
-	/// Set a value in the global namespace of this interpreter.
-	/// Searches the @main frame's named registers and updates the first match.
-	/// </summary>
-	/// <param name="varName">name of global variable to set</param>
-	/// <param name="value">value to set</param>
+	// 
+	// Set a value in the global namespace of this interpreter.
+	// Searches the @main frame's named registers and updates the first match.
+	// 
+	// <param name="varName">name of global variable to set</param>
+	// <param name="value">value to set</param>
 	public: inline void SetGlobalValue(String varName, Value value);
 
-	/// <summary>
-	/// Discard the persistent REPL globals VarMap.  The next REPL() call will
-	/// rebuild it from scratch, effectively clearing all user-defined globals.
-	/// Called by the `reset` intrinsic to take effect immediately during execution.
-	/// </summary>
+	// 
+	// Discard the persistent REPL globals VarMap.  The next REPL() call will
+	// rebuild it from scratch, effectively clearing all user-defined globals.
+	// Called by the `reset` intrinsic to take effect immediately during execution.
+	// 
 	public: inline void ResetReplGlobals();
 
-	/// <summary>
-	/// Report an error value to the user via errorOutput.  The default
-	/// implementation formats the error message as a string and calls
-	/// ReportError(String).  Subclass and override to do something different
-	/// (e.g. inspect the error type or store it for later retrieval).
-	/// </summary>
-	/// <param name="error">error Value to report</param>
+	// 
+	// Report an error value to the user via errorOutput.  The default
+	// implementation formats the error message as a string and calls
+	// ReportError(String).  Subclass and override to do something different
+	// (e.g. inspect the error type or store it for later retrieval).
+	// 
+	// <param name="error">error Value to report</param>
 	protected: inline virtual void ReportError(Value error);
 
-	/// <summary>
-	/// Report a single error string to the user via errorOutput.  The default
-	/// implementation simply invokes errorOutput.  If you want to do something
-	/// different, subclass Interpreter and override this method.
-	/// </summary>
-	/// <param name="message">error message</param>
+	// 
+	// Report a single error string to the user via errorOutput.  The default
+	// implementation simply invokes errorOutput.  If you want to do something
+	// different, subclass Interpreter and override this method.
+	// 
+	// <param name="message">error message</param>
 	protected: inline virtual void ReportError(String message);
 }; // end of struct Interpreter
 

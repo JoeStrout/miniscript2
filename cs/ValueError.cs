@@ -3,24 +3,24 @@ using System;
 using static MiniScript.ValueHelpers;
 
 namespace MiniScript {
-	/// <summary>
-	/// ValueError represents a runtime error value in MiniScript 2.0.
-	/// Errors are immutable, first-class values that propagate through
-	/// most expressions (see LANGUAGE_CHANGES.md "Error Type").
-	/// </summary>
+	// 
+	// ValueError represents a runtime error value in MiniScript 2.0.
+	// Errors are immutable, first-class values that propagate through
+	// most expressions (see LANGUAGE_CHANGES.md "Error Type").
+	// 
 	public class ValueError {
-		/// <summary>The error message (a string Value).</summary>
+		// The error message (a string Value).
 		public Value Message { get; }
 
-		/// <summary>An inner (wrapped) error, or null.</summary>
+		// An inner (wrapped) error, or null.
 		public Value Inner { get; }
 
-		/// <summary>Stack trace at creation time (a frozen list of strings).
-		/// Currently stubbed: full source-location tracking not yet implemented.</summary>
+		// Stack trace at creation time (a frozen list of strings).
+		// Currently stubbed: full source-location tracking not yet implemented.
 		public Value Stack { get; }
 
-		/// <summary>Optional __isa link to a more general error (used by
-		/// se.err(msg, e) specialization), or null.</summary>
+		// Optional __isa link to a more general error (used by
+		// se.err(msg, e) specialization), or null.
 		public Value Isa { get; }
 
 		public ValueError(Value message, Value inner, Value stack, Value isa) {

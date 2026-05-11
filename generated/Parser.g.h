@@ -46,11 +46,11 @@ class ParserStorage : public std::enable_shared_from_this<ParserStorage>, public
 	// Initialize the parser with source code
 	public: void Init(String source);
 
-	/// <summary>
-	/// Return whether the parser ran out of input in the middle of an open
-	/// block (if/while/for/function).  Only meaningful when there are no
-	/// errors -- a genuine syntax error takes precedence.
-	/// </summary>
+	// 
+	// Return whether the parser ran out of input in the middle of an open
+	// block (if/while/for/function).  Only meaningful when there are no
+	// errors -- a genuine syntax error takes precedence.
+	// 
 	public: Boolean NeedMoreInput();
 
 	// Advance to the next token, skipping comments and line continuations.
@@ -208,11 +208,11 @@ struct Parser : public IParser {
 	// Initialize the parser with source code
 	public: inline void Init(String source);
 
-	/// <summary>
-	/// Return whether the parser ran out of input in the middle of an open
-	/// block (if/while/for/function).  Only meaningful when there are no
-	/// errors -- a genuine syntax error takes precedence.
-	/// </summary>
+	// 
+	// Return whether the parser ran out of input in the middle of an open
+	// block (if/while/for/function).  Only meaningful when there are no
+	// errors -- a genuine syntax error takes precedence.
+	// 
 	public: inline Boolean NeedMoreInput();
 
 	// Advance to the next token, skipping comments and line continuations.

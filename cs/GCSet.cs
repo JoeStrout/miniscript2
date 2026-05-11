@@ -3,40 +3,40 @@ using System;
 
 namespace MiniScript {
 
-/// <summary>
-/// Manages a pool of GC-tracked objects of type T using a struct-of-arrays layout
-/// so GC metadata (Marked, InUse, RetainCount) occupies its own tight arrays,
-/// separate from item data.
-/// </summary>
+// 
+// Manages a pool of GC-tracked objects of type T using a struct-of-arrays layout
+// so GC metadata (Marked, InUse, RetainCount) occupies its own tight arrays,
+// separate from item data.
+// 
 public sealed class GCSet<T> : IGCSet where T : struct, IGCItem {
 
-	private T[]    _items;
-	private bool[] _inUse;
-	private bool[] _marked;
-	private int[]  _retainCounts;
+	private T[]       _items;
+	private Boolean[] _inUse;
+	private Boolean[] _marked;
+	private Byte[]   _retainCounts;
 
-	private int    _hwm;       // high-water mark: indices 0.._hwm-1 have been used
-	private int[]  _free;      // stack of recycled indices
-	private int    _freeTop;
+	private Int32     _hwm;       // high-water mark: indices 0.._hwm-1 have been used
+	private Int32[]   _free;      // stack of recycled indices
+	private Int32     _freeTop;
 
-	public GCSet(int initialCapacity = 64) {
+	public GCSet(Int32 initialCapacity = 64) {
 		_items        = new T[initialCapacity];
-		_inUse        = new bool[initialCapacity];
-		_marked       = new bool[initialCapacity];
-		_retainCounts = new int[initialCapacity];
-		_free         = new int[initialCapacity];
+		_inUse        = new Boolean[initialCapacity];
+		_marked       = new Boolean[initialCapacity];
+		_retainCounts = new Byte[initialCapacity];
+		_free         = new Int32[initialCapacity];
 		_freeTop      = 0;
 		_hwm          = 0;
 	}
 
-	// ── Allocation ──────────────────────────────────────────────────────────
+	// ── Allocation & Access ──────────────────────────────────────────────────
 
-	/// <summary>
-	/// Reserve a slot and return its index.
-	/// Caller must initialise the item via Get(idx) before use.
-	/// </summary>
-	public int New() {
-		int idx;
+	// 
+	// Reserve a slot and return its index.
+	// Caller must initialise the item via Get(idx) before use.
+	// 
+	public Int32 New() {
+		Int32 idx;
 		if (_freeTop > 0) {
 			idx = _free[--_freeTop];
 		} else {
@@ -50,13 +50,23 @@ public sealed class GCSet<T> : IGCSet where T : struct, IGCItem {
 		return idx;
 	}
 
-	/// <summary>Returns a ref to the item at idx for in-place initialisation or mutation.</summary>
-	public ref T Get(int idx) => ref _items[idx];
+	// Returns a ref to the item at idx for in-place initialisation or mutation.
+	public ref T Get(Int32 idx) { return ref _items[idx]; }
 
 	// ── Retain / Release ────────────────────────────────────────────────────
 
-	public void Retain(int idx)  => _retainCounts[idx]++;
-	public void Release(int idx) => _retainCounts[idx]--;
+	public void Retain(Int32 idx)  {
+		if (_retainCounts[idx] == 255) {
+			throw new InvalidOperationException("GCSet value retained > 255 times");
+		}
+		_retainCounts[idx]++;
+	}
+	public void Release(Int32 idx) {
+		if (_retainCounts[idx] == 0) {
+			throw new InvalidOperationException("GCSet value released more than retained");
+		}
+		_retainCounts[idx]--;
+	}
 
 	// ── IGCSet implementation ────────────────────────────────────────────────
 
@@ -64,20 +74,21 @@ public sealed class GCSet<T> : IGCSet where T : struct, IGCItem {
 		Array.Clear(_marked, 0, _hwm);
 	}
 
-	public void Mark(int idx, GCManager gc) {
+	public void Mark(Int32 idx, GCManager gc) {
 		if (_marked[idx]) return;
 		_marked[idx] = true;
 		_items[idx].MarkChildren(gc);
 	}
 
 	public void MarkRetained(GCManager gc) {
-		for (int i = 0; i < _hwm; i++)
+		for (Int32 i = 0; i < _hwm; i++) {
 			if (_inUse[i] && _retainCounts[i] > 0) Mark(i, gc);
+		}
 	}
 
 	public void Sweep() {
-		for (int i = 0; i < _hwm; i++) {
-			if (_inUse[i] && !_marked[i] && _retainCounts[i] <= 0) {
+		for (Int32 i = 0; i < _hwm; i++) {
+			if (_inUse[i] && !_marked[i] && _retainCounts[i] == 0) {
 				_items[i].OnSweep();
 				_items[i]        = default;
 				_inUse[i]        = false;
@@ -88,18 +99,18 @@ public sealed class GCSet<T> : IGCSet where T : struct, IGCItem {
 		}
 	}
 
-	public int LiveCount {
-		get {
-			int n = 0;
-			for (int i = 0; i < _hwm; i++) if (_inUse[i]) n++;
-			return n;
+	public Int32 LiveCount() {
+		Int32 n = 0;
+		for (Int32 i = 0; i < _hwm; i++) {
+			if (_inUse[i]) n++;
 		}
+		return n;
 	}
 
 	// ── Internal ─────────────────────────────────────────────────────────────
 
 	private void Grow() {
-		int newLen = _items.Length * 2;
+		Int32 newLen = _items.Length * 2;
 		Array.Resize(ref _items,        newLen);
 		Array.Resize(ref _inUse,        newLen);
 		Array.Resize(ref _marked,       newLen);

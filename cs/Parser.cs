@@ -108,11 +108,11 @@ public class Parser : IParser {
 		Advance();  // Prime the pump with the first token
 	}
 
-	/// <summary>
-	/// Return whether the parser ran out of input in the middle of an open
-	/// block (if/while/for/function).  Only meaningful when there are no
-	/// errors -- a genuine syntax error takes precedence.
-	/// </summary>
+	// 
+	// Return whether the parser ran out of input in the middle of an open
+	// block (if/while/for/function).  Only meaningful when there are no
+	// errors -- a genuine syntax error takes precedence.
+	// 
 	public Boolean NeedMoreInput() {
 		return _needMoreInput && !HadError();
 	}

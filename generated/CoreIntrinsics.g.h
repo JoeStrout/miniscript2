@@ -24,44 +24,44 @@ class CoreIntrinsics {
 
 	private: static void AddIntrinsicToMap(Value map, String methodName);
 
-	/// <summary>
-	/// ListType: a static map that represents the `list` type, and provides
-	/// intrinsic methods that can be invoked on it via dot syntax.
-	/// </summary>
+	// 
+	// ListType: a static map that represents the `list` type, and provides
+	// intrinsic methods that can be invoked on it via dot syntax.
+	// 
 	public: static Value ListType();
 	private: static Value _listType;
 
-	/// <summary>
-	/// StringType: a static map that represents the `string` type, and provides
-	/// intrinsic methods that can be invoked on it via dot syntax.
-	/// </summary>
+	// 
+	// StringType: a static map that represents the `string` type, and provides
+	// intrinsic methods that can be invoked on it via dot syntax.
+	// 
 	public: static Value StringType();
 	private: static Value _stringType;
 
-	/// <summary>
-	/// MapType: a static map that represents the `map` type, and provides
-	/// intrinsic methods that can be invoked on it via dot syntax.
-	/// </summary>
+	// 
+	// MapType: a static map that represents the `map` type, and provides
+	// intrinsic methods that can be invoked on it via dot syntax.
+	// 
 	public: static Value MapType();
 	private: static Value _mapType;
 	
-	/// <summary>
-	/// NumberType: a static map that represents the `number` type.
-	/// </summary>
+	// 
+	// NumberType: a static map that represents the `number` type.
+	// 
 	public: static Value NumberType();
 	private: static Value _numberType;
 
-	/// <summary>
-	/// FunctionType: a static map that represents the `funcRef` type.
-	/// </summary>
+	// 
+	// FunctionType: a static map that represents the `funcRef` type.
+	// 
 	public: static Value FunctionType();
 	private: static Value _functionType;
 
-	/// <summary>
-	/// ErrorType: a static map that represents the `error` type, and provides
-	/// intrinsic methods that can be invoked on an error via dot syntax
-	/// (notably `err` for creating a specialization).
-	/// </summary>
+	// 
+	// ErrorType: a static map that represents the `error` type, and provides
+	// intrinsic methods that can be invoked on an error via dot syntax
+	// (notably `err` for creating a specialization).
+	// 
 	public: static Value ErrorType();
 	private: static Value _errorType;
 	private: static Value _EOL;

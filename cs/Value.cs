@@ -112,13 +112,13 @@ public readonly struct Value {
 		return BitConverter.Int64BitsToDouble(bits);
 	}
 
-	/// <summary>GCSet index (0-4); only meaningful when IsGCObject.</summary>
+	// GCSet index (0-4); only meaningful when IsGCObject.
 	public int GCSetIndex { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => (int)((_u >> 32) & 0x7); }
 
-	/// <summary>Item index within its GCSet; only meaningful when IsGCObject.</summary>
+	// Item index within its GCSet; only meaningful when IsGCObject.
 	public int ItemIndex  { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => (int)_u; }
 
-	/// <summary>Alias for ItemIndex; kept for call-site compatibility.</summary>
+	// Alias for ItemIndex; kept for call-site compatibility.
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public int Handle() => (int)_u;
 
@@ -170,8 +170,8 @@ public readonly struct Value {
 				if (shortName != null) return shortName;
 			}
 			ref GCList list = ref gc.Lists.Get(ItemIndex);
-			var strs = new string[list.Count];
-			for (int i = 0; i < list.Count; i++) {
+			var strs = new string[list.Items.Count];
+			for (int i = 0; i < list.Items.Count; i++) {
 				Value val_i = list.Get(i);
 				strs[i] = val_i.IsNull ? "null" : val_i.CodeForm(vm, recursionLimit - 1);
 			}
@@ -184,7 +184,7 @@ public readonly struct Value {
 				if (shortName != null) return shortName;
 			}
 			ref GCMap map = ref gc.Maps.Get(ItemIndex);
-			var strs = new List<string>(map.Count);
+			var strs = new List<string>(map.Count());
 			for (int iter = map.NextEntry(-1); iter != -1; iter = map.NextEntry(iter)) {
 				Value key = map.KeyAt(iter);
 				Value val = map.ValueAt(iter);
@@ -344,7 +344,7 @@ public readonly struct Value {
 		if (a.IsMap && b.IsMap) {
 			ref GCMap mapA = ref gc.Maps.Get(a.ItemIndex);
 			ref GCMap mapB = ref gc.Maps.Get(b.ItemIndex);
-			if (mapA.Count != mapB.Count) return false;
+			if (mapA.Count() != mapB.Count()) return false;
 			for (int iter = mapA.NextEntry(-1); iter != -1; iter = mapA.NextEntry(iter)) {
 				Value key = mapA.KeyAt(iter);
 				Value val = mapA.ValueAt(iter);
@@ -535,7 +535,7 @@ public static class ValueHelpers {
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static int list_count(Value list_val) {
 		if (!list_val.IsList) return 0;
-		return gc.Lists.Get(list_val.ItemIndex).Count;
+		return gc.Lists.Get(list_val.ItemIndex).Items.Count;
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -630,8 +630,8 @@ public static class ValueHelpers {
 	}
 
 	private static void SortList(ref GCList list, bool ascending) {
-		if (list.Items == null || list.Count < 2) return;
-		Array.Sort(list.Items, 0, list.Count, Comparer<Value>.Create((a, b) => {
+		if (list.Items == null || list.Items.Count < 2) return;
+		list.Items.Sort(Comparer<Value>.Create((a, b) => {
 			int cmp;
 			if (is_number(a) && is_number(b)) {
 				cmp = numeric_val(a).CompareTo(numeric_val(b));
@@ -647,7 +647,7 @@ public static class ValueHelpers {
 	}
 
 	private static void SortListByKey(ref GCList list, Value byKey, bool ascending) {
-		int count = list.Count;
+		int count = list.Items.Count;
 		if (count < 2) return;
 		Value[] keys = new Value[count];
 		for (int i = 0; i < count; i++) {
@@ -684,7 +684,7 @@ public static class ValueHelpers {
 	// ── Map operations ────────────────────────────────────────────────────────
 	public static int map_count(Value map_val) {
 		if (!map_val.IsMap) return 0;
-		return gc.Maps.Get(map_val.ItemIndex).Count;
+		return gc.Maps.Get(map_val.ItemIndex).Count();
 	}
 
 	public static Value map_get(Value map_val, Value key) {
@@ -866,7 +866,7 @@ public static class ValueHelpers {
 			ref GCList list = ref gc.Lists.Get(v.ItemIndex);
 			if (list.Frozen) return;
 			list.Frozen = true;
-			for (int i = 0; i < list.Count; i++) freeze_value(list.Get(i));
+			for (int i = 0; i < list.Items.Count; i++) freeze_value(list.Get(i));
 		} else if (v.IsMap) {
 			ref GCMap map = ref gc.Maps.Get(v.ItemIndex);
 			if (map.Frozen) return;
@@ -882,16 +882,16 @@ public static class ValueHelpers {
 		if (v.IsList) {
 			ref GCList src = ref gc.Lists.Get(v.ItemIndex);
 			if (src.Frozen) return v;
-			Value newList = make_list(src.Count);
+			Value newList = make_list(src.Items.Count);
 			ref GCList dst = ref gc.Lists.Get(newList.ItemIndex);
 			dst.Frozen = true;
-			for (int i = 0; i < src.Count; i++) dst.Push(frozen_copy(src.Get(i)));
+			for (int i = 0; i < src.Items.Count; i++) dst.Push(frozen_copy(src.Get(i)));
 			return newList;
 		}
 		if (v.IsMap) {
 			ref GCMap src = ref gc.Maps.Get(v.ItemIndex);
 			if (src.Frozen) return v;
-			Value newMap = make_map(src.Count);
+			Value newMap = make_map(src.Count());
 			ref GCMap dst = ref gc.Maps.Get(newMap.ItemIndex);
 			dst.Frozen = true;
 			// Iterate src and copy entries into dst.

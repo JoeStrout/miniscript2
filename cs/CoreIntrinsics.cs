@@ -55,10 +55,10 @@ public static class CoreIntrinsics {
 		}
 	}
 
-	/// <summary>
-	/// ListType: a static map that represents the `list` type, and provides
-	/// intrinsic methods that can be invoked on it via dot syntax.
-	/// </summary>
+	// 
+	// ListType: a static map that represents the `list` type, and provides
+	// intrinsic methods that can be invoked on it via dot syntax.
+	// 
 	public static Value ListType() {
 		if (is_null(_listType)) {
 			_listType = make_map(16);
@@ -83,10 +83,10 @@ public static class CoreIntrinsics {
 	}
 	private static Value _listType = val_null;
 
-	/// <summary>
-	/// StringType: a static map that represents the `string` type, and provides
-	/// intrinsic methods that can be invoked on it via dot syntax.
-	/// </summary>
+	// 
+	// StringType: a static map that represents the `string` type, and provides
+	// intrinsic methods that can be invoked on it via dot syntax.
+	// 
 	public static Value StringType() {
 		if (is_null(_stringType)) {
 			_stringType = make_map(16);
@@ -109,10 +109,10 @@ public static class CoreIntrinsics {
 	}
 	private static Value _stringType = val_null;
 
-	/// <summary>
-	/// MapType: a static map that represents the `map` type, and provides
-	/// intrinsic methods that can be invoked on it via dot syntax.
-	/// </summary>
+	// 
+	// MapType: a static map that represents the `map` type, and provides
+	// intrinsic methods that can be invoked on it via dot syntax.
+	// 
 	public static Value MapType() {
 		if (is_null(_mapType)) {
 			_mapType = make_map(16);
@@ -134,9 +134,9 @@ public static class CoreIntrinsics {
 	}
 	private static Value _mapType = val_null;
 	
-	/// <summary>
-	/// NumberType: a static map that represents the `number` type.
-	/// </summary>
+	// 
+	// NumberType: a static map that represents the `number` type.
+	// 
 	public static Value NumberType() {
 		if (is_null(_numberType)) {
 			_numberType = make_map(4);
@@ -146,9 +146,9 @@ public static class CoreIntrinsics {
 	}
 	private static Value _numberType = val_null;	
 
-	/// <summary>
-	/// FunctionType: a static map that represents the `funcRef` type.
-	/// </summary>
+	// 
+	// FunctionType: a static map that represents the `funcRef` type.
+	// 
 	public static Value FunctionType() {
 		if (is_null(_functionType)) {
 			_functionType = make_map(4);
@@ -158,11 +158,11 @@ public static class CoreIntrinsics {
 	}
 	private static Value _functionType = val_null;
 
-	/// <summary>
-	/// ErrorType: a static map that represents the `error` type, and provides
-	/// intrinsic methods that can be invoked on an error via dot syntax
-	/// (notably `err` for creating a specialization).
-	/// </summary>
+	// 
+	// ErrorType: a static map that represents the `error` type, and provides
+	// intrinsic methods that can be invoked on an error via dot syntax
+	// (notably `err` for creating a specialization).
+	// 
 	public static Value ErrorType() {
 		if (is_null(_errorType)) {
 			_errorType = make_map(4);

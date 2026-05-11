@@ -1,25 +1,26 @@
 //*** BEGIN CS_ONLY ***
+using System;
+
 namespace MiniScript {
 
-/// <summary>
-/// Non-generic interface so GCManager can dispatch over all five GCSets
-/// without a switch statement.
-/// </summary>
+// Non-generic interface so GCManager can dispatch over all five GCSets
+// without a switch statement.
+// 
 public interface IGCSet {
-	/// <summary>Clear all mark bits before the Mark phase.</summary>
+	// Clear all mark bits before the Mark phase.
 	void PrepareForGC();
 
-	/// <summary>Mark the item at idx and recurse into its children.</summary>
-	void Mark(int idx, GCManager gc);
+	// Mark the item at idx and recurse into its children.
+	void Mark(Int32 idx, GCManager gc);
 
-	/// <summary>Mark all items with retain count > 0 (and their children).</summary>
+	// Mark all items with retain count > 0 (and their children).
 	void MarkRetained(GCManager gc);
 
-	/// <summary>Free every live, unmarked, unretained item.</summary>
+	// Free every live, unmarked, unretained item.
 	void Sweep();
 
-	/// <summary>Count of live slots (O(n); for diagnostics only).</summary>
-	int LiveCount { get; }
+	// Count of live slots (O(n); for diagnostics only).
+	Int32 LiveCount();
 }
 
 }

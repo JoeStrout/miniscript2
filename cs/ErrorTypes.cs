@@ -7,7 +7,7 @@
 using System;
 using static MiniScript.ValueHelpers;
 // H: #include "value.h"
-// CPP: #include "gc.h"
+// H: #include "GCManager.h"
 
 namespace MiniScript {
 
@@ -15,13 +15,13 @@ public static class ErrorType {
 	public static Value compiler = val_null;
 	public static Value runtime = val_null;
 
-	// H: static void MarkRoots(void* user_data);
+	// H: static void MarkRoots(void* user_data, GCManager& gc);
 
 	// Initialize the compiler and runtime prototype error values.
 	// Safe to call multiple times (no-op if already initialized).
 	// Must be called after gc_init() in C++; in C# this is called lazily.
 	public static void Init() {
-		// CPP: static bool registered = false; if (!registered) { gc_register_mark_callback(ErrorType::MarkRoots, nullptr); registered = true; }
+		// CPP: static bool registered = false; if (!registered) { GCManager::Instance().RegisterMarkCallback(ErrorType::MarkRoots, nullptr); registered = true; }
 		if (is_null(compiler)) {
 			compiler = make_error(make_string("Compiler Error"), val_null, val_null, val_null);
 			freeze_value(compiler);
@@ -52,10 +52,10 @@ public static class ErrorType {
 
 	/*** BEGIN CPP_ONLY ***
 	// GC mark callback to protect our static error prototypes from collection.
-	void ErrorType::MarkRoots(void* user_data) {
+	void ErrorType::MarkRoots(void* user_data, GCManager& gc) {
 		(void)user_data;
-		gc_mark_value(compiler);
-		gc_mark_value(runtime);
+		gc.Mark(compiler);
+		gc.Mark(runtime);
 	}
 	*** END CPP_ONLY ***/
 

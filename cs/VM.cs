@@ -9,7 +9,7 @@ using static System.Runtime.CompilerServices.MethodImplOptions;
 // H: #include "ErrorTypes.g.h"
 // H: #include "value_map.h"
 // H: #include <vector>
-// H: #include "gc.h"
+// H: #include "GCManager.h"
 // CPP: #include "value_list.h"
 // CPP: #include "value_string.h"
 // CPP: #include "Bytecode.g.h"
@@ -231,21 +231,30 @@ public class VM {
 		
 		/*** BEGIN CPP_ONLY ***
 		// Register as a source of roots for the GC system
-		gc_register_mark_callback(VMStorage::MarkRoots, this);
-		
+		GCManager::Instance().RegisterMarkCallback(VMStorage::MarkRoots, this);
+
 		// And, ensure that runtime errors are routed through the active VM
 		vm_error_set_callback([](const char* msg) {
 			VM vm = VMStorage::ActiveVM();
 			if (!IsNull(vm)) vm.RaiseRuntimeError(String(msg));
 		});
+
+		// Wire code_form's short-name hook to this VM's FindShortName. The
+		// hook lives in value.cpp (layer 2A) and takes a void* vm so it can
+		// stay free of the VM layer; we cast back here.
+		set_short_name_lookup([](void* vm_ptr, Value v) -> Value {
+			String s = static_cast<VMStorage*>(vm_ptr)->FindShortName(v);
+			if (s.Length() == 0) return val_null;
+			return make_string(s.c_str());
+		});
 		*** END CPP_ONLY ***/
 	}
 	
 	private void CleanupVM() {
-		// CPP: gc_unregister_mark_callback(VMStorage::MarkRoots, this);
+		// CPP: GCManager::Instance().UnregisterMarkCallback(VMStorage::MarkRoots, this);
 	}
 
-	// H: static void MarkRoots(void* user_data);
+	// H: static void MarkRoots(void* user_data, GCManager& gc);
 	// H: public: ~VMStorage() { CleanupVM(); }
 	// H: public: operator void*() { return this; }
 	// H: // Allows passing ctx.vm (VMStorage&) where void* vm is expected (e.g. to_string,
@@ -253,16 +262,16 @@ public class VM {
 	/*** BEGIN CPP_ONLY ***
 	// GC mark callback responsible for protecting our stack and names
 	// from garbage collection
-	void VMStorage::MarkRoots(void* user_data) {
+	void VMStorage::MarkRoots(void* user_data, GCManager& gc) {
 		VMStorage* vm = static_cast<VMStorage*>(user_data);
 		for (int i = 0; i < vm->stack.Count(); i++) {
-			gc_mark_value(vm->stack[i]);
-			gc_mark_value(vm->names[i]);
+			gc.Mark(vm->stack[i]);
+			gc.Mark(vm->names[i]);
 		}
 		// Mark intrinsics dictionary values (funcrefs are GC-allocated)
 		if (!IsNull(vm->_intrinsics)) {
 			for (Value val : vm->_intrinsics.GetValues()) {
-				gc_mark_value(val);
+				gc.Mark(val);
 			}
 		}
 	}

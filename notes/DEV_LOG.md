@@ -818,7 +818,7 @@ Two updates for today:
 
 1. I thought all night about the GC issue above, and came up with a plan.  It boils down to: we do our own mark & sweep GC only for certain MiniScript types (list, map, string, error, and "handle", meaning wrapper for some native object) -- and we do it for both C++ and C#.  I've prototyped this in a new MS2Proto2 subproject, and it seems to work fine, with relatively simple code.  So we'll probably move to that soon.
 
-2. Meanwhile, I had Claude remove `int` as a separate numeric type, and ran benchmarks of that vs. the previous `int`-tracking code.  See the results in the [ADR](adrs/0003-no-int-type.md).  It turns out there is no performance difference between having it or not, but _not_ having `int` makes the code shorter and simpler, so we're going with that.
+2. Meanwhile, I had Claude remove `int` as a separate numeric type, and ran benchmarks of that vs. the previous `int`-tracking code.  See the results in the [ADR](adr/0003-no-int-type.md).  It turns out there is no performance difference between having it or not, but _not_ having `int` makes the code shorter and simpler, so we're going with that.
 
 And, attempting to run the benchmarks brought to the forefront a couple of bugs:
 
@@ -834,3 +834,23 @@ Fixed the unreported runtime error.
 Also, added a command completion script for tools/build.sh, which will be a minor QOL improvement for me (I type things like `tools/build.sh transpile` a lot).
 
 Then, spent most of today reworking how values (especially lists and maps) convert to strings, to mimic MS1's behavior.  This involved a fair bit of new plumbing, since those conversion methods need a reference to the VM so that we can look up short names in the globals (and intrinsics).  But it seems to be working nicely now.
+
+
+## May 10, 2026
+
+Today I'm working no the major refactoring to put in the new GC system (see the [ADR](adr/0004-GC-system.md) and [MS2Prototypes/GCApproach2](https://github.com/JoeStrout/MS2Prototypes/tree/main/GCApproach2).
+
+It's a big job, so I'm taking it in stages:
+- implement GC system in C#
+- replace GC system in C++
+- add support for string interning for (6 <= length < 128) strings
+- add support for handle (native object wrapper) types
+
+And when that's all done, I really need to pause and go through the code looking for bad smells.  I suspect we've accumulated a few by this point.  For example, the apparently redundant macros in GCItems.h.
+
+Also: during this refactoring, the meaning of "interned string" has changed: it now involves only a side-table guaranteeing quick comparisons, but still requiring those strings to be marked and swept.  I'm not 100% convinced that is the right thing to do, and need to look into this further.  Might need to profile it both ways to be sure.
+
+...OK, after more careful thought I've written up [ADR #5](adr/0005-string-interning.md), proposing a hybrid approach: interned strings will avoid collection in the usual case, but can still be collected at more rare "full GC" times.
+
+
+

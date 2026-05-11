@@ -1,12 +1,19 @@
 // value.h
 //
-// Purpose: this module defines the Value type, an 8-byte NaN-box representation
-// of our dynamic type.  This Value will always be either a valid double, or
-// an actual numeric NaN, or a representation of some other type (possibly pointing
-// to additional data in the heap, in the case of strings, lists, and maps).
+// NaN-boxed 8-byte dynamic Value type. All non-immediate types (strings,
+// lists, maps, errors, funcrefs) carry a (gcSet, itemIndex) pair packed
+// into the lower 35 bits, dispatched by GCManager (see GCManager.h).
 //
-// Because a Value may point to garbage-collected memory allocations, care must be
-// taken to protect local Value variables (see GC_USAGE.md).
+// Bit layout (matches cs/Value.cs and cs/GCManager.cs):
+//   valid double  : top 13 bits not all 1s (standard IEEE 754)
+//   null          : 0xFFF1_0000_0000_0000
+//   GC object     : 0xFFFE_0000_000G_IIII_IIII
+//                     bits 34-32 = GCSet index (0-5)
+//                     bits 31-0  = item index within that GCSet
+//                     bits 47-35 = reserved/unused
+//   tiny string   : 0xFFFF_C4C3_C2C1_C0LL
+//                     bits 47-8  = up to 5 ASCII chars
+//                     bits  7-0  = length (0-5)
 
 #ifndef NANBOX_H
 #define NANBOX_H
@@ -18,262 +25,162 @@
 #include <string.h>
 #include "hashing.h"
 
-// This module is part of Layer 2A (Runtime Value System + GC)
 #define CORE_LAYER_2A
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-// Core NaN-boxing dynamic type system
-// Based on: https://piotrduperas.com/posts/nan-boxing
-
 typedef uint64_t Value;
 
-// Forward declarations for map structures
-typedef struct MapEntry {
-    Value key;
-    Value value;
-    uint32_t hash;      // Cached hash of the key
-    int next;           // Next entry in bucket chain (-1 = end, -2 = removed)
-} MapEntry;
+// ── Tag bits ────────────────────────────────────────────────────────────
+#define NANISH_MASK       0xFFFF000000000000ULL
+#define NULL_VALUE        0xFFF1000000000000ULL
+#define GC_TAG            0xFFFE000000000000ULL
+#define TINY_STRING_TAG   0xFFFF000000000000ULL
+// Mask covering top-16 tag bits plus the 3-bit GCSet field (bits 34-32).
+#define GC_TYPE_MASK      (NANISH_MASK | 0x0000000700000000ULL)
 
-#define MAP_ENTRY_END     -1   // End of bucket chain
-#define MAP_ENTRY_REMOVED -2   // Slot was removed (hole)
+#define TINY_STRING_MAX_LEN 5
 
-// VarMap-specific data (only allocated when needed)
-typedef struct VarMapData {
-    Value* registers;        // Pointer to VM register array
-    Value* names;           // Pointer to VM names array
-    Value* reg_map_keys;    // Variable names mapped to registers
-    int* reg_map_indices;   // Corresponding register indices
-    int reg_map_count;      // Number of register mappings
-    int reg_map_capacity;   // Capacity of the mapping arrays
-} VarMapData;
+// ── GCSet indices (must match cs/GCManager.cs constants) ────────────────
+#define STRING_SET   0
+#define LIST_SET     1
+#define MAP_SET      2
+#define ERROR_SET    3
+#define FUNCREF_SET  4
 
-typedef struct ValueMap {
-    int count;          // High-water mark: next free index in entries[]
-    int freeCount;      // Number of removed entries (holes)
-    int capacity;       // Allocated size of entries[] and buckets[]
-    int* buckets;       // Bucket array: buckets[hash % capacity] -> first entry index, or -1
-    MapEntry* entries;  // Entries array (append-only, preserves insertion order)
-    VarMapData* varmap_data; // NULL for regular maps, non-NULL for VarMaps
-    bool frozen;        // If true, mutations are disallowed
-} ValueMap;
+// Composite tag patterns (top-16 + 3-bit set). Useful for legacy code.
+#define STRING_TAG_PATTERN  (GC_TAG | ((uint64_t)STRING_SET  << 32))
+#define LIST_TAG_PATTERN    (GC_TAG | ((uint64_t)LIST_SET    << 32))
+#define MAP_TAG_PATTERN     (GC_TAG | ((uint64_t)MAP_SET     << 32))
+#define ERROR_TAG_PATTERN   (GC_TAG | ((uint64_t)ERROR_SET   << 32))
+#define FUNCREF_TAG_PATTERN (GC_TAG | ((uint64_t)FUNCREF_SET << 32))
 
-// NaN-boxing masks and constants
-#define NANISH_MASK       0xffff000000000000ULL
-#define NULL_VALUE        0xfff1000000000000ULL  // our lowest reserved NaN pattern
-#define ERROR_TAG         0xfff9000000000000ULL
-#define FUNCREF_TAG       0xfffb000000000000ULL
-#define MAP_TAG           0xfffc000000000000ULL
-#define LIST_TAG          0xfffd000000000000ULL
-#define STRING_TAG        0xfffe000000000000ULL  // (specifically, heap string)
-#define TINY_STRING_TAG   0xffff000000000000ULL
-
-#define TINY_STRING_MAX_LEN 5                     // Max 5 chars in 40 bits (bits 8-47)
-
-// Common constant values (initialized by value_init_constants in value.c)
-#define val_null ((Value)NULL_VALUE)
-#define val_zero ((Value)0x0000000000000000ULL)  // double 0.0
-#define val_one  ((Value)0x3FF0000000000000ULL)  // double 1.0
+// ── Common constant values ──────────────────────────────────────────────
+#define val_null         ((Value)NULL_VALUE)
+#define val_zero         ((Value)0x0000000000000000ULL)
+#define val_one          ((Value)0x3FF0000000000000ULL)
 #define val_empty_string ((Value)TINY_STRING_TAG)
-extern Value val_isa_key;  // "__isa" (tiny string, no GC needed)
-extern Value val_self;     // "self" (tiny string, no GC needed)
-extern Value val_super;    // "super" (tiny string, no GC needed)
+
+extern Value val_isa_key;   // "__isa"
+extern Value val_self;      // "self"
+extern Value val_super;     // "super"
 void value_init_constants(void);
 
+// ── Accessors used by hot paths ─────────────────────────────────────────
+static inline int value_gc_set_index(Value v)  { return (int)((v >> 32) & 0x7); }
+static inline int value_item_index(Value v)    { return (int)(uint32_t)v; }
 
-// Forward declarations of functions implemented elsewhere
-extern Value string_sub(Value a, Value b);
-extern Value string_concat(Value a, Value b);
-extern Value make_string(const char* str);
-extern const char* get_string_data_zerocopy(const Value* v_ptr, int* out_len);
-extern int string_compare(Value a, Value b);
-extern bool string_equals(Value a, Value b);
-extern Value list_concat(Value a, Value b);
-extern Value map_concat(Value a, Value b);
-extern Value make_map(int initial_capacity);
-extern Value make_empty_map(void);
-extern ValueMap* as_map(Value v);
-extern void* gc_allocate(size_t size);
+// ── Type predicates ─────────────────────────────────────────────────────
+static inline bool value_identical(Value a, Value b) { return a == b; }
 
-// Gereal-purpose (often inline) Value functions
-
-static inline bool value_identical(Value a, Value b) {
-	return a == b;
-}
-
-// Core type checking functions
 static inline bool is_null(Value v) {
     return v == val_null;
 }
 
-static inline bool is_error(Value v) {
-    return (v & NANISH_MASK) == ERROR_TAG;
-}
-
 static inline bool is_int(Value v) {
-    return false;
+    (void)v;
+    return false;  // legacy stub: int is no longer a separate type
 }
 
 static inline bool is_tiny_string(Value v) {
     return (v & NANISH_MASK) == TINY_STRING_TAG;
 }
 
+static inline bool is_gc_object(Value v) {
+    return (v & NANISH_MASK) == GC_TAG;
+}
+
 static inline bool is_heap_string(Value v) {
-    return (v & NANISH_MASK) == STRING_TAG;
+    return (v & GC_TYPE_MASK) == STRING_TAG_PATTERN;
 }
 
 static inline bool is_string(Value v) {
-	// Because of the particular bit patterns chosen, instead of:
-    //return is_tiny_string(v) || is_heap_string(v);
-    // ...we can do just:
-    return (v & STRING_TAG) == STRING_TAG;
+    return is_tiny_string(v) || is_heap_string(v);
 }
 
 static inline bool is_funcref(Value v) {
-    return (v & NANISH_MASK) == FUNCREF_TAG;
+    return (v & GC_TYPE_MASK) == FUNCREF_TAG_PATTERN;
 }
 
 static inline bool is_list(Value v) {
-    return (v & NANISH_MASK) == LIST_TAG;
+    return (v & GC_TYPE_MASK) == LIST_TAG_PATTERN;
 }
 
 static inline bool is_map(Value v) {
-    return (v & NANISH_MASK) == MAP_TAG;
+    return (v & GC_TYPE_MASK) == MAP_TAG_PATTERN;
+}
+
+static inline bool is_error(Value v) {
+    return (v & GC_TYPE_MASK) == ERROR_TAG_PATTERN;
 }
 
 static inline bool is_double(Value v) {
-	uint64_t top16 = v & NANISH_MASK;
-	// Check if it's outside our reserved NaN range
-	return top16 < val_null;  // Since val_null is your lowest boxed type
+    return (v & NANISH_MASK) < NULL_VALUE;
 }
 
-static inline bool is_number(Value v) {
-    return is_double(v);
-}
+static inline bool is_number(Value v) { return is_double(v); }
 
 bool is_truthy(Value v);
 
-// Core value creation functions
-static inline Value make_null(void) {
-    return val_null;
-}
+// ── Forward declarations for runtime functions ──────────────────────────
+extern Value string_sub(Value a, Value b);
+extern Value string_concat(Value a, Value b);
+extern Value make_string(const char* str);
+extern const char* get_string_data_zerocopy(const Value* v_ptr, int* out_len);
+extern int  string_compare(Value a, Value b);
+extern bool string_equals(Value a, Value b);
+extern int  string_length(Value v);
+extern Value string_substring(Value str, int startIndex, int len);
+extern Value list_concat(Value a, Value b);
+extern Value map_concat(Value a, Value b);
+extern Value make_map(int initial_capacity);
+extern Value make_empty_map(void);
+extern int   list_count(Value list_val);
+extern Value list_get(Value list_val, int index);
+extern void  list_push(Value list_val, Value item);
+extern Value make_list(int initial_capacity);
+
+// ── Numeric & null factories (immediate Values, no GC) ──────────────────
+static inline Value make_null(void) { return val_null; }
 
 static inline Value make_double(double d) {
-	// This looks expensive, but it's the only 100% portable way, and modern
-	// compilers will recognize it as a bit-cast and emit a single move instruction.
     Value v;
-    memcpy(&v, &d, sizeof v);   // bitwise copy; aliasing-safe
+    memcpy(&v, &d, sizeof v);
     return v;
 }
 
-static inline Value make_int(int32_t i) {
-    return make_double((double)i);
-}
+static inline Value make_int(int32_t i) { return make_double((double)i); }
 
-typedef struct {
-	Value message;
-	Value inner;
-	Value stack;
-	Value isa;
-} ValueError;
-
-static inline ValueError* as_error(Value v) {
-	if (!is_error(v)) return NULL;
-	return (ValueError*)(uintptr_t)(v & 0xFFFFFFFFFFFFULL);
-}
-
-static inline Value make_error(Value message, Value inner, Value stack, Value isa) {
-	ValueError* errObj = (ValueError*)gc_allocate(sizeof(ValueError));
-	errObj->message = message;
-	errObj->inner = inner;
-	errObj->stack = stack;
-	errObj->isa = isa;
-	// ToDo: ensure that isa, if given, does not create an isa loop.
-	return ERROR_TAG | ((uintptr_t)errObj & 0xFFFFFFFFFFFFULL);
-}
-
-static inline Value error_message(Value error) {
-	ValueError* errObj = as_error(error);
-	return errObj ? errObj->message : val_null;
-}
-
-static inline Value error_inner(Value error) {
-	ValueError* errObj = as_error(error);
-	return errObj ? errObj->inner : val_null;
-}
-
-static inline Value error_stack(Value error) {
-	ValueError* errObj = as_error(error);
-	return errObj ? errObj->stack : val_null;
-}
-
-static inline Value error_isa(Value error) {
-	ValueError* errObj = as_error(error);
-	return errObj ? errObj->isa : val_null;
-}
-
-static inline bool error_isa_contains(Value error, Value base) {
-	ValueError* errObj = as_error(error);
-	ValueError* baseObj = as_error(base);
-	while (errObj) {
-		if (errObj == baseObj) return true;
-		errObj = as_error(errObj->isa);
-	}
-	return false;
-}	
-
-// ValueFuncRef represents a function reference with closure support
-typedef struct {
-    int32_t funcIndex;    // Index into the VM's functions array identifying the FuncDef
-    Value outerVars;      // VarMap containing captured outer variables, or null if none
-} ValueFuncRef;
-
-// FuncRef accessor functions
-static inline ValueFuncRef* as_funcref(Value v) {
-    if (!is_funcref(v)) return NULL;
-    return (ValueFuncRef*)(uintptr_t)(v & 0xFFFFFFFFFFFFULL);
-}
-
-static inline int32_t funcref_index(Value v) {
-    ValueFuncRef* funcRefObj = as_funcref(v);
-    return funcRefObj ? funcRefObj->funcIndex : -1;
-}
-
-static inline Value funcref_outer_vars(Value v) {
-    ValueFuncRef* funcRefObj = as_funcref(v);
-    return funcRefObj ? funcRefObj->outerVars : val_null;
-}
-
-// FuncRef creation function
-static inline Value make_funcref(int32_t funcIndex, Value outerVars) {
-    ValueFuncRef* funcRefObj = (ValueFuncRef*)gc_allocate(sizeof(ValueFuncRef));
-    funcRefObj->funcIndex = funcIndex;
-    funcRefObj->outerVars = outerVars;
-    return FUNCREF_TAG | ((uintptr_t)funcRefObj & 0xFFFFFFFFFFFFULL);
-}
-
-// Core value extraction functions
 static inline double as_double(Value v) {
-	// See comments in make_double.
     double d;
-    memcpy(&d, &v, sizeof d);   // aliasing-safe bit copy
+    memcpy(&d, &v, sizeof d);
     return d;
 }
 
-static inline int32_t as_int(Value v) {
-    return (int32_t)as_double(v);
-}
+static inline int32_t as_int(Value v) { return (int32_t)as_double(v); }
 
-// Get the numeric value as a double, or 0 for non-numeric types.
 static inline double numeric_val(Value v) {
     if (is_double(v)) return as_double(v);
     return 0.0;
 }
 
-// Utility functions for accessing tiny string data within Value
+// ── Error / FuncRef accessors (defined in value.cpp) ────────────────────
+// These previously lived as inline pointer-decode helpers; now they
+// dispatch through the GC manager.
+Value make_error(Value message, Value inner, Value stack, Value isa);
+Value error_message(Value error);
+Value error_inner(Value error);
+Value error_stack(Value error);
+Value error_isa(Value error);
+bool  error_isa_contains(Value error, Value base);
+
+Value   make_funcref(int32_t funcIndex, Value outerVars);
+int32_t funcref_index(Value v);
+Value   funcref_outer_vars(Value v);
+
+// ── Tiny string buffer access ───────────────────────────────────────────
 #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
     #define GET_VALUE_DATA_PTR(v_ptr) ((char*)(v_ptr))
     #define GET_VALUE_DATA_PTR_CONST(v_ptr) ((const char*)(v_ptr))
@@ -282,24 +189,26 @@ static inline double numeric_val(Value v) {
     #define GET_VALUE_DATA_PTR_CONST(v_ptr) (((const char*)(v_ptr)) + 2)
 #endif
 
-// Conversion functions
-
-// Source-code form: strings quoted, containers depth-limited.
-// recursion_limit: -1=unlimited/no-short-name, 0=truncate, >0=render+short-name when <3.
+// ── Conversion ──────────────────────────────────────────────────────────
 Value code_form(Value v, void* vm, int recursion_limit);
-Value to_string(Value v, void* vm);   // Raw string for strings; code_form(3) for others.
-Value value_repr(Value v, void* vm);  // code_form(-1): fully expanded, strings quoted.
+Value to_string(Value v, void* vm);
+Value value_repr(Value v, void* vm);
 Value to_number(Value v);
 
-// Arithmetic operations (inlined for performance)
+// Short-name lookup hook: called by code_form when printing a map/list that
+// might be a known type or named global. Returns a string Value holding the
+// short name, or val_null if no match. Registered by the VM at init so we
+// can avoid a hard dependency from value.cpp on the VM layer.
+typedef Value (*ShortNameLookupFn)(void* vm, Value v);
+void set_short_name_lookup(ShortNameLookupFn fn);
+
+// ── Arithmetic ──────────────────────────────────────────────────────────
 static inline Value value_add(Value a, Value b, void* vm) {
     if (is_error(a)) return a;
     if (is_error(b)) return b;
     if (is_double(a) && is_double(b)) {
         return make_double(as_double(a) + as_double(b));
     }
-    // Handle string concatenation: any type + string or string + any type
-    // Null is treated as empty string in concatenation
     if (is_string(a)) {
         if (is_null(b)) return a;
         if (is_string(b)) return string_concat(a, b);
@@ -309,7 +218,7 @@ static inline Value value_add(Value a, Value b, void* vm) {
         return string_concat(to_string(a, vm), b);
     }
     if (is_list(a) && is_list(b)) return list_concat(a, b);
-    if (is_map(a) && is_map(b)) return map_concat(a, b);
+    if (is_map(a)  && is_map(b))  return map_concat(a, b);
     return val_null;
 }
 
@@ -323,11 +232,6 @@ static inline Value value_sub(Value a, Value b) {
     return val_null;
 }
 
-
-
-// NOTE: if either operand is an error, value_lt returns false.  Callers that
-// care about error propagation (arithmetic LT/LE opcodes, branch opcodes)
-// must check is_error() on the operands first.
 static inline bool value_lt(Value a, Value b) {
     if (is_double(a) && is_double(b)) return as_double(a) < as_double(b);
     if (is_string(a) && is_string(b)) return string_compare(a, b) < 0;
@@ -345,12 +249,11 @@ static inline Value value_mult(Value a, Value b) {
 }
 
 static inline Value value_div(Value a, Value b) {
-	if (is_error(a)) return a;
-	if (is_error(b)) return b;
-	if (is_double(b)) {
-		if (is_double(a)) return make_double(as_double(a) / as_double(b));
-		// string/number or list/number
-		return value_mult_nonnumeric(a, value_div(make_double(1), b));
+    if (is_error(a)) return a;
+    if (is_error(b)) return b;
+    if (is_double(b)) {
+        if (is_double(a)) return make_double(as_double(a) / as_double(b));
+        return value_mult_nonnumeric(a, value_div(make_double(1), b));
     }
     return val_null;
 }
@@ -369,67 +272,53 @@ static inline Value value_pow(Value a, Value b) {
     return val_null;
 }
 
-// Value comparison (most critical ones inlined above, others implemented in value.c)
 bool value_equal(Value a, Value b);
 bool value_le(Value a, Value b);
 static inline bool value_gt(Value a, Value b) { return !value_le(a, b); }
 static inline bool value_ge(Value a, Value b) { return !value_lt(a, b); }
-int value_compare(Value a, Value b);  // <0 if a<b, 0 if a==b, >0 if a>b
+int  value_compare(Value a, Value b);
 
-// Helper methods
+// ── Helpers / fuzzy logic ───────────────────────────────────────────────
 static inline double ToFuzzyBool(Value v) {
-	if (is_double(v)) return as_double(v);
-	return is_truthy(v) ? 1.0 : 0.0;
+    if (is_double(v)) return as_double(v);
+    return is_truthy(v) ? 1.0 : 0.0;
 }
 
 static inline double AbsClamp01(double d) {
-	if (d < 0) d = -d;
-	if (d > 1) return 1;
-	return d;
+    if (d < 0) d = -d;
+    if (d > 1) return 1;
+    return d;
 }
 
-// Logical operations
-// AND: AbsClamp01(a * b)
 static inline Value value_and(Value a, Value b) {
-	if (is_error(a)) return a;
-	if (is_error(b)) return b;
-	double fA = ToFuzzyBool(a);
-	double fB = ToFuzzyBool(b);
-	return make_double(AbsClamp01(fA * fB));
+    if (is_error(a)) return a;
+    if (is_error(b)) return b;
+    return make_double(AbsClamp01(ToFuzzyBool(a) * ToFuzzyBool(b)));
 }
 
-// OR: AbsClamp01(a + b - a*b)
-// Error semantics: `e or x` evaluates to x (fallback idiom).
-// `x or e` propagates e (like other binary operators).
 static inline Value value_or(Value a, Value b) {
-	if (is_error(a)) return b;
-	if (is_error(b)) return b;
-	double fA = ToFuzzyBool(a);
-	double fB = ToFuzzyBool(b);
-	return make_double(AbsClamp01(fA + fB - fA * fB));
+    if (is_error(a)) return b;
+    if (is_error(b)) return b;
+    double fA = ToFuzzyBool(a), fB = ToFuzzyBool(b);
+    return make_double(AbsClamp01(fA + fB - fA * fB));
 }
 
-// NOT: 1 - AbsClamp01(a)
 static inline Value value_not(Value a) {
-	if (is_error(a)) return a;
-	double fA = ToFuzzyBool(a);
-	return make_double(1.0 - AbsClamp01(fA));
+    if (is_error(a)) return a;
+    return make_double(1.0 - AbsClamp01(ToFuzzyBool(a)));
 }
 
-
-// Bit-wise operations
+// ── Bitwise (legacy stubs; retained for compatibility) ──────────────────
 Value value_xor(Value a, Value b);
-Value value_unary(Value a);  // ~ (not)
+Value value_unary(Value a);
 Value value_shr(Value v, int shift);
 Value value_shl(Value v, int shift);
 
-// Hash function for Values
+// ── Hashing & frozen ────────────────────────────────────────────────────
 uint32_t value_hash(Value v);
-
-// Frozen value support
-bool is_frozen(Value v);
-void freeze_value(Value v);
-Value frozen_copy(Value v);
+bool     is_frozen(Value v);
+void     freeze_value(Value v);
+Value    frozen_copy(Value v);
 
 #ifdef __cplusplus
 } // extern "C"

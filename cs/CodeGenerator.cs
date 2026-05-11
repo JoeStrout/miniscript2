@@ -9,7 +9,6 @@ using static MiniScript.ValueHelpers;
 // H: #include "ErrorTypes.g.h"
 // CPP: #include "StringUtils.g.h"
 // CPP: #include "CS_Math.h"
-// CPP: #include "gc.h"
 
 namespace MiniScript {
 

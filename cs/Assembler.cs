@@ -8,7 +8,6 @@ using System.Collections.Generic;
 // CPP: #include "CS_value_util.h"
 // CPP: #include "IOHelper.g.h"
 // CPP: #include <climits>
-// CPP: #include "gc.h"
 
 using static MiniScript.ValueHelpers;
 

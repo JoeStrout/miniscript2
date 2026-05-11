@@ -6,8 +6,6 @@
 #include "ErrorTypes.g.h"
 #include "UnitTests.g.h"
 #include "VM.g.h"
-#include "gc.h"
-#include "gc_debug_output.h"
 #include "value_string.h"
 #include "dispatch_macros.h"
 #include "VMVis.g.h"
@@ -38,7 +36,6 @@ namespace MiniScript {
 bool App::debugMode = Boolean(false);
 bool App::visMode = Boolean(false);
 void App::MainProgram(List<String> args) {
-	gc_init();
 	value_init_constants();
 	ErrorType::Init();
 
@@ -307,8 +304,7 @@ void App::RunInterpreter(Interpreter interp) {
 		IOHelper::Print("Executing @main with VM...");
 	}
 
-	GC_PUSH_SCOPE();
-	Value result = val_null; GC_PROTECT(&result);
+	Value result = val_null;
 
 	if (visMode) {
 		VMVis vis = VMVis(vm);
@@ -317,25 +313,16 @@ void App::RunInterpreter(Interpreter interp) {
 			vis.UpdateDisplay();
 			String cmd = IOHelper::Input("Command: ");
 			if (String::IsNullOrEmpty(cmd)) cmd = "step";
-			if (cmd[0] == 'q')  {
-				GC_POP_SCOPE();
-				return;
-			}
+			if (cmd[0] == 'q') return;
 			if (cmd[0] == 's') {
 				result = vm.Run(1);
 				continue;
-			} else if (cmd == "gcmark") {
-				vis.ClearScreen();
-				gc_mark_and_report();
-			} else if (cmd == "interndump") {
-				vis.ClearScreen();
-				dump_intern_table();
 			} else {
 				IOHelper::Print("Available commands:");
 				IOHelper::Print("q[uit] -- Quit to shell");
 				IOHelper::Print("s[tep] -- single-step VM");
-				IOHelper::Print("gcmark -- run GC mark and show reachable objects (C++ only)");
-				IOHelper::Print("interndump -- dump interned strings table (C++ only)");
+//					IOHelper.Print("gcmark -- run GC mark and show reachable objects (C++ only)");
+//					IOHelper.Print("interndump -- dump interned strings table (C++ only)");
 			}
 			IOHelper::Input("\n(Press Return.)");
 			vis.ClearScreen();
@@ -356,7 +343,6 @@ void App::RunInterpreter(Interpreter interp) {
 	} else {
 		vm.ReportRuntimeError();
 	}
-	GC_POP_SCOPE();
 }
 String App::GetREPLInput(Interpreter interp) {
 	while (Boolean(true)) {
@@ -478,9 +464,8 @@ void App::RunREPL() {
 	interp.set_errorOutput([](String s, Boolean) { IOHelper::Print(s, TextStyle::Error); });
 
 	String currentInput = nullptr;
-	GC_PUSH_SCOPE();
-	Value inListBefore; GC_PROTECT(&inListBefore);
-	Value implVal; GC_PROTECT(&implVal);
+	Value inListBefore;
+	Value implVal;
 	while (Boolean(true)) {
 		bool needingMoreBefore = interp.NeedMoreInput();
 		String line = GetREPLInput(interp);
@@ -513,7 +498,6 @@ void App::RunREPL() {
 			currentInput = nullptr;
 		}
 	}
-	GC_POP_SCOPE();
 }
 
 } // end of namespace MiniScript

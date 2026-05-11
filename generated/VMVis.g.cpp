@@ -11,7 +11,6 @@
 #include "CS_Math.h"
 #include "Disassembler.g.h"
 #include "Assembler.g.h"
-#include "gc.h"
 #include <iostream>
 #include "StringUtils.g.h"
 #ifdef _WIN32
@@ -121,9 +120,8 @@ String VMVis::GetVariableNameDisplay(Value nameVal) {
 	}
 }
 void VMVis::DrawOneRegister(Int32 stackIndex,String label,Int32 displayRow) {
-	GC_PUSH_SCOPE();
-	Value val = _vm.GetStackValue(stackIndex); GC_PROTECT(&val);
-	Value nameVal = _vm.GetStackName(stackIndex); GC_PROTECT(&nameVal);
+	Value val = _vm.GetStackValue(stackIndex);
+	Value nameVal = _vm.GetStackName(stackIndex);
 	String varName = GetVariableNameDisplay(nameVal);
 	String typeCode = GetValueTypeCode(val);
 	String valueStr = GetValueDisplayString(val);
@@ -132,7 +130,6 @@ void VMVis::DrawOneRegister(Int32 stackIndex,String label,Int32 displayRow) {
 
 	GoTo(RegisterDisplayColumn + 1, displayRow);
 	Write(StringUtils::SpacePad(line, 44));
-	GC_POP_SCOPE();
 }
 void VMVis::DrawRegisters() {
 	if (!_vm.IsRunning()) return;

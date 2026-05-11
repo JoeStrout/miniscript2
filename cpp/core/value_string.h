@@ -1,37 +1,49 @@
-// String implementation for NaN-boxed Values.
-// Supports both tiny strings (≤5 chars) and heap strings with interning.
-// Uses GC-managed StringStorage for heap-allocated strings.
+// value_string.h — string operations on NaN-boxed Values.
+//
+// Heap strings live in GCManager.Strings (a GCSet<GCString> with an
+// associated intern side-table). Tiny strings (≤5 ASCII bytes) are
+// encoded inline in the Value bits.
 
-#ifndef STRINGS_H
-#define STRINGS_H
+#ifndef VALUE_STRING_H
+#define VALUE_STRING_H
 
 #include "value.h"
-#include "StringStorage.h"
 #include <stdbool.h>
 
-// This module is part of Layer 2A (Runtime Value System + GC)
 #define CORE_LAYER_2A
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+// Strings shorter than this are interned; longer ones bypass the intern
+// table. The same threshold is used by GCManager.
+#define INTERN_THRESHOLD 128
 
-// String creation
+// ── Creation ────────────────────────────────────────────────────────────
 Value make_string(const char* str);
+Value make_string_n(const char* str, int len);
 Value make_tiny_string(const char* str, int len);
 
-// String access and conversion
-const char* as_cstring(Value v);           // Get C string (may use internal buffer)
-StringStorage* as_string(Value v);         // Get StringStorage struct (heap strings only)
-int string_lengthB(Value v);               // Get byte length
-int string_length(Value v);                // Get character length (Unicode-aware)
+// ── Access ──────────────────────────────────────────────────────────────
+const char* as_cstring(Value v);     // null-terminated; valid until next GC
+int  string_lengthB(Value v);         // byte length
+int  string_length(Value v);          // Unicode character count
 
-// String operations
-bool string_equals(Value a, Value b);
-int string_compare(Value a, Value b);          // Unicode-aware comparison
+// Hot-path zero-copy access to underlying bytes. For tiny strings the
+// returned pointer is into the Value itself; the caller must not let v
+// move on the stack until done with the bytes.
+const char* get_string_data_zerocopy(const Value* v_ptr, int* out_len);
+
+// Fill tiny_buffer (size ≥ TINY_STRING_MAX_LEN+1) for tiny strings;
+// return a borrowed pointer into the heap string for heap strings.
+const char* get_string_data_nullterm(const Value* v_ptr, char* tiny_buffer);
+
+// ── Operations ──────────────────────────────────────────────────────────
+bool  string_equals(Value a, Value b);
+int   string_compare(Value a, Value b);
 Value string_concat(Value a, Value b);
-int string_indexOf(Value haystack, Value needle, int start_pos);
+int   string_indexOf(Value haystack, Value needle, int start_pos);
 Value string_replace(Value source, Value search, Value replacement);
 Value string_replace_max(Value source, Value search, Value replacement, int maxCount);
 Value string_split(Value str, Value delimiter);
@@ -40,38 +52,17 @@ Value string_substring(Value str, int startIndex, int len);
 Value string_slice(Value str, int start, int end);
 Value string_sub(Value a, Value b);
 Value string_insert(Value str, int index, Value value, void* vm);
-
-// Case conversion and Unicode code point functions
 Value string_upper(Value str);
 Value string_lower(Value str);
 Value string_from_code_point(int codePoint);
-int string_code_point(Value str);
+int   string_code_point(Value str);
 
-// Zero-copy string data access (for performance-critical operations)
-const char* get_string_data_zerocopy(const Value* v_ptr, int* out_len);
-
-// Null-terminated string data access (for C string operations)
-const char* get_string_data_nullterm(const Value* v_ptr, char* tiny_buffer);
-
-// String interning system
-#define INTERN_THRESHOLD 128  // Strings under 128 bytes are automatically interned
-
-// Hash function for strings
+// ── Hashing ─────────────────────────────────────────────────────────────
 uint32_t string_hash(const char* data, int len);
-
-// Get or compute hash value for a string
 uint32_t get_string_hash(Value str_val);
-
-// Accessor functions for debug output (used by gc_debug_output.c)
-void* value_string_get_intern_table(void);
-void* value_string_get_intern_entry_at(int bucket);
-void* value_string_get_next_intern_entry(void* entry);
-Value value_string_get_entry_value(void* entry);
-int value_string_get_intern_table_size(void);
-bool value_string_is_intern_table_initialized(void);
 
 #ifdef __cplusplus
 } // extern "C"
 #endif
 
-#endif // STRINGS_H
+#endif // VALUE_STRING_H

@@ -8,6 +8,7 @@
 
 #include "value.h"
 #include "ErrorTypes.g.h"
+#include "GCManager.h"
 
 namespace MiniScript {
 
@@ -66,7 +67,7 @@ class CoreIntrinsics {
 	private: static Value _EOL;
 	public: static Value replInList;
 	public: static Value replOutList;
-	static void MarkRoots(void* user_data);
+	static void MarkRoots(void* user_data, GCManager& gc);
 
 	// REPL history lists, set by App.RunREPL at startup and by the reset intrinsic.
 

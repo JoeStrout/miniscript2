@@ -2,14 +2,13 @@
 // Transpiled from: ErrorTypes.cs
 
 #include "ErrorTypes.g.h"
-#include "gc.h"
 
 namespace MiniScript {
 
 Value ErrorType::compiler = val_null;
 Value ErrorType::runtime = val_null;
 void ErrorType::Init() {
-	static bool registered = false; if (!registered) { gc_register_mark_callback(ErrorType::MarkRoots, nullptr); registered = true; }
+	static bool registered = false; if (!registered) { GCManager::Instance().RegisterMarkCallback(ErrorType::MarkRoots, nullptr); registered = true; }
 	if (is_null(compiler)) {
 		compiler = make_error(make_string("Compiler Error"), val_null, val_null, val_null);
 		freeze_value(compiler);
@@ -32,10 +31,10 @@ Value ErrorType::RuntimeError(String msg) {
 	return make_error(make_string(msg), val_null, val_null, runtime);
 }
 // GC mark callback to protect our static error prototypes from collection.
-void ErrorType::MarkRoots(void* user_data) {
+void ErrorType::MarkRoots(void* user_data, GCManager& gc) {
 	(void)user_data;
-	gc_mark_value(compiler);
-	gc_mark_value(runtime);
+	gc.Mark(compiler);
+	gc.Mark(runtime);
 }
 
 } // end of namespace MiniScript

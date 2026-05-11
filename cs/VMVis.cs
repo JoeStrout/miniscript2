@@ -10,7 +10,6 @@ using static MiniScript.ValueHelpers;
 // CPP: #include "CS_Math.h"
 // CPP: #include "Disassembler.g.h"
 // CPP: #include "Assembler.g.h"
-// CPP: #include "gc.h"
 // CPP: #include <iostream>
 
 /*** BEGIN CPP_ONLY ***

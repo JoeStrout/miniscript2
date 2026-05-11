@@ -233,8 +233,7 @@ void InterpreterStorage::REPL(String sourceLine,double timeLimit) {
 	// Implicit output: if last statement was a bare expression, capture r0.
 	// Always update lastImplicitResult (null on error or no implicit output).
 	lastImplicitResult = val_null;
-	GC_PUSH_SCOPE();
-	Value result; GC_PROTECT(&result);
+	Value result;
 	if (hasImplicitOutput && !hadRuntimeError) {
 		result = vm.GetStackValue(vm.BaseIndex());
 		if (!is_null(result)) {
@@ -246,7 +245,6 @@ void InterpreterStorage::REPL(String sourceLine,double timeLimit) {
 	}
 
 	_pendingSource = nullptr;
-	GC_POP_SCOPE();
 }
 bool InterpreterStorage::Running() {
 	return !IsNull(vm) && vm.IsRunning();
@@ -257,19 +255,16 @@ bool InterpreterStorage::NeedMoreInput() {
 Value InterpreterStorage::GetGlobalValue(String varName) {
 	if (IsNull(vm)) return val_null;
 	// Search the @main frame (base 0) for a register with this name
-	GC_PUSH_SCOPE();
-	Value nameVal = make_string(varName); GC_PROTECT(&nameVal);
+	Value nameVal = make_string(varName);
 	Int32 regCount = !IsNull(vm.CurrentFunction()) ? vm.StackSize() : 0;
 	// Look through all named registers at base 0 (the global frame)
-	Value name; GC_PROTECT(&name);
+	Value name;
 	for (Int32 i = 0; i < regCount; i++) {
 		name = vm.GetStackName(i);
 		if (!is_null(name) && value_equal(name, nameVal)) {
-			GC_POP_SCOPE();
 			return vm.GetStackValue(i);
 		}
 	}
-	GC_POP_SCOPE();
 	return val_null;
 }
 void InterpreterStorage::SetGlobalValue(String varName,Value value) {

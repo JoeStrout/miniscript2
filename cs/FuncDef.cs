@@ -6,7 +6,6 @@ using static MiniScript.ValueHelpers;
 // H: #include "value.h"
 // CPP: #include "StringUtils.g.h"
 // CPP: #include "IntrinsicAPI.g.h"
-// CPP: #include "gc.h"
 
 namespace MiniScript {
 

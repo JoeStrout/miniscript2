@@ -18,7 +18,6 @@
 #include "IOHelper.g.h"
 #include "Bytecode.g.h"
 #include "CodeGenerator.g.h"
-#include "gc.h"
 
 namespace MiniScript {
 typedef void* object;

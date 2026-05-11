@@ -4,191 +4,192 @@ This document describes the memory management systems used in MiniScript2 and ho
 
 ## Overview
 
-MiniScript2 uses **three distinct memory systems** for different purposes:
+MiniScript2 uses **two distinct memory systems**, plus an intern side-table that piggybacks on the first:
 
-1. **GC (Garbage Collector)** - For runtime MiniScript values
-2. **Intern Table** - For frequently-used small runtime strings
-3. **std::shared_ptr** - For host/compiler C++ code (CS_String, CS_List, CS_Dictionary)
+1. **Custom GC for Value objects** — typed object pools (`GCSet<T>`) coordinated by a single `GCManager`, identical in design on the C# and C++ sides.
+2. **String intern table** — a side-table on the strings `GCSet`, transparent to callers.
+3. **Standard memory management for host code** — `std::shared_ptr` in C++ (`CS_String`, `CS_List`, `CS_Dictionary`), regular GC in C#.
 
-## 1. GC System (Garbage Collector)
+For the rationale behind the custom GC, see [adr/0004-GC-system.md](adr/0004-GC-system.md).
 
-**Location:** `cpp/core/gc.c`, `cpp/core/gc.h`
+## 1. Custom GC for Value objects
 
-**Purpose:** Manages memory for MiniScript runtime values (strings, lists, maps).
+**C# source:** `cs/GCManager.cs`, `cs/GCSet.cs`, `cs/GCItems.cs`, `cs/IGCSet.cs`, `cs/IGCItem.cs`
+**C++ source:** `cpp/core/GCManager.{h,cpp}`, `cpp/core/GCSet.h`, `cpp/core/GCItems.{h,cpp}`, `cpp/core/IGCSet.h`
 
-**Implementation:**
-- Mark-and-sweep garbage collector
-- Shadow stack for root set tracking
-- Each allocation has a `GCObject` header (next pointer, marked flag, size)
-- All objects linked in `gc.all_objects` list
-- Allocation: `gc_allocate(size)` - adds GCObject header, returns pointer to data
-- Collection triggered when `gc.bytes_allocated > gc.gc_threshold`
+A single `GCManager` owns five typed object pools:
 
-**Used for:**
-- **Heap strings** (strings > 128 bytes)
-- **ValueList** structures and their item arrays
-- **ValueMap** structures and their entry arrays
-- Any dynamically-sized runtime data structures
+| Slot | GCSet              | C# type     | C++ type    |
+|------|--------------------|-------------|-------------|
+| 0    | Strings            | `GCString`  | `GCString`  |
+| 1    | Lists              | `GCList`    | `GCList`    |
+| 2    | Maps               | `GCMap`     | `GCMap`     |
+| 3    | Errors             | `GCError`   | `GCError`   |
+| 4    | FuncRefs           | `GCFuncRef` | `GCFuncRef` |
+| 5    | *(reserved for future `GCHandle`)* | — | — |
 
-**Lifetime:** Objects live until unreachable from root set, then collected during GC sweep.
+Each `GCSet<T>` is a struct-of-arrays: the items themselves in one vector, and per-slot GC metadata (in-use, marked, retain count) in tight parallel arrays. Slots are recycled via a free-list stack; the high-water mark grows monotonically.
 
-**Key insight:** The `marked` flag is only valid during a collection cycle - it's set during mark phase and cleared during sweep phase.
+### Value encoding
 
-## 2. Intern Table System
+A `Value` is a 64-bit NaN-boxed word. For GC-managed types, the lower 35 bits carry `(gcSet, itemIndex)`:
 
-**Location:** `cpp/core/value_string.c` (lines 16-193)
+```
+GC object:  0xFFFE_0000_000G_IIII_IIII
+              bits 34-32 = GCSet index (0-5)
+              bits 31-0  = item index within that GCSet
+```
 
-**Purpose:** Deduplicate small, frequently-used runtime strings to save memory and reduce use of the GC system. (Note that *very* small strings are stored directly in the Value, just like numbers, and so don't use heap memory at all.)
+The same bit layout is used on both platforms, so the index in a Value's payload always means the same thing regardless of which side allocated it. Tiny strings (≤5 ASCII bytes) and immediate doubles are encoded inline in the Value bits and do not touch any GCSet.
 
-**Implementation:**
-- Static hash table: `InternEntry* intern_table[INTERN_TABLE_SIZE]` (1024 buckets)
-- Each `InternEntry` contains:
-  - `Value string_value` - the interned string (a heap string Value)
-  - `struct InternEntry* next` - collision chain pointer
-- `InternEntry` structs allocated with `malloc()` (NOT gc_allocate)
-- Hash-based lookup with collision chaining
+### Collection cycle
 
-**Used for:**
-- Strings < 128 bytes (INTERN_THRESHOLD)
-- Automatically used by `make_string()` for small strings
-- Examples: keywords, common identifiers, short literals
+`GCManager.CollectGarbage()` runs a textbook mark/sweep:
 
-**Lifetime:** **Immortal** - never freed during program execution. These persist for the lifetime of the app to avoid the cost of reference counting or managing lifetimes. (They're not "leaked" because we can always reach them via the hash table.)
+1. **Prepare** — clear all mark bits across every GCSet.
+2. **Mark roots** — walk the explicit root list (`AddRoot` / `RemoveRoot`).
+3. **Mark retained** — walk each GCSet for slots with `retainCount > 0`.
+4. **Mark via callbacks** — invoke each registered `MarkCallback`. The VM registers one of these in its constructor to mark its register stack, names, and intrinsics table.
+5. **Sweep** — every slot in every GCSet that wasn't marked and has no positive retain count is freed (`OnSweep` runs first, then the slot returns to the free list).
 
-**Key characteristics:**
-- NOT managed by GC
-- The `StringStorage` structures themselves ARE still reachable and won't be collected
-- Provides O(1) string deduplication for small strings
+`Mark(Value)` is branchless: `_sets[v.GCSetIndex()]->Mark(v.ItemIndex(), *this)`. No switch statement, no virtual dispatch beyond the per-set call.
 
-## 3. Host C++ Memory Management (std::shared_ptr)
+### When does collection happen?
+
+Collection is **never triggered by allocation**. The new GC runs only when explicitly requested — currently at well-defined boundary times like `yield` and `wait` in the interpreter, or via an intrinsic. This removes the need to protect every local Value during a function body and eliminates the old shadow-stack scaffolding. Code that touches GC objects never has to worry about the value being collected mid-expression.
+
+### Long-lived values
+
+Locals and ephemeral expression results don't need any protection. For values that need to outlive their natural reachability — typically REPL globals, captured closure variables, or values stashed in host-side data structures — there are two options:
+
+- `AddRoot(v)` / `RemoveRoot(v)` — explicit root-set membership.
+- `RetainValue(v)` / `ReleaseValue(v)` — refcount-style; a slot with `retainCount > 0` is unconditionally marked during collection. (C#: `gc.Retain(idx)` on the specific GCSet.)
+
+### Mark callbacks
+
+`GCManager.RegisterMarkCallback(fn, userData)` lets a system inject roots without owning them in the explicit root list. The signature is `void(void*, GCManager&)`. The VM uses this to mark its register stack, names array, and intrinsics map on every collection cycle.
+
+A legacy C-compatible shim in `cpp/core/gc.h` provides `gc_register_mark_callback` / `gc_mark_value` / `gc_collect` / etc. that forward to the new API, so older call sites continue to work unmodified. The shim also provides no-op `GC_PROTECT`, `GC_LOCALS_n`, and `GC_PUSH_SCOPE` / `GC_POP_SCOPE` macros for now — they're remnants of the old shadow-stack system and can be deleted from call sites at any time.
+
+## 2. String intern table
+
+**Location:** `cpp/core/GCManager.{h,cpp}` (C++), built into `GCManager` on both platforms.
+
+Interning is a side-table on the strings GCSet rather than a separate system. Two heap strings with identical content end up at the same `GCSet` index, so map-key equality and hashing for interned strings collapse to bit-comparison of the Value.
+
+### Routing rules
+
+`make_string(s)` (or `GCManager.NewString(data, len)`) dispatches based on length:
+
+| Length     | Routing                                                            |
+|------------|--------------------------------------------------------------------|
+| ≤ 5 bytes  | Inline tiny string in Value bits; no GCSet slot.                   |
+| 6 – 127    | Hash-lookup the intern table; reuse existing slot or allocate a new one with `Interned = true`. |
+| ≥ 128      | Fresh GCSet slot; `Interned = false`; skips the intern table.      |
+
+### Lifetime
+
+Interned slots are **not immortal** — they're swept like any other slot when nothing references them. `GCString::Interned` tells `GCManager` whether to also remove the slot from the intern side-table during sweep. Truly immortal strings (opcode names, lexer keywords, intrinsic names) should call `Retain` on their slot once at startup; this keeps them alive without polluting the root list.
+
+The intern table is keyed on `StringRef{const char*, int}` views that point into each `GCString`'s `StringStorage->data` buffer. The buffers are `malloc`-allocated and stable across `std::vector` resizes (vector reallocations move the `GCString` struct, not the `StringStorage` it owns).
+
+## 3. Shared `StringStorage` between Value strings and host strings
+
+**Location:** `cpp/core/StringStorage.{h,c}`
+
+`StringStorage` is the canonical heap-string struct used by both runtime Values and host code. It carries `lenB` (byte length), `lenC` (cached UTF-8 character count), `hash` (cached, computed lazily), and a flexible array member for the bytes themselves. The `ss_*` API operates on `StringStorage*` and provides substring, concat, indexOf, replace, case conversion, hashing, and so on.
+
+Both layers reach the same code paths:
+
+- **Value strings** (heap): `GCString` owns a `StringStorage*`; `value_string.cpp` operations call `ss_concat`, `ss_substringLen`, `ss_replace`, `ss_toUpper`, `ss_compare`, etc., feeding tiny strings into a small `TempStorage` RAII helper that materialises them as a temporary `StringStorage` when needed.
+- **Host strings**: `CS_String` wraps `StringStorage*` in a `std::shared_ptr<StringStorage>` and uses the same `ss_*` family.
+
+Because both layers share the storage struct *and* the operations, semantics like substring boundary handling, hash computation, and case-conversion behaviour are guaranteed identical across the two layers — there's no second implementation to drift.
+
+## 4. Host C++ memory management (`std::shared_ptr`)
 
 **Location:** `cpp/core/CS_String.h`, `cpp/core/CS_List.h`, `cpp/core/CS_Dictionary.h`
 
-**Purpose:** Automatic memory management for host code (transpiled C# code, compiler, assembler, debugger).
+Transpiled C# code (compiler, assembler, debugger, host app) uses standard reference-counted memory:
 
-**Implementation:**
-- Uses standard C++ `std::shared_ptr` for reference-counted memory management
-- `CS_String`: Wraps `StringStorage*` in `std::shared_ptr<StringStorage>`
-- `CS_List<T>`: Wraps `std::vector<T>*` in `std::shared_ptr<std::vector<T>>`
-- `CS_Dictionary<K,V>`: Wraps internal storage in `std::shared_ptr`
+- `String` — `std::shared_ptr<StringStorage>`
+- `List<T>` — `std::shared_ptr<std::vector<T>>`
+- `Dictionary<K, V>` — `std::shared_ptr` over internal storage
 
-**Used by:**
-- `String` class (used for C# strings transpiled to C++)
-- `List<T>` class (C# List<T> transpiled to C++)
-- `Dictionary<K,V>` class (C# Dictionary<K,V> transpiled to C++)
-- Assembler, compiler, debugger, and any other host code
+This layer is completely separate from the Value/GC system. Host strings are never seen by the GC; conversion to/from MiniScript strings always copies. See `CS_value_util.h` for the conversion helpers.
 
-**Lifetime:**
-- Automatic: Memory freed when last reference goes out of scope
-- No manual memory management needed
-- Thread-safe reference counting
+**Watch for reference cycles.** Unlike C#'s real GC, `std::shared_ptr` leaks under cycles. `CS_String` can't form a cycle on its own, but `CS_List` and `CS_Dictionary` can. C# code must either avoid creating such cycles or explicitly break them at clean-up time.
 
-**Key advantages:**
-- Standard C++ idiom - well understood, well tested
-- No manual pool management needed
-- Works with all C++ tooling (debuggers, sanitizers, etc.)
-- Clean separation from GC system
+## VarMap overlay
 
-**Separation from runtime:** This system is completely separate from the Value/GC system. Host strings are not MiniScript values. Conversion to/from MiniScript strings always means copying the data.
+**C# source:** `cs/VarMap.cs`
+**C++ source:** `cpp/core/VarMapBacking.{h,cpp}`
 
-**BEWARE OF REFERENCE CYCLES:** Unlike the C# code, our shared_ptr implementations can leak objects where reference cycles exist.  CS_String is safe (since it cannot reference any other objects), but CS_List and CS_Dictionary could create such cycles.  So, it is important that the C# code either avoid such cycles, or explicitly break them at clean-up time, so that the transpiled code does not leak.
+`VarMapBacking` is a per-map overlay attached to a `GCMap` as `_vmb`. When present, string-keyed `Get`/`Set`/`Remove` route through the VM's register window first, falling back to the regular hash table on misses. Iteration walks register entries (encoded with negative iterator values) before dense hash entries.
 
-## String Types Summary
+This is how closures and REPL globals stay live across compilation cycles: the register array is the canonical store, the map is the view, and `varmap_gather` / `varmap_rebind` move values into the hash table or rebind the overlay to a relocated register array.
 
-### Tiny Strings (≤ 5 bytes)
+The C# version stores `List<Value>` references; the C++ side stores raw `Value*` pointers (matching the existing C++ VM ABI) and relies on `varmap_rebind` to update those pointers when the VM's stack is reallocated.
+
+## String types summary
+
+### Tiny strings (≤ 5 bytes)
 - **Storage:** Inline in NaN-boxed Value (no allocation)
-- **Examples:** "a", "x", "true", "null"
+- **Examples:** `"a"`, `"x"`, `"__isa"`, `"self"`
 - **Lifetime:** Lives as long as the Value exists
 - **System:** None (embedded in Value itself)
 
-### Interned Strings (< 128 bytes)
-- **Storage:** `malloc()` for StringStorage, stored in `intern_table`
-- **Examples:** "count", "name", "print", short literals
-- **Lifetime:** Immortal (never freed)
-- **System:** Intern Table
+### Interned heap strings (6 – 127 bytes)
+- **Storage:** `StringStorage` in `GCManager.Strings` slot, registered in intern side-table
+- **Examples:** identifiers, short literals, common keys
+- **Lifetime:** GC-managed; swept when unreachable (slot is removed from intern table on sweep)
+- **System:** GC + intern side-table
 
-### GC Heap Strings (≥ 128 bytes)
-- **Storage:** `gc_allocate()` for StringStorage
+### Non-interned heap strings (≥ 128 bytes)
+- **Storage:** `StringStorage` in `GCManager.Strings` slot, no intern entry
 - **Examples:** Long string literals, concatenation results
 - **Lifetime:** GC-managed (collected when unreachable)
 - **System:** GC
 
-### Host Strings (C# `String` class)
-- **Storage:** `malloc()` for StringStorage, managed by `std::shared_ptr`
+### Host strings (C# `String` class)
+- **Storage:** `StringStorage` managed by `std::shared_ptr` (C++) or normal C# GC
 - **Examples:** Function names, labels, compiler strings, debug output
-- **Lifetime:** Reference-counted (freed when last reference goes away)
-- **System:** std::shared_ptr
+- **Lifetime:** Reference-counted (C++) or GC-managed (C#)
+- **System:** `std::shared_ptr` (C++) / managed runtime (C#)
 
-## Memory System Interactions
+## Memory system interactions
 
-### Clear Separation
-- **Runtime (GC + Intern Table)** ↔ **Host (std::shared_ptr)** systems are independent
-- Converting between them requires explicit string copying (see `CS_value_util.h`)
-- Host strings are never seen by the GC
-- Runtime Values don't use shared_ptr
+### Clear separation
+- The Value GC and host memory systems are independent.
+- Converting between them requires explicit string copying (see `CS_value_util.h`).
+- Host strings are never seen by the Value GC.
+- Values don't use `shared_ptr`.
 
-### No Pool Management Needed
-Unlike earlier prototypes, host code now uses standard C++ memory management:
-- No need to allocate/manage memory pools
-- No need to carefully track which pool strings belong to
-- No risk of accidentally clearing a pool that's still in use
-- Memory automatically freed when no longer referenced
+### Same storage, different ownership
+Both layers reach the same `StringStorage` struct and `ss_*` operations. The difference is who owns the lifetime: the GC manager (for Values) or a `std::shared_ptr` (for host strings).
 
-## Debugging Memory
+## Debugging memory
 
-### For GC Objects
-Use `gc_dump_objects()`:
-- Shows all objects in `gc.all_objects` list
-- Hex/ASCII dump of object data
-- Mark status (if mark phase run first)
+### Value GC objects
+`GCManager.PrintStats()` reports the live slot count for each GCSet. The four (soon five) named members `Strings`, `Lists`, `Maps`, `Errors`, `FuncRefs` are directly accessible for ad-hoc inspection.
 
-### For Interned Strings
-Use `dump_intern_table()`:
-- Walk `intern_table[1024]` array
-- Follow collision chains
-- Shows each interned string value
-
-### For Host Memory
-Use standard C++ tools:
+### Host memory
+Standard C++ tools:
 - Valgrind for leak detection
 - AddressSanitizer for memory errors
-- Debugger watches on shared_ptr reference counts
+- Debugger watches on `shared_ptr` reference counts
 
-## Design Rationale
+## Design rationale (summary)
 
-### Why Two Systems?
+### Why two systems?
+- **Same behaviour on both platforms.** A custom GC for Values is the only way to make C# and C++ behave identically — C# can't NaN-box a managed reference, so a managed-only solution doesn't fit, and a C++-only refcount system doesn't fit C#.
+- **No per-local protection.** Collection runs only at explicit boundaries, so locals don't need shadow-stack scaffolding or `GC_PROTECT` macros.
+- **Predictable cleanup for "handle" types.** A planned future `GCHandle` GCSet will give native objects a deterministic dispose hook on sweep — important for things like file handles.
 
-1. **Performance:** Different allocation patterns optimized differently
-   - GC for complex object graphs with cycles
-   - Interning for string deduplication
-   - shared_ptr for simple reference counting
+### Why `std::shared_ptr` for host code?
+- Standard C++ pattern: well understood, well tooled, well tested.
+- Mirrors C# reference semantics — clean target for the transpiler.
+- No custom pool allocators to maintain.
+- Works seamlessly with sanitizers, leak detectors, and debuggers.
 
-2. **Lifetime Management:** Different data has different lifetimes
-   - Runtime values: GC-managed (complex reachability)
-   - Small strings: Immortal (intern table)
-   - Compiler data: Reference-counted (std::shared_ptr)
-
-3. **Language Integration:** Clean separation between host and runtime
-   - C#-style String/List/Dictionary classes use std::shared_ptr
-   - MiniScript strings use GC/intern table
-   - No mixing or confusion
-
-4. **Coding Convenience:** GC strings require extra boilerplate in every method that touches them, in order to maintain the shadow stack. See [GC_USAGE.md](GC_USAGE.md) for details. Such code is fiddly to write and easy to screw up, and is especially impractical for code transpiled from C# -- such as all the compiler and assembler code. So, those use the String class with std::shared_ptr, which requires no extra boilerplate.
-
-### Why std::shared_ptr Instead of Custom Pools?
-
-Earlier prototypes used custom MemPool and StringPool systems, but we switched to std::shared_ptr because:
-
-1. **Simplicity:** Standard C++ patterns everyone understands
-2. **Safety:** Automatic memory management eliminates pool management bugs
-3. **Compatibility:** Works seamlessly with C++ tooling and libraries
-4. **Transpiled Code:** Perfect for C#-to-C++ transpilation (mimics C# reference semantics)
-5. **Less Code:** No need to maintain custom pool allocators
-
-The custom pool systems were designed for bulk allocation/deallocation, but in practice:
-- Pool lifetime management was error-prone
-- Thread safety was complex
-- Debugging was harder than with standard tools
-- The performance benefits didn't outweigh the complexity
-
-For a transpiler targeting C++, using standard C++ memory management is the right choice.
+The runtime is decidedly *not* `std::shared_ptr`-based because shared_ptr can't NaN-box, and would either require a separate heap-allocated wrapper (slow) or a refcount on every Value copy (slower).

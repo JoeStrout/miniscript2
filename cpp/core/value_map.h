@@ -1,6 +1,5 @@
-// Map implementation for NaN-boxed Values. I.e., this is the underlying
-// implementation of MiniScript maps (dictionaries). All memory management
-// is done via the gc module.
+// value_map.h — map (dictionary) operations on NaN-boxed Values.
+// Maps live as GCMap slots inside GCManager.Maps.
 
 #ifndef VALUE_MAP_H
 #define VALUE_MAP_H
@@ -9,71 +8,63 @@
 #include <stdbool.h>
 #include <limits.h>
 
-// This module is part of Layer 2A (Runtime Value System + GC)
 #define CORE_LAYER_2A
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-// Map and MapEntry structures are defined in value.h
-
-// Map creation and management
+// Creation
 Value make_map(int initial_capacity);
 Value make_empty_map(void);
+
+// VarMap: stubbed; full port deferred to Phase 4. Calling these returns
+// a plain map (no register binding).
 Value make_varmap(Value* registers, Value* names, int firstIndex, int count);
+void  varmap_map_to_register(Value map_val, Value var_name, Value* registers, int reg_index);
+void  varmap_gather(Value map_val);
+void  varmap_rebind(Value map_val, Value* registers, Value* names);
 
-// Map access
-ValueMap* as_map(Value v);
-int map_count(Value map_val);
-int map_capacity(Value map_val);
+// Access
+int  map_count(Value map_val);
+int  map_capacity(Value map_val);
 
-// Map operations
 Value map_get(Value map_val, Value key);
-bool map_try_get(Value map_val, Value key, Value* out_value);
-bool map_lookup(Value map_val, Value key, Value* out_value);
-bool map_lookup_with_origin(Value map_val, Value key, Value* out_value, Value* out_super);
-bool map_set(Value map_val, Value key, Value value);
-bool map_remove(Value map_val, Value key);
-bool map_has_key(Value map_val, Value key);
+bool  map_try_get(Value map_val, Value key, Value* out_value);
+bool  map_lookup(Value map_val, Value key, Value* out_value);
+bool  map_lookup_with_origin(Value map_val, Value key, Value* out_value, Value* out_super);
+bool  map_set(Value map_val, Value key, Value value);
+bool  map_remove(Value map_val, Value key);
+bool  map_has_key(Value map_val, Value key);
 
-// Map utilities
-void map_clear(Value map_val);
+void  map_clear(Value map_val);
 Value map_copy(Value map_val);
 Value map_concat(Value a, Value b);
-bool map_needs_expansion(Value map_val);
-bool map_expand_capacity(Value map_val);  // Expands in-place, returns success
-Value map_with_expanded_capacity(Value map_val);  // Deprecated - creates new map
+bool  map_needs_expansion(Value map_val);
+bool  map_expand_capacity(Value map_val);
+Value map_with_expanded_capacity(Value map_val);
 
-// VarMap-specific functions
-void varmap_map_to_register(Value map_val, Value var_name, Value* registers, int reg_index);
-void varmap_gather(Value map_val);
-void varmap_rebind(Value map_val, Value* registers, Value* names);
-
-// Map iteration
+// Iteration (legacy struct-based iterator).
 typedef struct {
-    ValueMap* map;
-    int index;
-    int varmap_reg_index; // For VarMap: current register mapping index (-1 = not started)
+    int map_idx;          // -1 if not a map
+    int iter;             // current iteration cursor; matches map_iter_next encoding
 } MapIterator;
 
 MapIterator map_iterator(Value map_val);
-bool map_iterator_next(MapIterator* iter, Value* out_key, Value* out_value);
-Value map_nth_entry(Value map_val, int n);
+bool        map_iterator_next(MapIterator* iter, Value* out_key, Value* out_value);
+Value       map_nth_entry(Value map_val, int n);
 
-// New iterator functions for for-loop iteration.
-// Iterator encoding: -1 = not started; values <= -2 encode VarMap register
-// entries (reg index i -> iter -(i+2)); values >= 0 are raw indices into
-// the entries array (skipping unoccupied slots).
-#define MAP_ITER_DONE INT32_MIN
-int map_iter_next(Value map_val, int iter);
+// New iterator interface (matches C# / generated code).
+//   -1 = not started
+//   <-1 = VarMap reg-entry encoding (deferred; never returned in stubbed mode)
+//   >=0 = entry index into the dense map
+#define MAP_ITER_DONE INT_MIN
+int   map_iter_next(Value map_val, int iter);
 Value map_iter_entry(Value map_val, int iter);
 
-// Hash function for maps
+// Hash & display
 uint32_t map_hash(Value map_val);
-
-// String conversion for runtime (returns GC-managed Value)
-Value map_to_string(Value map_val, void* vm);
+Value    map_to_string(Value map_val, void* vm);
 
 #ifdef __cplusplus
 } // extern "C"

@@ -9,8 +9,6 @@ using static MiniScript.ValueHelpers;
 // CPP: #include "ErrorTypes.g.h"
 // CPP: #include "UnitTests.g.h"
 // CPP: #include "VM.g.h"
-// CPP: #include "gc.h"
-// CPP: #include "gc_debug_output.h"
 // CPP: #include "value_string.h"
 // CPP: #include "dispatch_macros.h"
 // CPP: #include "VMVis.g.h"
@@ -39,7 +37,6 @@ public struct App {
 	public static bool visMode = false;
 	
 	public static void MainProgram(List<String> args) {
-		// CPP: gc_init();
 		// CPP: value_init_constants();
 		ErrorType.Init();
 
@@ -344,18 +341,12 @@ public struct App {
 				if (cmd[0] == 's') {
 					result = vm.Run(1);
 					continue;
-				} else if (cmd == "gcmark") {
-					vis.ClearScreen();
-					IOHelper.Print("GC mark only applies to the C++ version.");  // CPP: gc_mark_and_report();
-				} else if (cmd == "interndump") {
-					vis.ClearScreen();
-					IOHelper.Print("Intern table dump only applies to the C++ version.");  // CPP: dump_intern_table();
 				} else {
 					IOHelper.Print("Available commands:");
 					IOHelper.Print("q[uit] -- Quit to shell");
 					IOHelper.Print("s[tep] -- single-step VM");
-					IOHelper.Print("gcmark -- run GC mark and show reachable objects (C++ only)");
-					IOHelper.Print("interndump -- dump interned strings table (C++ only)");
+//					IOHelper.Print("gcmark -- run GC mark and show reachable objects (C++ only)");
+//					IOHelper.Print("interndump -- dump interned strings table (C++ only)");
 				}
 				IOHelper.Input("\n(Press Return.)");
 				vis.ClearScreen();

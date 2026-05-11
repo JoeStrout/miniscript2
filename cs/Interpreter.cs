@@ -16,7 +16,6 @@ using static MiniScript.ValueHelpers;
 // H: #include "IOHelper.g.h"
 // H: #include "Bytecode.g.h"
 // H: #include "CodeGenerator.g.h"
-// H: #include "gc.h"
 // CPP: #include "StringUtils.g.h"
 // CPP: #include "Intrinsic.g.h" // ToDo: remove this once we've refactored set_FunctionIndexOffset away
 // CPP: #include "CoreIntrinsics.g.h"

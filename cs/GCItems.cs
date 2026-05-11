@@ -103,7 +103,11 @@ public struct GCList : IGCItem {
 // Hash and equality are content-based for strings so that tiny strings and
 // GCStrings with equal content behave as equal keys.
 //
-// An optional _vmb field (C#-only) provides VarMap register-binding behaviour.
+// An optional _vmb field provides VarMap register-binding behaviour.
+//
+// (Why not just use a standard System.Collections.Dictionary?  Mostly because
+// the VM needs to be able to iterate over key/value pairs by an index, via
+// NextEntry.  Dicitonary doesn't provide any way to do that.)
 
 public struct GCMap : IGCItem {
 	// Dense entries, in insertion order. _entryHashes[i] == DELETED marks a tombstone.
@@ -119,7 +123,7 @@ public struct GCMap : IGCItem {
 
 	public  bool     Frozen;
 
-	// C#-only: non-null for VarMap-backed maps (closures / REPL globals).
+	// Non-null for VarMap-backed maps (closures / REPL globals).
 	internal VarMapBacking? _vmb;
 
 	private const int EMPTY_SLOT     = -1;
@@ -378,7 +382,7 @@ public struct GCMap : IGCItem {
 	}
 
 	private static int NextPow2(int n) {
-		int p = 1;
+		int p = 8;  // (minimum size)
 		while (p < n) p <<= 1;
 		return p;
 	}

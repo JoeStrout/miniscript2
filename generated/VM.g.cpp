@@ -128,29 +128,38 @@ void VMStorage::InitVM(Int32 stackSlots,Int32 callSlots) {
 	}
 	
 	// Register as a source of roots for the GC system
-	gc_register_mark_callback(VMStorage::MarkRoots, this);
-	
+	GCManager::Instance().RegisterMarkCallback(VMStorage::MarkRoots, this);
+
 	// And, ensure that runtime errors are routed through the active VM
 	vm_error_set_callback([](const char* msg) {
 		VM vm = VMStorage::ActiveVM();
 		if (!IsNull(vm)) vm.RaiseRuntimeError(String(msg));
 	});
+
+	// Wire code_form's short-name hook to this VM's FindShortName. The
+	// hook lives in value.cpp (layer 2A) and takes a void* vm so it can
+	// stay free of the VM layer; we cast back here.
+	set_short_name_lookup([](void* vm_ptr, Value v) -> Value {
+		String s = static_cast<VMStorage*>(vm_ptr)->FindShortName(v);
+		if (s.Length() == 0) return val_null;
+		return make_string(s.c_str());
+	});
 }
 void VMStorage::CleanupVM() {
-	gc_unregister_mark_callback(VMStorage::MarkRoots, this);
+	GCManager::Instance().UnregisterMarkCallback(VMStorage::MarkRoots, this);
 }
 // GC mark callback responsible for protecting our stack and names
 // from garbage collection
-void VMStorage::MarkRoots(void* user_data) {
+void VMStorage::MarkRoots(void* user_data, GCManager& gc) {
 	VMStorage* vm = static_cast<VMStorage*>(user_data);
 	for (int i = 0; i < vm->stack.Count(); i++) {
-		gc_mark_value(vm->stack[i]);
-		gc_mark_value(vm->names[i]);
+		gc.Mark(vm->stack[i]);
+		gc.Mark(vm->names[i]);
 	}
 	// Mark intrinsics dictionary values (funcrefs are GC-allocated)
 	if (!IsNull(vm->_intrinsics)) {
 		for (Value val : vm->_intrinsics.GetValues()) {
-			gc_mark_value(val);
+			gc.Mark(val);
 		}
 	}
 }
@@ -251,11 +260,9 @@ void VMStorage::Stop() {
 	IsRunning = Boolean(false);
 }
 void VMStorage::RaiseRuntimeError(String message) {
-	GC_PUSH_SCOPE();
-	Value stack = (IsRunning && CurrentFunction) ? BuildStackTrace() : val_null; GC_PROTECT(&stack);
+	Value stack = (IsRunning && CurrentFunction) ? BuildStackTrace() : val_null;
 	Error = ErrorType::RuntimeError(message, stack);
 	IsRunning = Boolean(false);
-	GC_POP_SCOPE();
 }
 void VMStorage::RaiseRuntimeError(Value error) {
 	Error = error;
@@ -272,8 +279,7 @@ bool VMStorage::ReportRuntimeError() {
 	return Boolean(true);
 }
 Value VMStorage::BuildStackTrace() {
-	GC_PUSH_SCOPE();
-	Value result = make_list(8); GC_PROTECT(&result);
+	Value result = make_list(8);
 	Int32 callSitePC = PC - 1;
 	if (callSitePC < 0) callSitePC = 0;
 	String curFile = CurrentFunction.FileName();
@@ -290,7 +296,6 @@ Value VMStorage::BuildStackTrace() {
 		list_push(result, make_string(StringUtils::Format("{0} line {1}", callerFile, callerFunc.GetLineNumber(callerPC))));
 	}
 	freeze_value(result);
-	GC_POP_SCOPE();
 	return result;
 }
 Int32 VMStorage::FunctionCount() {
@@ -319,8 +324,7 @@ Int32 VMStorage::ProcessArguments(Int32 argCount,Int32 selfParam,Int32 startPC,I
 	// Note: Parameters start at r1 (r0 is reserved for return value)
 	// selfParam offsets explicit args so they go after the injected self parameter
 	Int32 currentPC = startPC;
-	GC_PUSH_SCOPE();
-	Value argValue = val_null; GC_PROTECT(&argValue); // Declared outside loop for GC safety
+	Value argValue = val_null;  // Declared outside loop for GC safety
 	for (Int32 i = 0; i < argCount; i++) {
 		UInt32 argInstruction = code[currentPC];
 		Opcode argOp = (Opcode)BytecodeUtil::OP(argInstruction);
@@ -336,7 +340,6 @@ Int32 VMStorage::ProcessArguments(Int32 argCount,Int32 selfParam,Int32 startPC,I
 			argValue = make_int(immediate);
 		} else {
 			RaiseRuntimeError("Expected ARG opcode in ARGBLK");
-			GC_POP_SCOPE();
 			return -1;
 		}
 
@@ -348,7 +351,6 @@ Int32 VMStorage::ProcessArguments(Int32 argCount,Int32 selfParam,Int32 startPC,I
 		currentPC++;
 	}
 
-	GC_POP_SCOPE();
 	return currentPC + 1; // Return PC after the CALL instruction
 }
 void VMStorage::ApplyPendingContext(Int32 calleeBase,FuncDefRef callee) {
@@ -394,8 +396,7 @@ Int32 VMStorage::AutoInvokeFuncRef(Value funcRefVal,Int32 resultReg,Int32 return
 
 	FuncDefRef callee =
 	   *functionsRaw[funcIndex];
-	GC_PUSH_SCOPE();
-	Value outerVars = funcref_outer_vars(funcRefVal); GC_PROTECT(&outerVars);
+	Value outerVars = funcref_outer_vars(funcRefVal);
 
 	Int32 calleeBase = baseIndex + curFunc.MaxRegs;
 
@@ -413,17 +414,14 @@ Int32 VMStorage::AutoInvokeFuncRef(Value funcRefVal,Int32 resultReg,Int32 return
 		}
 		SaveState(returnPC, baseIndex, currentFuncIndex);
 		if (InvokeNativeCallback(callee.NativeCallback, calleeBase, selfParam, IntrinsicResult::Null, baseIndex + resultReg)) {
-			GC_POP_SCOPE();
 			return -1;  // done
 		}
-		GC_POP_SCOPE();
 		return -2;  // pending
 	}
 
 	// User function: push CallInfo and set up callee frame
 	if (callStackTop >= callStack.Count()) {
 		RaiseRuntimeError("Call stack overflow");
-		GC_POP_SCOPE();
 		return -1;
 	}
 	callStack[callStackTop] = CallInfo(returnPC, baseIndex, currentFuncIndex, resultReg, outerVars);
@@ -436,7 +434,6 @@ Int32 VMStorage::AutoInvokeFuncRef(Value funcRefVal,Int32 resultReg,Int32 return
 	SetupCallFrame(0, selfParam, calleeBase, callee);
 	ApplyPendingContext(calleeBase, callee);
 	EnsureFrame(calleeBase, callee.MaxRegs);
-	GC_POP_SCOPE();
 	return funcIndex;
 }
 bool VMStorage::InvokeNativeCallback(NativeCallbackDelegate callback,Int32 calleeBase,Int32 argCount,IntrinsicResult partialResult,Int32 absoluteResultIndex) {
@@ -486,10 +483,8 @@ Value VMStorage::Run(UInt32 maxCycles) {
 		_pendingCallback = nullptr;
 	}
 
-	GC_PUSH_SCOPE();
-	Value runResult = RunInner(maxCycles); GC_PROTECT(&runResult);
+	Value runResult = RunInner(maxCycles);
 	_activeVM = previousVM;
-	GC_POP_SCOPE();
 	return runResult;
 }
 Value VMStorage::RunInner(UInt32 maxCycles) {
@@ -517,10 +512,9 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 
 	// Reusable Value variables (declared outside loop for GC safety in C++)
 	// ToDo: see if we can reduce these to a more reasonable number.
-	GC_PUSH_SCOPE();
-	Value val; GC_PROTECT(&val);
+	Value val;
 	Value valA, valB, valC, valD;
-	Value typeMap; GC_PROTECT(&typeMap);
+	Value typeMap;
 
 #if VM_USE_COMPUTED_GOTO
 	static void* const vm_labels[(int)Opcode::OP__COUNT] = { VM_OPCODES(VM_LABEL_LIST) };
@@ -533,7 +527,6 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 		VM_DISPATCH_TOP();
 		if (cyclesLeft == 0) {
 			SaveState(pc, baseIndex, currentFuncIndex);
-			GC_POP_SCOPE();
 			return val_null;
 		}
 		cyclesLeft--;
@@ -541,7 +534,6 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 		if (pc >= codeCount) {
 			IsRunning = Boolean(false);
 			SaveState(pc, baseIndex, currentFuncIndex);
-			GC_POP_SCOPE();
 			return val_null;
 		}
 
@@ -1341,14 +1333,12 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Int32 callPC = pc + argCount;
 				if (callPC >= codeCount) {
 					RaiseRuntimeError("ARGBLK: CALL instruction out of range");
-					GC_POP_SCOPE();
 					return val_null;
 				}
 				UInt32 callInstruction = curCode[callPC];
 				Opcode callOp = (Opcode)BytecodeUtil::OP(callInstruction);
 				if (callOp != Opcode::CALL_rA_rB_rC) {
 					RaiseRuntimeError("ARGBLK must be followed by CALL");
-					GC_POP_SCOPE();
 					return val_null;
 				}
 
@@ -1360,14 +1350,12 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				valC = localStack[c];  // func ref
 				if (!is_funcref(valC)) {
 					RaiseRuntimeError("ARGBLK/CALL: Not a function reference");
-					GC_POP_SCOPE();
 					return val_null;
 				}
 
 				Int32 funcIndex = funcref_index(valC);
 				if (funcIndex < 0 || funcIndex >= functions.Count()) {
 					RaiseRuntimeError("ARGBLK/CALL: Invalid function index");
-					GC_POP_SCOPE();
 					return val_null;
 				}
 				FuncDefRef callee = 
@@ -1380,10 +1368,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Int32 selfParam = SelfParamOffset(callee);
 				Int32 nextPC = ProcessArguments(argCount, selfParam, pc, baseIndex, calleeBase, callee, 
 				  curFuncRaw->Code);
-				if (nextPC < 0)  {// Error already raised
-					GC_POP_SCOPE();
-					return val_null;
-				}
+				if (nextPC < 0) return val_null; // Error already raised
 				if (selfParam > 0) {
 					stack[calleeBase + 1] = pendingSelf;
 					names[calleeBase + 1] = val_self;
@@ -1407,7 +1392,6 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				// Now execute the CALL (step 6): push CallInfo and switch to callee
 				if (callStackTop >= callStack.Count()) {
 					RaiseRuntimeError("Call stack overflow");
-					GC_POP_SCOPE();
 					return val_null;
 				}
 
@@ -1428,7 +1412,6 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				// be processed as part of the ARGBLK opcode.  So if we get
 				// here, it's an error.
 				RaiseRuntimeError("Internal error: ARG without ARGBLK");
-				GC_POP_SCOPE();
 				return val_null;
 			}
 
@@ -1437,7 +1420,6 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				// be processed as part of the ARGBLK opcode.  So if we get
 				// here, it's an error.
 				RaiseRuntimeError("Internal error: ARG without ARGBLK");
-				GC_POP_SCOPE();
 				return val_null;
 			}
 
@@ -1755,7 +1737,6 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 					// We just popped @main's frame — execution is complete.
 					SaveState(pc, baseIndex, currentFuncIndex);
 					IsRunning = Boolean(false);
-					GC_POP_SCOPE();
 					return val;
 				}
 
@@ -1801,7 +1782,6 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 	
 	// Save state after loop exit (e.g. from error condition)
 	SaveState(pc, baseIndex, currentFuncIndex);
-	GC_POP_SCOPE();
 	return val_null;
 }
 FORCE_INLINE void VMStorage::SwitchFrame(Int32 currentFuncIndex, Int32 baseIndex,
@@ -1826,38 +1806,32 @@ Value VMStorage::LookupParamByName(String varName) {
 	// by position, which is more efficient than searching by name.
 	// Returns the value if found, or null if not found.
 	FuncDef func = CurrentFunction;
-	GC_PUSH_SCOPE();
-	Value nameVal = make_string(varName); GC_PROTECT(&nameVal);
+	Value nameVal = make_string(varName);
 	for (Int32 i = 0; i < func.ParamNames().Count(); i++) {
 		if (value_equal(func.ParamNames()[i], nameVal)) {
-			GC_POP_SCOPE();
 			return stack[BaseIndex + 1 + i];
 		}
 	}
-	GC_POP_SCOPE();
 	return val_null;
 }
 Value VMStorage::LookupVariable(Value varName) {
 	// Look up a variable in outer context (and eventually globals)
 	// Returns the value if found, or null if not found
-	GC_PUSH_SCOPE();
-	Value result; GC_PROTECT(&result);
+	Value result;		
 	if (callStackTop > 0) {
 		CallInfo currentFrame = callStack[callStackTop - 1];  // Current frame, not next frame
 		if (!is_null(currentFrame.OuterVarMap)) {
 			if (map_try_get(currentFrame.OuterVarMap, varName, &result)) {
-				GC_POP_SCOPE();
 				return result;
 			}
 		}
 	}
 
 	// Check global variables via VarMap (registers at base 0 in the @main frame)
-	Value globalMap; GC_PROTECT(&globalMap);
+	Value globalMap;
 	if (callStackTop > 0 || !is_null(ReplGlobals)) {
 		globalMap = GetGlobalsVarMap();
 		if (map_try_get(globalMap, varName, &result)) {
-			GC_POP_SCOPE();
 			return result;
 		}
 	}
@@ -1865,19 +1839,16 @@ Value VMStorage::LookupVariable(Value varName) {
 	// Check intrinsics table
 	String nameStr = as_cstring(varName);
 	if (_intrinsics.TryGetValue(nameStr, &result)) {
-		GC_POP_SCOPE();
 		return result;
 	}
 
 	// self/super return null when not in a method context
 	if (value_equal(varName, val_self) || value_equal(varName, val_super)) {
-		GC_POP_SCOPE();
 		return val_null;
 	}
 
 	// Variable not found anywhere — raise an error
 	RaiseRuntimeError(StringUtils::Format("Undefined Identifier: '{0}' is unknown in this context", varName));
-	GC_POP_SCOPE();
 	return val_null;
 }
 

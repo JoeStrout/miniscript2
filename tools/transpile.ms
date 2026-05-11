@@ -430,9 +430,10 @@ end function
 Transpiler.hasValueLocals = function
 	// Return whether any of our local variables are of type Value,
 	// indicating a need to use GC_PUSH_SCOPE and GC_POP_SCOPE.
-	for var in self.localVars
-		if var.type == "Value" then return true
-	end for
+	// (OBSOLETE with new GC scheme)
+//	for var in self.localVars
+//		if var.type == "Value" then return true
+//	end for
 	return false
 end function
 
@@ -1419,23 +1420,23 @@ Transpiler.updateStateMETHOD = function
 	   self.match("≤type:w≥ ≤name:w≥ = ≤expr≥;")) and not isKeyword(self.m.type) then
 		self.localVars.push VariableInfo.Make(self.m.name, self.m.type, Scope.LOCAL)
 		// special case: watch for declarations of type Value, which need GC protection.
-		if self.m.type == "Value" then
-			// Also, make sure these are not too indented; Value declarations should always
-			// be at the root level of a method (especially, never in a loop).
-			self.assert line.indentation.len < 2 + (self.state == State.LAMBDA), 
-			   "Value declaration must be at method root"
-			// And be sure to call GC_PROTECT before the first such
-			if not self.pushedGCScope then
-				self.curClass.methodLines.push line.indentation + "GC_PUSH_SCOPE();"
-				self.pushedGCScope = true;
-			end if
-			s = "Value " + self.m.name
-			if self.m.get("expr") then s += " = " + self.transformStatement(self.m.expr);
-			s = line.indentation + s + "; GC_PROTECT(&" + self.m.name + ");"
-			if line.comment then s += " " + line.comment
-			self.curClass.methodLines.push s
-			return
-		end if
+//		if self.m.type == "Value" then
+//			// Also, make sure these are not too indented; Value declarations should always
+//			// be at the root level of a method (especially, never in a loop).
+//			self.assert line.indentation.len < 2 + (self.state == State.LAMBDA), 
+//			   "Value declaration must be at method root"
+//			// And be sure to call GC_PROTECT before the first such
+//			if not self.pushedGCScope then
+//			self.curClass.methodLines.push line.indentation + "GC_PUSH_SCOPE();"
+//				self.pushedGCScope = true;
+//			end if
+//			s = "Value " + self.m.name
+//			if self.m.get("expr") then s += " = " + self.transformStatement(self.m.expr);
+//		s = line.indentation + s + "; GC_PROTECT(&" + self.m.name + ");"
+//			if line.comment then s += " " + line.comment
+//			self.curClass.methodLines.push s
+//			return
+//		end if
 	end if
 	if self.match("≤type:w≥[] ≤name:w≥ = new ≤type2≥[≤count≥];") then
 		self.localVars.push VariableInfo.Make(self.m.name, self.m.type, Scope.LOCAL)
@@ -1462,7 +1463,7 @@ Transpiler.updateStateMETHOD = function
 				cline = toks[:idx].join("")
 				cline = self.transformStatement(fixStringInterpolation(cline))
 				self.curClass.methodLines.push line.indentation + cline + " {" + line.comment;
-				self.curClass.methodLines.push line.indentation + "	GC_POP_SCOPE();"
+//				self.curClass.methodLines.push line.indentation + "	GC_POP_SCOPE();"
 				cline = toks[idx:].join("")
 				cline = self.transformStatement(fixStringInterpolation(cline))
 				self.curClass.methodLines.push line.indentation + TAB + cline;
@@ -1470,7 +1471,7 @@ Transpiler.updateStateMETHOD = function
 				return
 			else
 				// simple case, a return statement on its own line
-				self.curClass.methodLines.push line.indentation + "GC_POP_SCOPE();"
+//				self.curClass.methodLines.push line.indentation + "GC_POP_SCOPE();"
 			end if
 		end if
 	end if

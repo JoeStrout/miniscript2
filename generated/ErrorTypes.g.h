@@ -10,6 +10,7 @@
 // allowing host code to categorize errors by type.
 
 #include "value.h"
+#include "GCManager.h"
 
 namespace MiniScript {
 
@@ -18,7 +19,7 @@ namespace MiniScript {
 class ErrorType {
 	public: static Value compiler;
 	public: static Value runtime;
-	static void MarkRoots(void* user_data);
+	static void MarkRoots(void* user_data, GCManager& gc);
 
 	// Initialize the compiler and runtime prototype error values.
 	// Safe to call multiple times (no-op if already initialized).

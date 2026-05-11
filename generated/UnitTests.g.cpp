@@ -5,7 +5,6 @@
 #include "IOHelper.g.h"
 #include "StringUtils.g.h"
 #include "Disassembler.g.h"
-#include "gc.h"
 #include "Assembler.g.h"  // We really should automate this.
 #include "Parser.g.h"
 #include "Lexer.g.h"
@@ -218,62 +217,46 @@ Boolean UnitTests::TestAssembler() {
 }
 Boolean UnitTests::TestValueMap() {
 	// Test map creation
-	GC_PUSH_SCOPE();
-	Value map = make_empty_map(); GC_PROTECT(&map);
+	Value map = make_empty_map();
 	Boolean basicOk = Assert(is_map(map), "Map should be identified as map")
 		&& AssertEqual(map_count(map), 0);
 
-	if (!basicOk)  {
-		GC_POP_SCOPE();
-		return Boolean(false);
-	}
+	if (!basicOk) return Boolean(false);
 
 	// Test insertion and lookup
-	Value key1 = make_string("name"); GC_PROTECT(&key1);
-	Value value1 = make_string("John"); GC_PROTECT(&value1);
-	Value key2 = make_string("age"); GC_PROTECT(&key2);
-	Value value2 = make_double(30.0); GC_PROTECT(&value2);
+	Value key1 = make_string("name");
+	Value value1 = make_string("John");
+	Value key2 = make_string("age");
+	Value value2 = make_double(30.0);
 
 	Boolean insertOk = map_set(map, key1, value1)
 		&& map_set(map, key2, value2)
 		&& AssertEqual(map_count(map), 2);
 
-	if (!insertOk)  {
-		GC_POP_SCOPE();
-		return Boolean(false);
-	}
+	if (!insertOk) return Boolean(false);
 
 	// Test lookup
-	Value retrieved1 = map_get(map, key1); GC_PROTECT(&retrieved1);
-	Value retrieved2 = map_get(map, key2); GC_PROTECT(&retrieved2);
+	Value retrieved1 = map_get(map, key1);
+	Value retrieved2 = map_get(map, key2);
 	Boolean lookupOk = Assert(is_string(retrieved1), "Retrieved value should be string")
 		&& Assert(is_double(retrieved2), "Retrieved value should be number")
 		&& AssertEqual((int)as_double(retrieved2), 30);
 
-	if (!lookupOk)  {
-		GC_POP_SCOPE();
-		return Boolean(false);
-	}
+	if (!lookupOk) return Boolean(false);
 
 	// Test key existence
 	Boolean hasKeyOk = Assert(map_has_key(map, key1), "Should have key1")
 		&& Assert(map_has_key(map, key2), "Should have key2")
 		&& Assert(!map_has_key(map, make_string("nonexistent")), "Should not have nonexistent key");
 
-	if (!hasKeyOk)  {
-		GC_POP_SCOPE();
-		return Boolean(false);
-	}
+	if (!hasKeyOk) return Boolean(false);
 
 	// Test lookup of nonexistent key
 	// (For now; later: this should invoke error-handling pipeline)
-	Value nonexistent = map_get(map, make_string("missing")); GC_PROTECT(&nonexistent);
+	Value nonexistent = map_get(map, make_string("missing"));
 	Boolean nonexistentOk = Assert(is_null(nonexistent), "Nonexistent key should return null");
 
-	if (!nonexistentOk)  {
-		GC_POP_SCOPE();
-		return Boolean(false);
-	}
+	if (!nonexistentOk) return Boolean(false);
 
 	// Test removal
 	Boolean removeOk = Assert(map_remove(map, key1), "Should successfully remove existing key")
@@ -282,26 +265,17 @@ Boolean UnitTests::TestValueMap() {
 		&& Assert(map_has_key(map, key2), "Should still have other key")
 		&& Assert(!map_remove(map, key1), "Should return false when removing nonexistent key");
 
-	if (!removeOk)  {
-		GC_POP_SCOPE();
-		return Boolean(false);
-	}
+	if (!removeOk) return Boolean(false);
 
 	// Test string conversion (runtime C functions)
-	Value singleMap = make_empty_map(); GC_PROTECT(&singleMap);
+	Value singleMap = make_empty_map();
 	map_set(singleMap, make_string("test"), make_int(42));
-	Value singleStr = to_string(singleMap, nullptr); GC_PROTECT(&singleStr);
+	Value singleStr = to_string(singleMap, nullptr);
 	Boolean singleStrOk = Assert(is_string(singleStr), "Map toString should return string")
 		&& AssertEqual(as_cstring(singleStr), "{\"test\": 42}");
-	if (!singleStrOk)  {
-		GC_POP_SCOPE();
-		return Boolean(false);
-	}
+	if (!singleStrOk) return Boolean(false);
 	String result = as_cstring(to_string(singleMap, nullptr));
-	if (!AssertEqual(result, "{\"test\": 42}"))  {
-		GC_POP_SCOPE();
-		return Boolean(false);
-	}
+	if (!AssertEqual(result, "{\"test\": 42}")) return Boolean(false);
 
 	// Note: We have successfully implemented and tested both conversion approaches:
 	// 1. Runtime C functions (list_to_string, map_to_string) → GC Value strings
@@ -312,7 +286,6 @@ Boolean UnitTests::TestValueMap() {
 	map_clear(map);
 	Boolean clearOk = AssertEqual(map_count(map), 0);
 
-	GC_POP_SCOPE();
 	return clearOk;
 }
 Boolean UnitTests::CheckParse(Parser parser,String input,String expected) {

@@ -7,7 +7,6 @@ using static MiniScript.ValueHelpers;
 // CPP: #include "IOHelper.g.h"
 // CPP: #include "StringUtils.g.h"
 // CPP: #include "Disassembler.g.h"
-// CPP: #include "gc.h"
 // CPP: #include "Assembler.g.h"  // We really should automate this.
 // CPP: #include "Parser.g.h"
 // CPP: #include "Lexer.g.h"

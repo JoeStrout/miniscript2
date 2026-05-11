@@ -10,7 +10,7 @@
 #include "ErrorTypes.g.h"
 #include "value_map.h"
 #include <vector>
-#include "gc.h"
+#include "GCManager.h"
 
 namespace MiniScript {
 typedef const FuncDefStorage& FuncDefRef;
@@ -122,7 +122,7 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	private: void InitVM(Int32 stackSlots, Int32 callSlots);
 	
 	private: void CleanupVM();
-	static void MarkRoots(void* user_data);
+	static void MarkRoots(void* user_data, GCManager& gc);
 	public: ~VMStorage() { CleanupVM(); }
 	public: operator void*() { return this; }
 	// Allows passing ctx.vm (VMStorage&) where void* vm is expected (e.g. to_string,
@@ -544,10 +544,8 @@ inline Value VM::GetGlobalsVarMap() { return get()->GetGlobalsVarMap(); }
 inline Value VM::GetCurrentLocalVarMap(Int32 baseIndex,UInt16 maxRegs) { return get()->GetCurrentLocalVarMap(baseIndex, maxRegs); }
 inline Value VMStorage::GetCurrentLocalVarMap(Int32 baseIndex,UInt16 maxRegs) {
 	CallInfo frame = callStack[callStackTop - 1];
-	GC_PUSH_SCOPE();
-	Value result = frame.GetLocalVarMap(stack, names, baseIndex, maxRegs); GC_PROTECT(&result);
+	Value result = frame.GetLocalVarMap(stack, names, baseIndex, maxRegs);
 	callStack[callStackTop - 1] = frame;  // write back (CallInfo is a struct)
-	GC_POP_SCOPE();
 	return result;
 }
 inline void VM::SaveState(Int32 pc,Int32 baseIndex,Int32 currentFuncIndex) { return get()->SaveState(pc, baseIndex, currentFuncIndex); }

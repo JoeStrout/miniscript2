@@ -6,7 +6,7 @@ using static MiniScript.ValueHelpers;
 // H: #include "value.h"
 // H: #include "ErrorTypes.g.h"
 // CPP: #include "Intrinsic.g.h"
-// CPP: #include "gc.h"
+// H: #include "GCManager.h"
 // CPP: #include "value_list.h"
 // CPP: #include "value_string.h"
 // CPP: #include "value_map.h"
@@ -184,21 +184,12 @@ public static class CoreIntrinsics {
 	public static Value replInList = val_null;
 	public static Value replOutList = val_null;
 
-	// H: static void MarkRoots(void* user_data);
+	// H: static void MarkRoots(void* user_data, GCManager& gc);
 
 	public static void Init() {
-		// CPP: gc_register_mark_callback(CoreIntrinsics::MarkRoots, nullptr);
+		// CPP: GCManager::Instance().RegisterMarkCallback(CoreIntrinsics::MarkRoots, nullptr);
 
 		Intrinsic f;
-
-		// Garbace collection (GC) note:
-		// The transpiler sees a bunch of Values below and figures that it
-		// needs to do a GC_PUSH_SCOPE... but in fact those are all inside
-		// lambda functions; there is no Value usage here in Init() itself.
-		// The transpiler will emit a GC_POP_SCOPE at the end of this method,
-		// and we can't easily prevent that.  But we can balance it with:
-		// CPP: GC_PUSH_SCOPE();
-		// ...and yes, this is a bit of a hack.  TODO: make transpiler smarter.
 
 		// print(s="")
 		f = Intrinsic.Create("print");
@@ -701,7 +692,7 @@ public static class CoreIntrinsics {
 			Value value = ctx.GetArg(1);
 			Value after = ctx.GetArg(2);
 			Value result = val_null;
-			// CPP: Value iterKey, iterVal; GC_PROTECT(&iterKey); GC_PROTECT(&iterVal);
+			// CPP: Value iterKey, iterVal;
 			if (is_list(self)) {
 				int afterIdx = -1;
 				if (!is_null(after)) {
@@ -766,7 +757,7 @@ public static class CoreIntrinsics {
 			Value self = ctx.GetArg(0);
 			if (is_error(self)) return ctx.vm.RaiseUncaughtError(self);
 			Value temp;
-			// CPP: Value iterKey, iterVal; GC_PROTECT(&iterKey); GC_PROTECT(&iterVal);
+			// CPP: Value iterKey, iterVal;
 			if (is_list(self)) {
 				if (is_frozen(self)) { ctx.vm.RaiseRuntimeError("Attempt to modify a frozen list"); return new IntrinsicResult(val_null); }
 				int count = list_count(self);
@@ -845,7 +836,7 @@ public static class CoreIntrinsics {
 			Value oldVal = ctx.GetArg(1);
 			Value newVal = ctx.GetArg(2);
 			Value maxCountVal = ctx.GetArg(3);
-			// CPP: Value iterKey, iterVal; GC_PROTECT(&iterKey); GC_PROTECT(&iterVal);
+			// CPP: Value iterKey, iterVal;
 			int maxCount = is_null(maxCountVal) ? -1 : (int)numeric_val(maxCountVal);
 			if (is_list(self)) {
 				int count = list_count(self);
@@ -884,7 +875,7 @@ public static class CoreIntrinsics {
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value self = ctx.GetArg(0);
 			if (is_error(self)) return new IntrinsicResult(self);
-			// CPP: Value iterVal; GC_PROTECT(&iterVal);
+			// CPP: Value iterVal;
 			double total = 0;
 			if (is_list(self)) {
 				int count = list_count(self);
@@ -933,7 +924,7 @@ public static class CoreIntrinsics {
 			Value self = ctx.GetArg(0);
 			if (is_error(self)) return new IntrinsicResult(self);
 			Value result = val_null;
-			// CPP: Value iterKey; GC_PROTECT(&iterKey);
+			// CPP: Value iterKey;
 			if (is_list(self)) {
 				int count = list_count(self);
 				result = make_list(count);
@@ -989,7 +980,7 @@ public static class CoreIntrinsics {
 			Value self = ctx.GetArg(0);
 			if (is_error(self)) return new IntrinsicResult(self);
 			Value result = self;
-			// CPP: Value iterVal; GC_PROTECT(&iterVal);
+			// CPP: Value iterVal;
 			if (is_map(self)) {
 				result = make_list(map_count(self));
 				MapIterator iter = map_iterator(self);
@@ -1217,16 +1208,16 @@ public static class CoreIntrinsics {
 
 	/*** BEGIN CPP_ONLY ***
 	// GC mark callback to protect our static type maps from collection.
-	void CoreIntrinsics::MarkRoots(void* user_data) {
+	void CoreIntrinsics::MarkRoots(void* user_data, GCManager& gc) {
 		(void)user_data;
-		gc_mark_value(_listType);
-		gc_mark_value(_stringType);
-		gc_mark_value(_mapType);
-		gc_mark_value(_numberType);
-		gc_mark_value(_functionType);
-		gc_mark_value(_errorType);
-		gc_mark_value(replInList);
-		gc_mark_value(replOutList);
+		gc.Mark(_listType);
+		gc.Mark(_stringType);
+		gc.Mark(_mapType);
+		gc.Mark(_numberType);
+		gc.Mark(_functionType);
+		gc.Mark(_errorType);
+		gc.Mark(replInList);
+		gc.Mark(replOutList);
 	}
 	*** END CPP_ONLY ***/
 

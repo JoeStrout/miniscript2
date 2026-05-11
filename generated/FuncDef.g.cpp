@@ -4,7 +4,6 @@
 #include "FuncDef.g.h"
 #include "StringUtils.g.h"
 #include "IntrinsicAPI.g.h"
-#include "gc.h"
 
 namespace MiniScript {
 
@@ -32,8 +31,7 @@ void FuncDefStorage::ReserveRegister(Int32 registerNumber) {
 }
 String FuncDefStorage::ToString() {
 	String result = Name + "(";
-	GC_PUSH_SCOPE();
-	Value defaultVal; GC_PROTECT(&defaultVal);
+	Value defaultVal;
 	for (Int32 i = 0; i < ParamNames.Count(); i++) {
 		if (i > 0) result += ", ";
 		result += as_cstring(ParamNames[i]);
@@ -44,7 +42,6 @@ String FuncDefStorage::ToString() {
 		}
 	}
 	result += ")";
-	GC_POP_SCOPE();
 	return result;
 }
 

@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using static System.Runtime.CompilerServices.MethodImplOptions;
+using static MiniScript.ValueHelpers;
 
 namespace MiniScript {
 
@@ -37,7 +38,7 @@ public struct GCList : IGCItem {
 	[MethodImpl(AggressiveInlining)]
 	public Value Get(Int32 i) {
 		if (i < 0) i += Items.Count;
-		return (UInt32)i < (UInt32)Items.Count ? Items[i] : Value.Null();
+		return (UInt32)i < (UInt32)Items.Count ? Items[i] : val_null;
 	}
 
 	[MethodImpl(AggressiveInlining)]
@@ -64,14 +65,14 @@ public struct GCList : IGCItem {
 	}
 
 	public Value Pop() {
-		if (Items == null || Items.Count == 0) return Value.Null(); // ToDo: error
+		if (Items == null || Items.Count == 0) return val_null; // ToDo: error
 		Value result = Items[Items.Count - 1];
 		Items.RemoveAt(Items.Count - 1);
 		return result;
 	}
 
 	public Value Pull() {
-		if (Items == null || Items.Count == 0) return Value.Null(); // ToDo: error
+		if (Items == null || Items.Count == 0) return val_null; // ToDo: error
 		Value result = Items[0];
 		Items.RemoveAt(0);
 		return result;
@@ -80,7 +81,7 @@ public struct GCList : IGCItem {
 	public Int32 IndexOf(Value item, Int32 afterIdx) {
 		if (Items == null) return -1;
 		for (Int32 i = afterIdx + 1; i < Items.Count; i++) {
-			if (Value.Equal(Items[i], item)) return i;
+			if (value_equal(Items[i], item)) return i;
 		}
 		return -1;
 	}
@@ -156,19 +157,19 @@ public struct GCMap : IGCItem {
 		// Check VarMap register bindings first.
 		if (_vmb != null && _vmb.TryGet(key, out value)) return true;
 
-		if (_indices == null) { value = Value.Null(); return false; }
+		if (_indices == null) { value = val_null; return false; }
 		Int32 h = Hash(key);
 		Int32 slot = h & (_cap - 1);
 		for (Int32 probe = 0; probe < _cap; probe++) {
 			Int32 idx = _indices[slot];
-			if (idx == EMPTY_SLOT) { value = Value.Null(); return false; }
+			if (idx == EMPTY_SLOT) { value = val_null; return false; }
 			if (idx != TOMBSTONE_SLOT && _entryHashes[idx] == h && KeyEquals(_entryKeys[idx], key)) {
 				value = _entryVals[idx];
 				return true;
 			}
 			slot = (slot + 1) & (_cap - 1);
 		}
-		value = Value.Null();
+		value = val_null;
 		return false;
 	}
 
@@ -217,8 +218,8 @@ public struct GCMap : IGCItem {
 			if (idx == EMPTY_SLOT) return false;
 			if (idx != TOMBSTONE_SLOT && _entryHashes[idx] == h && KeyEquals(_entryKeys[idx], key)) {
 				_entryHashes[idx] = DELETED;
-				_entryKeys[idx]   = Value.Null();
-				_entryVals[idx]   = Value.Null();
+				_entryKeys[idx]   = val_null;
+				_entryVals[idx]   = val_null;
 				_indices[slot]    = TOMBSTONE_SLOT;
 				_liveCount--;
 				return true;
@@ -337,8 +338,8 @@ public struct GCMap : IGCItem {
 		}
 		// Clear the now-unused tail.
 		for (Int32 i = writeIdx; i < _entryCount; i++) {
-			_entryKeys[i]   = Value.Null();
-			_entryVals[i]   = Value.Null();
+			_entryKeys[i]   = val_null;
+			_entryVals[i]   = val_null;
 			_entryHashes[i] = 0;
 		}
 		_entryCount = writeIdx;
@@ -366,11 +367,11 @@ public struct GCMap : IGCItem {
 	// Ensures tiny strings and GCStrings with equal content map to the same bucket.
 	private static Int32 Hash(Value v) {
 		Int32 h;
-		if (v.IsString) {
+		if (is_string(v)) {
 			String s = GCManager.GetStringContent(v);
 			h = s.GetHashCode(System.StringComparison.Ordinal);
 		} else {
-			h = (Int32)(v.Bits ^ (v.Bits >> 32));
+			h = (Int32)(value_bits(v) ^ (value_bits(v) >> 32));
 		}
 		if (h == DELETED) h = 0;  // reserved for tombstone marker
 		return h;
@@ -378,8 +379,8 @@ public struct GCMap : IGCItem {
 
 	// Content equality for strings; bit equality for everything else.
 	private static Boolean KeyEquals(Value a, Value b) {
-		if (Value.Identical(a, b)) return true;
-		if (a.IsString && b.IsString) {
+		if (value_identical(a, b)) return true;
+		if (is_string(a) && is_string(b)) {
 			return String.Equals(GCManager.GetStringContent(a), GCManager.GetStringContent(b),
 				System.StringComparison.Ordinal);
 		}
@@ -411,10 +412,10 @@ public struct GCError : IGCItem {
 
 	[MethodImpl(AggressiveInlining)]
 	public void OnSweep() {
-		Message = Value.Null();
-		Inner   = Value.Null();
-		Stack   = Value.Null();
-		Isa     = Value.Null();
+		Message = val_null;
+		Inner   = val_null;
+		Stack   = val_null;
+		Isa     = val_null;
 	}
 }
 
@@ -432,7 +433,7 @@ public struct GCFuncRef : IGCItem {
 	[MethodImpl(AggressiveInlining)]
 	public void OnSweep() {
 		FuncIndex = -1;
-		OuterVars = Value.Null();
+		OuterVars = val_null;
 	}
 }
 

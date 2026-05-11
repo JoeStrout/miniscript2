@@ -12,13 +12,13 @@ namespace MiniScript {
 // Used as the comparer for VarMapBacking._regMap.
 // 
 public class ValueEqualityComparer : IEqualityComparer<Value> {
-	public bool Equals(Value x, Value y) => Value.Equal(x, y);
+	public bool Equals(Value x, Value y) => value_equal(x, y);
 
 	public int GetHashCode(Value obj) {
-		if (obj.IsString) {
+		if (is_string(obj)) {
 			return GCManager.GetStringContent(obj).GetHashCode(StringComparison.Ordinal);
 		}
-		return obj.Bits.GetHashCode();
+		return value_bits(obj).GetHashCode();
 	}
 }
 
@@ -44,7 +44,7 @@ public class VarMapBacking {
 		_regOrder  = new List<Value>();
 
 		for (int i = firstIdx; i <= lastIdx; i++) {
-			if (!_names[i].IsNull) {
+			if (!is_null(_names[i])) {
 				if (!_regMap.ContainsKey(_names[i])) {
 					_regOrder.Add(_names[i]);
 				}
@@ -58,12 +58,12 @@ public class VarMapBacking {
 	// Try to get a value via register binding. Returns false if key is not register-mapped or register is unassigned.
 	public bool TryGet(Value key, out Value value) {
 		if (is_string(key) && _regMap.TryGetValue(key, out int regIndex)) {
-			if (!_names[regIndex].IsNull) {
+			if (!is_null(_names[regIndex])) {
 				value = _registers[regIndex];
 				return true;
 			}
 		}
-		value = Value.Null();
+		value = val_null;
 		return false;
 	}
 
@@ -89,7 +89,7 @@ public class VarMapBacking {
 	// Returns true if the key is register-mapped and the register is assigned.
 	public bool HasKey(Value key) {
 		if (is_string(key) && _regMap.TryGetValue(key, out int regIndex)) {
-			return !_names[regIndex].IsNull;
+			return !is_null(_names[regIndex]);
 		}
 		return false;
 	}
@@ -101,7 +101,7 @@ public class VarMapBacking {
 		get {
 			int n = 0;
 			foreach (var kvp in _regMap) {
-				if (!_names[kvp.Value].IsNull) n++;
+				if (!is_null(_names[kvp.Value])) n++;
 			}
 			return n;
 		}
@@ -114,7 +114,7 @@ public class VarMapBacking {
 	public int NextAssignedRegEntry(int startIdx) {
 		for (int i = startIdx; i < _regOrder.Count; i++) {
 			Value key = _regOrder[i];
-			if (_regMap.TryGetValue(key, out int regIdx) && !_names[regIdx].IsNull) {
+			if (_regMap.TryGetValue(key, out int regIdx) && !is_null(_names[regIdx])) {
 				return i;
 			}
 		}
@@ -141,7 +141,7 @@ public class VarMapBacking {
 	public void MarkChildren(GCManager gc) {
 		foreach (var kvp in _regMap) {
 			int regIdx = kvp.Value;
-			if (regIdx < _names.Count && !_names[regIdx].IsNull) {
+			if (regIdx < _names.Count && !is_null(_names[regIdx])) {
 				gc.Mark(kvp.Key);              // mark the variable name (a string value)
 				gc.Mark(_registers[regIdx]);   // mark the variable value
 			}
@@ -159,7 +159,7 @@ public class VarMapBacking {
 		map._vmb = null;
 		foreach (var kvp in _regMap) {
 			int regIdx = kvp.Value;
-			if (regIdx < _names.Count && !_names[regIdx].IsNull) {
+			if (regIdx < _names.Count && !is_null(_names[regIdx])) {
 				map.Set(kvp.Key, _registers[regIdx]);
 			}
 		}
@@ -214,7 +214,7 @@ public class VarMapBacking {
 	// Enumerate all assigned register entries as key-value pairs.
 	public IEnumerable<(Value key, Value val)> AssignedEntries() {
 		foreach (Value key in _regOrder) {
-			if (_regMap.TryGetValue(key, out int regIdx) && !_names[regIdx].IsNull) {
+			if (_regMap.TryGetValue(key, out int regIdx) && !is_null(_names[regIdx])) {
 				yield return (key, _registers[regIdx]);
 			}
 		}

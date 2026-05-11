@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using static System.Runtime.CompilerServices.MethodImplOptions;
+using static MiniScript.ValueHelpers;
 
 namespace MiniScript {
 
@@ -41,19 +42,19 @@ public sealed class GCManager {
 	public Value NewString(String s) {
 		Int32 idx = Strings.New();
 		Strings.Get(idx).Data = s;
-		return Value.MakeGC(STRING_SET, idx);
+		return make_gc(STRING_SET, idx);
 	}
 
 	public Value NewList(Int32 capacity = 8) {
 		Int32 idx = Lists.New();
 		Lists.Get(idx).Init(capacity);
-		return Value.MakeGC(LIST_SET, idx);
+		return make_gc(LIST_SET, idx);
 	}
 
 	public Value NewMap(Int32 capacity = 8) {
 		Int32 idx = Maps.New();
 		Maps.Get(idx).Init(capacity);
-		return Value.MakeGC(MAP_SET, idx);
+		return make_gc(MAP_SET, idx);
 	}
 
 	public Value NewVarMap(VarMapBacking vmb) {
@@ -61,7 +62,7 @@ public sealed class GCManager {
 		ref GCMap m = ref Maps.Get(idx);
 		m.Init(4);
 		m._vmb = vmb;
-		return Value.MakeGC(MAP_SET, idx);
+		return make_gc(MAP_SET, idx);
 	}
 
 	public Value NewError(Value message, Value inner, Value stack, Value isa) {
@@ -71,7 +72,7 @@ public sealed class GCManager {
 		e.Inner   = inner;
 		e.Stack   = stack;
 		e.Isa     = isa;
-		return Value.MakeGC(ERROR_SET, idx);
+		return make_gc(ERROR_SET, idx);
 	}
 
 	public Value NewFuncRef(Int32 funcIndex, Value outerVars) {
@@ -79,19 +80,19 @@ public sealed class GCManager {
 		ref GCFuncRef f = ref FuncRefs.Get(idx);
 		f.FuncIndex = funcIndex;
 		f.OuterVars = outerVars;
-		return Value.MakeGC(FUNCREF_SET, idx);
+		return make_gc(FUNCREF_SET, idx);
 	}
 
 	// ── Retain / Release ─────────────────────────────────────────────────────
 
 	public void Retain(Value v) {
-		if (!v.IsGCObject) return;
-		_sets[v.GCSetIndex].Mark(v.ItemIndex, this);  // not really right; kept for API compat
+		if (!is_gc_object(v)) return;
+		_sets[value_gc_set_index(v)].Mark(value_item_index(v), this);  // not really right; kept for API compat
 	}
 
 	public void RetainValue(Value v) {
-		if (!v.IsGCObject) return;
-		_sets[v.GCSetIndex].Mark(v.ItemIndex, this);  // placeholder; use explicit Retain when needed
+		if (!is_gc_object(v)) return;
+		_sets[value_gc_set_index(v)].Mark(value_item_index(v), this);  // placeholder; use explicit Retain when needed
 	}
 
 	// ── Root set ─────────────────────────────────────────────────────────────
@@ -104,8 +105,8 @@ public sealed class GCManager {
 
 	[MethodImpl(AggressiveInlining)]
 	public void Mark(Value v) {
-		if (!v.IsGCObject) return;
-		_sets[v.GCSetIndex].Mark(v.ItemIndex, this);
+		if (!is_gc_object(v)) return;
+		_sets[value_gc_set_index(v)].Mark(value_item_index(v), this);
 	}
 
 	// Run a full mark-sweep cycle.
@@ -135,26 +136,25 @@ public sealed class GCManager {
 
 	// ── Convenience accessors ─────────────────────────────────────────────────
 
-	public ref GCString  GetString(Value v)  { return ref Strings.Get(v.ItemIndex); }
-	public ref GCList    GetList(Value v)     { return ref Lists.Get(v.ItemIndex); }
-	public ref GCMap     GetMap(Value v)      { return ref Maps.Get(v.ItemIndex); }
-	public ref GCError   GetError(Value v)    { return ref Errors.Get(v.ItemIndex); }
-	public ref GCFuncRef GetFuncRef(Value v)  { return ref FuncRefs.Get(v.ItemIndex); }
+	public ref GCString  GetString(Value v)  { return ref Strings.Get(value_item_index(v)); }
+	public ref GCList    GetList(Value v)     { return ref Lists.Get(value_item_index(v)); }
+	public ref GCMap     GetMap(Value v)      { return ref Maps.Get(value_item_index(v)); }
+	public ref GCError   GetError(Value v)    { return ref Errors.Get(value_item_index(v)); }
+	public ref GCFuncRef GetFuncRef(Value v)  { return ref FuncRefs.Get(value_item_index(v)); }
 
 	// ── Static helper for content-based string access ─────────────────────────
 	// Used by GCMap for content-based key hashing and equality.
 
 	[MethodImpl(AggressiveInlining)]
 	public static String GetStringContent(Value v) {
-		if (v.IsTiny) {
-			Int32 len = v.TinyLen();
+		if (is_tiny_string(v)) {
+			Int32 len = value_tiny_len(v);
 			Char[] chars = new Char[len];
-			for (Int32 i = 0; i < len; i++) chars[i] = (Char)((v.Bits >> (8 * (i + 1))) & 0xFF);
+			for (Int32 i = 0; i < len; i++) chars[i] = (Char)((value_bits(v) >> (8 * (i + 1))) & 0xFF);
 			return new String(chars);
 		}
-		if (v.IsGCObject && v.GCSetIndex == STRING_SET) {
-			// Static accessor — requires GC to be accessible.
-			String data = ValueHelpers.gc.Strings.Get(v.ItemIndex).Data;
+		if (is_heap_string(v)) {
+			String data = gc.Strings.Get(value_item_index(v)).Data;
 			return data != null ? data : "";
 		}
 		return "";

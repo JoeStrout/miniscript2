@@ -853,4 +853,8 @@ Also: during this refactoring, the meaning of "interned string" has changed: it 
 ...OK, after more careful thought I've written up [ADR #5](adr/0005-string-interning.md), proposing a hybrid approach: interned strings will avoid collection in the usual case, but can still be collected at more rare "full GC" times.
 
 
+## May 11, 2026
+
+Before I get to string interning, I want to pay down some of the accumulated technical debt.  I'm starting with all those Value methods in C# which are so tempting to use instead of the (transpilable) free functions.  Getting rid of those today.
+
 

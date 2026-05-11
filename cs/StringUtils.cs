@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using static System.Runtime.CompilerServices.MethodImplOptions;
+using static MiniScript.ValueHelpers;
 // H: #include "CS_String.h"
 // H: #include "value.h"
 // H: #include "value_string.h"
@@ -119,7 +120,7 @@ public static class StringUtils {
 			// Wrap in quotes
 			return "\"" + escaped + "\"";
 		}
-		return v.ToString(null);
+		return to_String(v);
 	}
 	
 	// Usage: StringUtils.Format("Hello {0}, x={1}, {{braces}}", name, 42)

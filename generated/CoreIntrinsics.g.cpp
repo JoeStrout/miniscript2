@@ -129,8 +129,18 @@ Value CoreIntrinsics::_errorType = val_null;
 Value CoreIntrinsics::_EOL = make_string("\n");
 Value CoreIntrinsics::replInList = val_null;
 Value CoreIntrinsics::replOutList = val_null;
+void CoreIntrinsics::MarkRoots(object user_data) {
+	GCManager::Mark(_listType);
+	GCManager::Mark(_stringType);
+	GCManager::Mark(_mapType);
+	GCManager::Mark(_numberType);
+	GCManager::Mark(_functionType);
+	GCManager::Mark(_errorType);
+	GCManager::Mark(replInList);
+	GCManager::Mark(replOutList);
+}
 void CoreIntrinsics::Init() {
-	GCManager::Instance().RegisterMarkCallback(CoreIntrinsics::MarkRoots, nullptr);
+	GCManager::RegisterMarkCallback(CoreIntrinsics::MarkRoots, nullptr);
 
 	Intrinsic f;
 
@@ -1146,18 +1156,6 @@ void CoreIntrinsics::InvalidateTypeMaps() {
 	_functionType = val_null;
 	_errorType = val_null;
 	Intrinsic::ClearShortNames();
-}
-// GC mark callback to protect our static type maps from collection.
-void CoreIntrinsics::MarkRoots(void* user_data, GCManager& gc) {
-	(void)user_data;
-	gc.Mark(_listType);
-	gc.Mark(_stringType);
-	gc.Mark(_mapType);
-	gc.Mark(_numberType);
-	gc.Mark(_functionType);
-	gc.Mark(_errorType);
-	gc.Mark(replInList);
-	gc.Mark(replOutList);
 }
 
 } // end of namespace MiniScript

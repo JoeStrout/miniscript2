@@ -38,6 +38,7 @@ public struct App {
 	
 	public static void MainProgram(List<String> args) {
 		// CPP: value_init_constants();
+		GCManager.Init();
 		ErrorType.Init();
 
 		// Parse command-line switches

@@ -57,6 +57,10 @@ using Double  = double;
 // And, for where we actually need a null in both C# and C++:
 #define null nullptr
 
+// C# `object` is an opaque reference; in C++ we model it as a raw pointer.
+// Used for user-data parameters in callbacks (e.g. GCManager mark callbacks).
+using object = void*;
+
 // Boolean wrapper class that adds a user-defined conversion step
 // This makes pointer-to-Boolean conversion (via bool) rank lower than
 // exact matches in overload resolution, preventing ambiguity with String overloads

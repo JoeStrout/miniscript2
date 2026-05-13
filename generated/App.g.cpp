@@ -37,6 +37,7 @@ bool App::debugMode = Boolean(false);
 bool App::visMode = Boolean(false);
 void App::MainProgram(List<String> args) {
 	value_init_constants();
+	GCManager::Init();
 	ErrorType::Init();
 
 	// Parse command-line switches

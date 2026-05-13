@@ -1,54 +1,39 @@
-//*** BEGIN CS_ONLY ***
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
-
+using static System.Runtime.CompilerServices.MethodImplOptions;
 using static MiniScript.ValueHelpers;
+// H: #include "value.h"
+// CPP: #include "GCManager.g.h"
 
 namespace MiniScript {
 
-// 
-// Custom equality comparer for Value that uses semantic (content-based) equality.
-// Used as the comparer for VarMapBacking._regMap.
-// 
-public class ValueEqualityComparer : IEqualityComparer<Value> {
-	public bool Equals(Value x, Value y) => value_equal(x, y);
-
-	public int GetHashCode(Value obj) {
-		if (is_string(obj)) {
-			return GCManager.GetStringContent(obj).GetHashCode(StringComparison.Ordinal);
-		}
-		return value_bits(obj).GetHashCode();
-	}
-}
-
-// 
+//
 // VarMapBacking holds the register-binding metadata for a VarMap-backed GCMap.
 // It bridges between register-based local variables and map semantics, allowing
 // fast register access while maintaining map iteration / closure-capture semantics.
-///
-// This class is C#-only; it is not transpilable.
-// 
+//
 public class VarMapBacking {
-	private Dictionary<Value, int> _regMap;   // varName → register index
-	private List<Value> _registers;           // reference to the VM's register array
-	private List<Value> _names;               // reference to the VM's names array
+	private List<Value> _regOrder;    // variable names, in insertion order
+	private List<Int32> _regIndices;  // register index for each name (parallel to _regOrder)
+	private List<Value> _registers;   // reference to the VM's register array
+	private List<Value> _names;       // reference to the VM's names array
 
-	// For deterministic iteration, keep an ordered list of reg-entry keys.
-	private List<Value> _regOrder;
+	public VarMapBacking(List<Value> registers, List<Value> names, Int32 firstIdx, Int32 lastIdx) {
+		_registers  = registers;
+		_names      = names;
+		_regOrder   = new List<Value>();
+		_regIndices = new List<Int32>();
 
-	public VarMapBacking(List<Value> registers, List<Value> names, int firstIdx, int lastIdx) {
-		_registers = registers;
-		_names     = names;
-		_regMap    = new Dictionary<Value, int>(new ValueEqualityComparer());
-		_regOrder  = new List<Value>();
-
-		for (int i = firstIdx; i <= lastIdx; i++) {
+		for (Int32 i = firstIdx; i <= lastIdx; i++) {
 			if (!is_null(_names[i])) {
-				if (!_regMap.ContainsKey(_names[i])) {
+				Int32 orderIdx = FindOrderIdx(_names[i]);
+				if (orderIdx < 0) {
 					_regOrder.Add(_names[i]);
+					_regIndices.Add(i);
+				} else {
+					_regIndices[orderIdx] = i;
 				}
-				_regMap[_names[i]] = i;
 			}
 		}
 	}
@@ -56,11 +41,15 @@ public class VarMapBacking {
 	// ── Register-binding checks (used by GCMap.TryGet/Set/Remove) ────────────
 
 	// Try to get a value via register binding. Returns false if key is not register-mapped or register is unassigned.
-	public bool TryGet(Value key, out Value value) {
-		if (is_string(key) && _regMap.TryGetValue(key, out int regIndex)) {
-			if (!is_null(_names[regIndex])) {
-				value = _registers[regIndex];
-				return true;
+	public Boolean TryGet(Value key, out Value value) {
+		if (is_string(key)) {
+			Int32 orderIdx = FindOrderIdx(key);
+			if (orderIdx >= 0) {
+				Int32 regIdx = _regIndices[orderIdx];
+				if (!is_null(_names[regIdx])) {
+					value = _registers[regIdx];
+					return true;
+				}
 			}
 		}
 		value = val_null;
@@ -68,28 +57,38 @@ public class VarMapBacking {
 	}
 
 	// Try to set a value via register binding. Returns true if key was register-mapped (and value was stored).
-	public bool TrySet(Value key, Value value) {
-		if (is_string(key) && _regMap.TryGetValue(key, out int regIndex)) {
-			_registers[regIndex] = value;
-			_names[regIndex]     = key;
-			return true;
+	public Boolean TrySet(Value key, Value value) {
+		if (is_string(key)) {
+			Int32 orderIdx = FindOrderIdx(key);
+			if (orderIdx >= 0) {
+				Int32 regIdx = _regIndices[orderIdx];
+				_registers[regIdx] = value;
+				_names[regIdx]     = key;
+				return true;
+			}
 		}
 		return false;
 	}
 
 	// Try to remove a key via register binding. Returns true if key was register-mapped.
-	public bool TryRemove(Value key) {
-		if (is_string(key) && _regMap.TryGetValue(key, out int regIndex)) {
-			_names[regIndex] = val_null;
-			return true;
+	public Boolean TryRemove(Value key) {
+		if (is_string(key)) {
+			Int32 orderIdx = FindOrderIdx(key);
+			if (orderIdx >= 0) {
+				Int32 regIdx = _regIndices[orderIdx];
+				_names[regIdx] = val_null;
+				return true;
+			}
 		}
 		return false;
 	}
 
 	// Returns true if the key is register-mapped and the register is assigned.
-	public bool HasKey(Value key) {
-		if (is_string(key) && _regMap.TryGetValue(key, out int regIndex)) {
-			return !is_null(_names[regIndex]);
+	public Boolean HasKey(Value key) {
+		if (is_string(key)) {
+			Int32 orderIdx = FindOrderIdx(key);
+			Int32 regIdx = _regIndices[orderIdx];
+			if (orderIdx >= 0) return !is_null(_names[orderIdx]);
 		}
 		return false;
 	}
@@ -97,129 +96,145 @@ public class VarMapBacking {
 	// ── Iteration support ─────────────────────────────────────────────────────
 
 	// Number of register-mapped entries that are currently assigned.
-	public int RegEntryCount {
-		get {
-			int n = 0;
-			foreach (var kvp in _regMap) {
-				if (!is_null(_names[kvp.Value])) n++;
-			}
-			return n;
+	public Int32 RegEntryCount() {
+		Int32 n = 0;
+		for (Int32 i = 0; i < _regOrder.Count; i++) {
+			Int32 regIdx = _regIndices[i];
+			if (!is_null(_names[regIdx])) n++;
 		}
+		return n;
 	}
 
-	// 
+	//
 	// Find the next assigned register entry index >= startIdx.
 	// Returns the index into _regOrder, or -1 if none found.
-	// 
-	public int NextAssignedRegEntry(int startIdx) {
-		for (int i = startIdx; i < _regOrder.Count; i++) {
-			Value key = _regOrder[i];
-			if (_regMap.TryGetValue(key, out int regIdx) && !is_null(_names[regIdx])) {
-				return i;
-			}
+	//
+	public Int32 NextAssignedRegEntry(Int32 startIdx) {
+		for (Int32 i = startIdx; i < _regOrder.Count; i++) {
+			Int32 regIdx = _regIndices[i];
+			if (!is_null(_names[regIdx])) return i;
 		}
 		return -1;
 	}
 
 	// Get the variable name (key) for the ith register entry in insertion order.
-	public Value GetRegEntryKey(int i) {
+	public Value GetRegEntryKey(Int32 i) {
 		if (i < 0 || i >= _regOrder.Count) return val_null;
 		return _regOrder[i];
 	}
 
 	// Get the register value for the ith register entry in insertion order.
-	public Value GetRegEntryValue(int i) {
+	public Value GetRegEntryValue(Int32 i) {
 		if (i < 0 || i >= _regOrder.Count) return val_null;
-		Value key = _regOrder[i];
-		if (_regMap.TryGetValue(key, out int regIdx)) return _registers[regIdx];
-		return val_null;
+		Int32 regIdx = _regIndices[i];
+		return _registers[regIdx];
 	}
 
 	// ── GC ────────────────────────────────────────────────────────────────────
 
 	// Mark all assigned register-backed values during the GC mark phase.
-	public void MarkChildren(GCManager gc) {
-		foreach (var kvp in _regMap) {
-			int regIdx = kvp.Value;
+	public void MarkChildren() {
+		for (Int32 i = 0; i < _regOrder.Count; i++) {
+			Int32 regIdx = _regIndices[i];
 			if (regIdx < _names.Count && !is_null(_names[regIdx])) {
-				gc.Mark(kvp.Key);              // mark the variable name (a string value)
-				gc.Mark(_registers[regIdx]);   // mark the variable value
+				GCManager.Mark(_regOrder[i]);
+				GCManager.Mark(_registers[regIdx]);
 			}
 		}
 	}
 
 	// ── VarMap operations ─────────────────────────────────────────────────────
 
-	// 
+	//
 	// Copy all register-backed values into the GCMap's hash table, then detach
 	// this VarMapBacking (setting map._vmb = null).
-	// 
-	public void Gather(ref GCMap map) {
+	//
+	public void Gather(Int32 mapIdx) {
 		// Temporarily detach to prevent recursion inside map.Set().
-		map._vmb = null;
-		foreach (var kvp in _regMap) {
-			int regIdx = kvp.Value;
+		GCManager.Maps.SetVmb(mapIdx, null);
+		GCMap map = GCManager.Maps.Get(mapIdx);
+		for (Int32 i = 0; i < _regOrder.Count; i++) {
+			Int32 regIdx = _regIndices[i];
 			if (regIdx < _names.Count && !is_null(_names[regIdx])) {
-				map.Set(kvp.Key, _registers[regIdx]);
+				map.Set(_regOrder[i], _registers[regIdx]);
 			}
 		}
 		// Leave _vmb = null (gathered; no more register backing).
 	}
 
-	// 
+	//
 	// Gather existing register values into the map, then bind to a new set of
 	// registers and names arrays. Used by REPL mode when @main is re-compiled.
 	// After Rebind, new bindings are added as NAME/ASSIGN opcodes execute.
-	// 
-	public void Rebind(ref GCMap map, List<Value> registers, List<Value> names) {
-		Gather(ref map);
+	//
+	public void Rebind(Int32 mapIdx, List<Value> registers, List<Value> names) {
+		Gather(mapIdx);
 		// Re-attach with new arrays (Gather set _vmb = null; we have to restore it).
 		_registers = registers;
 		_names     = names;
-		_regMap.Clear();
 		_regOrder.Clear();
-		map._vmb = this;
+		_regIndices.Clear();
+		GCManager.Maps.SetVmb(mapIdx, this);
 	}
 
-	// 
+	//
 	// Map a variable name to a specific register index.
 	// If the name already exists as a plain map entry, copy the value into
 	// the register and remove it from the map.
-	// 
-	public void MapToRegister(ref GCMap map, Value varName, List<Value> registers, int regIndex) {
-		if (!_regMap.ContainsKey(varName)) _regOrder.Add(varName);
-		_regMap[varName] = regIndex;
+	//
+	public void MapToRegister(Int32 mapIdx, Value varName, List<Value> registers, Int32 regIndex) {
+		Int32 orderIdx = FindOrderIdx(varName);
+		if (orderIdx < 0) {
+			_regOrder.Add(varName);
+			_regIndices.Add(regIndex);
+		} else {
+			_regIndices[orderIdx] = regIndex;
+		}
 		// If there was an existing plain map entry, move its value to the register.
 		// Bypass _vmb during this lookup so we read from the hash table, not the
 		// (just-mapped) register, which may be empty/null on a fresh stack.
-		var saved = map._vmb;
-		map._vmb = null;
-		if (map.TryGet(varName, out Value existingVal)) {
+		GCMap map = GCManager.Maps.Get(mapIdx);
+		VarMapBacking saved = map._vmb;
+		GCManager.Maps.SetVmb(mapIdx, null);
+		map = GCManager.Maps.Get(mapIdx);  // refresh after SetVmb
+		Value existingVal;
+		if (map.TryGet(varName, out existingVal)) {
 			registers[regIndex] = existingVal;
 			_names[regIndex]    = varName;   // mark register as live so TryGet can find it
 			map.Remove(varName);
 		}
-		map._vmb = saved;
+		GCManager.Maps.SetVmb(mapIdx, saved);
 	}
 
 	// Clear all register assignments (sets names to null for all mapped registers).
 	public void Clear() {
-		foreach (var kvp in _regMap) {
-			if (kvp.Value < _names.Count) _names[kvp.Value] = val_null;
+		for (Int32 i = 0; i < _regOrder.Count; i++) {
+			Int32 regIdx = _regIndices[i];
+			if (regIdx < _names.Count) _names[regIdx] = val_null;
 		}
 	}
 
-	// ── Enumeration (for map_count and for_in iteration) ──────────────────────
+	// ── Factory ──────────────────────────────────────────────────────────────
 
-	// Enumerate all assigned register entries as key-value pairs.
-	public IEnumerable<(Value key, Value val)> AssignedEntries() {
-		foreach (Value key in _regOrder) {
-			if (_regMap.TryGetValue(key, out int regIdx) && !is_null(_names[regIdx])) {
-				yield return (key, _registers[regIdx]);
-			}
+	// Allocate a new VarMap-backed GCMap and return it as a Value.
+	public static Value NewVarMap(List<Value> registers, List<Value> names, Int32 firstIdx, Int32 lastIdx) {
+		VarMapBacking vmb = new VarMapBacking(registers, names, firstIdx, lastIdx);
+		Int32 idx = GCManager.Maps.AllocItem();
+		GCManager.Maps.Init(idx, 4);
+		GCManager.Maps.SetVmb(idx, vmb);
+		return make_gc(GCManager.MapSet, idx);
+	}
+
+	// ── Internal ──────────────────────────────────────────────────────────────
+
+	// Returns the index into _regOrder/_regIndices for the given key, or -1 if not found.
+	[MethodImpl(AggressiveInlining)]
+	private Int32 FindOrderIdx(Value key) {
+		for (Int32 i = 0; i < _regOrder.Count; i++) {
+			if (value_equal(_regOrder[i], key)) return i;
 		}
+		return -1;
 	}
 }
 
 }
-//*** END CS_ONLY ***

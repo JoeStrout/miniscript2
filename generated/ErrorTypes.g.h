@@ -10,7 +10,7 @@
 // allowing host code to categorize errors by type.
 
 #include "value.h"
-#include "GCManager.h"
+#include "GCManager.g.h"
 
 namespace MiniScript {
 
@@ -19,7 +19,7 @@ namespace MiniScript {
 class ErrorType {
 	public: static Value compiler;
 	public: static Value runtime;
-	static void MarkRoots(void* user_data, GCManager& gc);
+	private: static bool _markRootsRegistered;
 
 	// Initialize the compiler and runtime prototype error values.
 	// Safe to call multiple times (no-op if already initialized).
@@ -34,6 +34,9 @@ class ErrorType {
 
 	// Create a runtime error value with the given message (no stack trace).
 	public: static Value RuntimeError(String msg);
+
+	// GC mark callback to protect our static error prototypes from collection.
+	public: static void MarkRoots(object user_data);
 
 }; // end of struct ErrorType
 

@@ -40,13 +40,17 @@ private:
 	// Helper method to either intern (or find already interned) the given string,
 	// or make a fresh new storage for it (depending on its size).
 	static StringStorageSPtr FindOrCreate(const char *cstr, int byteLen=-1);
-	
-	// Helper method to create a String from a StringStorage freshly made with malloc
+
+public:
+	// Helper method to create a String from a StringStorage freshly made with malloc.
+	// (Public so value_string.cpp can adopt ss_* outputs into Strings for GC storage.)
 	static String fromMallocStorage(StringStorage* rawPtr) {
 		String s;
 		s.ref = std::shared_ptr<StringStorage>(rawPtr, [](StringStorage* p) { ::free(p); });
 		return s;
 	}
+
+private:
 
 	// Safely wrap StringStorage* returned from ss_* functions.
 	// Many ss_* functions may return their input pointer (cast away const) for efficiency

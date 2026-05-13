@@ -6,7 +6,7 @@ using static MiniScript.ValueHelpers;
 // H: #include "value.h"
 // H: #include "ErrorTypes.g.h"
 // CPP: #include "Intrinsic.g.h"
-// H: #include "GCManager.h"
+// H: #include "GCManager.g.h"
 // CPP: #include "value_list.h"
 // CPP: #include "value_string.h"
 // CPP: #include "value_map.h"
@@ -184,10 +184,19 @@ public static class CoreIntrinsics {
 	public static Value replInList = val_null;
 	public static Value replOutList = val_null;
 
-	// H: static void MarkRoots(void* user_data, GCManager& gc);
+	public static void MarkRoots(object user_data) {
+		GCManager.Mark(_listType);
+		GCManager.Mark(_stringType);
+		GCManager.Mark(_mapType);
+		GCManager.Mark(_numberType);
+		GCManager.Mark(_functionType);
+		GCManager.Mark(_errorType);
+		GCManager.Mark(replInList);
+		GCManager.Mark(replOutList);
+	}
 
 	public static void Init() {
-		// CPP: GCManager::Instance().RegisterMarkCallback(CoreIntrinsics::MarkRoots, nullptr);
+		GCManager.RegisterMarkCallback(MarkRoots, null); // CPP: GCManager::RegisterMarkCallback(CoreIntrinsics::MarkRoots, nullptr);
 
 		Intrinsic f;
 
@@ -1206,20 +1215,6 @@ public static class CoreIntrinsics {
 		Intrinsic.ClearShortNames();
 	}
 
-	/*** BEGIN CPP_ONLY ***
-	// GC mark callback to protect our static type maps from collection.
-	void CoreIntrinsics::MarkRoots(void* user_data, GCManager& gc) {
-		(void)user_data;
-		gc.Mark(_listType);
-		gc.Mark(_stringType);
-		gc.Mark(_mapType);
-		gc.Mark(_numberType);
-		gc.Mark(_functionType);
-		gc.Mark(_errorType);
-		gc.Mark(replInList);
-		gc.Mark(replOutList);
-	}
-	*** END CPP_ONLY ***/
 
 }
 

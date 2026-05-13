@@ -42,15 +42,28 @@ public readonly struct Value {
 
 	[Obsolete("Use to_String(v, vm) instead")]
 	public override string ToString() => ValueHelpers.to_String(this);
+
+	// Equals/GetHashCode embody the same semantics as MiniScript ==, so that
+	// Dictionary<Value, Value> hashes/compares keys correctly. In particular,
+	// strings compare by content (not pointer/index).
+	public override bool Equals(object obj) {
+		if (obj is Value v) return ValueHelpers.value_equal(this, v);
+		return false;
+	}
+
+	public override int GetHashCode() {
+		if (ValueHelpers.is_string(this)) {
+			string s = GCManager.GetStringContent(this);
+			return s.GetHashCode(System.StringComparison.Ordinal);
+		}
+		return (int)(_u ^ (_u >> 32));
+	}
 }
 
 // =============================================================================
 // Global helper functions matching the C++ value.h interface
 // =============================================================================
 public static class ValueHelpers {
-
-	// The single GC manager for this process.
-	public static readonly GCManager gc = new GCManager();
 
 	// Common constant values
 	public static Value val_null         = make_null();
@@ -102,12 +115,18 @@ public static class ValueHelpers {
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value make_string(string str) {
+		// ToDo: we really want to check the length of the string in UTF-8,
+		// and store it as such if the UTF-8 bytes are 5 or fewer.
+		// We should have a make_tiny_utf8 function rather than
+		// make_tiny_ascii.
 		if (str.Length <= 5 && IsAllAscii(str)) return make_tiny_ascii(str);
-		return gc.NewString(str);
+		return GCManager.NewString(str);
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private static Value make_tiny_ascii(string s) {
+		// ToDo: change this to make_tiny_utf8.  "本" is a perfectly
+		// comulent tiny string.
 		int len = s.Length;
 		ulong u = Value.TINY_STRING_TAG | (ulong)((uint)len & 0xFFU);
 		for (int i = 0; i < len; i++) u |= (ulong)((byte)s[i]) << (8 * (i + 1));
@@ -121,30 +140,30 @@ public static class ValueHelpers {
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value make_list(int initial_capacity) => gc.NewList(initial_capacity);
+	public static Value make_list(int initial_capacity) => GCManager.NewList(initial_capacity);
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value make_empty_list() => gc.NewList(0);
+	public static Value make_empty_list() => GCManager.NewList(0);
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value make_empty_map() => gc.NewMap(8);
+	public static Value make_empty_map() => GCManager.NewMap(8);
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value make_map(int initial_capacity) => gc.NewMap(initial_capacity);
+	public static Value make_map(int initial_capacity) => GCManager.NewMap(initial_capacity);
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value make_funcref(Int32 funcIndex, Value outerVars) => gc.NewFuncRef(funcIndex, outerVars);
+	public static Value make_funcref(Int32 funcIndex, Value outerVars) => GCManager.NewFuncRef(funcIndex, outerVars);
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Int32 funcref_index(Value v) {
 		if (!is_funcref(v)) return -1;
-		return gc.FuncRefs.Get(value_item_index(v)).FuncIndex;
+		return GCManager.Functions.Get(value_item_index(v)).FuncIndex;
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value funcref_outer_vars(Value v) {
 		if (!is_funcref(v)) return val_null;
-		return gc.FuncRefs.Get(value_item_index(v)).OuterVars;
+		return GCManager.Functions.Get(value_item_index(v)).OuterVars;
 	}
 
 	// ── Error operations ─────────────────────────────────────────────────────
@@ -154,41 +173,41 @@ public static class ValueHelpers {
 			stack = make_list(0);
 			freeze_value(stack);
 		}
-		return gc.NewError(message, inner, stack, isa);
+		return GCManager.NewError(message, inner, stack, isa);
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value error_message(Value v) {
 		if (!is_error(v)) return val_null;
-		return gc.Errors.Get(value_item_index(v)).Message;
+		return GCManager.Errors.Get(value_item_index(v)).Message;
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value error_inner(Value v) {
 		if (!is_error(v)) return val_null;
-		return gc.Errors.Get(value_item_index(v)).Inner;
+		return GCManager.Errors.Get(value_item_index(v)).Inner;
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value error_stack(Value v) {
 		if (!is_error(v)) return val_null;
-		return gc.Errors.Get(value_item_index(v)).Stack;
+		return GCManager.Errors.Get(value_item_index(v)).Stack;
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value error_isa(Value v) {
 		if (!is_error(v)) return val_null;
-		return gc.Errors.Get(value_item_index(v)).Isa;
+		return GCManager.Errors.Get(value_item_index(v)).Isa;
 	}
 
 	public static bool error_isa_contains(Value err, Value target) {
 		if (!is_error(err)) return false;
-		Value current = gc.Errors.Get(value_item_index(err)).Isa;
+		Value current = GCManager.Errors.Get(value_item_index(err)).Isa;
 		for (int depth = 0; depth < 256; depth++) {
 			if (is_null(current)) return false;
 			if (value_identical(current, target)) return true;
 			if (!is_error(current)) return false;
-			current = gc.Errors.Get(value_item_index(current)).Isa;
+			current = GCManager.Errors.Get(value_item_index(current)).Isa;
 		}
 		return false;
 	}
@@ -206,21 +225,21 @@ public static class ValueHelpers {
 	public static bool is_gc_object(Value v) => (v._u & Value.NANISH_MASK) == Value.GC_TAG;
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool is_heap_string(Value v) =>
-		(v._u & Value.GC_TYPE_MASK) == (Value.GC_TAG | ((ulong)GCManager.STRING_SET  << 32));
+		(v._u & Value.GC_TYPE_MASK) == (Value.GC_TAG | ((ulong)GCManager.StringSet  << 32));
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool is_string(Value v) => is_tiny_string(v) || is_heap_string(v);
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool is_list(Value v) =>
-		(v._u & Value.GC_TYPE_MASK) == (Value.GC_TAG | ((ulong)GCManager.LIST_SET    << 32));
+		(v._u & Value.GC_TYPE_MASK) == (Value.GC_TAG | ((ulong)GCManager.ListSet    << 32));
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool is_map(Value v) =>
-		(v._u & Value.GC_TYPE_MASK) == (Value.GC_TAG | ((ulong)GCManager.MAP_SET     << 32));
+		(v._u & Value.GC_TYPE_MASK) == (Value.GC_TAG | ((ulong)GCManager.MapSet     << 32));
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool is_error(Value v) =>
-		(v._u & Value.GC_TYPE_MASK) == (Value.GC_TAG | ((ulong)GCManager.ERROR_SET   << 32));
+		(v._u & Value.GC_TYPE_MASK) == (Value.GC_TAG | ((ulong)GCManager.ErrorSet   << 32));
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool is_funcref(Value v) =>
-		(v._u & Value.GC_TYPE_MASK) == (Value.GC_TAG | ((ulong)GCManager.FUNCREF_SET << 32));
+		(v._u & Value.GC_TYPE_MASK) == (Value.GC_TAG | ((ulong)GCManager.FunctionSet << 32));
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool is_number(Value v) => is_double(v);
 
@@ -259,7 +278,7 @@ public static class ValueHelpers {
 			for (int i = 0; i < len; i++) chars[i] = (char)((val._u >> (8 * (i + 1))) & 0xFF);
 			return new string(chars);
 		}
-		if (is_heap_string(val)) return gc.Strings.Get(value_item_index(val)).Data ?? "";
+		if (is_heap_string(val)) return GCManager.Strings.Get(value_item_index(val)).Data ?? "";
 		return "";
 	}
 
@@ -313,7 +332,7 @@ public static class ValueHelpers {
 				string shortName = vm.FindShortName(v);
 				if (shortName != null) return shortName;
 			}
-			ref GCList list = ref gc.Lists.Get(value_item_index(v));
+			GCList list = GCManager.Lists.Get(value_item_index(v));
 			var strs = new string[list.Items.Count];
 			for (int i = 0; i < list.Items.Count; i++) {
 				Value val_i = list.Get(i);
@@ -327,7 +346,7 @@ public static class ValueHelpers {
 				string shortName = vm.FindShortName(v);
 				if (shortName != null) return shortName;
 			}
-			ref GCMap map = ref gc.Maps.Get(value_item_index(v));
+			GCMap map = GCManager.Maps.Get(value_item_index(v));
 			var strs = new List<string>(map.Count());
 			for (int iter = map.NextEntry(-1); iter != -1; iter = map.NextEntry(iter)) {
 				Value key = map.KeyAt(iter);
@@ -340,14 +359,14 @@ public static class ValueHelpers {
 			return "{" + String.Join(", ", strs) + "}";
 		}
 		if (is_funcref(v)) {
-			ref GCFuncRef fr = ref gc.FuncRefs.Get(value_item_index(v));
+			GCFunction fr = GCManager.Functions.Get(value_item_index(v));
 			if (fr.FuncIndex < 0) return "<funcref?>";
 			return is_null(fr.OuterVars)
 				? StringUtils.Format("FuncRef(#{0})", fr.FuncIndex)
 				: StringUtils.Format("FuncRef(#{0}, closure)", fr.FuncIndex);
 		}
 		if (is_error(v)) {
-			ref GCError err = ref gc.Errors.Get(value_item_index(v));
+			GCError err = GCManager.Errors.Get(value_item_index(v));
 			string msg = is_string(err.Message) ? as_cstring(err.Message) : to_String(err.Message, vm);
 			return "error: " + msg;
 		}
@@ -524,8 +543,8 @@ public static class ValueHelpers {
 			return true;
 		}
 		if (is_map(a) && is_map(b)) {
-			ref GCMap mapA = ref gc.Maps.Get(value_item_index(a));
-			ref GCMap mapB = ref gc.Maps.Get(value_item_index(b));
+			GCMap mapA = GCManager.Maps.Get(value_item_index(a));
+			GCMap mapB = GCManager.Maps.Get(value_item_index(b));
 			if (mapA.Count() != mapB.Count()) return false;
 			for (int iter = mapA.NextEntry(-1); iter != -1; iter = mapA.NextEntry(iter)) {
 				Value key = mapA.KeyAt(iter);
@@ -542,19 +561,19 @@ public static class ValueHelpers {
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static int list_count(Value list_val) {
 		if (!is_list(list_val)) return 0;
-		return gc.Lists.Get(value_item_index(list_val)).Items.Count;
+		return GCManager.Lists.Get(value_item_index(list_val)).Items.Count;
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value list_get(Value list_val, int index) {
 		if (!is_list(list_val)) return val_null;
-		return gc.Lists.Get(value_item_index(list_val)).Get(index);
+		return GCManager.Lists.Get(value_item_index(list_val)).Get(index);
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static void list_set(Value list_val, int index, Value item) {
 		if (!is_list(list_val)) return;
-		ref GCList list = ref gc.Lists.Get(value_item_index(list_val));
+		GCList list = GCManager.Lists.Get(value_item_index(list_val));
 		if (list.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return; }
 		list.Set(index, item);
 	}
@@ -562,7 +581,7 @@ public static class ValueHelpers {
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static void list_push(Value list_val, Value item) {
 		if (!is_list(list_val)) return;
-		ref GCList list = ref gc.Lists.Get(value_item_index(list_val));
+		GCList list = GCManager.Lists.Get(value_item_index(list_val));
 		if (list.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return; }
 		list.Push(item);
 	}
@@ -570,49 +589,49 @@ public static class ValueHelpers {
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool list_remove(Value list_val, int index) {
 		if (!is_list(list_val)) return false;
-		ref GCList list = ref gc.Lists.Get(value_item_index(list_val));
+		GCList list = GCManager.Lists.Get(value_item_index(list_val));
 		if (list.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return false; }
 		return list.Remove(index);
 	}
 
 	public static void list_insert(Value list_val, int index, Value item) {
 		if (!is_list(list_val)) return;
-		ref GCList list = ref gc.Lists.Get(value_item_index(list_val));
+		GCList list = GCManager.Lists.Get(value_item_index(list_val));
 		if (list.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return; }
 		list.Insert(index, item);
 	}
 
 	public static Value list_pop(Value list_val) {
 		if (!is_list(list_val)) return val_null;
-		ref GCList list = ref gc.Lists.Get(value_item_index(list_val));
+		GCList list = GCManager.Lists.Get(value_item_index(list_val));
 		if (list.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return val_null; }
 		return list.Pop();
 	}
 
 	public static Value list_pull(Value list_val) {
 		if (!is_list(list_val)) return val_null;
-		ref GCList list = ref gc.Lists.Get(value_item_index(list_val));
+		GCList list = GCManager.Lists.Get(value_item_index(list_val));
 		if (list.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return val_null; }
 		return list.Pull();
 	}
 
 	public static int list_indexOf(Value list_val, Value item, int afterIdx) {
 		if (!is_list(list_val)) return -1;
-		return gc.Lists.Get(value_item_index(list_val)).IndexOf(item, afterIdx);
+		return GCManager.Lists.Get(value_item_index(list_val)).IndexOf(item, afterIdx);
 	}
 
 	public static void list_sort(Value list_val, bool ascending) {
 		if (!is_list(list_val)) return;
-		ref GCList list = ref gc.Lists.Get(value_item_index(list_val));
+		GCList list = GCManager.Lists.Get(value_item_index(list_val));
 		if (list.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return; }
-		SortList(ref list, ascending);
+		SortList(list, ascending);
 	}
 
 	public static void list_sort_by_key(Value list_val, Value byKey, bool ascending) {
 		if (!is_list(list_val)) return;
-		ref GCList list = ref gc.Lists.Get(value_item_index(list_val));
+		GCList list = GCManager.Lists.Get(value_item_index(list_val));
 		if (list.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return; }
-		SortListByKey(ref list, byKey, ascending);
+		SortListByKey(list, byKey, ascending);
 	}
 
 	public static Value list_slice(Value list_val, int start, int end) {
@@ -636,7 +655,7 @@ public static class ValueHelpers {
 		return result;
 	}
 
-	private static void SortList(ref GCList list, bool ascending) {
+	private static void SortList(GCList list, bool ascending) {
 		if (list.Items == null || list.Items.Count < 2) return;
 		list.Items.Sort(Comparer<Value>.Create((a, b) => {
 			int cmp;
@@ -653,7 +672,7 @@ public static class ValueHelpers {
 		}));
 	}
 
-	private static void SortListByKey(ref GCList list, Value byKey, bool ascending) {
+	private static void SortListByKey(GCList list, Value byKey, bool ascending) {
 		int count = list.Items.Count;
 		if (count < 2) return;
 		Value[] keys = new Value[count];
@@ -691,19 +710,19 @@ public static class ValueHelpers {
 	// ── Map operations ────────────────────────────────────────────────────────
 	public static int map_count(Value map_val) {
 		if (!is_map(map_val)) return 0;
-		return gc.Maps.Get(value_item_index(map_val)).Count();
+		return GCManager.Maps.Get(value_item_index(map_val)).Count();
 	}
 
 	public static Value map_get(Value map_val, Value key) {
 		if (!is_map(map_val)) return val_null;
-		gc.Maps.Get(value_item_index(map_val)).TryGet(key, out Value result);
+		GCManager.Maps.Get(value_item_index(map_val)).TryGet(key, out Value result);
 		return result;
 	}
 
 	public static bool map_try_get(Value map_val, Value key, out Value value) {
 		value = val_null;
 		if (!is_map(map_val)) return false;
-		return gc.Maps.Get(value_item_index(map_val)).TryGet(key, out value);
+		return GCManager.Maps.Get(value_item_index(map_val)).TryGet(key, out value);
 	}
 
 	public static bool map_lookup(Value map_val, Value key, out Value value) {
@@ -712,7 +731,7 @@ public static class ValueHelpers {
 		Value current = map_val;
 		for (Int32 depth = 0; depth < 256; depth++) {
 			if (!is_map(current)) return false;
-			ref GCMap m = ref gc.Maps.Get(value_item_index(current));
+			GCMap m = GCManager.Maps.Get(value_item_index(current));
 			if (m.TryGet(key, out value)) return true;
 			if (!m.TryGet(isaKey, out Value isa)) return false;
 			current = isa;
@@ -727,7 +746,7 @@ public static class ValueHelpers {
 		Value current = map_val;
 		for (Int32 depth = 0; depth < 256; depth++) {
 			if (!is_map(current)) return false;
-			ref GCMap m = ref gc.Maps.Get(value_item_index(current));
+			GCMap m = GCManager.Maps.Get(value_item_index(current));
 			if (m.TryGet(key, out value)) {
 				m.TryGet(isaKey, out superVal);
 				return true;
@@ -740,7 +759,7 @@ public static class ValueHelpers {
 
 	public static bool map_set(Value map_val, Value key, Value value) {
 		if (!is_map(map_val)) return false;
-		ref GCMap m = ref gc.Maps.Get(value_item_index(map_val));
+		GCMap m = GCManager.Maps.Get(value_item_index(map_val));
 		if (m.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen map"); return false; }
 		m.Set(key, value);
 		return true;
@@ -748,26 +767,26 @@ public static class ValueHelpers {
 
 	public static bool map_remove(Value map_val, Value key) {
 		if (!is_map(map_val)) return false;
-		ref GCMap m = ref gc.Maps.Get(value_item_index(map_val));
+		GCMap m = GCManager.Maps.Get(value_item_index(map_val));
 		if (m.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen map"); return false; }
 		return m.Remove(key);
 	}
 
 	public static bool map_has_key(Value map_val, Value key) {
 		if (!is_map(map_val)) return false;
-		return gc.Maps.Get(value_item_index(map_val)).HasKey(key);
+		return GCManager.Maps.Get(value_item_index(map_val)).HasKey(key);
 	}
 
 	public static void map_clear(Value map_val) {
 		if (!is_map(map_val)) return;
-		ref GCMap m = ref gc.Maps.Get(value_item_index(map_val));
+		GCMap m = GCManager.Maps.Get(value_item_index(map_val));
 		if (m.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen map"); return; }
 		m.Clear();
 	}
 
 	public static Value map_nth_entry(Value map_val, int n) {
 		if (!is_map(map_val)) return val_null;
-		ref GCMap m = ref gc.Maps.Get(value_item_index(map_val));
+		GCMap m = GCManager.Maps.Get(value_item_index(map_val));
 		int count = 0;
 		for (int iter = m.NextEntry(-1); iter != -1; iter = m.NextEntry(iter)) {
 			if (count == n) {
@@ -789,13 +808,13 @@ public static class ValueHelpers {
 
 	public static int map_iter_next(Value map_val, int iter) {
 		if (!is_map(map_val) || iter == MAP_ITER_DONE) return MAP_ITER_DONE;
-		int next = gc.Maps.Get(value_item_index(map_val)).NextEntry(iter);
+		int next = GCManager.Maps.Get(value_item_index(map_val)).NextEntry(iter);
 		return next == -1 ? MAP_ITER_DONE : next;
 	}
 
 	public static Value map_iter_entry(Value map_val, int iter) {
 		if (!is_map(map_val) || iter == MAP_ITER_DONE) return val_null;
-		ref GCMap m = ref gc.Maps.Get(value_item_index(map_val));
+		GCMap m = GCManager.Maps.Get(value_item_index(map_val));
 		Value key = m.KeyAt(iter);
 		Value val = m.ValueAt(iter);
 		Value result = make_map(4);
@@ -828,10 +847,10 @@ public static class ValueHelpers {
 
 	public static bool map_iterator_next(ref MapIterator iter) {
 		if (iter.MapIndex < 0 || iter.Iter == MAP_ITER_DONE) return false;
-		int next = gc.Maps.Get(iter.MapIndex).NextEntry(iter.Iter);
+		int next = GCManager.Maps.Get(iter.MapIndex).NextEntry(iter.Iter);
 		if (next == -1) { iter.Iter = MAP_ITER_DONE; return false; }
 		iter.Iter = next;
-		ref GCMap m = ref gc.Maps.Get(iter.MapIndex);
+		GCMap m = GCManager.Maps.Get(iter.MapIndex);
 		iter.Key = m.KeyAt(next);
 		iter.Val = m.ValueAt(next);
 		return true;
@@ -839,45 +858,49 @@ public static class ValueHelpers {
 
 	// ── VarMap operations ─────────────────────────────────────────────────────
 	public static Value make_varmap(List<Value> registers, List<Value> names, int baseIdx, int count) {
-		VarMapBacking vmb = new VarMapBacking(registers, names, baseIdx, baseIdx + count - 1);
-		return gc.NewVarMap(vmb);
+		return VarMapBacking.NewVarMap(registers, names, baseIdx, baseIdx + count - 1);
 	}
 
 	public static void varmap_gather(Value map_val) {
 		if (!is_map(map_val)) return;
-		ref GCMap m = ref gc.Maps.Get(value_item_index(map_val));
-		m._vmb?.Gather(ref m);
+		Int32 idx = value_item_index(map_val);
+		VarMapBacking vmb = GCManager.Maps.Get(idx)._vmb;
+		if (vmb != null) vmb.Gather(idx);
 	}
 
 	public static void varmap_rebind(Value map_val, List<Value> registers, List<Value> names) {
 		if (!is_map(map_val)) return;
-		ref GCMap m = ref gc.Maps.Get(value_item_index(map_val));
-		m._vmb?.Rebind(ref m, registers, names);
+		Int32 idx = value_item_index(map_val);
+		VarMapBacking vmb = GCManager.Maps.Get(idx)._vmb;
+		if (vmb != null) vmb.Rebind(idx, registers, names);
 	}
 
 	public static void varmap_map_to_register(Value map_val, Value varName, List<Value> registers, int regIndex) {
 		if (!is_map(map_val)) return;
-		ref GCMap m = ref gc.Maps.Get(value_item_index(map_val));
-		m._vmb?.MapToRegister(ref m, varName, registers, regIndex);
+		Int32 idx = value_item_index(map_val);
+		GCMap m = GCManager.Maps.Get(idx);
+		if (m._vmb != null) m._vmb.MapToRegister(idx, varName, registers, regIndex);
 	}
 
 	// ── Freeze operations ─────────────────────────────────────────────────────
 	public static bool is_frozen(Value v) {
-		if (is_list(v)) return gc.Lists.Get(value_item_index(v)).Frozen;
-		if (is_map(v))  return gc.Maps.Get(value_item_index(v)).Frozen;
+		if (is_list(v)) return GCManager.Lists.Get(value_item_index(v)).Frozen;
+		if (is_map(v))  return GCManager.Maps.Get(value_item_index(v)).Frozen;
 		return false;
 	}
 
 	public static void freeze_value(Value v) {
 		if (is_list(v)) {
-			ref GCList list = ref gc.Lists.Get(value_item_index(v));
+			Int32 idx = value_item_index(v);
+			GCList list = GCManager.Lists.Get(idx);
 			if (list.Frozen) return;
-			list.Frozen = true;
+			GCManager.Lists.SetFrozen(idx, true);
 			for (int i = 0; i < list.Items.Count; i++) freeze_value(list.Get(i));
 		} else if (is_map(v)) {
-			ref GCMap map = ref gc.Maps.Get(value_item_index(v));
+			Int32 idx = value_item_index(v);
+			GCMap map = GCManager.Maps.Get(idx);
 			if (map.Frozen) return;
-			map.Frozen = true;
+			GCManager.Maps.SetFrozen(idx, true);
 			for (int iter = map.NextEntry(-1); iter != -1; iter = map.NextEntry(iter)) {
 				freeze_value(map.KeyAt(iter));
 				freeze_value(map.ValueAt(iter));
@@ -887,20 +910,22 @@ public static class ValueHelpers {
 
 	public static Value frozen_copy(Value v) {
 		if (is_list(v)) {
-			ref GCList src = ref gc.Lists.Get(value_item_index(v));
+			GCList src = GCManager.Lists.Get(value_item_index(v));
 			if (src.Frozen) return v;
 			Value newList = make_list(src.Items.Count);
-			ref GCList dst = ref gc.Lists.Get(value_item_index(newList));
-			dst.Frozen = true;
+			Int32 dstIdx = value_item_index(newList);
+			GCList dst = GCManager.Lists.Get(dstIdx);
+			GCManager.Lists.SetFrozen(dstIdx, true);
 			for (int i = 0; i < src.Items.Count; i++) dst.Push(frozen_copy(src.Get(i)));
 			return newList;
 		}
 		if (is_map(v)) {
-			ref GCMap src = ref gc.Maps.Get(value_item_index(v));
+			GCMap src = GCManager.Maps.Get(value_item_index(v));
 			if (src.Frozen) return v;
 			Value newMap = make_map(src.Count());
-			ref GCMap dst = ref gc.Maps.Get(value_item_index(newMap));
-			dst.Frozen = true;
+			Int32 dstIdx = value_item_index(newMap);
+			GCMap dst = GCManager.Maps.Get(dstIdx);
+			GCManager.Maps.SetFrozen(dstIdx, true);
 			for (int iter = src.NextEntry(-1); iter != -1; iter = src.NextEntry(iter)) {
 				Value key = src.KeyAt(iter);
 				Value val = src.ValueAt(iter);
@@ -915,12 +940,12 @@ public static class ValueHelpers {
 	public static Value map_concat(Value a, Value b) {
 		Value result = make_map(0);
 		if (is_map(a)) {
-			ref GCMap mapA = ref gc.Maps.Get(value_item_index(a));
+			GCMap mapA = GCManager.Maps.Get(value_item_index(a));
 			for (int iter = mapA.NextEntry(-1); iter != -1; iter = mapA.NextEntry(iter))
 				map_set(result, mapA.KeyAt(iter), mapA.ValueAt(iter));
 		}
 		if (is_map(b)) {
-			ref GCMap mapB = ref gc.Maps.Get(value_item_index(b));
+			GCMap mapB = GCManager.Maps.Get(value_item_index(b));
 			for (int iter = mapB.NextEntry(-1); iter != -1; iter = mapB.NextEntry(iter))
 				map_set(result, mapB.KeyAt(iter), mapB.ValueAt(iter));
 		}

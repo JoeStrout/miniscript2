@@ -28,6 +28,10 @@ Summary of how various C# concepts transpile to C++ (or not):
 - record: disallowed
 - custom generics: disallowed
 
+## Scope Limiters
+
+`public`, `protected`, and `private` are fine, but do not use other scopes or qualifiers such as `internal` or `readonly`.
+
 ## Very limited use of properties
 
 A C# property has code for a getter and/or setter.  The closest C++ equivalent would be an inline method or pair of methods.  This makes transpilation awkward.  So, the C# could should use fields rather than properties wherever possible, and especially avoid properties with setters.
@@ -100,6 +104,21 @@ Or do this:
             parts[i] = s[i].ToString();
         }
 ```
+
+## No single-line methods
+
+Even when a method is very short, don't put it all on one line; format it with an indented body like any other method.  Example: don't do this:
+```
+	public ref GCList Get(Int32 idx) { return ref _items[idx]; }
+```
+
+but instead format it like this:
+```
+	public ref GCList Get(Int32 idx) {
+		return ref _items[idx];
+	}
+```
+
 
 ## Inline Methods
 

@@ -1,14 +1,18 @@
 // value_string.cpp — string operations on NaN-boxed Values, layered over
 // the shared StringStorage / ss_* primitives so behaviour matches CS_String.
 //
-// Heap Value strings are GCManager.Strings slots, each owning a
-// StringStorage*. Tiny strings (≤5 ASCII bytes) live encoded in the Value
-// bits and are materialised into a temporary StringStorage on demand for
-// ops that need one.
+// Heap Value strings are GCManager.Strings slots, each owning a String
+// (which wraps a shared_ptr<StringStorage>). We reach the underlying
+// StringStorage via String::getStorageRaw() so existing ss_* call sites
+// continue to work; the shared_ptr layer is a temporary cost while we
+// finish the GC refactor and will be revisited for performance later.
+// Tiny strings (≤5 ASCII bytes) live encoded in the Value bits and are
+// materialised into a temporary StringStorage on demand for ops that need
+// one.
 
 #include "value_string.h"
 #include "value_list.h"
-#include "GCManager.h"
+#include "GCManager.g.h"
 #include "StringStorage.h"
 #include "unicodeUtil.h"
 #include "hashing.h"
@@ -19,48 +23,63 @@
 
 using MiniScript::GCManager;
 using MiniScript::GCString;
-using MiniScript::Value;
 
 namespace {
+
+// Get the raw StringStorage* for a heap-string Value (borrowed; do not free).
+const StringStorage* heap_string_storage(Value v) {
+    GCString s = GCManager::Strings.Get(value_item_index(v));
+    return s.Data.getStorageRaw();
+}
+
+// Adopt a freshly malloc'd StringStorage* (e.g. from ss_*) into the GC system.
+Value adopt_ss(StringStorage* ss) {
+    if (!ss) return val_empty_string;
+    return GCManager::NewString(String::fromMallocStorage(ss));
+}
+
+// Build a Value from raw bytes (heap-string; caller has already ruled out
+// the tiny-string case or wants a heap allocation).
+Value make_heap_string_bytes(const char* str, int len) {
+    StringStorage* ss = ss_createWithLength(len, std::malloc);
+    if (!ss) return val_empty_string;
+    if (len > 0) std::memcpy(ss->data, str, (size_t)len);
+    ss->data[len] = '\0';
+    return adopt_ss(ss);
+}
 
 // Materialise a Value as a StringStorage*, possibly allocating a fresh
 // temporary for tiny strings. The owned flag tracks whether the caller
 // must free the storage; heap strings borrow without ownership.
 class TempStorage {
-    StringStorage* _ss = nullptr;
+    const StringStorage* _ss = nullptr;
     bool _owned = false;
 public:
     explicit TempStorage(Value v) {
         if (is_tiny_string(v)) {
             int len = (int)(v & 0xFF);
             if (len > 0) {
-                _ss = ss_createWithLength(len, std::malloc);
-                if (_ss) {
+                StringStorage* fresh = ss_createWithLength(len, std::malloc);
+                if (fresh) {
                     for (int i = 0; i < len; i++)
-                        _ss->data[i] = (char)((v >> (8 * (i + 1))) & 0xFF);
+                        fresh->data[i] = (char)((v >> (8 * (i + 1))) & 0xFF);
                 }
+                _ss = fresh;
                 _owned = true;
             }
             // len == 0 → leave _ss == nullptr (StringStorage's empty-string convention)
         } else if (is_heap_string(v)) {
-            _ss = GCManager::Instance().Strings.Get(value_item_index(v)).Storage;
+            _ss = heap_string_storage(v);
             _owned = false;
         }
     }
-    ~TempStorage() { if (_owned && _ss) std::free(_ss); }
+    ~TempStorage() { if (_owned && _ss) std::free(const_cast<StringStorage*>(_ss)); }
     TempStorage(const TempStorage&) = delete;
     TempStorage& operator=(const TempStorage&) = delete;
 
-    StringStorage* get() const { return _ss; }
-    operator StringStorage*() const { return _ss; }
+    const StringStorage* get() const { return _ss; }
     operator const StringStorage*() const { return _ss; }
 };
-
-// Wrap an ss_* result (possibly NULL for empty) into a Value, transferring
-// ownership of the StringStorage to the GC manager (or freeing if interned).
-Value wrap_storage(StringStorage* storage) {
-    return GCManager::Instance().AdoptString(storage);
-}
 
 } // namespace
 
@@ -79,12 +98,14 @@ Value make_tiny_string(const char* str, int len) {
 Value make_string(const char* str) {
     if (str == nullptr) return val_null;
     int lenB = (int)std::strlen(str);
-    return GCManager::Instance().NewString(str, lenB);
+    if (lenB <= TINY_STRING_MAX_LEN) return make_tiny_string(str, lenB);
+    return make_heap_string_bytes(str, lenB);
 }
 
 Value make_string_n(const char* str, int len) {
     if (str == nullptr || len < 0) return val_null;
-    return GCManager::Instance().NewString(str, len);
+    if (len <= TINY_STRING_MAX_LEN) return make_tiny_string(str, len);
+    return make_heap_string_bytes(str, len);
 }
 
 // ── Access ──────────────────────────────────────────────────────────────
@@ -99,8 +120,7 @@ const char* as_cstring(Value v) {
         return tiny_scratch;
     }
     if (is_heap_string(v)) {
-        const GCString& s = GCManager::Instance().Strings.Get(value_item_index(v));
-        return ss_getCString(s.Storage);
+        return ss_getCString(heap_string_storage(v));
     }
     return "";
 }
@@ -108,7 +128,7 @@ const char* as_cstring(Value v) {
 int string_lengthB(Value v) {
     if (is_tiny_string(v)) return (int)(v & 0xFF);
     if (is_heap_string(v))
-        return ss_lengthB(GCManager::Instance().Strings.Get(value_item_index(v)).Storage);
+        return ss_lengthB(heap_string_storage(v));
     return 0;
 }
 
@@ -122,7 +142,7 @@ int string_length(Value v) {
         return UTF8CharacterCount((const unsigned char*)buf, lenB);
     }
     if (is_heap_string(v))
-        return ss_lengthC(GCManager::Instance().Strings.Get(value_item_index(v)).Storage);
+        return ss_lengthC(heap_string_storage(v));
     return 0;
 }
 
@@ -134,9 +154,9 @@ const char* get_string_data_zerocopy(const Value* v_ptr, int* out_len) {
         return data + 1;
     }
     if (is_heap_string(v)) {
-        const GCString& s = GCManager::Instance().Strings.Get(value_item_index(v));
-        *out_len = ss_lengthB(s.Storage);
-        return ss_getCString(s.Storage);
+        const StringStorage* ss = heap_string_storage(v);
+        *out_len = ss_lengthB(ss);
+        return ss_getCString(ss);
     }
     *out_len = 0;
     return nullptr;
@@ -153,7 +173,7 @@ const char* get_string_data_nullterm(const Value* v_ptr, char* tiny_buffer) {
         return tiny_buffer;
     }
     if (is_heap_string(v))
-        return ss_getCString(GCManager::Instance().Strings.Get(value_item_index(v)).Storage);
+        return ss_getCString(heap_string_storage(v));
     return nullptr;
 }
 
@@ -181,7 +201,7 @@ Value string_concat(Value a, Value b) {
     if (string_lengthB(b) == 0) return a;
     TempStorage ta(a), tb(b);
     StringStorage* result = ss_concat(ta, tb, std::malloc);
-    return wrap_storage(result);
+    return adopt_ss(result);
 }
 
 int string_indexOf(Value haystack, Value needle, int start_pos) {
@@ -194,7 +214,7 @@ Value string_substring(Value str, int startIndex, int len) {
     TempStorage ts(str);
     if (startIndex < 0) startIndex += ss_lengthC(ts);
     StringStorage* result = ss_substringLen(ts, startIndex, len, std::malloc);
-    return wrap_storage(result);
+    return adopt_ss(result);
 }
 
 Value string_slice(Value str, int start, int end) {
@@ -206,7 +226,7 @@ Value string_slice(Value str, int start, int end) {
     if (end > slen) end = slen;
     if (start >= end) return val_empty_string;
     StringStorage* result = ss_substringLen(ts, start, end - start, std::malloc);
-    return wrap_storage(result);
+    return adopt_ss(result);
 }
 
 Value string_sub(Value a, Value b) {
@@ -216,7 +236,7 @@ Value string_sub(Value a, Value b) {
     if (ss_endsWith(ta, tb)) {
         int newLen = ss_lengthB(ta) - ss_lengthB(tb);
         StringStorage* result = ss_substringLen(ta, 0, newLen, std::malloc);
-        return wrap_storage(result);
+        return adopt_ss(result);
     }
     return a;
 }
@@ -250,7 +270,7 @@ Value string_insert(Value str, int index, Value value, void* vm) {
     std::memcpy(buf + byteIdx + insertLenB, sData + byteIdx, (size_t)(strLenB - byteIdx));
     buf[totalLenB] = '\0';
 
-    Value result = GCManager::Instance().NewString(buf, totalLenB);
+    Value result = make_string_n(buf, totalLenB);
     std::free(buf);
     return result;
 }
@@ -261,9 +281,9 @@ Value string_upper(Value str) {
     StringStorage* result = ss_toUpper(ts, std::malloc);
     // ss_toUpper returns the input storage when it has no caseable chars;
     // returning `str` directly avoids aliasing the borrowed (heap) or
-    // TempStorage-owned (tiny) pointer through wrap_storage.
+    // TempStorage-owned (tiny) pointer through adopt_ss.
     if (result == ts.get()) return str;
-    return wrap_storage(result);
+    return adopt_ss(result);
 }
 
 Value string_lower(Value str) {
@@ -271,7 +291,7 @@ Value string_lower(Value str) {
     TempStorage ts(str);
     StringStorage* result = ss_toLower(ts, std::malloc);
     if (result == ts.get()) return str;
-    return wrap_storage(result);
+    return adopt_ss(result);
 }
 
 Value string_from_code_point(int codePoint) {
@@ -292,7 +312,7 @@ Value string_from_code_point(int codePoint) {
         buf[n++] = (char)(0x80 | ((codePoint >> 6) & 0x3F));
         buf[n++] = (char)(0x80 | (codePoint & 0x3F));
     }
-    return GCManager::Instance().NewString(buf, n);
+    return make_string_n(buf, n);
 }
 
 int string_code_point(Value str) {
@@ -322,7 +342,7 @@ Value string_split_max(Value str, Value delimiter, int maxCount) {
         int i = 0; int count = 0;
         while (i < slen) {
             if (maxCount > 0 && count >= maxCount - 1) {
-                list_push(list, GCManager::Instance().NewString(sdata + i, slen - i));
+                list_push(list, make_string_n(sdata + i, slen - i));
                 return list;
             }
             unsigned char c = (unsigned char)sdata[i];
@@ -331,7 +351,7 @@ Value string_split_max(Value str, Value delimiter, int maxCount) {
             else if ((c & 0xF0) == 0xE0) cl = 3;
             else if ((c & 0xF8) == 0xF0) cl = 4;
             if (i + cl > slen) cl = slen - i;
-            list_push(list, GCManager::Instance().NewString(sdata + i, cl));
+            list_push(list, make_string_n(sdata + i, cl));
             i += cl;
             count++;
         }
@@ -350,11 +370,11 @@ Value string_split_max(Value str, Value delimiter, int maxCount) {
             }
         }
         if (!hit) {
-            list_push(list, GCManager::Instance().NewString(sdata + pos, slen - pos));
+            list_push(list, make_string_n(sdata + pos, slen - pos));
             break;
         }
         int segLen = (int)(hit - (sdata + pos));
-        list_push(list, GCManager::Instance().NewString(sdata + pos, segLen));
+        list_push(list, make_string_n(sdata + pos, segLen));
         pos += segLen + dlen;
         found++;
         if (pos > slen) break;
@@ -369,7 +389,7 @@ Value string_replace(Value source, Value search, Value replacement) {
     TempStorage ts(source), tf(search), tr(replacement);
     if (!tf.get() || ss_lengthB(tf) == 0) return source;
     StringStorage* result = ss_replace(ts, tf, tr, std::malloc);
-    return wrap_storage(result);
+    return adopt_ss(result);
 }
 
 Value string_replace_max(Value source, Value search, Value replacement, int maxCount) {
@@ -405,7 +425,7 @@ Value string_replace_max(Value source, Value search, Value replacement, int maxC
             buf[write++] = sdata[read++];
         }
     }
-    Value result = GCManager::Instance().NewString(buf, outLen);
+    Value result = make_string_n(buf, outLen);
     std::free(buf);
     return result;
 }
@@ -421,10 +441,8 @@ uint32_t get_string_hash(Value v) {
             buf[i] = (char)((v >> (8 * (i + 1))) & 0xFF);
         return string_hash(buf, len);
     }
-    if (is_heap_string(v)) {
-        GCString& s = GCManager::Instance().Strings.Get(value_item_index(v));
-        return ss_hash(s.Storage);
-    }
+    if (is_heap_string(v))
+        return ss_hash(const_cast<StringStorage*>(heap_string_storage(v)));
     return 0;
 }
 

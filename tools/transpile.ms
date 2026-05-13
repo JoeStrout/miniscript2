@@ -485,7 +485,7 @@ Transpiler.transformStatement = function(trimmedLine)
 	// non-identifier string.
 	tokens = roughTokenize(trimmedLine)
 	
-	deepDebug = false //trimmedLine.contains("_lexer");
+	deepDebug = trimmedLine.contains("vm.");
 	ddprint = function(s); if deepDebug then print "====> " + s; end function
 	summarize = function(obj)
 		if obj == null then return "<null>"
@@ -1037,15 +1037,18 @@ Transpiler.updateStateNAMESPACE = function
 		self.curClass.declLines += self.preLines; self.preLines = []
 		self.curClass.declLines.push self.fill("class ≤name≥ {")
 	// struct
-	else if self.match("≤scope:w≥ struct ≤name:w≥ {") then
+	else if self.match("≤scope:w≥ struct ≤name:w≥ {") or
+			self.match("≤scope:w≥ struct ≤name:w≥ : ≤baseClass≥ {")then
 		self.enterState State.CLASS
 		self.curClass.type = ClassType.STRUCT
+		if self.m.hasIndex("baseClass") then self.curClass.superclass = self.m.baseClass
 		self.curClass.declLines += self.preLines; self.preLines = []
 		self.curClass.declLines.push self.fill("struct ≤name≥ {")
 		
 	// class (reference type -- becomes a storage class + wrapper)
 	else if self.match("≤scope:w≥ class ≤name:w≥ {") or
 	        self.match("≤scope:w≥ class ≤name:w≥ : ≤baseClass≥ {") or
+	        self.match("≤scope:w≥ class ≤name:w≥ : ≤baseClass≥ where ≤whereClause≥ {") or
 	        self.match("≤scope:w≥ abstract class ≤name:w≥ {") or
 	        self.match("≤scope:w≥ abstract class ≤name:w≥ : ≤baseClass≥ {") then
 		self.prepareRefClass
@@ -1162,8 +1165,10 @@ Transpiler.updateStateCLASS = function
 		// ordinary field (with or without initializer)
 		else if self.match("≤scope:w≥ ≤type:w≥ ≤name:w≥;") or
 			  self.match("≤scope:w≥ ≤type:w≥ ≤name:w≥ = ≤expr≥;") or
-			  self.match("≤scope:w≥ ≤type:w≥ ≤name:w≥ { get; private set; }") then
+			  self.match("≤scope:w≥ ≤type:w≥ ≤name:w≥ { get; private set; }") or
+			  self.match("≤scope:w≥ ≤type:w≥[] ≤name:w≥;") then
 			self.m.dec = "≤scope≥: ≤type≥ ≤name≥".fill(self.m)
+			if line.trimmed.contains(self.m.type + "[] ") then self.m.dec += "[]"
 			if self.m.hasIndex("expr") then
 				exprm = self.m.expr.match("new ≤type≥(≤params≥)")
 				if exprm then
@@ -1214,8 +1219,17 @@ Transpiler.updateStateCLASS = function
 			end if
 			if self.gatherMode then self.curClass.fields.push VariableInfo.Make(self.m.name, self.m.type, self.m.scope, true)
 
-		// constructor method (no return type)
-		else if self.match("≤scope:w≥ ≤name:w≥(≤params≥) {") then
+		// constructor method (no return type), with or without initializer list
+		else if self.match("≤scope:w≥ ≤name:w≥(≤params≥) : base(≤initParams≥) {") or
+			    self.match("≤scope:w≥ ≤name:w≥(≤params≥) {") then
+			if self.m.hasIndex("initParams") then
+				self.m.args = self.m.initParams;
+				self.m.initBase = " : " + self.curClass.superclass + "(" + self.m.args + ") "
+				self.m.initBaseStorage = " : " + self.curClass.superclass + "Storage(" + self.m.args + ") "
+			else
+				self.m.initBase = " "
+				self.m.initBaseStorage = " "
+			end if
 			self.enterState State.METHOD
 			if self.curClass.type == ClassType.CLASS then
 				self.curClass.wrapperLines.push self.fill("	≤scope≥: static ≤name≥ New(≤params≥) {")
@@ -1223,13 +1237,13 @@ Transpiler.updateStateCLASS = function
 				self.curClass.wrapperLines.push self.fill("	}")
 				self.curClass.storageLines.push self.fill("	≤scope≥: ≤name≥Storage(≤params≥);")
 				self.stripDefaultArgs
-				self.curClass.methodLines.push self.fill("≤inline≥≤className≥Storage::≤name≥Storage(≤params≥) {")
+				self.curClass.methodLines.push self.fill("≤inline≥≤className≥Storage::≤name≥Storage(≤params≥)≤initBaseStorage≥{")
 //				root = self.curClass.rootClass(self.allClasses)
 //				if root then self.m.rootClass = root.name
 			else
 				self.curClass.declLines.push self.fill("	≤scope≥: ≤name≥(≤params≥);")
 				self.stripDefaultArgs
-				self.curClass.methodLines.push self.fill("≤inline≥≤className≥::≤name≥(≤params≥) {")
+				self.curClass.methodLines.push self.fill("≤inline≥≤className≥::≤name≥(≤params≥)≤initBase≥{")
 			end if
 			if self.gatherMode then self.curClass.methods.push MethodInfo.Make(self.m.name)
 
@@ -1290,7 +1304,9 @@ Transpiler.updateStateCLASS = function
 			if self.gatherMode then self.curClass.methods.push MethodInfo.Make(self.m.name, true)
 
 		// standard method
-		else if self.match("≤scope:w≥ ≤type:w≥ ≤name:w≥(≤params≥) {") then
+		else if self.match("≤scope:w≥ ≤type:w≥ ≤name:w≥(≤params≥) {") or
+				self.match("≤scope:w≥ ref ≤type:w≥ ≤name:w≥(≤params≥) {")then
+			if line.trimmed.contains(" ref ") then self.m.type += "&"
 			self.enterState State.METHOD
 			if self.curClass.type == ClassType.CLASS then
 				self.curClass.storageLines.push self.fill("	≤scope≥: ≤type≥ ≤name≥(≤params≥);")
@@ -1384,7 +1400,16 @@ Transpiler.updateStateMETHOD = function
 	end if
 	
 	if comment.startsWith("// CPP:") then
-		if comment.len > 8 then self.curClass.methodLines.push line.indentation + comment[8:]
+		if comment.len > 8 then
+			self.curClass.methodLines.push line.indentation + comment[8:]
+			// check for local declarations even if they've been overridden for C++
+			if self.match("≤type:w≥ ≤name:w≥ = ≤expr≥ as ≤type2:w≥;") or
+			   self.match("≤type:w≥ ≤name:w≥ = ≤expr≥;") or
+			   self.match("var ≤name:w≥ = new ≤type:w≥(≤args≥);")then
+				self.localVars.push VariableInfo.Make(self.m.name, self.m.type, Scope.LOCAL)
+				print ">>>> FOUND LOCAL: " + self.localVars[-1].summary
+			end if
+		end if 
 		return
 	end if
 
@@ -1449,11 +1474,23 @@ Transpiler.updateStateMETHOD = function
 	// check for other special patterns:
 	// foreach statement
 	if self.match("foreach (≤type:w≥ ≤var:w≥ in ≤seq≥)") then
+		// ToDo: this block looks obsolete (see correct block below).
+		// Try removing it when doing a cleanup pass.
 		self.cppLines.push self.fill("for (int __≤var≥_idx=0, __≤var≥_qty=≤seq≥.Count(); __≤var≥_idx < __≤var≥_qty; __≤var≥_idx++)")
 		self.cppLines.push self.fill("	≤type≥ ≤var≥ = ≤seq≥[__≤var≥_idx];")
 		return
 	end if
-	// return statements, when we've pushed a GC scope
+	if self.match("foreach (≤type:w≥ ≤var:w≥ in ≤seq≥) {") then
+		if debugMode then print ">>>> FOREACH{ DETECTED: " + self.m
+		cline = line.indentation + self.fill("for (≤type≥ ≤var≥ : ≤seq≥) {") + line.comment;
+		cline = fixStringInterpolation(cline)
+		cline = self.transformStatement(cline)
+		self.curClass.methodLines.push cline
+		if debugMode then print ">>>> " + self.curClass.methodLines[-1]
+		return
+	end if
+	
+	// return statements, when we've pushed a GC scope (ToDo: remove obsolete GC handling!)
 	if self.pushedGCScope then
 		toks = roughTokenize(line.trimmed)
 		idx = toks.indexOf("return")

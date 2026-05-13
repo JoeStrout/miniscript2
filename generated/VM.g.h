@@ -10,7 +10,7 @@
 #include "ErrorTypes.g.h"
 #include "value_map.h"
 #include <vector>
-#include "GCManager.h"
+#include "GCManager.g.h"
 
 namespace MiniScript {
 typedef const FuncDefStorage& FuncDefRef;
@@ -120,13 +120,16 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	public: VMStorage(Int32 stackSlots=1024, Int32 callSlots=256);
 
 	private: void InitVM(Int32 stackSlots, Int32 callSlots);
-	
+
 	private: void CleanupVM();
-	static void MarkRoots(void* user_data, GCManager& gc);
 	public: ~VMStorage() { CleanupVM(); }
 	public: operator void*() { return this; }
 	// Allows passing ctx.vm (VMStorage&) where void* vm is expected (e.g. to_string,
 	// string_insert, etc.) without explicit casts at every call site.
+
+	// GC mark callback responsible for protecting our stack, names, and
+	// intrinsics from collection.
+	public: static void MarkRoots(object user_data);
 
 	public: void RegisterFunction(FuncDef funcDef);
 
@@ -349,8 +352,12 @@ struct VM {
 	}
 
 	private: inline void InitVM(Int32 stackSlots, Int32 callSlots);
-	
+
 	private: inline void CleanupVM();
+
+	// GC mark callback responsible for protecting our stack, names, and
+	// intrinsics from collection.
+	public: static void MarkRoots(object user_data) { return VMStorage::MarkRoots(user_data); }
 
 	public: inline void RegisterFunction(FuncDef funcDef);
 

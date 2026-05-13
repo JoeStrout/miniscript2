@@ -43,7 +43,7 @@ typedef uint64_t Value;
 
 #define TINY_STRING_MAX_LEN 5
 
-// ── GCSet indices (must match cs/GCManager.cs constants) ────────────────
+// ── GCSet indices (IMPORTANT: must match cs/GCManager.cs constants) ────────────
 #define STRING_SET   0
 #define LIST_SET     1
 #define MAP_SET      2
@@ -69,6 +69,8 @@ extern Value val_super;     // "super"
 void value_init_constants(void);
 
 // ── Accessors used by hot paths ─────────────────────────────────────────
+static inline uint64_t value_bits(Value v)     { return (uint64_t)v; }
+static inline int value_tiny_len(Value v)      { return (int)(v & 0xFF); }
 static inline int value_gc_set_index(Value v)  { return (int)((v >> 32) & 0x7); }
 static inline int value_item_index(Value v)    { return (int)(uint32_t)v; }
 
@@ -152,6 +154,10 @@ static inline Value make_double(double d) {
 }
 
 static inline Value make_int(int32_t i) { return make_double((double)i); }
+
+static inline Value make_gc(int gcSet, int itemIdx) {
+    return (Value)(GC_TAG | ((uint64_t)gcSet << 32) | (uint64_t)(uint32_t)itemIdx);
+}
 
 static inline double as_double(Value v) {
     double d;

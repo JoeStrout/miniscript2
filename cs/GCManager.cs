@@ -1,160 +1,208 @@
-//*** BEGIN CS_ONLY ***
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using static System.Runtime.CompilerServices.MethodImplOptions;
 using static MiniScript.ValueHelpers;
+// H: #include "GCInterfaces.g.h"
+// H: #include "GCSet.g.h"
+// CPP: #include "value.h"
 
 namespace MiniScript {
 
-// 
+// H: typedef void (*MarkCallback)(void* userData);
+
+//
 // Central GC coordinator.  Owns the five typed GCSets and an explicit root list.
 // Mark(Value) dispatches to the right GCSet using the GCSet index baked into
 // the Value bits — no switch statement, just array indexing.
-// 
-public sealed class GCManager {
+//
+public static class GCManager {
 
 	// GCSet indices — these constants define the encoding baked into every GC Value.
-	public const Int32 STRING_SET  = 0;
-	public const Int32 LIST_SET    = 1;
-	public const Int32 MAP_SET     = 2;
-	public const Int32 ERROR_SET   = 3;
-	public const Int32 FUNCREF_SET = 4;
+	public const Int32 StringSet = 0;
+	public const Int32 ListSet = 1;
+	public const Int32 MapSet = 2;
+	public const Int32 ErrorSet = 3;
+	public const Int32 FunctionSet = 4;
 
 	// Typed accessors; use these to allocate new objects.
-	public readonly GCSet<GCString>  Strings  = new GCSet<GCString>();
-	public readonly GCSet<GCList>    Lists    = new GCSet<GCList>();
-	public readonly GCSet<GCMap>     Maps     = new GCSet<GCMap>();
-	public readonly GCSet<GCError>   Errors   = new GCSet<GCError>();
-	public readonly GCSet<GCFuncRef> FuncRefs = new GCSet<GCFuncRef>();
+	public static GCStringSet Strings = null;
+	public static GCListSet Lists = null;
+	public static GCMapSet Maps = null;
+	public static GCErrorSet Errors = null;
+	public static GCFuncRefSet Functions = null;
 
-	// Unified array for branchless dispatch in Mark().
-	private readonly IGCSet[] _sets;
+	private static List<Value> _roots = null;
 
-	private readonly List<Value> _roots = new List<Value>();
+	// ── Mark callbacks ───────────────────────────────────────────────────────
+	// Callback registered by a VM (or any other root provider) and invoked once
+	// per CollectGarbage cycle.  The callback must call GCManager.Mark(v) on
+	// every root Value it owns.
+	public delegate void MarkCallback(object userData);
 
-	public GCManager() {
-		_sets = new IGCSet[] { Strings, Lists, Maps, Errors, FuncRefs };
+	private static List<MarkCallback> _markCallbackFns = null;
+	private static List<object> _markCallbackData = null;
+
+	public static void Init() {
+		if (_roots != null) return;	// already initialized
+		Strings  = new GCStringSet();
+		Lists    = new GCListSet();
+		Maps     = new GCMapSet();
+		Errors   = new GCErrorSet();
+		Functions = new GCFuncRefSet();
+		_roots   = new List<Value>();
+		_markCallbackFns  = new List<MarkCallback>();
+		_markCallbackData = new List<object>();
 	}
 
 	// ── Value factories ──────────────────────────────────────────────────────
 
-	public Value NewString(String s) {
-		Int32 idx = Strings.New();
-		Strings.Get(idx).Data = s;
-		return make_gc(STRING_SET, idx);
+	public static Value NewString(String s) {
+		Int32 idx = Strings.AllocItem();
+		Strings.SetData(idx, s);
+		return make_gc(StringSet, idx);
 	}
 
-	public Value NewList(Int32 capacity = 8) {
-		Int32 idx = Lists.New();
-		Lists.Get(idx).Init(capacity);
-		return make_gc(LIST_SET, idx);
+	public static Value NewList(Int32 capacity = 8) {
+		Int32 idx = Lists.AllocItem();
+		Lists.Init(idx, capacity);
+		return make_gc(ListSet, idx);
 	}
 
-	public Value NewMap(Int32 capacity = 8) {
-		Int32 idx = Maps.New();
-		Maps.Get(idx).Init(capacity);
-		return make_gc(MAP_SET, idx);
+	public static Value NewMap(Int32 capacity = 8) {
+		Int32 idx = Maps.AllocItem();
+		Maps.Init(idx, capacity);
+		return make_gc(MapSet, idx);
 	}
 
-	public Value NewVarMap(VarMapBacking vmb) {
-		Int32 idx = Maps.New();
-		ref GCMap m = ref Maps.Get(idx);
-		m.Init(4);
-		m._vmb = vmb;
-		return make_gc(MAP_SET, idx);
+	public static Value NewError(Value message, Value inner, Value stack, Value isa) {
+		Int32 idx = Errors.AllocItem();
+		Errors.SetFields(idx, message, inner, stack, isa);
+		return make_gc(ErrorSet, idx);
 	}
 
-	public Value NewError(Value message, Value inner, Value stack, Value isa) {
-		Int32 idx = Errors.New();
-		ref GCError e = ref Errors.Get(idx);
-		e.Message = message;
-		e.Inner   = inner;
-		e.Stack   = stack;
-		e.Isa     = isa;
-		return make_gc(ERROR_SET, idx);
-	}
-
-	public Value NewFuncRef(Int32 funcIndex, Value outerVars) {
-		Int32 idx = FuncRefs.New();
-		ref GCFuncRef f = ref FuncRefs.Get(idx);
-		f.FuncIndex = funcIndex;
-		f.OuterVars = outerVars;
-		return make_gc(FUNCREF_SET, idx);
+	public static Value NewFuncRef(Int32 funcIndex, Value outerVars) {
+		Int32 idx = Functions.AllocItem();
+		Functions.SetFields(idx, funcIndex, outerVars);
+		return make_gc(FunctionSet, idx);
 	}
 
 	// ── Retain / Release ─────────────────────────────────────────────────────
 
-	public void Retain(Value v) {
+	public static void Retain(Value v) {
 		if (!is_gc_object(v)) return;
-		_sets[value_gc_set_index(v)].Mark(value_item_index(v), this);  // not really right; kept for API compat
+		DispatchMark(value_gc_set_index(v), value_item_index(v));
 	}
 
-	public void RetainValue(Value v) {
+	public static void RetainValue(Value v) {
 		if (!is_gc_object(v)) return;
-		_sets[value_gc_set_index(v)].Mark(value_item_index(v), this);  // placeholder; use explicit Retain when needed
+		DispatchMark(value_gc_set_index(v), value_item_index(v));
 	}
 
 	// ── Root set ─────────────────────────────────────────────────────────────
 
-	public void AddRoot(Value v)    { _roots.Add(v); }
-	public void RemoveRoot(Value v) { _roots.Remove(v); }
-	public void ClearRoots()        { _roots.Clear(); }
+	public static void AddRoot(Value v)    { _roots.Add(v); }
+	public static void RemoveRoot(Value v) { _roots.Remove(v); }
+	public static void ClearRoots()        { _roots.Clear(); }
+
+	public static void RegisterMarkCallback(MarkCallback fn, object userData) {
+		_markCallbackFns.Add(fn);
+		_markCallbackData.Add(userData);
+	}
+
+	public static void UnregisterMarkCallback(MarkCallback fn, object userData) {
+		for (Int32 i = 0; i < _markCallbackFns.Count; i++) {
+			if (_markCallbackFns[i] == fn && _markCallbackData[i] == userData) {
+				_markCallbackFns.RemoveAt(i);
+				_markCallbackData.RemoveAt(i);
+				return;
+			}
+		}
+	}
 
 	// ── GC cycle ─────────────────────────────────────────────────────────────
 
 	[MethodImpl(AggressiveInlining)]
-	public void Mark(Value v) {
+	public static void Mark(Value v) {
 		if (!is_gc_object(v)) return;
-		_sets[value_gc_set_index(v)].Mark(value_item_index(v), this);
+		DispatchMark(value_gc_set_index(v), value_item_index(v));
+	}
+
+	private static void DispatchMark(Int32 setIdx, Int32 itemIdx) {
+		switch (setIdx) {
+			case StringSet:  Strings.Mark(itemIdx);  break;
+			case ListSet:    Lists.Mark(itemIdx);    break;
+			case MapSet:     Maps.Mark(itemIdx);     break;
+			case ErrorSet:   Errors.Mark(itemIdx);   break;
+			case FunctionSet: Functions.Mark(itemIdx); break;
+		}
 	}
 
 	// Run a full mark-sweep cycle.
-	public void CollectGarbage() {
+	public static void CollectGarbage() {
 		// 1. Clear all mark bits.
-		foreach (IGCSet set in _sets) set.PrepareForGC();
+		Strings.PrepareForGC();
+		Lists.PrepareForGC();
+		Maps.PrepareForGC();
+		Errors.PrepareForGC();
+		Functions.PrepareForGC();
 
 		// 2. Mark from explicit roots.
-		foreach (Value root in _roots) Mark(root);
+		for (Int32 i = 0; i < _roots.Count; i++) Mark(_roots[i]);
+
+		// 2b. Run mark callbacks so VMs (and other providers) can mark their
+		// current roots without having to add/remove them on every change.
+		for (Int32 i = 0; i < _markCallbackFns.Count; i++) {
+			_markCallbackFns[i](_markCallbackData[i]);
+		}
 
 		// 3. Mark retained items (and their children).
-		foreach (IGCSet set in _sets) set.MarkRetained(this);
+		Strings.MarkRetained();
+		Lists.MarkRetained();
+		Maps.MarkRetained();
+		Errors.MarkRetained();
+		Functions.MarkRetained();
 
 		// 4. Sweep: free everything still unmarked.
-		foreach (IGCSet set in _sets) set.Sweep();
-	}
-
-	// ── Diagnostics ──────────────────────────────────────────────────────────
-
-	public void PrintStats() {
-		Console.WriteLine($"  Strings:  {Strings.LiveCount()}");
-		Console.WriteLine($"  Lists:    {Lists.LiveCount()}");
-		Console.WriteLine($"  Maps:     {Maps.LiveCount()}");
-		Console.WriteLine($"  Errors:   {Errors.LiveCount()}");
-		Console.WriteLine($"  FuncRefs: {FuncRefs.LiveCount()}");
+		Strings.Sweep();
+		Lists.Sweep();
+		Maps.Sweep();
+		Errors.Sweep();
+		Functions.Sweep();
 	}
 
 	// ── Convenience accessors ─────────────────────────────────────────────────
 
-	public ref GCString  GetString(Value v)  { return ref Strings.Get(value_item_index(v)); }
-	public ref GCList    GetList(Value v)     { return ref Lists.Get(value_item_index(v)); }
-	public ref GCMap     GetMap(Value v)      { return ref Maps.Get(value_item_index(v)); }
-	public ref GCError   GetError(Value v)    { return ref Errors.Get(value_item_index(v)); }
-	public ref GCFuncRef GetFuncRef(Value v)  { return ref FuncRefs.Get(value_item_index(v)); }
+	public static GCString  GetString(Value v)  {
+		return Strings.Get(value_item_index(v));
+	}
+	public static GCList    GetList(Value v)    {
+		return Lists.Get(value_item_index(v));
+	}
+	public static GCMap     GetMap(Value v)     {
+		return Maps.Get(value_item_index(v));
+	}
+	public static GCError   GetError(Value v)   {
+		return Errors.Get(value_item_index(v));
+	}
+	public static GCFunction GetFuncRef(Value v) {
+		return Functions.Get(value_item_index(v));
+	}
 
 	// ── Static helper for content-based string access ─────────────────────────
 	// Used by GCMap for content-based key hashing and equality.
-
+	// (Or is it?  ToDo: see if this is still needed.)
+	
 	[MethodImpl(AggressiveInlining)]
 	public static String GetStringContent(Value v) {
 		if (is_tiny_string(v)) {
 			Int32 len = value_tiny_len(v);
-			Char[] chars = new Char[len];
-			for (Int32 i = 0; i < len; i++) chars[i] = (Char)((value_bits(v) >> (8 * (i + 1))) & 0xFF);
+			char[] chars = new Char[len];
+			for (Int32 i = 0; i < len; i++) chars[i] = (char)((value_bits(v) >> (8 * (i + 1))) & 0xFF);
 			return new String(chars);
 		}
 		if (is_heap_string(v)) {
-			String data = gc.Strings.Get(value_item_index(v)).Data;
+			String data = Strings.Get(value_item_index(v)).Data;
 			return data != null ? data : "";
 		}
 		return "";
@@ -162,4 +210,3 @@ public sealed class GCManager {
 }
 
 }
-//*** END CS_ONLY ***

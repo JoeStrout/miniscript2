@@ -52,13 +52,14 @@ List.methods.push MethodInfo.Make("Sort")
 
 Dictionary = ClassInfo.Make("Dictionary")
 Dictionary.fields.push VariableInfo.Make("Count", "UInt32")
+Dictionary.fields.push VariableInfo.Make("Keys", "KeyCollection")
+Dictionary.fields.push VariableInfo.Make("Values", "ValueCollection")
 Dictionary.methods.push MethodInfo.Make("Add")
 Dictionary.methods.push MethodInfo.Make("[]", false, "<T1, T2>")
 Dictionary.methods.push MethodInfo.Make("ContainsKey", false, "Boolean")
 Dictionary.methods.push MethodInfo.Make("TryGetValue", false, "Boolean")
 Dictionary.methods.push MethodInfo.Make("Remove", false, "Boolean")
 Dictionary.methods.push MethodInfo.Make("Clear")
-Dictionary.methods.push MethodInfo.Make("GetKeys", false, "Keys")
 
 all = [String, List, Dictionary]
 for cls in all; cls.elsewhere = true; end for

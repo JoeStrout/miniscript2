@@ -40,7 +40,7 @@ Value CallInfo::GetLocalVarMap(List<Value> registers,List<Value> names,int baseI
 			// We have no local vars at all!  Make an ordinary map.
 			LocalVarMap = make_map(4);	// This is safe, right?
 		} else {
-			LocalVarMap = make_varmap(&registers[0], &names[0], baseIdx, regCount);
+			LocalVarMap = make_varmap(registers, names, baseIdx, regCount);
 		}
 	}
 	return LocalVarMap;
@@ -127,10 +127,10 @@ void VMStorage::InitVM(Int32 stackSlots,Int32 callSlots) {
 		callStack.Add(CallInfo(0, 0, -1)); // -1 = invalid function index
 	}
 	
-	// Register as a source of roots for the GC system
-	GCManager::Instance().RegisterMarkCallback(VMStorage::MarkRoots, this);
+	// Register as a source of roots for the GC system.
+	GCManager::RegisterMarkCallback(VMStorage::MarkRoots, this);
 
-	// And, ensure that runtime errors are routed through the active VM
+	// Ensure that runtime errors are routed through the active VM
 	vm_error_set_callback([](const char* msg) {
 		VM vm = VMStorage::ActiveVM();
 		if (!IsNull(vm)) vm.RaiseRuntimeError(String(msg));
@@ -146,20 +146,18 @@ void VMStorage::InitVM(Int32 stackSlots,Int32 callSlots) {
 	});
 }
 void VMStorage::CleanupVM() {
-	GCManager::Instance().UnregisterMarkCallback(VMStorage::MarkRoots, this);
+	GCManager::UnregisterMarkCallback(VMStorage::MarkRoots, this);
 }
-// GC mark callback responsible for protecting our stack and names
-// from garbage collection
-void VMStorage::MarkRoots(void* user_data, GCManager& gc) {
-	VMStorage* vm = static_cast<VMStorage*>(user_data);
-	for (int i = 0; i < vm->stack.Count(); i++) {
-		gc.Mark(vm->stack[i]);
-		gc.Mark(vm->names[i]);
+void VMStorage::MarkRoots(object user_data) {
+	VM vm(static_cast<VMStorage*>(user_data)->shared_from_this());
+	for (Int32 i = 0; i < vm.stack().Count(); i++) {
+		GCManager::Mark(vm.stack()[i]);
+		GCManager::Mark(vm.names()[i]);
 	}
 	// Mark intrinsics dictionary values (funcrefs are GC-allocated)
-	if (!IsNull(vm->_intrinsics)) {
-		for (Value val : vm->_intrinsics.GetValues()) {
-			gc.Mark(val);
+	if (!IsNull(vm._intrinsics())) {
+		for (Value val : vm._intrinsics().Values()) {
+			GCManager::Mark(val);
 		}
 	}
 }
@@ -244,7 +242,7 @@ void VMStorage::Reset(List<FuncDef> allFunctions,Value replGlobals) {
 			newStack.Add(val_null);
 			newNames.Add(val_null);
 		}
-		varmap_rebind(ReplGlobals, &newStack[0], &newNames[0]);
+		varmap_rebind(ReplGlobals, newStack, newNames);
 		stack = newStack;
 		names = newNames;
 	}
@@ -665,7 +663,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				// In REPL mode, register this variable in the globals VarMap
 				if (baseIndex == 0 && !is_null(ReplGlobals)) {
 					varmap_map_to_register(ReplGlobals, valC, 
-						&stack[0],
+						stack,
 						baseIndex + a);
 				}
 				VM_NEXT();
@@ -680,7 +678,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				// In REPL mode, register this variable in the globals VarMap
 				if (baseIndex == 0 && !is_null(ReplGlobals)) {
 					varmap_map_to_register(ReplGlobals, valC,
-						&stack[0],
+						stack,
 						baseIndex + a);
 				}
 				VM_NEXT();
@@ -1798,7 +1796,7 @@ Value VMStorage::GetGlobalsVarMap() {
 	if (!is_null(ReplGlobals)) return ReplGlobals;
 	CallInfo gframe = callStack[0];
 	Int32 regCount = functions[gframe.ReturnFuncIndex].MaxRegs();
-	return make_varmap(&stack[0], &names[0], 0, regCount);
+	return make_varmap(stack, names, 0, regCount);
 }
 Value VMStorage::LookupParamByName(String varName) {
 	// Look up a parameter by name in the current frame.  This is provided

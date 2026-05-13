@@ -141,11 +141,16 @@ public:
 	// Constructor
 	Dictionary() {}
 
-    // Factory method - allocates (matches C# "new Dictionary<K,V>()")
-    static Dictionary<TKey, TValue> New() {
+    // Factory method - allocates (matches C# "new Dictionary<K,V>()").
+    // `initialCapacity` is sized so that that many items can be inserted
+    // without triggering a resize (table resizes at 75% load, so we scale
+    // up by 4/3); minimum allocated capacity is 4.
+    static Dictionary<TKey, TValue> New(int initialCapacity = 0) {
         Dictionary<TKey, TValue> result;
         result.data = std::make_shared<DictionaryStorage<TKey, TValue> >();
-        result.data->createStorage(4);
+        int cap = initialCapacity * 4 / 3 + 1;
+        if (cap < 4) cap = 4;
+        result.data->createStorage(cap);
         return result;
     }
 
@@ -327,20 +332,23 @@ public:
 		}
 	};
 
-	class Keys {
+	class KeyCollection {
 	private:
 		const DictionaryStorage<TKey, TValue>* storage;
 	public:
-		Keys(const DictionaryStorage<TKey, TValue>* s) : storage(s) {}
+		KeyCollection(const DictionaryStorage<TKey, TValue>* s) : storage(s) {}
 		KeyIterator begin() const { return KeyIterator(storage, 0); }
 		KeyIterator end() const {
 			return KeyIterator(storage, storage ? storage->count : 0);
 		}
 	};
 
-	Keys GetKeys() const {
-		return Keys(data.get());
+	KeyCollection Keys() const {
+		return KeyCollection(data.get());
 	}
+
+	// Legacy alias - prefer Keys()
+	KeyCollection GetKeys() const { return Keys(); }
 
 	// Iterator support - simple value iteration
 	class ValueIterator {
@@ -375,20 +383,23 @@ public:
 		}
 	};
 
-	class Values {
+	class ValueCollection {
 	private:
 		const DictionaryStorage<TKey, TValue>* storage;
 	public:
-		Values(const DictionaryStorage<TKey, TValue>* s) : storage(s) {}
+		ValueCollection(const DictionaryStorage<TKey, TValue>* s) : storage(s) {}
 		ValueIterator begin() const { return ValueIterator(storage, 0); }
 		ValueIterator end() const {
 			return ValueIterator(storage, storage ? storage->count : 0);
 		}
 	};
 
-	Values GetValues() const {
-		return Values(data.get());
+	ValueCollection Values() const {
+		return ValueCollection(data.get());
 	}
+
+	// Legacy alias - prefer Values()
+	ValueCollection GetValues() const { return Values(); }
 
 	// Compatibility methods (poolNum ignored with shared_ptr)
 	uint8_t getPoolNum() const { return 0; }

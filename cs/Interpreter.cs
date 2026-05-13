@@ -381,7 +381,9 @@ public class Interpreter {
 
 		// If this is the first REPL entry, create the initial globals VarMap
 		if (is_null(_replGlobals)) {
-			_replGlobals = make_varmap(vm.GetStack(), vm.GetNames(), 0, functions[0].MaxRegs); // CPP: _replGlobals = make_varmap(&vm.GetStack()[0], &vm.GetNames()[0], 0, functions[0].MaxRegs());
+			_replGlobals = make_varmap(vm.GetStack(), vm.GetNames(), 0, 
+				functions[0].MaxRegs);  // CPP: functions[0].MaxRegs());
+			// ToDo: make the transpiler smart enough to do this ---^ on its own
 			vm.ReplGlobals = _replGlobals;
 		}
 

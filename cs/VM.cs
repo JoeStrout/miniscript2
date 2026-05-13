@@ -9,7 +9,7 @@ using static System.Runtime.CompilerServices.MethodImplOptions;
 // H: #include "ErrorTypes.g.h"
 // H: #include "value_map.h"
 // H: #include <vector>
-// H: #include "GCManager.h"
+// H: #include "GCManager.g.h"
 // CPP: #include "value_list.h"
 // CPP: #include "value_string.h"
 // CPP: #include "Bytecode.g.h"
@@ -63,7 +63,7 @@ public struct CallInfo {
 				// We have no local vars at all!  Make an ordinary map.
 				LocalVarMap = make_map(4);	// This is safe, right?
 			} else {
-				LocalVarMap = make_varmap(registers, names, baseIdx, regCount); // CPP: LocalVarMap = make_varmap(&registers[0], &names[0], baseIdx, regCount);
+				LocalVarMap = make_varmap(registers, names, baseIdx, regCount);
 			}
 		}
 		return LocalVarMap;
@@ -229,11 +229,11 @@ public class VM {
 			callStack.Add(new CallInfo(0, 0, -1)); // -1 = invalid function index
 		}
 		
-		/*** BEGIN CPP_ONLY ***
-		// Register as a source of roots for the GC system
-		GCManager::Instance().RegisterMarkCallback(VMStorage::MarkRoots, this);
+		// Register as a source of roots for the GC system.
+		GCManager.RegisterMarkCallback(MarkRoots, this); // CPP: GCManager::RegisterMarkCallback(VMStorage::MarkRoots, this);
 
-		// And, ensure that runtime errors are routed through the active VM
+		/*** BEGIN CPP_ONLY ***
+		// Ensure that runtime errors are routed through the active VM
 		vm_error_set_callback([](const char* msg) {
 			VM vm = VMStorage::ActiveVM();
 			if (!IsNull(vm)) vm.RaiseRuntimeError(String(msg));
@@ -249,33 +249,31 @@ public class VM {
 		});
 		*** END CPP_ONLY ***/
 	}
-	
+
 	private void CleanupVM() {
-		// CPP: GCManager::Instance().UnregisterMarkCallback(VMStorage::MarkRoots, this);
+		GCManager.UnregisterMarkCallback(MarkRoots, this); // CPP: GCManager::UnregisterMarkCallback(VMStorage::MarkRoots, this);
 	}
 
-	// H: static void MarkRoots(void* user_data, GCManager& gc);
 	// H: public: ~VMStorage() { CleanupVM(); }
 	// H: public: operator void*() { return this; }
 	// H: // Allows passing ctx.vm (VMStorage&) where void* vm is expected (e.g. to_string,
 	// H: // string_insert, etc.) without explicit casts at every call site.
-	/*** BEGIN CPP_ONLY ***
-	// GC mark callback responsible for protecting our stack and names
-	// from garbage collection
-	void VMStorage::MarkRoots(void* user_data, GCManager& gc) {
-		VMStorage* vm = static_cast<VMStorage*>(user_data);
-		for (int i = 0; i < vm->stack.Count(); i++) {
-			gc.Mark(vm->stack[i]);
-			gc.Mark(vm->names[i]);
+
+	// GC mark callback responsible for protecting our stack, names, and
+	// intrinsics from collection.
+	public static void MarkRoots(object user_data) {
+		VM vm = (VM)user_data; // CPP: VM vm(static_cast<VMStorage*>(user_data)->shared_from_this());
+		for (Int32 i = 0; i < vm.stack.Count; i++) {
+			GCManager.Mark(vm.stack[i]);
+			GCManager.Mark(vm.names[i]);
 		}
 		// Mark intrinsics dictionary values (funcrefs are GC-allocated)
-		if (!IsNull(vm->_intrinsics)) {
-			for (Value val : vm->_intrinsics.GetValues()) {
-				gc.Mark(val);
+		if (vm._intrinsics != null) {
+			foreach (Value val in vm._intrinsics.Values) {
+				GCManager.Mark(val);
 			}
 		}
 	}
-	*** END CPP_ONLY ***/
 
 	public void RegisterFunction(FuncDef funcDef) {
 		functions.Add(funcDef);
@@ -363,7 +361,7 @@ public class VM {
 				newStack.Add(val_null);
 				newNames.Add(val_null);
 			}
-			varmap_rebind(ReplGlobals, newStack, newNames); // CPP: varmap_rebind(ReplGlobals, &newStack[0], &newNames[0]);
+			varmap_rebind(ReplGlobals, newStack, newNames);
 			stack = newStack;
 			names = newNames;
 		}
@@ -837,7 +835,7 @@ public class VM {
 					// In REPL mode, register this variable in the globals VarMap
 					if (baseIndex == 0 && !is_null(ReplGlobals)) {
 						varmap_map_to_register(ReplGlobals, valC, 
-							stack,  // CPP: &stack[0],
+							stack,
 							baseIndex + a);
 					}
 					break;
@@ -852,7 +850,7 @@ public class VM {
 					// In REPL mode, register this variable in the globals VarMap
 					if (baseIndex == 0 && !is_null(ReplGlobals)) {
 						varmap_map_to_register(ReplGlobals, valC,
-							stack,  // CPP: &stack[0],
+							stack,
 							baseIndex + a);
 					}
 					break;
@@ -2014,7 +2012,7 @@ public class VM {
 		if (!is_null(ReplGlobals)) return ReplGlobals;
 		CallInfo gframe = callStack[0];
 		Int32 regCount = functions[gframe.ReturnFuncIndex].MaxRegs;
-		return make_varmap(stack, names, 0, regCount); // CPP: return make_varmap(&stack[0], &names[0], 0, regCount);
+		return make_varmap(stack, names, 0, regCount);
 	}
 
 	// Get or create a VarMap for the current call frame's local variables.

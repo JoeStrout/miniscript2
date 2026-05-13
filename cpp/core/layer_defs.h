@@ -64,16 +64,16 @@
 // Layer 2A: Runtime Value System (A-side: VM/Runtime)
 // Includes: value.h/.c, value_string.h/.c, value_list.h/.c, value_map.h/.c, gc.h/.c
 // Cannot depend on higher layers: 3
-// Cannot depend on B-side: 2B
-// Can depend on: Layer 0, Layer 1
-// Note: This is a cohesive subsystem - GC and Values are mutually interdependent peers
+// Can depend on: Layer 0, Layer 1, Layer 2B
+// Note: This is a cohesive subsystem - GC and Values are mutually interdependent peers.
+// The new transpiled GC system is built on B-side types (CS_List/CS_Dictionary/etc.),
+// so Layer 2A is now allowed to depend on Layer 2B.
 // ============================================================================
 
 #define LAYER_2A_HIGHER \
     (HAS_LAYER_3)
 
-#define LAYER_2A_BSIDE \
-    (HAS_LAYER_2B)
+#define LAYER_2A_BSIDE 0
 
 // ============================================================================
 // Layer 2B: Host C# Compatibility Layer (B-side: Host/Compiler)

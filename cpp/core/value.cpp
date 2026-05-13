@@ -8,17 +8,13 @@
 #include "value_list.h"
 #include "value_map.h"
 #include "vm_error.h"
-#include "GCManager.h"
+#include "GCManager.g.h"
 #include "hashing.h"
 
 #include "layer_defs.h"
 #if LAYER_2A_HIGHER
 #error "value.cpp (Layer 2A) cannot depend on higher layers (3A, 4)"
 #endif
-#if LAYER_2A_BSIDE
-#error "value.cpp (Layer 2A - runtime) cannot depend on B-side layers (2B, 3B)"
-#endif
-
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -29,8 +25,7 @@ using MiniScript::GCManager;
 using MiniScript::GCList;
 using MiniScript::GCMap;
 using MiniScript::GCError;
-using MiniScript::GCFuncRef;
-using MiniScript::Value;
+using MiniScript::GCFunction;
 
 extern "C" {
 
@@ -53,27 +48,27 @@ Value make_error(Value message, Value inner, Value stack, Value isa) {
         stack = make_list(0);
         freeze_value(stack);
     }
-    return GCManager::Instance().NewError(message, inner, stack, isa);
+    return GCManager::NewError(message, inner, stack, isa);
 }
 
 Value error_message(Value v) {
     if (!is_error(v)) return val_null;
-    return GCManager::Instance().Errors.Get(value_item_index(v)).Message;
+    return GCManager::Errors.Get(value_item_index(v)).Message;
 }
 
 Value error_inner(Value v) {
     if (!is_error(v)) return val_null;
-    return GCManager::Instance().Errors.Get(value_item_index(v)).Inner;
+    return GCManager::Errors.Get(value_item_index(v)).Inner;
 }
 
 Value error_stack(Value v) {
     if (!is_error(v)) return val_null;
-    return GCManager::Instance().Errors.Get(value_item_index(v)).Stack;
+    return GCManager::Errors.Get(value_item_index(v)).Stack;
 }
 
 Value error_isa(Value v) {
     if (!is_error(v)) return val_null;
-    return GCManager::Instance().Errors.Get(value_item_index(v)).Isa;
+    return GCManager::Errors.Get(value_item_index(v)).Isa;
 }
 
 bool error_isa_contains(Value error, Value base) {
@@ -82,7 +77,7 @@ bool error_isa_contains(Value error, Value base) {
         if (is_null(current)) return false;
         if (value_identical(current, base)) return true;
         if (!is_error(current)) return false;
-        current = GCManager::Instance().Errors.Get(value_item_index(current)).Isa;
+        current = GCManager::Errors.Get(value_item_index(current)).Isa;
     }
     return false;
 }
@@ -90,17 +85,17 @@ bool error_isa_contains(Value error, Value base) {
 // ── FuncRef accessors ───────────────────────────────────────────────────
 
 Value make_funcref(int32_t funcIndex, Value outerVars) {
-    return GCManager::Instance().NewFuncRef(funcIndex, outerVars);
+    return GCManager::NewFuncRef(funcIndex, outerVars);
 }
 
 int32_t funcref_index(Value v) {
     if (!is_funcref(v)) return -1;
-    return GCManager::Instance().FuncRefs.Get(value_item_index(v)).FuncIndex;
+    return GCManager::Functions.Get(value_item_index(v)).FuncIndex;
 }
 
 Value funcref_outer_vars(Value v) {
     if (!is_funcref(v)) return val_null;
-    return GCManager::Instance().FuncRefs.Get(value_item_index(v)).OuterVars;
+    return GCManager::Functions.Get(value_item_index(v)).OuterVars;
 }
 
 // ── Arithmetic helpers ──────────────────────────────────────────────────
@@ -154,12 +149,12 @@ bool value_equal(Value a, Value b) {
         return true;
     }
     if (is_map(a) && is_map(b)) {
-        GCMap& mA = GCManager::Instance().Maps.Get(value_item_index(a));
-        GCMap& mB = GCManager::Instance().Maps.Get(value_item_index(b));
+        GCMap mA = GCManager::Maps.Get(value_item_index(a));
+        GCMap mB = GCManager::Maps.Get(value_item_index(b));
         if (mA.Count() != mB.Count()) return false;
         for (int i = mA.NextEntry(-1); i != -1; i = mA.NextEntry(i)) {
             Value bv;
-            if (!mB.TryGet(mA.KeyAt(i), bv)) return false;
+            if (!mB.TryGet(mA.KeyAt(i), &bv)) return false;
             if (!value_equal(mA.ValueAt(i), bv)) return false;
         }
         return true;
@@ -260,9 +255,9 @@ Value code_form(Value v, void* vm, int recursion_limit) {
             Value sn = find_short_name(vm, v);
             if (!is_null(sn)) return sn;
         }
-        GCList& list = GCManager::Instance().Lists.Get(value_item_index(v));
+        GCList list = GCManager::Lists.Get(value_item_index(v));
         Value result = make_string("[");
-        for (int i = 0; i < (int)list.Items.size(); i++) {
+        for (int i = 0; i < (int)list.Items.Count(); i++) {
             if (i > 0) result = string_concat(result, make_string(", "));
             Value item = list.Items[i];
             Value item_str = is_null(item) ? make_string("null")
@@ -278,7 +273,7 @@ Value code_form(Value v, void* vm, int recursion_limit) {
             Value sn = find_short_name(vm, v);
             if (!is_null(sn)) return sn;
         }
-        GCMap& m = GCManager::Instance().Maps.Get(value_item_index(v));
+        GCMap m = GCManager::Maps.Get(value_item_index(v));
         if (m.Count() == 0) return make_string("{}");
         Value result = make_string("{");
         bool first = true;
@@ -357,21 +352,23 @@ uint32_t value_hash(Value v) {
 // ── Frozen ──────────────────────────────────────────────────────────────
 
 bool is_frozen(Value v) {
-    if (is_list(v)) return GCManager::Instance().Lists.Get(value_item_index(v)).Frozen;
-    if (is_map(v))  return GCManager::Instance().Maps.Get(value_item_index(v)).Frozen;
+    if (is_list(v)) return GCManager::Lists.Get(value_item_index(v)).Frozen;
+    if (is_map(v))  return GCManager::Maps.Get(value_item_index(v)).Frozen;
     return false;
 }
 
 void freeze_value(Value v) {
     if (is_list(v)) {
-        GCList& l = GCManager::Instance().Lists.Get(value_item_index(v));
+        int32_t idx = value_item_index(v);
+        GCList l = GCManager::Lists.Get(idx);
         if (l.Frozen) return;
-        l.Frozen = true;
-        for (size_t i = 0; i < l.Items.size(); i++) freeze_value(l.Items[i]);
+        GCManager::Lists.SetFrozen(idx, true);
+        for (int i = 0; i < l.Items.Count(); i++) freeze_value(l.Items[i]);
     } else if (is_map(v)) {
-        GCMap& m = GCManager::Instance().Maps.Get(value_item_index(v));
+        int32_t idx = value_item_index(v);
+        GCMap m = GCManager::Maps.Get(idx);
         if (m.Frozen) return;
-        m.Frozen = true;
+        GCManager::Maps.SetFrozen(idx, true);
         for (int i = m.NextEntry(-1); i != -1; i = m.NextEntry(i)) {
             freeze_value(m.KeyAt(i));
             freeze_value(m.ValueAt(i));
@@ -381,23 +378,25 @@ void freeze_value(Value v) {
 
 Value frozen_copy(Value v) {
     if (is_list(v)) {
-        GCList& src = GCManager::Instance().Lists.Get(value_item_index(v));
+        GCList src = GCManager::Lists.Get(value_item_index(v));
         if (src.Frozen) return v;
-        Value newList = make_list((int)src.Items.size());
-        GCList& dst = GCManager::Instance().Lists.Get(value_item_index(newList));
-        dst.Frozen = true;
-        for (size_t i = 0; i < src.Items.size(); i++)
-            dst.Items.push_back(frozen_copy(src.Items[i]));
+        Value newList = make_list((int)src.Items.Count());
+        int32_t dstIdx = value_item_index(newList);
+        GCList dst = GCManager::Lists.Get(dstIdx);
+        GCManager::Lists.SetFrozen(dstIdx, true);
+        for (int i = 0; i < src.Items.Count(); i++)
+            dst.Push(frozen_copy(src.Items[i]));
         return newList;
     }
     if (is_map(v)) {
-        GCMap& src = GCManager::Instance().Maps.Get(value_item_index(v));
+        GCMap src = GCManager::Maps.Get(value_item_index(v));
         if (src.Frozen) return v;
         Value newMap = make_map(src.Count());
-        GCMap& dst = GCManager::Instance().Maps.Get(value_item_index(newMap));
+        int32_t dstIdx = value_item_index(newMap);
+        GCMap dst = GCManager::Maps.Get(dstIdx);
+        GCManager::Maps.SetFrozen(dstIdx, true);
         for (int i = src.NextEntry(-1); i != -1; i = src.NextEntry(i))
             dst.Set(frozen_copy(src.KeyAt(i)), frozen_copy(src.ValueAt(i)));
-        dst.Frozen = true;
         return newMap;
     }
     return v;

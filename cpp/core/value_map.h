@@ -11,19 +11,27 @@
 #define CORE_LAYER_2A
 
 #ifdef __cplusplus
+// VarMap functions take MiniScript::List<Value> (shared_ptr-backed) to
+// preserve aliasing with the VM's register/names arrays. Declared outside
+// the extern "C" block since List<Value> is a C++ template.
+#include "CS_List.h"
+namespace MiniScript {
+Value make_varmap(List<Value> registers, List<Value> names, int firstIndex, int count);
+void  varmap_map_to_register(Value map_val, Value var_name, List<Value> registers, int reg_index);
+void  varmap_gather(Value map_val);
+void  varmap_rebind(Value map_val, List<Value> registers, List<Value> names);
+} // namespace MiniScript
+using MiniScript::make_varmap;
+using MiniScript::varmap_map_to_register;
+using MiniScript::varmap_gather;
+using MiniScript::varmap_rebind;
+
 extern "C" {
 #endif
 
 // Creation
 Value make_map(int initial_capacity);
 Value make_empty_map(void);
-
-// VarMap: stubbed; full port deferred to Phase 4. Calling these returns
-// a plain map (no register binding).
-Value make_varmap(Value* registers, Value* names, int firstIndex, int count);
-void  varmap_map_to_register(Value map_val, Value var_name, Value* registers, int reg_index);
-void  varmap_gather(Value map_val);
-void  varmap_rebind(Value map_val, Value* registers, Value* names);
 
 // Access
 int  map_count(Value map_val);

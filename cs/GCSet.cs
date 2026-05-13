@@ -1,123 +1,294 @@
-//*** BEGIN CS_ONLY ***
 using System;
+using System.Collections.Generic;
+using System.Runtime.CompilerServices;
+using static System.Runtime.CompilerServices.MethodImplOptions;
+// H: #include "GCInterfaces.g.h"
+// H: #include "GCItems.g.h"
 
 namespace MiniScript {
 
-// 
-// Manages a pool of GC-tracked objects of type T using a struct-of-arrays layout
-// so GC metadata (Marked, InUse, RetainCount) occupies its own tight arrays,
-// separate from item data.
-// 
-public sealed class GCSet<T> : IGCSet where T : struct, IGCItem {
+//
+// Non-generic abstract base for all GC item pools.
+// Manages bookkeeping metadata (InUse, Marked, RetainCount, free-list)
+// and implements IGCSet.  Subclasses supply the typed item list and
+// the three abstract item operations.
+//
+public abstract class GCSetBase : IGCSet {
+	protected List<Boolean> _inUse = new List<Boolean>();
+	protected List<Boolean> _marked = new List<Boolean>();
+	protected List<Byte> _retainCounts = new List<Byte>();
+	protected List<Int32> _free = new List<Int32>();
 
-	private T[]       _items;
-	private Boolean[] _inUse;
-	private Boolean[] _marked;
-	private Byte[]   _retainCounts;
+	// Subclass calls item[idx].MarkChildren().
+	protected abstract void CallMarkChildren(Int32 idx);
 
-	private Int32     _hwm;       // high-water mark: indices 0.._hwm-1 have been used
-	private Int32[]   _free;      // stack of recycled indices
-	private Int32     _freeTop;
+	// Subclass calls item[idx].OnSweep().
+	protected abstract void CallOnSweep(Int32 idx);
 
-	public GCSet(Int32 initialCapacity = 64) {
-		_items        = new T[initialCapacity];
-		_inUse        = new Boolean[initialCapacity];
-		_marked       = new Boolean[initialCapacity];
-		_retainCounts = new Byte[initialCapacity];
-		_free         = new Int32[initialCapacity];
-		_freeTop      = 0;
-		_hwm          = 0;
-	}
+	// Subclass appends a default-constructed item to its items list.
+	protected abstract void AppendItem();
 
-	// ── Allocation & Access ──────────────────────────────────────────────────
+	// ── Allocation ───────────────────────────────────────────────────────────
 
-	// 
-	// Reserve a slot and return its index.
-	// Caller must initialise the item via Get(idx) before use.
-	// 
-	public Int32 New() {
+	public Int32 AllocItem() {
 		Int32 idx;
-		if (_freeTop > 0) {
-			idx = _free[--_freeTop];
+		if (_free.Count > 0) {
+			idx = _free[_free.Count - 1];
+			_free.RemoveAt(_free.Count - 1);
+			_inUse[idx]        = true;
+			_marked[idx]       = false;
+			_retainCounts[idx] = 0;
 		} else {
-			idx = _hwm++;
-			if (idx >= _items.Length) Grow();
+			idx = _inUse.Count;
+			_inUse.Add(true);
+			_marked.Add(false);
+			_retainCounts.Add(0);
+			AppendItem();
 		}
-		_items[idx]        = default;
-		_inUse[idx]        = true;
-		_marked[idx]       = false;
-		_retainCounts[idx] = 0;
 		return idx;
 	}
 
-	// Returns a ref to the item at idx for in-place initialisation or mutation.
-	public ref T Get(Int32 idx) { return ref _items[idx]; }
+	// ── Retain / Release ─────────────────────────────────────────────────────
 
-	// ── Retain / Release ────────────────────────────────────────────────────
-
-	public void Retain(Int32 idx)  {
-		if (_retainCounts[idx] == 255) {
-			throw new InvalidOperationException("GCSet value retained > 255 times");
-		}
+	public void Retain(Int32 idx) {
+		if (_retainCounts[idx] == 255) throw new InvalidOperationException("GCSet retained > 255 times"); // CPP: 
 		_retainCounts[idx]++;
 	}
+
 	public void Release(Int32 idx) {
-		if (_retainCounts[idx] == 0) {
-			throw new InvalidOperationException("GCSet value released more than retained");
-		}
+		if (_retainCounts[idx] == 0) throw new InvalidOperationException("GCSet released more than retained"); // CPP: 
 		_retainCounts[idx]--;
 	}
 
-	// ── IGCSet implementation ────────────────────────────────────────────────
+	// ── IGCSet implementation ─────────────────────────────────────────────────
 
 	public void PrepareForGC() {
-		Array.Clear(_marked, 0, _hwm);
+		for (Int32 i = 0; i < _marked.Count; i++) _marked[i] = false;
 	}
 
-	public void Mark(Int32 idx, GCManager gc) {
+	public void Mark(Int32 idx) {
 		if (_marked[idx]) return;
 		_marked[idx] = true;
-		_items[idx].MarkChildren(gc);
+		CallMarkChildren(idx);
 	}
 
-	public void MarkRetained(GCManager gc) {
-		for (Int32 i = 0; i < _hwm; i++) {
-			if (_inUse[i] && _retainCounts[i] > 0) Mark(i, gc);
+	public void MarkRetained() {
+		for (Int32 i = 0; i < _inUse.Count; i++) {
+			if (_inUse[i] && _retainCounts[i] > 0) Mark(i);
 		}
 	}
 
 	public void Sweep() {
-		for (Int32 i = 0; i < _hwm; i++) {
+		for (Int32 i = 0; i < _inUse.Count; i++) {
 			if (_inUse[i] && !_marked[i] && _retainCounts[i] == 0) {
-				_items[i].OnSweep();
-				_items[i]        = default;
+				CallOnSweep(i);
 				_inUse[i]        = false;
 				_retainCounts[i] = 0;
-				if (_freeTop >= _free.Length) Array.Resize(ref _free, _free.Length * 2);
-				_free[_freeTop++] = i;
+				_free.Add(i);
 			}
 		}
 	}
 
 	public Int32 LiveCount() {
 		Int32 n = 0;
-		for (Int32 i = 0; i < _hwm; i++) {
+		for (Int32 i = 0; i < _inUse.Count; i++) {
 			if (_inUse[i]) n++;
 		}
 		return n;
 	}
+}
 
-	// ── Internal ─────────────────────────────────────────────────────────────
+// ── GCStringSet ───────────────────────────────────────────────────────────────
 
-	private void Grow() {
-		Int32 newLen = _items.Length * 2;
-		Array.Resize(ref _items,        newLen);
-		Array.Resize(ref _inUse,        newLen);
-		Array.Resize(ref _marked,       newLen);
-		Array.Resize(ref _retainCounts, newLen);
-		Array.Resize(ref _free,         newLen);
+public class GCStringSet : GCSetBase {
+	private List<GCString> _items;
+
+	public GCStringSet(Int32 initialCapacity = 64) {
+		_items = new List<GCString>(initialCapacity);
+	}
+
+	protected override void CallMarkChildren(Int32 idx) {
+		_items[idx].MarkChildren();
+	}
+	protected override void CallOnSweep(Int32 idx) {
+		GCString item = _items[idx];
+		item.OnSweep();
+		_items[idx] = item;
+	}
+	protected override void AppendItem() {
+		_items.Add(new GCString());
+	}
+
+	[MethodImpl(AggressiveInlining)]
+	public GCString Get(Int32 idx) {
+		return _items[idx];
+	}
+
+	[MethodImpl(AggressiveInlining)]
+	public void SetData(Int32 idx, String s) {
+		GCString item = _items[idx];
+		item.Data = s;
+		_items[idx] = item;
+	}
+}
+
+// ── GCListSet ─────────────────────────────────────────────────────────────────
+
+public class GCListSet : GCSetBase {
+	private List<GCList> _items;
+
+	public GCListSet(Int32 initialCapacity = 64) {
+		_items = new List<GCList>(initialCapacity);
+	}
+
+	protected override void CallMarkChildren(Int32 idx) {
+		_items[idx].MarkChildren();
+	}
+	protected override void CallOnSweep(Int32 idx) {
+		GCList item = _items[idx];
+		item.OnSweep();
+		_items[idx] = item;
+	}
+	protected override void AppendItem() {
+		_items.Add(new GCList());
+	}
+
+	[MethodImpl(AggressiveInlining)]
+	public GCList Get(Int32 idx) {
+		return _items[idx];
+	}
+
+	public void Init(Int32 idx, Int32 capacity) {
+		GCList item = _items[idx];
+		item.Init(capacity);
+		_items[idx] = item;
+	}
+
+	[MethodImpl(AggressiveInlining)]
+	public void SetFrozen(Int32 idx, Boolean frozen) {
+		GCList item = _items[idx];
+		item.Frozen = frozen;
+		_items[idx] = item;
+	}
+}
+
+// ── GCMapSet ──────────────────────────────────────────────────────────────────
+
+public class GCMapSet : GCSetBase {
+	private List<GCMap> _items;
+
+	public GCMapSet(Int32 initialCapacity = 64) {
+		_items = new List<GCMap>(initialCapacity);
+	}
+
+	protected override void CallMarkChildren(Int32 idx) {
+		_items[idx].MarkChildren();
+	}
+	protected override void CallOnSweep(Int32 idx) {
+		GCMap item = _items[idx];
+		item.OnSweep();
+		_items[idx] = item;
+	}
+	protected override void AppendItem() {
+		_items.Add(new GCMap());
+	}
+
+	[MethodImpl(AggressiveInlining)]
+	public GCMap Get(Int32 idx) {
+		return _items[idx];
+	}
+
+	public void Init(Int32 idx, Int32 capacity) {
+		GCMap item = _items[idx];
+		item.Init(capacity);
+		_items[idx] = item;
+	}
+
+	[MethodImpl(AggressiveInlining)]
+	public void SetFrozen(Int32 idx, Boolean frozen) {
+		GCMap item = _items[idx];
+		item.Frozen = frozen;
+		_items[idx] = item;
+	}
+
+	[MethodImpl(AggressiveInlining)]
+	public void SetVmb(Int32 idx, VarMapBacking vmb) {
+		GCMap item = _items[idx];
+		item._vmb = vmb;
+		_items[idx] = item;
+	}
+}
+
+// ── GCErrorSet ────────────────────────────────────────────────────────────────
+
+public class GCErrorSet : GCSetBase {
+	private List<GCError> _items;
+
+	public GCErrorSet(Int32 initialCapacity = 64) {
+		_items = new List<GCError>(initialCapacity);
+	}
+
+	protected override void CallMarkChildren(Int32 idx) {
+		_items[idx].MarkChildren();
+	}
+	protected override void CallOnSweep(Int32 idx) {
+		GCError item = _items[idx];
+		item.OnSweep();
+		_items[idx] = item;
+	}
+	protected override void AppendItem() {
+		_items.Add(new GCError());
+	}
+
+	[MethodImpl(AggressiveInlining)]
+	public GCError Get(Int32 idx) {
+		return _items[idx];
+	}
+
+	[MethodImpl(AggressiveInlining)]
+	public void SetFields(Int32 idx, Value message, Value inner, Value stack, Value isa) {
+		GCError item = _items[idx];
+		item.Message = message;
+		item.Inner   = inner;
+		item.Stack   = stack;
+		item.Isa     = isa;
+		_items[idx] = item;
+	}
+}
+
+// ── GCFuncRefSet ──────────────────────────────────────────────────────────────
+
+public class GCFuncRefSet : GCSetBase {
+	private List<GCFunction> _items;
+
+	public GCFuncRefSet(Int32 initialCapacity = 64) {
+		_items = new List<GCFunction>(initialCapacity);
+	}
+
+	protected override void CallMarkChildren(Int32 idx) {
+		_items[idx].MarkChildren();
+	}
+	protected override void CallOnSweep(Int32 idx) {
+		GCFunction item = _items[idx];
+		item.OnSweep();
+		_items[idx] = item;
+	}
+	protected override void AppendItem() {
+		_items.Add(new GCFunction());
+	}
+
+	[MethodImpl(AggressiveInlining)]
+	public GCFunction Get(Int32 idx) {
+		return _items[idx];
+	}
+
+	[MethodImpl(AggressiveInlining)]
+	public void SetFields(Int32 idx, Int32 funcIndex, Value outerVars) {
+		GCFunction item = _items[idx];
+		item.FuncIndex = funcIndex;
+		item.OuterVars = outerVars;
+		_items[idx] = item;
 	}
 }
 
 }
-//*** END CS_ONLY ***

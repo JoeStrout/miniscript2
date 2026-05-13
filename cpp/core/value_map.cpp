@@ -1,101 +1,59 @@
 // value_map.cpp — thin wrappers over GCManager.Maps.
-//
-// VarMap (register-binding for closures and REPL globals) is not yet
-// ported to the new GC; the make_varmap / varmap_* entry points are
-// stubbed to fall back to plain maps. Phase 4 will port VarMapBacking.
 
 #include "value_map.h"
 #include "value_string.h"
 #include "value_list.h"
 #include "vm_error.h"
-#include "GCManager.h"
-#include "VarMapBacking.h"
+#include "GCManager.g.h"
+#include "VarMap.g.h"
 #include "hashing.h"
 #include <cstring>
 
 using MiniScript::GCManager;
 using MiniScript::GCMap;
-using MiniScript::Value;
 using MiniScript::VarMapBacking;
-
-namespace {
-
-GCMap* as_map_ptr(Value v) {
-    if (!is_map(v)) return nullptr;
-    return &GCManager::Instance().Maps.Get(value_item_index(v));
-}
-
-} // namespace
 
 extern "C" {
 
 // ── Creation ────────────────────────────────────────────────────────────
 
 Value make_map(int initial_capacity) {
-    return GCManager::Instance().NewMap(initial_capacity);
+    return GCManager::NewMap(initial_capacity);
 }
 
 Value make_empty_map(void) {
-    return GCManager::Instance().NewMap(8);
-}
-
-// ── VarMap operations ──────────────────────────────────────────────────
-
-Value make_varmap(Value* registers, Value* names, int firstIndex, int count) {
-    Value result = GCManager::Instance().NewMap(8);
-    GCMap& m = GCManager::Instance().Maps.Get(value_item_index(result));
-    m._vmb = new MiniScript::VarMapBacking(
-        registers, names, firstIndex, firstIndex + count - 1);
-    return result;
-}
-
-void varmap_map_to_register(Value map_val, Value var_name, Value* registers, int reg_index) {
-    GCMap* m = as_map_ptr(map_val);
-    if (!m || !m->_vmb) return;
-    m->_vmb->MapToRegister(*m, var_name, registers, reg_index);
-}
-
-void varmap_gather(Value map_val) {
-    GCMap* m = as_map_ptr(map_val);
-    if (!m || !m->_vmb) return;
-    VarMapBacking* vmb = m->_vmb;
-    vmb->Gather(*m);   // detaches: leaves m->_vmb == nullptr
-    delete vmb;
-}
-
-void varmap_rebind(Value map_val, Value* registers, Value* names) {
-    GCMap* m = as_map_ptr(map_val);
-    if (!m || !m->_vmb) return;
-    m->_vmb->Rebind(*m, registers, names);
+    return GCManager::NewMap(8);
 }
 
 // ── Access ──────────────────────────────────────────────────────────────
 
 int map_count(Value map_val) {
-    GCMap* m = as_map_ptr(map_val);
-    return m ? m->Count() : 0;
+    if (!is_map(map_val)) return 0;
+    GCMap m = GCManager::Maps.Get(value_item_index(map_val));
+    return m.Count();
 }
 
 int map_capacity(Value map_val) {
-    GCMap* m = as_map_ptr(map_val);
+    if (!is_map(map_val)) return 0;
+    GCMap m = GCManager::Maps.Get(value_item_index(map_val));
     // Best-effort: GCMap exposes size only via Count(). Return Count*2 as a
     // proxy since the underlying table maintains 50% load.
-    return m ? m->Count() * 2 : 0;
+    return m.Count() * 2;
 }
 
 Value map_get(Value map_val, Value key) {
-    GCMap* m = as_map_ptr(map_val);
-    if (!m) return val_null;
+    if (!is_map(map_val)) return val_null;
+    GCMap m = GCManager::Maps.Get(value_item_index(map_val));
     Value out;
-    if (m->TryGet(key, out)) return out;
+    if (m.TryGet(key, &out)) return out;
     return val_null;
 }
 
 bool map_try_get(Value map_val, Value key, Value* out_value) {
-    GCMap* m = as_map_ptr(map_val);
-    if (!m) { if (out_value) *out_value = val_null; return false; }
+    if (!is_map(map_val)) { if (out_value) *out_value = val_null; return false; }
+    GCMap m = GCManager::Maps.Get(value_item_index(map_val));
     Value out;
-    bool ok = m->TryGet(key, out);
+    bool ok = m.TryGet(key, &out);
     if (out_value) *out_value = ok ? out : val_null;
     return ok;
 }
@@ -105,11 +63,11 @@ bool map_lookup(Value map_val, Value key, Value* out_value) {
     Value current = map_val;
     for (int depth = 0; depth < 256; depth++) {
         if (!is_map(current)) { if (out_value) *out_value = val_null; return false; }
-        GCMap& m = GCManager::Instance().Maps.Get(value_item_index(current));
+        GCMap m = GCManager::Maps.Get(value_item_index(current));
         Value v;
-        if (m.TryGet(key, v)) { if (out_value) *out_value = v; return true; }
+        if (m.TryGet(key, &v)) { if (out_value) *out_value = v; return true; }
         Value isa;
-        if (!m.TryGet(val_isa_key, isa)) { if (out_value) *out_value = val_null; return false; }
+        if (!m.TryGet(val_isa_key, &isa)) { if (out_value) *out_value = val_null; return false; }
         current = isa;
     }
     if (out_value) *out_value = val_null;
@@ -124,17 +82,17 @@ bool map_lookup_with_origin(Value map_val, Value key, Value* out_value, Value* o
             if (out_super) *out_super = val_null;
             return false;
         }
-        GCMap& m = GCManager::Instance().Maps.Get(value_item_index(current));
+        GCMap m = GCManager::Maps.Get(value_item_index(current));
         Value v;
-        if (m.TryGet(key, v)) {
+        if (m.TryGet(key, &v)) {
             Value isa;
-            m.TryGet(val_isa_key, isa);
+            m.TryGet(val_isa_key, &isa);
             if (out_value) *out_value = v;
             if (out_super) *out_super = isa;
             return true;
         }
         Value isa;
-        if (!m.TryGet(val_isa_key, isa)) {
+        if (!m.TryGet(val_isa_key, &isa)) {
             if (out_value) *out_value = val_null;
             if (out_super) *out_super = val_null;
             return false;
@@ -147,57 +105,58 @@ bool map_lookup_with_origin(Value map_val, Value key, Value* out_value, Value* o
 }
 
 bool map_set(Value map_val, Value key, Value value) {
-    GCMap* m = as_map_ptr(map_val);
-    if (!m) return false;
-    if (m->Frozen) { vm_raise_runtime_error("Attempt to modify a frozen map"); return false; }
-    m->Set(key, value);
+    if (!is_map(map_val)) return false;
+    GCMap m = GCManager::Maps.Get(value_item_index(map_val));
+    if (m.Frozen) { vm_raise_runtime_error("Attempt to modify a frozen map"); return false; }
+    m.Set(key, value);
     return true;
 }
 
 bool map_remove(Value map_val, Value key) {
-    GCMap* m = as_map_ptr(map_val);
-    if (!m) return false;
-    if (m->Frozen) { vm_raise_runtime_error("Attempt to modify a frozen map"); return false; }
-    return m->Remove(key);
+    if (!is_map(map_val)) return false;
+    GCMap m = GCManager::Maps.Get(value_item_index(map_val));
+    if (m.Frozen) { vm_raise_runtime_error("Attempt to modify a frozen map"); return false; }
+    return m.Remove(key);
 }
 
 bool map_has_key(Value map_val, Value key) {
-    GCMap* m = as_map_ptr(map_val);
-    if (!m) return false;
+    if (!is_map(map_val)) return false;
+    GCMap m = GCManager::Maps.Get(value_item_index(map_val));
     Value v;
-    return m->TryGet(key, v);
+    return m.TryGet(key, &v);
 }
 
 // ── Utilities ───────────────────────────────────────────────────────────
 
 void map_clear(Value map_val) {
-    GCMap* m = as_map_ptr(map_val);
-    if (!m) return;
-    if (m->Frozen) { vm_raise_runtime_error("Attempt to modify a frozen map"); return; }
-    // Re-init at current capacity is the simplest reset.
-    m->Init(8);
+    if (!is_map(map_val)) return;
+    GCMap m = GCManager::Maps.Get(value_item_index(map_val));
+    if (m.Frozen) { vm_raise_runtime_error("Attempt to modify a frozen map"); return; }
+    m.Clear();
 }
 
 Value map_copy(Value map_val) {
-    GCMap* src = as_map_ptr(map_val);
-    if (!src) return val_null;
-    Value newMap = make_map(src->Count());
-    GCMap& dst = GCManager::Instance().Maps.Get(value_item_index(newMap));
-    for (int i = src->NextEntry(-1); i != -1; i = src->NextEntry(i))
-        dst.Set(src->KeyAt(i), src->ValueAt(i));
+    if (!is_map(map_val)) return val_null;
+    GCMap src = GCManager::Maps.Get(value_item_index(map_val));
+    Value newMap = make_map(src.Count());
+    GCMap dst = GCManager::Maps.Get(value_item_index(newMap));
+    for (int i = src.NextEntry(-1); i != -1; i = src.NextEntry(i))
+        dst.Set(src.KeyAt(i), src.ValueAt(i));
     return newMap;
 }
 
 Value map_concat(Value a, Value b) {
     Value result = make_empty_map();
-    GCMap& dst = GCManager::Instance().Maps.Get(value_item_index(result));
-    if (GCMap* la = as_map_ptr(a)) {
-        for (int i = la->NextEntry(-1); i != -1; i = la->NextEntry(i))
-            dst.Set(la->KeyAt(i), la->ValueAt(i));
+    GCMap dst = GCManager::Maps.Get(value_item_index(result));
+    if (is_map(a)) {
+        GCMap la = GCManager::Maps.Get(value_item_index(a));
+        for (int i = la.NextEntry(-1); i != -1; i = la.NextEntry(i))
+            dst.Set(la.KeyAt(i), la.ValueAt(i));
     }
-    if (GCMap* lb = as_map_ptr(b)) {
-        for (int i = lb->NextEntry(-1); i != -1; i = lb->NextEntry(i))
-            dst.Set(lb->KeyAt(i), lb->ValueAt(i));
+    if (is_map(b)) {
+        GCMap lb = GCManager::Maps.Get(value_item_index(b));
+        for (int i = lb.NextEntry(-1); i != -1; i = lb.NextEntry(i))
+            dst.Set(lb.KeyAt(i), lb.ValueAt(i));
     }
     return result;
 }
@@ -226,7 +185,7 @@ bool map_iterator_next(MapIterator* iter, Value* out_key, Value* out_value) {
         if (out_value) *out_value = val_null;
         return false;
     }
-    GCMap& m = GCManager::Instance().Maps.Get(iter->map_idx);
+    GCMap m = GCManager::Maps.Get(iter->map_idx);
     int next = m.NextEntry(iter->iter);
     if (next < 0) { iter->iter = MAP_ITER_DONE; return false; }
     iter->iter = next;
@@ -236,14 +195,14 @@ bool map_iterator_next(MapIterator* iter, Value* out_key, Value* out_value) {
 }
 
 Value map_nth_entry(Value map_val, int n) {
-    GCMap* m = as_map_ptr(map_val);
-    if (!m) return val_null;
+    if (!is_map(map_val)) return val_null;
+    GCMap m = GCManager::Maps.Get(value_item_index(map_val));
     int count = 0;
-    for (int i = m->NextEntry(-1); i != -1; i = m->NextEntry(i)) {
+    for (int i = m.NextEntry(-1); i != -1; i = m.NextEntry(i)) {
         if (count == n) {
             Value entry = make_map(4);
-            map_set(entry, make_string("key"),   m->KeyAt(i));
-            map_set(entry, make_string("value"), m->ValueAt(i));
+            map_set(entry, make_string("key"),   m.KeyAt(i));
+            map_set(entry, make_string("value"), m.ValueAt(i));
             return entry;
         }
         count++;
@@ -254,26 +213,25 @@ Value map_nth_entry(Value map_val, int n) {
 // ── New iterator interface ──────────────────────────────────────────────
 
 int map_iter_next(Value map_val, int iter) {
-    GCMap* m = as_map_ptr(map_val);
-    if (!m || iter == MAP_ITER_DONE) return MAP_ITER_DONE;
-    int next = m->NextEntry(iter);
+    if (!is_map(map_val) || iter == MAP_ITER_DONE) return MAP_ITER_DONE;
+    GCMap m = GCManager::Maps.Get(value_item_index(map_val));
+    int next = m.NextEntry(iter);
     return next < 0 ? MAP_ITER_DONE : next;
 }
 
 Value map_iter_entry(Value map_val, int iter) {
-    GCMap* m = as_map_ptr(map_val);
-    if (!m || iter == MAP_ITER_DONE) return val_null;
+    if (!is_map(map_val) || iter == MAP_ITER_DONE) return val_null;
+    GCMap m = GCManager::Maps.Get(value_item_index(map_val));
     Value entry = make_map(4);
-    map_set(entry, make_string("key"),   m->KeyAt(iter));
-    map_set(entry, make_string("value"), m->ValueAt(iter));
+    map_set(entry, make_string("key"),   m.KeyAt(iter));
+    map_set(entry, make_string("value"), m.ValueAt(iter));
     return entry;
 }
 
 // ── Hash & display ──────────────────────────────────────────────────────
 
 uint32_t map_hash(Value map_val) {
-    GCMap* m = as_map_ptr(map_val);
-    if (!m) return 0;
+    if (!is_map(map_val)) return 0;
     return uint64_hash((uint64_t)map_val);
 }
 
@@ -282,3 +240,36 @@ Value map_to_string(Value map_val, void* vm) {
 }
 
 } // extern "C"
+
+// ── VarMap operations ──────────────────────────────────────────────────
+// Declared in value_map.h inside namespace MiniScript so they can take
+// MiniScript::List<Value> (template type, not C-compatible).
+
+namespace MiniScript {
+
+Value make_varmap(List<Value> registers, List<Value> names, int firstIndex, int count) {
+    return VarMapBacking::NewVarMap(registers, names, firstIndex, firstIndex + count - 1);
+}
+
+void varmap_map_to_register(Value map_val, Value var_name, List<Value> registers, int reg_index) {
+    if (!is_map(map_val)) return;
+    int32_t idx = value_item_index(map_val);
+    GCMap m = GCManager::Maps.Get(idx);
+    if (!IsNull(m._vmb)) m._vmb.MapToRegister(idx, var_name, registers, reg_index);
+}
+
+void varmap_gather(Value map_val) {
+    if (!is_map(map_val)) return;
+    int32_t idx = value_item_index(map_val);
+    GCMap m = GCManager::Maps.Get(idx);
+    if (!IsNull(m._vmb)) m._vmb.Gather(idx);
+}
+
+void varmap_rebind(Value map_val, List<Value> registers, List<Value> names) {
+    if (!is_map(map_val)) return;
+    int32_t idx = value_item_index(map_val);
+    GCMap m = GCManager::Maps.Get(idx);
+    if (!IsNull(m._vmb)) m._vmb.Rebind(idx, registers, names);
+}
+
+} // namespace MiniScript

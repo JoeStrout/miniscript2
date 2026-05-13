@@ -866,3 +866,10 @@ Well it took several days, but I finally got the new GC system transpiling, and 
 
 Today I'm adding the interning system for medium-length strings, per [ADR #5](adr/0005-string-interning.md).
 
+With that basically working, I have a laundry list of related enhancements:
+- make the C# code handle tiny non-ASCII strings (in UTF-8 encoding) ✔️
+- rename "Strings" to "BigStrings" in GCManager (making purpose more clear)
+- add a `gc` intrinsic that returns a module with:
+	- `.collect(full=false)`: trigger garbage collection
+	- `.stats`: return map of current allocation counts, etc.
+- make the `info` map for a GC value return its set and entry indexes

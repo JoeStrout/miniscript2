@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Text;
 
 using static MiniScript.ValueHelpers;
 
@@ -115,29 +116,21 @@ public static class ValueHelpers {
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value make_string(string str) {
-		// ToDo: we really want to check the length of the string in UTF-8,
-		// and store it as such if the UTF-8 bytes are 5 or fewer.
-		// We should have a make_tiny_utf8 function rather than
-		// make_tiny_ascii.
-		if (str.Length <= 5 && IsAllAscii(str)) return make_tiny_ascii(str);
+		if (str.Length <= 5) {
+			// str.Length <= 5 guarantees UTF-8 bytes <= 20, so a 20-byte buffer suffices.
+			Span<byte> buf = stackalloc byte[20];
+			int byteCount = Encoding.UTF8.GetBytes(str, buf);
+			if (byteCount <= 5) return make_tiny_utf8(buf.Slice(0, byteCount));
+		}
 		if (str.Length < GCManager.InternThreshold) return GCManager.InternString(str);
 		return GCManager.NewString(str);
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static Value make_tiny_ascii(string s) {
-		// ToDo: change this to make_tiny_utf8.  "本" is a perfectly
-		// comulent tiny string.
-		int len = s.Length;
+	private static Value make_tiny_utf8(ReadOnlySpan<byte> utf8) {
+		int len = utf8.Length;
 		ulong u = Value.TINY_STRING_TAG | (ulong)((uint)len & 0xFFU);
-		for (int i = 0; i < len; i++) u |= (ulong)((byte)s[i]) << (8 * (i + 1));
+		for (int i = 0; i < len; i++) u |= (ulong)utf8[i] << (8 * (i + 1));
 		return new Value(u);
-	}
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static bool IsAllAscii(string s) {
-		foreach (char c in s) if (c > 0x7F) return false;
-		return true;
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -281,9 +274,9 @@ public static class ValueHelpers {
 		if (is_tiny_string(val)) {
 			int len = value_tiny_len(val);
 			if (len == 0) return "";
-			var chars = new char[len];
-			for (int i = 0; i < len; i++) chars[i] = (char)((val._u >> (8 * (i + 1))) & 0xFF);
-			return new string(chars);
+			Span<byte> bytes = stackalloc byte[5];
+			for (int i = 0; i < len; i++) bytes[i] = (byte)((val._u >> (8 * (i + 1))) & 0xFF);
+			return Encoding.UTF8.GetString(bytes.Slice(0, len));
 		}
 		if (is_heap_string(val)) {
 			GCStringSet set = (value_gc_set_index(val) == GCManager.InternedStringSet)

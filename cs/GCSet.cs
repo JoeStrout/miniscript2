@@ -89,6 +89,12 @@ public abstract class GCSetBase : IGCSet {
 		}
 	}
 
+	// True if slot idx is currently in use and will survive the next Sweep
+	// (either it was marked this cycle, or it has a non-zero retain count).
+	public Boolean IsLiveSlot(Int32 idx) {
+		return _inUse[idx] && (_marked[idx] || _retainCounts[idx] > 0);
+	}
+
 	public Int32 LiveCount() {
 		Int32 n = 0;
 		for (Int32 i = 0; i < _inUse.Count; i++) {

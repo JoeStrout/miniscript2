@@ -859,3 +859,10 @@ Before I get to string interning, I want to pay down some of the accumulated tec
 
 Now I'm attempting to make the new GC system transpilable.  This is proving thorning, largely because it is relying on templates.  It doesn't need to, though; a pretty clean separation for GTSet would have an abstract base class that manages all the bookkeeping fields (parallel arrays), and then a subclass for each type that adds a typed item array and a small set of item-specific methods.
 
+
+## May 13, 2026
+
+Well it took several days, but I finally got the new GC system transpiling, and removed the old C++-specific GC code.
+
+Today I'm adding the interning system for medium-length strings, per [ADR #5](adr/0005-string-interning.md).
+

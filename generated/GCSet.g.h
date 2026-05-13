@@ -63,6 +63,10 @@ struct GCSetBase : public IGCSet {
 
 	public: inline void Sweep();
 
+	// True if slot idx is currently in use and will survive the next Sweep
+	// (either it was marked this cycle, or it has a non-zero retain count).
+	public: inline Boolean IsLiveSlot(Int32 idx);
+
 	public: inline Int32 LiveCount();
 }; // end of struct GCSetBase
 
@@ -103,6 +107,10 @@ class GCSetBaseStorage : public std::enable_shared_from_this<GCSetBaseStorage>, 
 	public: void MarkRetained();
 
 	public: void Sweep();
+
+	// True if slot idx is currently in use and will survive the next Sweep
+	// (either it was marked this cycle, or it has a non-zero retain count).
+	public: Boolean IsLiveSlot(Int32 idx);
 
 	public: Int32 LiveCount();
 }; // end of class GCSetBaseStorage
@@ -340,6 +348,7 @@ inline void GCSetBase::PrepareForGC() { return get()->PrepareForGC(); }
 inline void GCSetBase::Mark(Int32 idx) { return get()->Mark(idx); }
 inline void GCSetBase::MarkRetained() { return get()->MarkRetained(); }
 inline void GCSetBase::Sweep() { return get()->Sweep(); }
+inline Boolean GCSetBase::IsLiveSlot(Int32 idx) { return get()->IsLiveSlot(idx); }
 inline Int32 GCSetBase::LiveCount() { return get()->LiveCount(); }
 
 inline GCStringSet::GCStringSet(std::shared_ptr<GCStringSetStorage> stor) : GCSetBase(stor) {}

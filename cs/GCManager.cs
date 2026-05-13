@@ -19,18 +19,33 @@ namespace MiniScript {
 public static class GCManager {
 
 	// GCSet indices — these constants define the encoding baked into every GC Value.
-	public const Int32 StringSet = 0;
+	public const Int32 StringSet = 0;	// ToDo: rename BigStringSet
 	public const Int32 ListSet = 1;
 	public const Int32 MapSet = 2;
 	public const Int32 ErrorSet = 3;
 	public const Int32 FunctionSet = 4;
+	public const Int32 InternedStringSet = 5;
+
+	// Length boundary for interning: heap strings with Length < InternThreshold
+	// are placed in the InternedStrings set and deduplicated via _internTable.
+	// Strings of Length >= InternThreshold go into the ordinary Strings set.
+	public const Int32 InternThreshold = 128;
 
 	// Typed accessors; use these to allocate new objects.
-	public static GCStringSet Strings = null;
+	public static GCStringSet Strings = null;	// ToDo: rename BigStrings
+	public static GCStringSet InternedStrings = null;
 	public static GCListSet Lists = null;
 	public static GCMapSet Maps = null;
 	public static GCErrorSet Errors = null;
 	public static GCFuncRefSet Functions = null;
+
+	// Content-addressed intern table for short heap strings.
+	// Maps string content → InternedStrings slot index.
+	private static Dictionary<String, Int32> _internTable = null;
+
+	// When true, the current GC pass is a full collection that also marks
+	// and sweeps the InternedStrings set.  Normal cycles leave it untouched.
+	private static Boolean _fullCollection = false;
 
 	private static List<Value> _roots = null;
 
@@ -45,12 +60,15 @@ public static class GCManager {
 
 	public static void Init() {
 		if (_roots != null) return;	// already initialized
-		Strings  = new GCStringSet();
-		Lists    = new GCListSet();
-		Maps     = new GCMapSet();
-		Errors   = new GCErrorSet();
-		Functions = new GCFuncRefSet();
-		_roots   = new List<Value>();
+		Strings         = new GCStringSet();
+		InternedStrings = new GCStringSet();
+		Lists           = new GCListSet();
+		Maps            = new GCMapSet();
+		Errors          = new GCErrorSet();
+		Functions       = new GCFuncRefSet();
+		_internTable    = new 
+		  Dictionary<String, Int32>(StringComparer.Ordinal); // CPP: Dictionary<String, Int32>();
+		_roots          = new List<Value>();
 		_markCallbackFns  = new List<MarkCallback>();
 		_markCallbackData = new List<object>();
 	}
@@ -61,6 +79,19 @@ public static class GCManager {
 		Int32 idx = Strings.AllocItem();
 		Strings.SetData(idx, s);
 		return make_gc(StringSet, idx);
+	}
+
+	// Look up s in the intern table; on miss, allocate a slot in the
+	// semi-immortal InternedStrings set and record the mapping.
+	public static Value InternString(String s) {
+		Int32 idx;
+		if (_internTable.TryGetValue(s, out idx)) {
+			return make_gc(InternedStringSet, idx);
+		}
+		idx = InternedStrings.AllocItem();
+		InternedStrings.SetData(idx, s);
+		_internTable[s] = idx;
+		return make_gc(InternedStringSet, idx);
 	}
 
 	public static Value NewList(Int32 capacity = 8) {
@@ -135,17 +166,36 @@ public static class GCManager {
 			case MapSet:     Maps.Mark(itemIdx);     break;
 			case ErrorSet:   Errors.Mark(itemIdx);   break;
 			case FunctionSet: Functions.Mark(itemIdx); break;
+			case InternedStringSet:
+				// Skip during normal GC; interned strings are semi-immortal.
+				if (_fullCollection) InternedStrings.Mark(itemIdx);
+				break;
 		}
+	}
+
+	// Run a full mark-sweep cycle, including the InternedStrings set.
+	// Interned strings unreachable from roots (and not retained) are removed
+	// from the intern table and then swept.  Use this for explicit resets,
+	// memory-pressure events, or VM teardown.
+	public static void FullCollectGarbage() {
+		CollectGarbageInternal(true);
 	}
 
 	// Run a full mark-sweep cycle.
 	public static void CollectGarbage() {
+		CollectGarbageInternal(false);
+	}
+
+	private static void CollectGarbageInternal(Boolean includeInterned) {
+		_fullCollection = includeInterned;
+
 		// 1. Clear all mark bits.
 		Strings.PrepareForGC();
 		Lists.PrepareForGC();
 		Maps.PrepareForGC();
 		Errors.PrepareForGC();
 		Functions.PrepareForGC();
+		if (includeInterned) InternedStrings.PrepareForGC();
 
 		// 2. Mark from explicit roots.
 		for (Int32 i = 0; i < _roots.Count; i++) Mark(_roots[i]);
@@ -162,6 +212,7 @@ public static class GCManager {
 		Maps.MarkRetained();
 		Errors.MarkRetained();
 		Functions.MarkRetained();
+		if (includeInterned) InternedStrings.MarkRetained();
 
 		// 4. Sweep: free everything still unmarked.
 		Strings.Sweep();
@@ -169,20 +220,39 @@ public static class GCManager {
 		Maps.Sweep();
 		Errors.Sweep();
 		Functions.Sweep();
+
+		// 5. Full-GC only: remove dead intern-table entries, then sweep.
+		// The table is keyed by string content, so we must purge its
+		// entries before InternedStrings.Sweep() clears the .Data fields.
+		if (includeInterned) SweepInternTable();
+	}
+
+	private static void SweepInternTable() {
+		List<String> dead = new List<String>();
+		foreach (KeyValuePair<String, Int32> kvp in _internTable) { // CPP: for (String key : _internTable.Keys()) {
+			String key = kvp.Key;		// CPP:
+			Int32 slot = kvp.Value;		// CPP: Int32 slot = _internTable[key];
+			if (!InternedStrings.IsLiveSlot(slot)) dead.Add(key);
+		}
+		for (Int32 i = 0; i < dead.Count; i++) _internTable.Remove(dead[i]);
+		InternedStrings.Sweep();
 	}
 
 	// ── Convenience accessors ─────────────────────────────────────────────────
 
-	public static GCString  GetString(Value v)  {
+	public static GCString GetString(Value v) {
+		if (value_gc_set_index(v) == InternedStringSet) {
+			return InternedStrings.Get(value_item_index(v));
+		}
 		return Strings.Get(value_item_index(v));
 	}
-	public static GCList    GetList(Value v)    {
+	public static GCList GetList(Value v) {
 		return Lists.Get(value_item_index(v));
 	}
-	public static GCMap     GetMap(Value v)     {
+	public static GCMap GetMap(Value v) {
 		return Maps.Get(value_item_index(v));
 	}
-	public static GCError   GetError(Value v)   {
+	public static GCError GetError(Value v) {
 		return Errors.Get(value_item_index(v));
 	}
 	public static GCFunction GetFuncRef(Value v) {
@@ -202,7 +272,9 @@ public static class GCManager {
 			return new String(chars);
 		}
 		if (is_heap_string(v)) {
-			String data = Strings.Get(value_item_index(v)).Data;
+			GCStringSet set;
+			set = (value_gc_set_index(v) == InternedStringSet) ? InternedStrings : Strings;
+			String data = set.Get(value_item_index(v)).Data;
 			return data != null ? data : "";
 		}
 		return "";

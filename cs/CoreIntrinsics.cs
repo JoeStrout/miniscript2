@@ -1200,6 +1200,7 @@ public static class CoreIntrinsics {
 			replOutList = make_list(0);
 			Interpreter interp = ctx.vm.GetInterpreter();
 			if (interp != null) interp.ResetReplGlobals();
+			GCManager.FullCollectGarbage();
 			return IntrinsicResult.Null;
 		};
 

@@ -120,6 +120,7 @@ public static class ValueHelpers {
 		// We should have a make_tiny_utf8 function rather than
 		// make_tiny_ascii.
 		if (str.Length <= 5 && IsAllAscii(str)) return make_tiny_ascii(str);
+		if (str.Length < GCManager.InternThreshold) return GCManager.InternString(str);
 		return GCManager.NewString(str);
 	}
 
@@ -224,8 +225,14 @@ public static class ValueHelpers {
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool is_gc_object(Value v) => (v._u & Value.NANISH_MASK) == Value.GC_TAG;
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool is_heap_string(Value v) =>
-		(v._u & Value.GC_TYPE_MASK) == (Value.GC_TAG | ((ulong)GCManager.StringSet  << 32));
+	public static bool is_heap_string(Value v) {
+		ulong masked = v._u & Value.GC_TYPE_MASK;
+		return masked == (Value.GC_TAG | ((ulong)GCManager.StringSet         << 32))
+		    || masked == (Value.GC_TAG | ((ulong)GCManager.InternedStringSet << 32));
+	}
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static bool is_interned_string(Value v) =>
+		(v._u & Value.GC_TYPE_MASK) == (Value.GC_TAG | ((ulong)GCManager.InternedStringSet << 32));
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool is_string(Value v) => is_tiny_string(v) || is_heap_string(v);
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -278,7 +285,11 @@ public static class ValueHelpers {
 			for (int i = 0; i < len; i++) chars[i] = (char)((val._u >> (8 * (i + 1))) & 0xFF);
 			return new string(chars);
 		}
-		if (is_heap_string(val)) return GCManager.Strings.Get(value_item_index(val)).Data ?? "";
+		if (is_heap_string(val)) {
+			GCStringSet set = (value_gc_set_index(val) == GCManager.InternedStringSet)
+				? GCManager.InternedStrings : GCManager.Strings;
+			return set.Get(value_item_index(val)).Data ?? "";
+		}
 		return "";
 	}
 

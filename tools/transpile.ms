@@ -485,7 +485,7 @@ Transpiler.transformStatement = function(trimmedLine)
 	// non-identifier string.
 	tokens = roughTokenize(trimmedLine)
 	
-	deepDebug = trimmedLine.contains("vm.");
+	deepDebug = trimmedLine.contains("kvp");
 	ddprint = function(s); if deepDebug then print "====> " + s; end function
 	summarize = function(obj)
 		if obj == null then return "<null>"
@@ -1407,7 +1407,6 @@ Transpiler.updateStateMETHOD = function
 			   self.match("≤type:w≥ ≤name:w≥ = ≤expr≥;") or
 			   self.match("var ≤name:w≥ = new ≤type:w≥(≤args≥);")then
 				self.localVars.push VariableInfo.Make(self.m.name, self.m.type, Scope.LOCAL)
-				print ">>>> FOUND LOCAL: " + self.localVars[-1].summary
 			end if
 		end if 
 		return
@@ -1481,12 +1480,11 @@ Transpiler.updateStateMETHOD = function
 		return
 	end if
 	if self.match("foreach (≤type:w≥ ≤var:w≥ in ≤seq≥) {") then
-		if debugMode then print ">>>> FOREACH{ DETECTED: " + self.m
+		self.localVars.push VariableInfo.Make(self.m.var, self.m.type, Scope.LOCAL)
 		cline = line.indentation + self.fill("for (≤type≥ ≤var≥ : ≤seq≥) {") + line.comment;
 		cline = fixStringInterpolation(cline)
 		cline = self.transformStatement(cline)
 		self.curClass.methodLines.push cline
-		if debugMode then print ">>>> " + self.curClass.methodLines[-1]
 		return
 	end if
 	

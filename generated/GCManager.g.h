@@ -16,23 +16,38 @@ typedef void (*MarkCallback)(void* userData);
 // Mark(Value) dispatches to the right GCSet using the GCSet index baked into
 // the Value bits — no switch statement, just array indexing.
 class GCManager {
-	public: static const Int32 StringSet;
+	public: static const Int32 StringSet; // ToDo: rename BigStringSet
 	public: static const Int32 ListSet;
 	public: static const Int32 MapSet;
 	public: static const Int32 ErrorSet;
 	public: static const Int32 FunctionSet;
-	public: static GCStringSet Strings;
+	public: static const Int32 InternedStringSet;
+	public: static const Int32 InternThreshold;
+	public: static GCStringSet Strings; // ToDo: rename BigStrings
+	public: static GCStringSet InternedStrings;
 	public: static GCListSet Lists;
 	public: static GCMapSet Maps;
 	public: static GCErrorSet Errors;
 	public: static GCFuncRefSet Functions;
+	private: static Dictionary<String, Int32> _internTable;
+	private: static Boolean _fullCollection;
 	private: static List<Value> _roots;
 	private: static List<MarkCallback> _markCallbackFns;
 	private: static List<object> _markCallbackData;
 
 	// GCSet indices — these constants define the encoding baked into every GC Value.
 
+	// Length boundary for interning: heap strings with Length < InternThreshold
+	// are placed in the InternedStrings set and deduplicated via _internTable.
+	// Strings of Length >= InternThreshold go into the ordinary Strings set.
+
 	// Typed accessors; use these to allocate new objects.
+
+	// Content-addressed intern table for short heap strings.
+	// Maps string content → InternedStrings slot index.
+
+	// When true, the current GC pass is a full collection that also marks
+	// and sweeps the InternedStrings set.  Normal cycles leave it untouched.
 
 	// ── Mark callbacks ───────────────────────────────────────────────────────
 	// Callback registered by a VM (or any other root provider) and invoked once
@@ -44,6 +59,10 @@ class GCManager {
 	// ── Value factories ──────────────────────────────────────────────────────
 
 	public: static Value NewString(String s);
+
+	// Look up s in the intern table; on miss, allocate a slot in the
+	// semi-immortal InternedStrings set and record the mapping.
+	public: static Value InternString(String s);
 
 	public: static Value NewList(Int32 capacity = 8);
 
@@ -71,11 +90,25 @@ class GCManager {
 
 	private: static void DispatchMark(Int32 setIdx, Int32 itemIdx);
 
+	// Run a full mark-sweep cycle, including the InternedStrings set.
+	// Interned strings unreachable from roots (and not retained) are removed
+	// from the intern table and then swept.  Use this for explicit resets,
+	// memory-pressure events, or VM teardown.
+	public: static void FullCollectGarbage();
+
 	// Run a full mark-sweep cycle.
 	public: static void CollectGarbage();
 
+	private: static void CollectGarbageInternal(Boolean includeInterned);
+
+	private: static void SweepInternTable();
+
 	// ── Convenience accessors ─────────────────────────────────────────────────
 
+	public: static GCString GetString(Value v);
+	public: static GCList GetList(Value v);
+	public: static GCMap GetMap(Value v);
+	public: static GCError GetError(Value v);
 	public: static GCFunction GetFuncRef(Value v);
 
 	// ── Static helper for content-based string access ─────────────────────────
@@ -99,7 +132,9 @@ inline String GCManager::GetStringContent(Value v) {
 		return  String::New(chars);
 	}
 	if (is_heap_string(v)) {
-		String data = Strings.Get(value_item_index(v)).Data;
+		GCStringSet set;
+		set = (value_gc_set_index(v) == InternedStringSet) ? InternedStrings : Strings;
+		String data = set.Get(value_item_index(v)).Data;
 		return !IsNull(data) ? data : "";
 	}
 	return "";

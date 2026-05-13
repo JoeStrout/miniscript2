@@ -1,6 +1,6 @@
 Title: Semi-Immortal Interned Strings
 
-Status: Proposed
+Status: Accepted
 
 Context:
 MiniScript currently represents strings in three ways:

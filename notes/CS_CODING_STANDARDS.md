@@ -119,6 +119,9 @@ but instead format it like this:
 	}
 ```
 
+## No named parameters
+
+Don't do stuff like `CollectGarbageInternal(includeInterned: Boolean(true))`.  It doesn't transpile.  Just leave out the parameter name: `CollectGarbageInternal(Boolean(true))`.
 
 ## Inline Methods
 

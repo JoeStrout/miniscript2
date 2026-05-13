@@ -51,6 +51,9 @@ void GCSetBaseStorage::Sweep() {
 		}
 	}
 }
+Boolean GCSetBaseStorage::IsLiveSlot(Int32 idx) {
+	return _inUse[idx] && (_marked[idx] || _retainCounts[idx] > 0);
+}
 Int32 GCSetBaseStorage::LiveCount() {
 	Int32 n = 0;
 	for (Int32 i = 0; i < _inUse.Count(); i++) {

@@ -330,4 +330,18 @@ Value    frozen_copy(Value v);
 } // extern "C"
 #endif
 
+#ifdef __cplusplus
+// Content-aware Hash and equality overloads for Value, used by
+// Dictionary<Value, Value>. Without these, Dictionary would fall back to
+// bitwise hash/equality (via Hash(int) narrowing and uint64_t ==), which
+// fails for heap-allocated strings/lists/maps whose bits differ across
+// allocations even when their content is equal.
+inline int Hash(uint64_t v) {
+    return (int)(value_hash((Value)v) & 0x7FFFFFFFU);
+}
+inline bool DictKeyEqual(uint64_t a, uint64_t b) {
+    return value_equal((Value)a, (Value)b);
+}
+#endif
+
 #endif // NANBOX_H

@@ -58,6 +58,18 @@ inline int Hash(T value) {
 
 // Hash(const String&) is defined in CS_String.h to avoid circular dependencies
 
+// Hash(uint64_t) is defined in value.h, where the Value-specific implementation
+// lives. Forward-declared here so the Dictionary template (instantiated for
+// Dictionary<Value, Value> in GCItems) can find it via ordinary lookup at the
+// template definition point. (ADL doesn't apply to uint64_t.)
+int Hash(uint64_t v);
+
+// Key equality hook used by Dictionary. Default uses operator==; overload for
+// specific key types (e.g. Value in value.h) to get content-aware equality.
+template<typename T>
+inline bool DictKeyEqual(const T& a, const T& b) { return a == b; }
+bool DictKeyEqual(uint64_t a, uint64_t b);
+
 // Shared storage for Dictionary — holds all mutable state so that
 // copied Dictionary handles see the same data (C# reference semantics).
 template<typename TKey, typename TValue>
@@ -114,7 +126,7 @@ class DictionaryStorage {
 		int bucket = hashCode % capacity;
 
 		for (int i = buckets[bucket]; i >= 0; i = entries[i].next) {
-			if (entries[i].hashCode == hashCode && entries[i].key == key) {
+			if (entries[i].hashCode == hashCode && DictKeyEqual(entries[i].key, key)) {
 				return i;
 			}
 		}
@@ -192,7 +204,7 @@ public:
 
 		// Check if key already exists
 		for (int i = data->buckets[bucket]; i >= 0; i = data->entries[i].next) {
-			if (data->entries[i].hashCode == hashCode && data->entries[i].key == key) {
+			if (data->entries[i].hashCode == hashCode && DictKeyEqual(data->entries[i].key, key)) {
 				// Update existing
 				data->entries[i].value = value;
 				return;
@@ -273,7 +285,7 @@ public:
 
 		int last = -1;
 		for (int i = data->buckets[bucket]; i >= 0; last = i, i = data->entries[i].next) {
-			if (data->entries[i].hashCode == hashCode && data->entries[i].key == key) {
+			if (data->entries[i].hashCode == hashCode && DictKeyEqual(data->entries[i].key, key)) {
 				if (last < 0) {
 					data->buckets[bucket] = data->entries[i].next;
 				} else {

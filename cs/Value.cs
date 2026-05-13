@@ -220,7 +220,7 @@ public static class ValueHelpers {
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool is_heap_string(Value v) {
 		ulong masked = v._u & Value.GC_TYPE_MASK;
-		return masked == (Value.GC_TAG | ((ulong)GCManager.StringSet         << 32))
+		return masked == (Value.GC_TAG | ((ulong)GCManager.BigStringSet      << 32))
 		    || masked == (Value.GC_TAG | ((ulong)GCManager.InternedStringSet << 32));
 	}
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -280,7 +280,7 @@ public static class ValueHelpers {
 		}
 		if (is_heap_string(val)) {
 			GCStringSet set = (value_gc_set_index(val) == GCManager.InternedStringSet)
-				? GCManager.InternedStrings : GCManager.Strings;
+				? GCManager.InternedStrings : GCManager.BigStrings;
 			return set.Get(value_item_index(val)).Data ?? "";
 		}
 		return "";

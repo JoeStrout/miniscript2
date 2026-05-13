@@ -1,7 +1,7 @@
 // value_string.cpp — string operations on NaN-boxed Values, layered over
 // the shared StringStorage / ss_* primitives so behaviour matches CS_String.
 //
-// Heap Value strings are GCManager.Strings slots, each owning a String
+// Heap Value strings are GCManager.BigStrings slots, each owning a String
 // (which wraps a shared_ptr<StringStorage>). We reach the underlying
 // StringStorage via String::getStorageRaw() so existing ss_* call sites
 // continue to work; the shared_ptr layer is a temporary cost while we
@@ -28,7 +28,7 @@ namespace {
 
 // Get the raw StringStorage* for a heap-string Value (borrowed; do not free).
 const StringStorage* heap_string_storage(Value v) {
-    GCString s = GCManager::Strings.Get(value_item_index(v));
+    GCString s = GCManager::BigStrings.Get(value_item_index(v));
     return s.Data.getStorageRaw();
 }
 

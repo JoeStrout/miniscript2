@@ -16,14 +16,14 @@ typedef void (*MarkCallback)(void* userData);
 // Mark(Value) dispatches to the right GCSet using the GCSet index baked into
 // the Value bits — no switch statement, just array indexing.
 class GCManager {
-	public: static const Int32 StringSet; // ToDo: rename BigStringSet
+	public: static const Int32 BigStringSet;
 	public: static const Int32 ListSet;
 	public: static const Int32 MapSet;
 	public: static const Int32 ErrorSet;
 	public: static const Int32 FunctionSet;
 	public: static const Int32 InternedStringSet;
 	public: static const Int32 InternThreshold;
-	public: static GCStringSet Strings; // ToDo: rename BigStrings
+	public: static GCStringSet BigStrings;
 	public: static GCStringSet InternedStrings;
 	public: static GCListSet Lists;
 	public: static GCMapSet Maps;
@@ -39,7 +39,7 @@ class GCManager {
 
 	// Length boundary for interning: heap strings with Length < InternThreshold
 	// are placed in the InternedStrings set and deduplicated via _internTable.
-	// Strings of Length >= InternThreshold go into the ordinary Strings set.
+	// Strings of Length >= InternThreshold go into the ordinary BigStrings set.
 
 	// Typed accessors; use these to allocate new objects.
 
@@ -133,7 +133,7 @@ inline String GCManager::GetStringContent(Value v) {
 	}
 	if (is_heap_string(v)) {
 		GCStringSet set;
-		set = (value_gc_set_index(v) == InternedStringSet) ? InternedStrings : Strings;
+		set = (value_gc_set_index(v) == InternedStringSet) ? InternedStrings : BigStrings;
 		String data = set.Get(value_item_index(v)).Data;
 		return !IsNull(data) ? data : "";
 	}

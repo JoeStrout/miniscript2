@@ -19,7 +19,7 @@ namespace MiniScript {
 public static class GCManager {
 
 	// GCSet indices — these constants define the encoding baked into every GC Value.
-	public const Int32 StringSet = 0;	// ToDo: rename BigStringSet
+	public const Int32 BigStringSet = 0;
 	public const Int32 ListSet = 1;
 	public const Int32 MapSet = 2;
 	public const Int32 ErrorSet = 3;
@@ -28,11 +28,11 @@ public static class GCManager {
 
 	// Length boundary for interning: heap strings with Length < InternThreshold
 	// are placed in the InternedStrings set and deduplicated via _internTable.
-	// Strings of Length >= InternThreshold go into the ordinary Strings set.
+	// Strings of Length >= InternThreshold go into the ordinary BigStrings set.
 	public const Int32 InternThreshold = 128;
 
 	// Typed accessors; use these to allocate new objects.
-	public static GCStringSet Strings = null;	// ToDo: rename BigStrings
+	public static GCStringSet BigStrings = null;
 	public static GCStringSet InternedStrings = null;
 	public static GCListSet Lists = null;
 	public static GCMapSet Maps = null;
@@ -60,7 +60,7 @@ public static class GCManager {
 
 	public static void Init() {
 		if (_roots != null) return;	// already initialized
-		Strings         = new GCStringSet();
+		BigStrings      = new GCStringSet();
 		InternedStrings = new GCStringSet();
 		Lists           = new GCListSet();
 		Maps            = new GCMapSet();
@@ -76,9 +76,9 @@ public static class GCManager {
 	// ── Value factories ──────────────────────────────────────────────────────
 
 	public static Value NewString(String s) {
-		Int32 idx = Strings.AllocItem();
-		Strings.SetData(idx, s);
-		return make_gc(StringSet, idx);
+		Int32 idx = BigStrings.AllocItem();
+		BigStrings.SetData(idx, s);
+		return make_gc(BigStringSet, idx);
 	}
 
 	// Look up s in the intern table; on miss, allocate a slot in the
@@ -161,7 +161,7 @@ public static class GCManager {
 
 	private static void DispatchMark(Int32 setIdx, Int32 itemIdx) {
 		switch (setIdx) {
-			case StringSet:  Strings.Mark(itemIdx);  break;
+			case BigStringSet:  BigStrings.Mark(itemIdx);  break;
 			case ListSet:    Lists.Mark(itemIdx);    break;
 			case MapSet:     Maps.Mark(itemIdx);     break;
 			case ErrorSet:   Errors.Mark(itemIdx);   break;
@@ -190,7 +190,7 @@ public static class GCManager {
 		_fullCollection = includeInterned;
 
 		// 1. Clear all mark bits.
-		Strings.PrepareForGC();
+		BigStrings.PrepareForGC();
 		Lists.PrepareForGC();
 		Maps.PrepareForGC();
 		Errors.PrepareForGC();
@@ -207,7 +207,7 @@ public static class GCManager {
 		}
 
 		// 3. Mark retained items (and their children).
-		Strings.MarkRetained();
+		BigStrings.MarkRetained();
 		Lists.MarkRetained();
 		Maps.MarkRetained();
 		Errors.MarkRetained();
@@ -215,7 +215,7 @@ public static class GCManager {
 		if (includeInterned) InternedStrings.MarkRetained();
 
 		// 4. Sweep: free everything still unmarked.
-		Strings.Sweep();
+		BigStrings.Sweep();
 		Lists.Sweep();
 		Maps.Sweep();
 		Errors.Sweep();
@@ -244,7 +244,7 @@ public static class GCManager {
 		if (value_gc_set_index(v) == InternedStringSet) {
 			return InternedStrings.Get(value_item_index(v));
 		}
-		return Strings.Get(value_item_index(v));
+		return BigStrings.Get(value_item_index(v));
 	}
 	public static GCList GetList(Value v) {
 		return Lists.Get(value_item_index(v));
@@ -273,7 +273,7 @@ public static class GCManager {
 		}
 		if (is_heap_string(v)) {
 			GCStringSet set;
-			set = (value_gc_set_index(v) == InternedStringSet) ? InternedStrings : Strings;
+			set = (value_gc_set_index(v) == InternedStringSet) ? InternedStrings : BigStrings;
 			String data = set.Get(value_item_index(v)).Data;
 			return data != null ? data : "";
 		}

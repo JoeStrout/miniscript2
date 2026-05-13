@@ -6,14 +6,14 @@
 
 namespace MiniScript {
 
-const Int32 GCManager::StringSet = 0; // ToDo: rename BigStringSet
+const Int32 GCManager::BigStringSet = 0;
 const Int32 GCManager::ListSet = 1;
 const Int32 GCManager::MapSet = 2;
 const Int32 GCManager::ErrorSet = 3;
 const Int32 GCManager::FunctionSet = 4;
 const Int32 GCManager::InternedStringSet = 5;
 const Int32 GCManager::InternThreshold = 128;
-GCStringSet GCManager::Strings = nullptr; // ToDo: rename BigStrings
+GCStringSet GCManager::BigStrings = nullptr;
 GCStringSet GCManager::InternedStrings = nullptr;
 GCListSet GCManager::Lists = nullptr;
 GCMapSet GCManager::Maps = nullptr;
@@ -26,7 +26,7 @@ List<MarkCallback> GCManager::_markCallbackFns = nullptr;
 List<object> GCManager::_markCallbackData = nullptr;
 void GCManager::Init() {
 	if (!IsNull(_roots)) return;	// already initialized
-	Strings         =  GCStringSet::New();
+	BigStrings      =  GCStringSet::New();
 	InternedStrings =  GCStringSet::New();
 	Lists           =  GCListSet::New();
 	Maps            =  GCMapSet::New();
@@ -39,9 +39,9 @@ void GCManager::Init() {
 	_markCallbackData =  List<object>::New();
 }
 Value GCManager::NewString(String s) {
-	Int32 idx = Strings.AllocItem();
-	Strings.SetData(idx, s);
-	return make_gc(StringSet, idx);
+	Int32 idx = BigStrings.AllocItem();
+	BigStrings.SetData(idx, s);
+	return make_gc(BigStringSet, idx);
 }
 Value GCManager::InternString(String s) {
 	Int32 idx;
@@ -96,7 +96,7 @@ void GCManager::UnregisterMarkCallback(MarkCallback fn,object userData) {
 }
 void GCManager::DispatchMark(Int32 setIdx,Int32 itemIdx) {
 	switch (setIdx) {
-		case StringSet:  Strings.Mark(itemIdx);  break;
+		case BigStringSet:  BigStrings.Mark(itemIdx);  break;
 		case ListSet:    Lists.Mark(itemIdx);    break;
 		case MapSet:     Maps.Mark(itemIdx);     break;
 		case ErrorSet:   Errors.Mark(itemIdx);   break;
@@ -117,7 +117,7 @@ void GCManager::CollectGarbageInternal(Boolean includeInterned) {
 	_fullCollection = includeInterned;
 
 	// 1. Clear all mark bits.
-	Strings.PrepareForGC();
+	BigStrings.PrepareForGC();
 	Lists.PrepareForGC();
 	Maps.PrepareForGC();
 	Errors.PrepareForGC();
@@ -134,7 +134,7 @@ void GCManager::CollectGarbageInternal(Boolean includeInterned) {
 	}
 
 	// 3. Mark retained items (and their children).
-	Strings.MarkRetained();
+	BigStrings.MarkRetained();
 	Lists.MarkRetained();
 	Maps.MarkRetained();
 	Errors.MarkRetained();
@@ -142,7 +142,7 @@ void GCManager::CollectGarbageInternal(Boolean includeInterned) {
 	if (includeInterned) InternedStrings.MarkRetained();
 
 	// 4. Sweep: free everything still unmarked.
-	Strings.Sweep();
+	BigStrings.Sweep();
 	Lists.Sweep();
 	Maps.Sweep();
 	Errors.Sweep();
@@ -166,7 +166,7 @@ GCString GCManager::GetString(Value v) {
 	if (value_gc_set_index(v) == InternedStringSet) {
 		return InternedStrings.Get(value_item_index(v));
 	}
-	return Strings.Get(value_item_index(v));
+	return BigStrings.Get(value_item_index(v));
 }
 GCList GCManager::GetList(Value v) {
 	return Lists.Get(value_item_index(v));

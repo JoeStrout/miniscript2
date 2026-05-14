@@ -57,13 +57,12 @@ class CoreIntrinsics {
 	public: static Value FunctionType();
 	private: static Value _functionType;
 
-	// 
 	// ErrorType: a static map that represents the `error` type, and provides
 	// intrinsic methods that can be invoked on an error via dot syntax
 	// (notably `err` for creating a specialization).
-	// 
 	public: static Value ErrorType();
 	private: static Value _errorType;
+	private: static Intrinsic _errorErrIntr;
 	private: static Value _EOL;
 	public: static Value replInList;
 	public: static Value replOutList;
@@ -73,6 +72,11 @@ class CoreIntrinsics {
 	public: static void MarkRoots(object user_data);
 
 	public: static void Init();
+
+	public: static Value GCMap();
+	private: static Value _gcMap;
+	private: static Intrinsic _gcCollectIntr;
+	private: static Intrinsic _gcStatsIntr;
 
 	public: static void InvalidateTypeMaps();
 

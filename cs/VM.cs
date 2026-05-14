@@ -273,6 +273,14 @@ public class VM {
 				GCManager.Mark(val);
 			}
 		}
+		// Mark compile-time constants in all registered functions (includes interned strings).
+		for (Int32 fi = 0; fi < vm.functions.Count; fi++) {
+			FuncDef f = vm.functions[fi];
+			List<Value> consts = f.Constants;
+			for (Int32 ci = 0; ci < consts.Count; ci++) {
+				GCManager.Mark(consts[ci]);
+			}
+		}
 	}
 
 	public void RegisterFunction(FuncDef funcDef) {

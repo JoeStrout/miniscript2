@@ -115,17 +115,15 @@ Value CoreIntrinsics::_functionType = val_null;
 Value CoreIntrinsics::ErrorType() {
 	if (is_null(_errorType)) {
 		_errorType = make_map(4);
-		// The method-form of err (with self) is registered under "__error_err"
-		// but exposed in this map as "err".
-		Intrinsic errMethod = Intrinsic::GetByName("__error_err");
-		if (!IsNull(errMethod)) {
-			map_set(_errorType, make_string("err"), errMethod.GetFunc());
+		if (!IsNull(_errorErrIntr)) {
+			map_set(_errorType, make_string("err"), _errorErrIntr.GetFunc());
 		}
 		Intrinsic::AddShortName(_errorType, "error");
 	}
 	return _errorType;
 }
 Value CoreIntrinsics::_errorType = val_null;
+Intrinsic CoreIntrinsics::_errorErrIntr = nullptr;
 Value CoreIntrinsics::_EOL = make_string("\n");
 Value CoreIntrinsics::replInList = val_null;
 Value CoreIntrinsics::replOutList = val_null;
@@ -136,6 +134,7 @@ void CoreIntrinsics::MarkRoots(object user_data) {
 	GCManager::Mark(_numberType);
 	GCManager::Mark(_functionType);
 	GCManager::Mark(_errorType);
+	GCManager::Mark(_gcMap);
 	GCManager::Mark(replInList);
 	GCManager::Mark(replOutList);
 }
@@ -194,7 +193,8 @@ void CoreIntrinsics::Init() {
 
 	// err method on ErrorType: se.err(msg, inner=null) creates a new error
 	// whose __isa is se.  Terminates if this would create an __isa cycle.
-	f = Intrinsic::Create("__error_err");
+	_errorErrIntr = Intrinsic::Create("");
+	f = _errorErrIntr;
 	f.AddParam("self");
 	f.AddParam("msg");
 	f.AddParam("inner");
@@ -1148,7 +1148,62 @@ void CoreIntrinsics::Init() {
 		return IntrinsicResult::Null;
 	});
 
+	// gc.collect(full=false)  — underlying implementation for gc.collect
+	_gcCollectIntr = Intrinsic::Create("");
+	f = _gcCollectIntr;
+	f.AddParam("full", val_zero);
+	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
+		Value vFull = ctx.GetArg(0);
+		if (is_truthy(vFull)) {
+			GCManager::FullCollectGarbage();
+		} else {
+			GCManager::CollectGarbage();
+		}
+		return IntrinsicResult::Null;
+	});
+
+	// gc.stats  — underlying implementation for gc.stats
+	_gcStatsIntr = Intrinsic::Create("");
+	f = _gcStatsIntr;
+	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
+		Value result = make_map(8);
+		int bigStrings     = GCManager::BigStrings.LiveCount();
+		int internedStrings = GCManager::InternedStrings.LiveCount();
+		int lists          = GCManager::Lists.LiveCount();
+		int maps           = GCManager::Maps.LiveCount();
+		int errors         = GCManager::Errors.LiveCount();
+		int functions      = GCManager::Functions.LiveCount();
+		int total = bigStrings + internedStrings + lists + maps + errors + functions;
+		map_set(result, make_string("bigStrings"),      make_int(bigStrings));
+		map_set(result, make_string("internedStrings"), make_int(internedStrings));
+		map_set(result, make_string("lists"),           make_int(lists));
+		map_set(result, make_string("maps"),            make_int(maps));
+		map_set(result, make_string("errors"),          make_int(errors));
+		map_set(result, make_string("functions"),       make_int(functions));
+		map_set(result, make_string("total"),           make_int(total));
+		freeze_value(result);
+		return IntrinsicResult(result);
+	});
+
+	// gc — returns a map with GC utility functions: collect and stats.
+	f = Intrinsic::Create("gc");
+	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
+		return IntrinsicResult(GCMap());
+	});
+
 }
+Value CoreIntrinsics::GCMap() {
+	if (is_null(_gcMap)) {
+		_gcMap = make_map(2);
+		if (!IsNull(_gcCollectIntr)) map_set(_gcMap, make_string("collect"), _gcCollectIntr.GetFunc());
+		if (!IsNull(_gcStatsIntr)) map_set(_gcMap, make_string("stats"), _gcStatsIntr.GetFunc());
+		freeze_value(_gcMap);
+	}
+	return _gcMap;
+}
+Value CoreIntrinsics::_gcMap = val_null;
+Intrinsic CoreIntrinsics::_gcCollectIntr = nullptr;
+Intrinsic CoreIntrinsics::_gcStatsIntr = nullptr;
 void CoreIntrinsics::InvalidateTypeMaps() {
 	_listType = val_null;
 	_stringType = val_null;
@@ -1156,6 +1211,7 @@ void CoreIntrinsics::InvalidateTypeMaps() {
 	_numberType = val_null;
 	_functionType = val_null;
 	_errorType = val_null;
+	_gcMap = val_null;
 	Intrinsic::ClearShortNames();
 }
 

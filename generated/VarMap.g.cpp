@@ -64,8 +64,10 @@ Boolean VarMapBackingStorage::TryRemove(Value key) {
 Boolean VarMapBackingStorage::HasKey(Value key) {
 	if (is_string(key)) {
 		Int32 orderIdx = FindOrderIdx(key);
-		Int32 regIdx = _regIndices[orderIdx];
-		if (orderIdx >= 0) return !is_null(_names[orderIdx]);
+		if (orderIdx >= 0) {
+			Int32 regIdx = _regIndices[orderIdx];
+			return !is_null(_names[regIdx]);
+		}
 	}
 	return Boolean(false);
 }

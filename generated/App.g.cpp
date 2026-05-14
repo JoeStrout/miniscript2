@@ -398,6 +398,7 @@ String App::GetREPLInput(Interpreter interp) {
 
 		return line;
 	}
+	return String(nullptr);	// unreachable; silences compiler warning
 }
 Int32 App::ParseInt(String s) {
 	if (s.Length() == 0) return -1;

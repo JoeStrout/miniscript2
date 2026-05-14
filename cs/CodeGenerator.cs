@@ -723,6 +723,11 @@ public class CodeGenerator : IASTVisitor {
 	}
 
 	public Int32 Visit(ExprCallNode node) {
+		// Capture and clear _targetReg up front, so that evaluating the
+		// receiver/function expression doesn't accidentally consume it.
+		Int32 explicitTarget = _targetReg;
+		_targetReg = -1;
+
 		// Check if the function expression is a member access or index operation
 		// on a map — if so, this is a method call and we need to set self/super.
 		MemberNode memberTarget = node.Function as MemberNode;
@@ -731,6 +736,7 @@ public class CodeGenerator : IASTVisitor {
 			SuperNode superTarget = memberTarget.Target as SuperNode;
 			bool preserveSelf = (superTarget != null);
 			Int32 receiverReg = memberTarget.Target.Accept(this);
+			_targetReg = explicitTarget;  // restore for EmitMethodCall
 			Int32 resultReg = EmitMethodCall(receiverReg, memberTarget.Member, node.Arguments, preserveSelf);
 			FreeReg(receiverReg);
 			return resultReg;
@@ -741,8 +747,6 @@ public class CodeGenerator : IASTVisitor {
 			// obj[key]() — treat as method call if key is a string
 			SuperNode superTarget = indexTarget.Target as SuperNode;
 			bool preserveSelf = (superTarget != null);
-			Int32 explicitTarget = _targetReg;
-			_targetReg = -1;
 
 			// Evaluate receiver and key
 			Int32 receiverReg = indexTarget.Target.Accept(this);
@@ -769,26 +773,31 @@ public class CodeGenerator : IASTVisitor {
 		}
 
 		// Regular function call (not a method call)
-		Int32 explicitTarget2 = _targetReg;
-		_targetReg = -1;
-
 		// Evaluate the function expression to get the funcref
 		Int32 funcReg2 = node.Function.Accept(this);
 
 		List<Int32> argRegs2 = CompileArguments(node.Arguments);
-		Int32 resultReg2 = EmitCallSequence(funcReg2, argRegs2, explicitTarget2, "call expr");
+		Int32 resultReg2 = EmitCallSequence(funcReg2, argRegs2, explicitTarget, "call expr");
 		FreeReg(funcReg2);
 
 		return resultReg2;
 	}
 
 	public Int32 Visit(MethodCallNode node) {
+		// Capture and clear _targetReg up front, so that evaluating the
+		// receiver doesn't accidentally consume it.
+		Int32 explicitTarget = _targetReg;
+		_targetReg = -1;
+
 		// Check if the target is 'super' — if so, preserve current self
 		SuperNode superTarget = node.Target as SuperNode;
 		bool preserveSelf = (superTarget != null);
 
 		// Evaluate receiver
 		Int32 receiverReg = node.Target.Accept(this);
+
+		// Restore _targetReg so EmitMethodCall places the result there
+		_targetReg = explicitTarget;
 
 		// Emit method call
 		Int32 resultReg = EmitMethodCall(receiverReg, node.Method, node.Arguments, preserveSelf);

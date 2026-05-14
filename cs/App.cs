@@ -430,6 +430,7 @@ public struct App {
 
 			return line;
 		}
+		// CPP: return String(nullptr);	// unreachable; silences compiler warning
 	}
 
 	// Parse a non-negative integer from a string.  Returns -1 on failure.

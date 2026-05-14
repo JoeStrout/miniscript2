@@ -3802,7 +3802,7 @@ return globals
 end function
 print f
 ---------------------------------
-{"g": 99, "f": FuncRef(#62, closure)}
+{"g": 99, "f": FuncRef(#65, closure)}
 ================================
 ==== outer from a nested function
 ================================
@@ -3816,7 +3816,7 @@ return inner
 end function
 print f
 ---------------------------------
-{"a": 10, "inner": FuncRef(#63, closure)}
+{"a": 10, "inner": FuncRef(#66, closure)}
 ================================
 ==== outer at global scope equals globals
 ================================
@@ -4073,6 +4073,130 @@ zoo = {"animals": [new Animal, new Animal]}
 print zoo
 --------------------------------
 {"animals": [{"__isa": Animal}, {"__isa": Animal}]}
+================================
+================================================================================
+==== SECTION: GC INTRINSIC
+================================================================================
+==== gc is a frozen map with collect and stats functions
+================================
+print gc isa map
+print isFrozen(gc)
+print gc.hasIndex("collect")
+print gc.hasIndex("stats")
+--------------------------------
+1
+1
+1
+1
+================================
+==== gc.collect runs without error (no-arg form, partial GC)
+================================
+gc.collect
+print "ok"
+--------------------------------
+ok
+================================
+==== gc.collect(false) runs without error (explicit partial GC)
+================================
+gc.collect false
+print "ok"
+--------------------------------
+ok
+================================
+==== gc.collect(true) runs without error (full GC)
+================================
+gc.collect true
+print "ok"
+--------------------------------
+ok
+================================
+==== gc.stats returns a frozen map with the expected keys
+================================
+s = gc.stats
+print s isa map
+print isFrozen(s)
+print s.hasIndex("bigStrings")
+print s.hasIndex("internedStrings")
+print s.hasIndex("lists")
+print s.hasIndex("maps")
+print s.hasIndex("errors")
+print s.hasIndex("functions")
+print s.hasIndex("total")
+--------------------------------
+1
+1
+1
+1
+1
+1
+1
+1
+1
+================================
+==== gc.stats values are non-negative numbers
+================================
+s = gc.stats
+print s.bigStrings >= 0
+print s.internedStrings >= 0
+print s.lists >= 0
+print s.maps >= 0
+print s.errors >= 0
+print s.functions >= 0
+print s.total >= 0
+--------------------------------
+1
+1
+1
+1
+1
+1
+1
+================================
+==== gc.stats total equals sum of all categories
+================================
+s = gc.stats
+total = s.bigStrings + s.internedStrings + s.lists + s.maps + s.errors + s.functions
+print total == s.total
+--------------------------------
+1
+================================
+==== gc.stats after full collect still returns correct structure
+================================
+gc.collect true
+s = gc.stats
+print s isa map
+print isFrozen(s)
+print s.total >= 0
+--------------------------------
+1
+1
+1
+================================
+==== assigning method call result does not clobber with receiver
+================================
+f = function(x)
+	return x * 2
+end function
+m = {}
+m.foo = @f
+r = m.foo(21)
+print r
+print r == 42
+--------------------------------
+42
+1
+================================
+==== assigning bracket-call result does not clobber with receiver
+================================
+f = function(x)
+	return x + 1
+end function
+m = {}
+m["foo"] = @f
+r = m["foo"](10)
+print r
+--------------------------------
+11
 ================================
 ==== END OF TESTS
 ================================================================================

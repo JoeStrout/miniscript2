@@ -158,25 +158,23 @@ public static class CoreIntrinsics {
 	}
 	private static Value _functionType = val_null;
 
-	// 
+	//
 	// ErrorType: a static map that represents the `error` type, and provides
 	// intrinsic methods that can be invoked on an error via dot syntax
 	// (notably `err` for creating a specialization).
-	// 
+	//
 	public static Value ErrorType() {
 		if (is_null(_errorType)) {
 			_errorType = make_map(4);
-			// The method-form of err (with self) is registered under "__error_err"
-			// but exposed in this map as "err".
-			Intrinsic errMethod = Intrinsic.GetByName("__error_err");
-			if (errMethod != null) {
-				map_set(_errorType, make_string("err"), errMethod.GetFunc());
+			if (_errorErrIntr != null) {
+				map_set(_errorType, make_string("err"), _errorErrIntr.GetFunc());
 			}
 			Intrinsic.AddShortName(_errorType, "error");
 		}
 		return _errorType;
 	}
 	private static Value _errorType = val_null;
+	private static Intrinsic _errorErrIntr = null;
 
 	private static Value _EOL = make_string("\n");
 
@@ -191,6 +189,7 @@ public static class CoreIntrinsics {
 		GCManager.Mark(_numberType);
 		GCManager.Mark(_functionType);
 		GCManager.Mark(_errorType);
+		GCManager.Mark(_gcMap);
 		GCManager.Mark(replInList);
 		GCManager.Mark(replOutList);
 	}
@@ -250,7 +249,8 @@ public static class CoreIntrinsics {
 
 		// err method on ErrorType: se.err(msg, inner=null) creates a new error
 		// whose __isa is se.  Terminates if this would create an __isa cycle.
-		f = Intrinsic.Create("__error_err");
+		_errorErrIntr = Intrinsic.Create("");
+		f = _errorErrIntr;
 		f.AddParam("self");
 		f.AddParam("msg");
 		f.AddParam("inner");
@@ -1204,7 +1204,63 @@ public static class CoreIntrinsics {
 			return IntrinsicResult.Null;
 		};
 
+		// gc.collect(full=false)  — underlying implementation for gc.collect
+		_gcCollectIntr = Intrinsic.Create("");
+		f = _gcCollectIntr;
+		f.AddParam("full", val_zero);
+		f.Code = (Context ctx, IntrinsicResult partialResult) => {
+			Value vFull = ctx.GetArg(0);
+			if (is_truthy(vFull)) {
+				GCManager.FullCollectGarbage();
+			} else {
+				GCManager.CollectGarbage();
+			}
+			return IntrinsicResult.Null;
+		};
+
+		// gc.stats  — underlying implementation for gc.stats
+		_gcStatsIntr = Intrinsic.Create("");
+		f = _gcStatsIntr;
+		f.Code = (Context ctx, IntrinsicResult partialResult) => {
+			Value result = make_map(8);
+			int bigStrings     = GCManager.BigStrings.LiveCount();
+			int internedStrings = GCManager.InternedStrings.LiveCount();
+			int lists          = GCManager.Lists.LiveCount();
+			int maps           = GCManager.Maps.LiveCount();
+			int errors         = GCManager.Errors.LiveCount();
+			int functions      = GCManager.Functions.LiveCount();
+			int total = bigStrings + internedStrings + lists + maps + errors + functions;
+			map_set(result, make_string("bigStrings"),      make_int(bigStrings));
+			map_set(result, make_string("internedStrings"), make_int(internedStrings));
+			map_set(result, make_string("lists"),           make_int(lists));
+			map_set(result, make_string("maps"),            make_int(maps));
+			map_set(result, make_string("errors"),          make_int(errors));
+			map_set(result, make_string("functions"),       make_int(functions));
+			map_set(result, make_string("total"),           make_int(total));
+			freeze_value(result);
+			return new IntrinsicResult(result);
+		};
+
+		// gc — returns a map with GC utility functions: collect and stats.
+		f = Intrinsic.Create("gc");
+		f.Code = (Context ctx, IntrinsicResult partialResult) => {
+			return new IntrinsicResult(GCMap());
+		};
+
 	}
+
+	public static Value GCMap() {
+		if (is_null(_gcMap)) {
+			_gcMap = make_map(2);
+			if (_gcCollectIntr != null) map_set(_gcMap, make_string("collect"), _gcCollectIntr.GetFunc());
+			if (_gcStatsIntr != null) map_set(_gcMap, make_string("stats"), _gcStatsIntr.GetFunc());
+			freeze_value(_gcMap);
+		}
+		return _gcMap;
+	}
+	private static Value _gcMap = val_null;
+	private static Intrinsic _gcCollectIntr = null;
+	private static Intrinsic _gcStatsIntr = null;
 
 	public static void InvalidateTypeMaps() {
 		_listType = val_null;
@@ -1213,6 +1269,7 @@ public static class CoreIntrinsics {
 		_numberType = val_null;
 		_functionType = val_null;
 		_errorType = val_null;
+		_gcMap = val_null;
 		Intrinsic.ClearShortNames();
 	}
 

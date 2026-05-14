@@ -868,8 +868,19 @@ Today I'm adding the interning system for medium-length strings, per [ADR #5](ad
 
 With that basically working, I have a laundry list of related enhancements:
 - make the C# code handle tiny non-ASCII strings (in UTF-8 encoding) ✔️
-- rename "Strings" to "BigStrings" in GCManager (making purpose more clear)
-- add a `gc` intrinsic that returns a module with:
-	- `.collect(full=false)`: trigger garbage collection
-	- `.stats`: return map of current allocation counts, etc.
-- make the `info` map for a GC value return its set and entry indexes
+- rename "Strings" to "BigStrings" in GCManager (making purpose more clear) ✔️
+- add a `gc` intrinsic that returns a module with: ✔️
+	- `.collect(full=false)`: trigger garbage collection ✔️
+	- `.stats`: return map of current allocation counts, etc. ✔️
+- maybe make the `info` map for a GC value return its set and entry indexes
+- fix warnings (VarMap.g.cpp and App.g.cpp) ✔️
+
+While testing the `gc` intrinsic though, we stumbled upon a deeper bug.  It seems like calling a method in a map is not working properly; it calls the method, but then leaves the function reference in the implicit output.  ...Bug in Visit(ExprCallNode), now fixed.
+
+Going to sit on the `info` idea for now.  Do we really want to expose any implementation details about the GC entry index?  I can't think of a use case.
+
+
+
+
+
+

@@ -898,6 +898,8 @@ Also, this reminds me: I really need to spend some time heavily testing the inte
 
 For example, it appears that `locals == globals` is not true, even at the global scope. ...OK, that's now fixed.
 
+Turned to File next, but that leads to RawData, and _that_ leads to GCHandle, our last type of garbage-collected object, which we haven't actually implemented yet.  So, a side quest to go implement that.  It's a leaf type, like String, so it shouldn't be too complicated; it just needs some kind of raw user data, and a callback to be invoked when it is GC'd.
+
 
 
 

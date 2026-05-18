@@ -241,6 +241,9 @@ public static class ValueHelpers {
 	public static bool is_funcref(Value v) =>
 		(v._u & Value.GC_TYPE_MASK) == (Value.GC_TAG | ((ulong)GCManager.FunctionSet << 32));
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static bool is_handle(Value v) =>
+		(v._u & Value.GC_TYPE_MASK) == (Value.GC_TAG | ((ulong)GCManager.HandleSet << 32));
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool is_number(Value v) => is_double(v);
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]

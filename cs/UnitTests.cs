@@ -959,6 +959,39 @@ public static class UnitTests {
 		return ok;
 	}
 
+	// ── GCHandle test ────────────────────────────────────────────────────────────
+
+	private static Int32 _handleFinalizerCallCount = 0;
+	private static void TestHandleFinalizer(object userData) {
+		_handleFinalizerCallCount++;
+	}
+
+	public static Boolean TestGCHandle() {
+		Boolean ok = true;
+		_handleFinalizerCallCount = 0;
+
+		// Allocate a handle and verify the predicate.
+		Value h = GCManager.NewHandle(null, TestHandleFinalizer);
+		ok = ok && Assert(is_handle(h), "NewHandle should produce a handle value");
+		ok = ok && Assert(!is_map(h), "handle should not test as map");
+		ok = ok && Assert(!is_null(h), "handle should not test as null");
+
+		// Keep the handle alive across a GC cycle via retain count; callback must not fire yet.
+		GCManager.Handles.Retain(value_item_index(h));
+		GCManager.CollectGarbage();
+		ok = ok && Assert(_handleFinalizerCallCount == 0,
+			"callback should not fire while handle is still reachable");
+
+		// Release the retain — handle is now unreachable.  Next GC must sweep it.
+		GCManager.Handles.Release(value_item_index(h));
+		GCManager.CollectGarbage();
+		ok = ok && Assert(_handleFinalizerCallCount == 1,
+			"callback should fire exactly once when handle is collected");
+
+		if (!ok) IOHelper.Print("TestGCHandle FAILED");
+		return ok;
+	}
+
 	public static Boolean RunAll() {
 		return TestStringUtils()
 			&& TestDisassembler()
@@ -969,7 +1002,8 @@ public static class UnitTests {
 			&& TestCodeGenerator()
 			&& TestEmitPatternValidation()
 			&& TestParserNeedMoreInput()
-			&& TestREPL();
+			&& TestREPL()
+			&& TestGCHandle();
 	}
 }
 

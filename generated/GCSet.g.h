@@ -181,6 +181,21 @@ class GCErrorSetStorage : public GCSetBaseStorage {
 	public: void SetFields(Int32 idx, Value message, Value inner, Value stack, Value isa);
 }; // end of class GCErrorSetStorage
 
+class GCHandleSetStorage : public GCSetBaseStorage {
+	friend struct GCHandleSet;
+	private: List<GCHandle> _items;
+
+	public: GCHandleSetStorage(Int32 initialCapacity = 16);
+
+	protected: void CallMarkChildren(Int32 idx);
+	protected: void CallOnSweep(Int32 idx);
+	protected: void AppendItem();
+
+	public: GCHandle Get(Int32 idx);
+
+	public: void SetFields(Int32 idx, object userData, HandleFinalizer callback);
+}; // end of class GCHandleSetStorage
+
 class GCFuncRefSetStorage : public GCSetBaseStorage {
 	friend struct GCFuncRefSet;
 	private: List<GCFunction> _items;
@@ -302,6 +317,31 @@ struct GCErrorSet : public GCSetBase {
 	public: inline void SetFields(Int32 idx, Value message, Value inner, Value stack, Value isa);
 }; // end of struct GCErrorSet
 
+// ── GCHandleSet ───────────────────────────────────────────────────────────────
+
+struct GCHandleSet : public GCSetBase {
+	friend class GCHandleSetStorage;
+	GCHandleSet(std::shared_ptr<GCHandleSetStorage> stor);
+	GCHandleSet() : GCSetBase() {}
+	GCHandleSet(std::nullptr_t) : GCSetBase(nullptr) {}
+	private: GCHandleSetStorage* get() const;
+
+	private: List<GCHandle> _items();
+	private: void set__items(List<GCHandle> _v);
+
+	public: static GCHandleSet New(Int32 initialCapacity = 16) {
+		return GCHandleSet(std::make_shared<GCHandleSetStorage>());
+	}
+
+	protected: void CallMarkChildren(Int32 idx) { return get()->CallMarkChildren(idx); }
+	protected: void CallOnSweep(Int32 idx) { return get()->CallOnSweep(idx); }
+	protected: void AppendItem() { return get()->AppendItem(); }
+
+	public: inline GCHandle Get(Int32 idx);
+
+	public: inline void SetFields(Int32 idx, object userData, HandleFinalizer callback);
+}; // end of struct GCHandleSet
+
 // ── GCFuncRefSet ──────────────────────────────────────────────────────────────
 
 struct GCFuncRefSet : public GCSetBase {
@@ -419,6 +459,22 @@ inline void GCErrorSetStorage::SetFields(Int32 idx,Value message,Value inner,Val
 	item.Inner   = inner;
 	item.Stack   = stack;
 	item.Isa     = isa;
+	_items[idx] = item;
+}
+
+inline GCHandleSet::GCHandleSet(std::shared_ptr<GCHandleSetStorage> stor) : GCSetBase(stor) {}
+inline GCHandleSetStorage* GCHandleSet::get() const { return static_cast<GCHandleSetStorage*>(storage.get()); }
+inline List<GCHandle> GCHandleSet::_items() { return get()->_items; }
+inline void GCHandleSet::set__items(List<GCHandle> _v) { get()->_items = _v; }
+inline GCHandle GCHandleSet::Get(Int32 idx) { return get()->Get(idx); }
+inline GCHandle GCHandleSetStorage::Get(Int32 idx) {
+	return _items[idx];
+}
+inline void GCHandleSet::SetFields(Int32 idx,object userData,HandleFinalizer callback) { return get()->SetFields(idx, userData, callback); }
+inline void GCHandleSetStorage::SetFields(Int32 idx,object userData,HandleFinalizer callback) {
+	GCHandle item = _items[idx];
+	item.UserData = userData;
+	item.Callback = callback;
 	_items[idx] = item;
 }
 

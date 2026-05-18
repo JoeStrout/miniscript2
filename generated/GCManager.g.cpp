@@ -12,6 +12,7 @@ const Int32 GCManager::MapSet = 2;
 const Int32 GCManager::ErrorSet = 3;
 const Int32 GCManager::FunctionSet = 4;
 const Int32 GCManager::InternedStringSet = 5;
+const Int32 GCManager::HandleSet = 6;
 const Int32 GCManager::InternThreshold = 128;
 GCStringSet GCManager::BigStrings = nullptr;
 GCStringSet GCManager::InternedStrings = nullptr;
@@ -19,6 +20,7 @@ GCListSet GCManager::Lists = nullptr;
 GCMapSet GCManager::Maps = nullptr;
 GCErrorSet GCManager::Errors = nullptr;
 GCFuncRefSet GCManager::Functions = nullptr;
+GCHandleSet GCManager::Handles = nullptr;
 Dictionary<String, Int32> GCManager::_internTable = nullptr;
 Boolean GCManager::_fullCollection = Boolean(false);
 List<Value> GCManager::_roots = nullptr;
@@ -32,6 +34,7 @@ void GCManager::Init() {
 	Maps            =  GCMapSet::New();
 	Errors          =  GCErrorSet::New();
 	Functions       =  GCFuncRefSet::New();
+	Handles         =  GCHandleSet::New();
 
 	  Dictionary<String, Int32>();
 	_roots          =  List<Value>::New();
@@ -73,6 +76,11 @@ Value GCManager::NewFuncRef(Int32 funcIndex,Value outerVars) {
 	Functions.SetFields(idx, funcIndex, outerVars);
 	return make_gc(FunctionSet, idx);
 }
+Value GCManager::NewHandle(object userData,HandleFinalizer callback) {
+	Int32 idx = Handles.AllocItem();
+	Handles.SetFields(idx, userData, callback);
+	return make_gc(HandleSet, idx);
+}
 void GCManager::Retain(Value v) {
 	if (!is_gc_object(v)) return;
 	DispatchMark(value_gc_set_index(v), value_item_index(v));
@@ -80,6 +88,15 @@ void GCManager::Retain(Value v) {
 void GCManager::RetainValue(Value v) {
 	if (!is_gc_object(v)) return;
 	DispatchMark(value_gc_set_index(v), value_item_index(v));
+}
+void GCManager::AddRoot(Value v) {
+	_roots.Add(v);
+}
+void GCManager::RemoveRoot(Value v) {
+	_roots.Remove(v);
+}
+void GCManager::ClearRoots() {
+	_roots.Clear();
 }
 void GCManager::RegisterMarkCallback(MarkCallback fn,object userData) {
 	_markCallbackFns.Add(fn);
@@ -101,6 +118,7 @@ void GCManager::DispatchMark(Int32 setIdx,Int32 itemIdx) {
 		case MapSet:     Maps.Mark(itemIdx);     break;
 		case ErrorSet:   Errors.Mark(itemIdx);   break;
 		case FunctionSet: Functions.Mark(itemIdx); break;
+		case HandleSet:   Handles.Mark(itemIdx);   break;
 		case InternedStringSet:
 			// Skip during normal GC; interned strings are semi-immortal.
 			if (_fullCollection) InternedStrings.Mark(itemIdx);
@@ -122,6 +140,7 @@ void GCManager::CollectGarbageInternal(Boolean includeInterned) {
 	Maps.PrepareForGC();
 	Errors.PrepareForGC();
 	Functions.PrepareForGC();
+	Handles.PrepareForGC();
 	if (includeInterned) InternedStrings.PrepareForGC();
 
 	// 2. Mark from explicit roots.
@@ -139,6 +158,7 @@ void GCManager::CollectGarbageInternal(Boolean includeInterned) {
 	Maps.MarkRetained();
 	Errors.MarkRetained();
 	Functions.MarkRetained();
+	Handles.MarkRetained();
 	if (includeInterned) InternedStrings.MarkRetained();
 
 	// 4. Sweep: free everything still unmarked.
@@ -147,6 +167,7 @@ void GCManager::CollectGarbageInternal(Boolean includeInterned) {
 	Maps.Sweep();
 	Errors.Sweep();
 	Functions.Sweep();
+	Handles.Sweep();
 
 	// 5. Full-GC only: remove dead intern-table entries, then sweep.
 	// The table is keyed by string content, so we must purge its
@@ -179,6 +200,9 @@ GCError GCManager::GetError(Value v) {
 }
 GCFunction GCManager::GetFuncRef(Value v) {
 	return Functions.Get(value_item_index(v));
+}
+GCHandle GCManager::GetHandle(Value v) {
+	return Handles.Get(value_item_index(v));
 }
 
 } // end of namespace MiniScript

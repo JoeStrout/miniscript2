@@ -54,6 +54,13 @@ class UnitTests {
 	public: static Boolean TestParserNeedMoreInput();
 
 	public: static Boolean TestREPL();
+	private: static Int32 _handleFinalizerCallCount;
+
+	// ── GCHandle test ────────────────────────────────────────────────────────────
+
+	private: static void TestHandleFinalizer(object userData);
+
+	public: static Boolean TestGCHandle();
 
 	public: static Boolean RunAll();
 }; // end of struct UnitTests

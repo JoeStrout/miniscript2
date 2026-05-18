@@ -2,6 +2,11 @@ using System;
 
 namespace MiniScript {
 
+// Callback invoked when a GCHandle is swept (its referent has no more live references).
+// H: typedef void (*HandleFinalizer)(void* userData);
+// H: inline bool IsNull(HandleFinalizer f) { return f == nullptr; }
+public delegate void HandleFinalizer(object userData);
+
 // Interface for items managed by a GCSet.
 // Must be implemented by every GC-managed struct type.
 public interface IGCItem {

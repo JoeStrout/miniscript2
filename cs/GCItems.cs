@@ -275,4 +275,24 @@ public struct GCFunction : IGCItem {
 	}
 }
 
+// ── GCHandle ──────────────────────────────────────────────────────────────────
+// A leaf GC type wrapping an arbitrary native object (void* in C++, object in C#).
+// When swept, invokes Callback(UserData) so the host can free native resources.
+
+public struct GCHandle : IGCItem {
+	public object UserData;
+	public HandleFinalizer Callback;
+
+	public void MarkChildren() {
+		// handles have no child Values
+	}
+
+	[MethodImpl(AggressiveInlining)]
+	public void OnSweep() {
+		if (Callback != null) Callback(UserData);
+		UserData = null;
+		Callback = null;
+	}
+}
+
 }

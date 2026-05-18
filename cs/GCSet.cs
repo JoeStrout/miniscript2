@@ -262,6 +262,41 @@ public class GCErrorSet : GCSetBase {
 	}
 }
 
+// ── GCHandleSet ───────────────────────────────────────────────────────────────
+
+public class GCHandleSet : GCSetBase {
+	private List<GCHandle> _items;
+
+	public GCHandleSet(Int32 initialCapacity = 16) {
+		_items = new List<GCHandle>(initialCapacity);
+	}
+
+	protected override void CallMarkChildren(Int32 idx) {
+		_items[idx].MarkChildren();
+	}
+	protected override void CallOnSweep(Int32 idx) {
+		GCHandle item = _items[idx];
+		item.OnSweep();
+		_items[idx] = item;
+	}
+	protected override void AppendItem() {
+		_items.Add(new GCHandle());
+	}
+
+	[MethodImpl(AggressiveInlining)]
+	public GCHandle Get(Int32 idx) {
+		return _items[idx];
+	}
+
+	[MethodImpl(AggressiveInlining)]
+	public void SetFields(Int32 idx, object userData, HandleFinalizer callback) {
+		GCHandle item = _items[idx];
+		item.UserData = userData;
+		item.Callback = callback;
+		_items[idx] = item;
+	}
+}
+
 // ── GCFuncRefSet ──────────────────────────────────────────────────────────────
 
 public class GCFuncRefSet : GCSetBase {

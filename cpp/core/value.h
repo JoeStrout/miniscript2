@@ -49,6 +49,8 @@ typedef uint64_t Value;
 #define MAP_SET      2
 #define ERROR_SET    3
 #define FUNCREF_SET  4
+// InternedStringSet = 5 (semi-immortal; referenced via GCManager::InternedStringSet)
+#define HANDLE_SET   6
 
 // Composite tag patterns (top-16 + 3-bit set). Useful for legacy code.
 #define STRING_TAG_PATTERN  (GC_TAG | ((uint64_t)STRING_SET  << 32))
@@ -56,6 +58,7 @@ typedef uint64_t Value;
 #define MAP_TAG_PATTERN     (GC_TAG | ((uint64_t)MAP_SET     << 32))
 #define ERROR_TAG_PATTERN   (GC_TAG | ((uint64_t)ERROR_SET   << 32))
 #define FUNCREF_TAG_PATTERN (GC_TAG | ((uint64_t)FUNCREF_SET << 32))
+#define HANDLE_TAG_PATTERN  (GC_TAG | ((uint64_t)HANDLE_SET  << 32))
 
 // ── Common constant values ──────────────────────────────────────────────
 #define val_null         ((Value)NULL_VALUE)
@@ -116,6 +119,9 @@ static inline bool is_map(Value v) {
 
 static inline bool is_error(Value v) {
     return (v & GC_TYPE_MASK) == ERROR_TAG_PATTERN;
+}
+static inline bool is_handle(Value v) {
+    return (v & GC_TYPE_MASK) == HANDLE_TAG_PATTERN;
 }
 
 static inline bool is_double(Value v) {

@@ -25,6 +25,7 @@ public static class GCManager {
 	public const Int32 ErrorSet = 3;
 	public const Int32 FunctionSet = 4;
 	public const Int32 InternedStringSet = 5;
+	public const Int32 HandleSet = 6;
 
 	// Length boundary for interning: heap strings with Length < InternThreshold
 	// are placed in the InternedStrings set and deduplicated via _internTable.
@@ -38,6 +39,7 @@ public static class GCManager {
 	public static GCMapSet Maps = null;
 	public static GCErrorSet Errors = null;
 	public static GCFuncRefSet Functions = null;
+	public static GCHandleSet Handles = null;
 
 	// Content-addressed intern table for short heap strings.
 	// Maps string content → InternedStrings slot index.
@@ -66,6 +68,7 @@ public static class GCManager {
 		Maps            = new GCMapSet();
 		Errors          = new GCErrorSet();
 		Functions       = new GCFuncRefSet();
+		Handles         = new GCHandleSet();
 		_internTable    = new 
 		  Dictionary<String, Int32>(StringComparer.Ordinal); // CPP: Dictionary<String, Int32>();
 		_roots          = new List<Value>();
@@ -118,6 +121,12 @@ public static class GCManager {
 		return make_gc(FunctionSet, idx);
 	}
 
+	public static Value NewHandle(object userData, HandleFinalizer callback) {
+		Int32 idx = Handles.AllocItem();
+		Handles.SetFields(idx, userData, callback);
+		return make_gc(HandleSet, idx);
+	}
+
 	// ── Retain / Release ─────────────────────────────────────────────────────
 
 	public static void Retain(Value v) {
@@ -132,9 +141,15 @@ public static class GCManager {
 
 	// ── Root set ─────────────────────────────────────────────────────────────
 
-	public static void AddRoot(Value v)    { _roots.Add(v); }
-	public static void RemoveRoot(Value v) { _roots.Remove(v); }
-	public static void ClearRoots()        { _roots.Clear(); }
+	public static void AddRoot(Value v) {
+		_roots.Add(v);
+	}
+	public static void RemoveRoot(Value v) {
+		_roots.Remove(v);
+	}
+	public static void ClearRoots() {
+		_roots.Clear();
+	}
 
 	public static void RegisterMarkCallback(MarkCallback fn, object userData) {
 		_markCallbackFns.Add(fn);
@@ -166,6 +181,7 @@ public static class GCManager {
 			case MapSet:     Maps.Mark(itemIdx);     break;
 			case ErrorSet:   Errors.Mark(itemIdx);   break;
 			case FunctionSet: Functions.Mark(itemIdx); break;
+			case HandleSet:   Handles.Mark(itemIdx);   break;
 			case InternedStringSet:
 				// Skip during normal GC; interned strings are semi-immortal.
 				if (_fullCollection) InternedStrings.Mark(itemIdx);
@@ -195,6 +211,7 @@ public static class GCManager {
 		Maps.PrepareForGC();
 		Errors.PrepareForGC();
 		Functions.PrepareForGC();
+		Handles.PrepareForGC();
 		if (includeInterned) InternedStrings.PrepareForGC();
 
 		// 2. Mark from explicit roots.
@@ -212,6 +229,7 @@ public static class GCManager {
 		Maps.MarkRetained();
 		Errors.MarkRetained();
 		Functions.MarkRetained();
+		Handles.MarkRetained();
 		if (includeInterned) InternedStrings.MarkRetained();
 
 		// 4. Sweep: free everything still unmarked.
@@ -220,6 +238,7 @@ public static class GCManager {
 		Maps.Sweep();
 		Errors.Sweep();
 		Functions.Sweep();
+		Handles.Sweep();
 
 		// 5. Full-GC only: remove dead intern-table entries, then sweep.
 		// The table is keyed by string content, so we must purge its
@@ -257,6 +276,9 @@ public static class GCManager {
 	}
 	public static GCFunction GetFuncRef(Value v) {
 		return Functions.Get(value_item_index(v));
+	}
+	public static GCHandle GetHandle(Value v) {
+		return Handles.Get(value_item_index(v));
 	}
 
 	// ── Static helper for content-based string access ─────────────────────────

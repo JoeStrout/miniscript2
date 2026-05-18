@@ -6,8 +6,12 @@
 #include "forward_decs.g.h"
 
 namespace MiniScript {
+typedef void (*HandleFinalizer)(void* userData);
+inline bool IsNull(HandleFinalizer f) { return f == nullptr; }
 
 // DECLARATIONS
+
+// Callback invoked when a GCHandle is swept (its referent has no more live references).
 
 // Interface for items managed by a GCSet.
 // Must be implemented by every GC-managed struct type.

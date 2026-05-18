@@ -147,4 +147,8 @@ void GCFunction::MarkChildren() {
 	GCManager::Mark(OuterVars);
 }
 
+void GCHandle::MarkChildren() {
+	// handles have no child Values
+}
+
 } // end of namespace MiniScript

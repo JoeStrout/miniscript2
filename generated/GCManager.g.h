@@ -22,6 +22,7 @@ class GCManager {
 	public: static const Int32 ErrorSet;
 	public: static const Int32 FunctionSet;
 	public: static const Int32 InternedStringSet;
+	public: static const Int32 HandleSet;
 	public: static const Int32 InternThreshold;
 	public: static GCStringSet BigStrings;
 	public: static GCStringSet InternedStrings;
@@ -29,6 +30,7 @@ class GCManager {
 	public: static GCMapSet Maps;
 	public: static GCErrorSet Errors;
 	public: static GCFuncRefSet Functions;
+	public: static GCHandleSet Handles;
 	private: static Dictionary<String, Int32> _internTable;
 	private: static Boolean _fullCollection;
 	private: static List<Value> _roots;
@@ -72,6 +74,8 @@ class GCManager {
 
 	public: static Value NewFuncRef(Int32 funcIndex, Value outerVars);
 
+	public: static Value NewHandle(object userData, HandleFinalizer callback);
+
 	// ── Retain / Release ─────────────────────────────────────────────────────
 
 	public: static void Retain(Value v);
@@ -79,6 +83,10 @@ class GCManager {
 	public: static void RetainValue(Value v);
 
 	// ── Root set ─────────────────────────────────────────────────────────────
+
+	public: static void AddRoot(Value v);
+	public: static void RemoveRoot(Value v);
+	public: static void ClearRoots();
 
 	public: static void RegisterMarkCallback(MarkCallback fn, object userData);
 
@@ -110,6 +118,7 @@ class GCManager {
 	public: static GCMap GetMap(Value v);
 	public: static GCError GetError(Value v);
 	public: static GCFunction GetFuncRef(Value v);
+	public: static GCHandle GetHandle(Value v);
 
 	// ── Static helper for content-based string access ─────────────────────────
 	// Used by GCMap for content-based key hashing and equality.

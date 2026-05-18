@@ -132,6 +132,21 @@ void GCErrorSetStorage::AppendItem() {
 	_items.Add(GCError());
 }
 
+GCHandleSetStorage::GCHandleSetStorage(Int32 initialCapacity ) {
+	_items =  List<GCHandle>::New(initialCapacity);
+}
+void GCHandleSetStorage::CallMarkChildren(Int32 idx) {
+	_items[idx].MarkChildren();
+}
+void GCHandleSetStorage::CallOnSweep(Int32 idx) {
+	GCHandle item = _items[idx];
+	item.OnSweep();
+	_items[idx] = item;
+}
+void GCHandleSetStorage::AppendItem() {
+	_items.Add(GCHandle());
+}
+
 GCFuncRefSetStorage::GCFuncRefSetStorage(Int32 initialCapacity ) {
 	_items =  List<GCFunction>::New(initialCapacity);
 }

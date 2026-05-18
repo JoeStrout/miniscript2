@@ -927,6 +927,35 @@ Boolean UnitTests::TestREPL() {
 	if (!ok) IOHelper::Print("TestREPL FAILED");
 	return ok;
 }
+Int32 UnitTests::_handleFinalizerCallCount = 0;
+void UnitTests::TestHandleFinalizer(object userData) {
+	_handleFinalizerCallCount++;
+}
+Boolean UnitTests::TestGCHandle() {
+	Boolean ok = Boolean(true);
+	_handleFinalizerCallCount = 0;
+
+	// Allocate a handle and verify the predicate.
+	Value h = GCManager::NewHandle(nullptr, TestHandleFinalizer);
+	ok = ok && Assert(is_handle(h), "NewHandle should produce a handle value");
+	ok = ok && Assert(!is_map(h), "handle should not test as map");
+	ok = ok && Assert(!is_null(h), "handle should not test as null");
+
+	// Keep the handle alive across a GC cycle via retain count; callback must not fire yet.
+	GCManager::Handles.Retain(value_item_index(h));
+	GCManager::CollectGarbage();
+	ok = ok && Assert(_handleFinalizerCallCount == 0,
+		"callback should not fire while handle is still reachable");
+
+	// Release the retain — handle is now unreachable.  Next GC must sweep it.
+	GCManager::Handles.Release(value_item_index(h));
+	GCManager::CollectGarbage();
+	ok = ok && Assert(_handleFinalizerCallCount == 1,
+		"callback should fire exactly once when handle is collected");
+
+	if (!ok) IOHelper::Print("TestGCHandle FAILED");
+	return ok;
+}
 Boolean UnitTests::RunAll() {
 	return TestStringUtils()
 		&& TestDisassembler()
@@ -937,7 +966,8 @@ Boolean UnitTests::RunAll() {
 		&& TestCodeGenerator()
 		&& TestEmitPatternValidation()
 		&& TestParserNeedMoreInput()
-		&& TestREPL();
+		&& TestREPL()
+		&& TestGCHandle();
 }
 
 } // end of namespace MiniScript

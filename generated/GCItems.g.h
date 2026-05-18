@@ -120,6 +120,19 @@ struct GCFunction {
 	public: void OnSweep();
 }; // end of struct GCFunction
 
+// ── GCHandle ──────────────────────────────────────────────────────────────────
+// A leaf GC type wrapping an arbitrary native object (void* in C++, object in C#).
+// When swept, invokes Callback(UserData) so the host can free native resources.
+
+struct GCHandle {
+	public: object UserData;
+	public: HandleFinalizer Callback;
+
+	public: void MarkChildren();
+
+	public: void OnSweep();
+}; // end of struct GCHandle
+
 // INLINE METHODS
 
 inline void GCList::Init(Int32 capacity ) {
@@ -165,6 +178,12 @@ inline void GCError::OnSweep() {
 inline void GCFunction::OnSweep() {
 	FuncIndex = -1;
 	OuterVars = val_null;
+}
+
+inline void GCHandle::OnSweep() {
+	if (!IsNull(Callback)) Callback(UserData);
+	UserData = nullptr;
+	Callback = nullptr;
 }
 
 } // end of namespace MiniScript

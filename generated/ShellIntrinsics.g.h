@@ -36,6 +36,18 @@ class ShellIntrinsics {
 	// Call from VM reset if needed.
 	public: static void InvalidateCaches();
 
+	// Push all entries in _envMap to the real process environment.
+	// Only called when _envMap is non-null (i.e., the user has accessed `env`).
+	private: static void SyncEnvMap();
+
+	// Launch a shell subprocess and return a job-index handle (as a double Value).
+	private: static Value BeginExec(String cmd);
+
+	// Poll the job identified by `handle`. Reads available output without blocking.
+	// Returns done=true with result map when the subprocess has exited, or
+	// done=false with the same handle so the VM will call us again.
+	private: static IntrinsicResult FinishExec(Value handle);
+
 	// Register all shell intrinsics.  Must be called before any Interpreter is Reset.
 	public: static void Init();
 }; // end of struct ShellIntrinsics

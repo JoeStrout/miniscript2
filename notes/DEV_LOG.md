@@ -888,6 +888,9 @@ But I also want to start gathering a to-do list, including places where the code
 
 I also had a thought about how intrinsics are declared.  I wonder if it would be nicer for implementors to declare an intrinsic function using MiniScript syntax -- not for the actual code, but for the parameter list.  We could use the compiler to convert that to the AddParam calls we're doing now.  But I don't know, nobody has complained about the current format and maybe we shouldn't change too much at once.
 
+Today I'm going to tackle the shell intrinsics.  `env` made use of assignmentOverride so that assignments updated actual shell intrinsics.  We don't have such a mechanism in MS2 yet; we might need to add it for this.  Or, since the only way this behavior (updating the environment variables) is exposed is through `exec`, we could just update them there.
+
+Going with the latter strategy for now, though it adds a little overhead to every `exec` call (at least if you have accessed `shellArgs`).  I'm curious to see how long we can get by without needing to use `assignOverride`.  I know Mini Micro makes use of it, but users on Discord were surprisingly supportive of changing that, even though it breaks code.
 
 
 

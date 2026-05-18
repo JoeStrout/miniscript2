@@ -896,6 +896,11 @@ Going with the latter strategy for now, though it adds a little overhead to ever
 
 Also, this reminds me: I really need to spend some time heavily testing the interaction of true (compile-time) variables, locals, outer, and globals, both in a script file and in the REPL.  I'm not 100% certain we have all that working correctly at the moment.  There seem to be some shenanigans with REPL globals, now treated as a special case, resulting in a frequent source of bugs.
 
+For example, it appears that `locals == globals` is not true, even at the global scope. ...OK, that's now fixed.
+
+
+
+
 
 
 

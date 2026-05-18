@@ -234,11 +234,11 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	// Switch all frame-local execution state to the function at currentFuncIndex.
 
 	// Get the globals VarMap.  In REPL mode, returns the persistent ReplGlobals.
-	// Otherwise, builds a fresh VarMap from @main's registers each call.  A fresh
-	// scan is required because variables may be assigned (and added to names[]) after
-	// @main's callStack[0].LocalVarMap was first created by a FUNCREF closure, so a
-	// cached map would miss them.  callStack[0].ReturnFuncIndex holds @main's own
-	// function index (by convention for this slot), used to find @main's MaxRegs.
+	// Otherwise, returns @main's cached callStack[0].LocalVarMap (creating it on
+	// first use).  The cache stays current because NAME_rA_kBC keeps a live frame
+	// VarMap in sync as new variables are declared.  callStack[0].ReturnFuncIndex
+	// holds @main's own function index (by convention for this slot), used to
+	// find @main's MaxRegs.
 	private: Value GetGlobalsVarMap();
 
 	// Get or create a VarMap for the current call frame's local variables.
@@ -486,11 +486,11 @@ struct VM {
 	// Switch all frame-local execution state to the function at currentFuncIndex.
 
 	// Get the globals VarMap.  In REPL mode, returns the persistent ReplGlobals.
-	// Otherwise, builds a fresh VarMap from @main's registers each call.  A fresh
-	// scan is required because variables may be assigned (and added to names[]) after
-	// @main's callStack[0].LocalVarMap was first created by a FUNCREF closure, so a
-	// cached map would miss them.  callStack[0].ReturnFuncIndex holds @main's own
-	// function index (by convention for this slot), used to find @main's MaxRegs.
+	// Otherwise, returns @main's cached callStack[0].LocalVarMap (creating it on
+	// first use).  The cache stays current because NAME_rA_kBC keeps a live frame
+	// VarMap in sync as new variables are declared.  callStack[0].ReturnFuncIndex
+	// holds @main's own function index (by convention for this slot), used to
+	// find @main's MaxRegs.
 	private: inline Value GetGlobalsVarMap();
 
 	// Get or create a VarMap for the current call frame's local variables.
@@ -605,6 +605,8 @@ inline void VMStorage::EnsureFrame(Int32 baseIndex,UInt16 neededRegs) {
 inline Value VM::GetGlobalsVarMap() { return get()->GetGlobalsVarMap(); }
 inline Value VM::GetCurrentLocalVarMap(Int32 baseIndex,UInt16 maxRegs) { return get()->GetCurrentLocalVarMap(baseIndex, maxRegs); }
 inline Value VMStorage::GetCurrentLocalVarMap(Int32 baseIndex,UInt16 maxRegs) {
+	// At the top level (@main), locals and globals are the same object.
+	if (callStackTop == 1) return GetGlobalsVarMap();
 	CallInfo frame = callStack[callStackTop - 1];
 	Value result = frame.GetLocalVarMap(stack, names, baseIndex, maxRegs);
 	callStack[callStackTop - 1] = frame;  // write back (CallInfo is a struct)

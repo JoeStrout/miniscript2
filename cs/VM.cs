@@ -931,11 +931,24 @@ public class VM {
 					UInt16 constIdx = BytecodeUtil.BCu(instruction);
 					valC = curConstants[constIdx];
 					names[baseIndex + a] = valC;
-					// In REPL mode, register this variable in the globals VarMap
+					// Keep any live VarMap for this scope in sync with the new
+					// variable.  In REPL mode at the top level that is ReplGlobals;
+					// otherwise it is the current frame's LocalVarMap, if one has
+					// already been created (e.g. by a FUNCREF closure capture or a
+					// `locals` reference earlier in the function).  Without this,
+					// variables declared after the first closure/`locals` use would
+					// be missing from the locals map.
 					if (baseIndex == 0 && !is_null(ReplGlobals)) {
 						varmap_map_to_register(ReplGlobals, valC,
 							stack,
 							baseIndex + a);
+					} else {
+						CallInfo nameFrame = callStack[callStackTop - 1];
+						if (!is_null(nameFrame.LocalVarMap)) {
+							varmap_map_to_register(nameFrame.LocalVarMap, valC,
+								stack,
+								baseIndex + a);
+						}
 					}
 					break;
 				}
@@ -2114,16 +2127,18 @@ public class VM {
 	*** END CPP_ONLY ***/
 
 	// Get the globals VarMap.  In REPL mode, returns the persistent ReplGlobals.
-	// Otherwise, builds a fresh VarMap from @main's registers each call.  A fresh
-	// scan is required because variables may be assigned (and added to names[]) after
-	// @main's callStack[0].LocalVarMap was first created by a FUNCREF closure, so a
-	// cached map would miss them.  callStack[0].ReturnFuncIndex holds @main's own
-	// function index (by convention for this slot), used to find @main's MaxRegs.
+	// Otherwise, returns @main's cached callStack[0].LocalVarMap (creating it on
+	// first use).  The cache stays current because NAME_rA_kBC keeps a live frame
+	// VarMap in sync as new variables are declared.  callStack[0].ReturnFuncIndex
+	// holds @main's own function index (by convention for this slot), used to
+	// find @main's MaxRegs.
 	private Value GetGlobalsVarMap() {
 		if (!is_null(ReplGlobals)) return ReplGlobals;
 		CallInfo gframe = callStack[0];
 		Int32 regCount = functions[gframe.ReturnFuncIndex].MaxRegs;
-		return make_varmap(stack, names, 0, regCount);
+		Value result = gframe.GetLocalVarMap(stack, names, 0, regCount);
+		callStack[0] = gframe;  // write back (CallInfo is a struct)
+		return result;
 	}
 
 	// Get or create a VarMap for the current call frame's local variables.
@@ -2131,6 +2146,8 @@ public class VM {
 	// (callStackTop >= 1 is guaranteed since @main's frame is always at callStack[0]).
 	[MethodImpl(AggressiveInlining)]
 	private Value GetCurrentLocalVarMap(Int32 baseIndex, UInt16 maxRegs) {
+		// At the top level (@main), locals and globals are the same object.
+		if (callStackTop == 1) return GetGlobalsVarMap();
 		CallInfo frame = callStack[callStackTop - 1];
 		Value result = frame.GetLocalVarMap(stack, names, baseIndex, maxRegs);
 		callStack[callStackTop - 1] = frame;  // write back (CallInfo is a struct)

@@ -154,6 +154,29 @@ FuncDef CodeGeneratorStorage::CompileFunction(ASTNode ast,String funcName) {
 
 	return _emitter.Finalize(funcName);
 }
+List<FuncDef> CodeGeneratorStorage::CompileImport(List<ASTNode> statements,String funcName) {
+	_regInUse.Clear();
+	_firstAvailable = 0;
+	_maxRegUsed = -1;
+	_variableRegs.Clear();
+
+	_functions.Clear();
+	_functions.Add(nullptr);
+
+	for (Int32 i = 0; i < statements.Count(); i++) {
+		ResetTempRegisters();
+		if (statements[i].Line() != 0) _emitter.set_CurrentLine(statements[i].Line());
+		CompileInto(statements[i], 0);
+	}
+
+	_emitter.EmitA(Opcode::LOCALS_rA, 0, "return locals");
+	_emitter.Emit(Opcode::RETURN, nullptr);
+
+	FuncDef mainFunc = _emitter.Finalize(funcName);
+	mainFunc.set_FileName(funcName);
+	_functions[0] = mainFunc;
+	return _functions;
+}
 FuncDef CodeGeneratorStorage::CompileProgram(List<ASTNode> statements,String funcName) {
 	_regInUse.Clear();
 	_firstAvailable = 0;

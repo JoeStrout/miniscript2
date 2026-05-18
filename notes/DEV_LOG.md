@@ -892,5 +892,13 @@ Today I'm going to tackle the shell intrinsics.  `env` made use of assignmentOve
 
 Going with the latter strategy for now, though it adds a little overhead to every `exec` call (at least if you have accessed `shellArgs`).  I'm curious to see how long we can get by without needing to use `assignOverride`.  I know Mini Micro makes use of it, but users on Discord were surprisingly supportive of changing that, even though it breaks code.
 
+`import` is proving surprisingly thorny.  Manually compiling and pushing a call is tricky enough, but the real wrinkle has turned out to be the `SetVar` call used (in MS1) to assign the result to a variable with the same name as the imported module.  Doable, but it took some work.
+
+Also, this reminds me: I really need to spend some time heavily testing the interaction of true (compile-time) variables, locals, outer, and globals, both in a script file and in the REPL.  I'm not 100% certain we have all that working correctly at the moment.  There seem to be some shenanigans with REPL globals, now treated as a special case, resulting in a frequent source of bugs.
+
+
+
+
+
 
 

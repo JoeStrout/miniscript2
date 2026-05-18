@@ -24,6 +24,9 @@
 #if USE_EDITLINE
 #include "editline/editline.h"
 #endif
+#ifndef _WIN32
+#include <unistd.h>
+#endif
 using namespace MiniScript;
 
 int main(int argc, const char* argv[]) {
@@ -88,6 +91,26 @@ void App::MainProgram(List<String> args) {
 		IOHelper::Print("Integration tests complete.");
 	}
 	
+	// Set MS_SCRIPT_DIR and MS_EXE_DIR so import can find library files.
+	{
+		char exePath[1024] = {0};
+		#ifdef _WIN32
+			GetModuleFileNameA(nullptr, exePath, sizeof(exePath));
+		#else
+			ssize_t len = readlink("/proc/self/exe", exePath, sizeof(exePath) - 1);
+			if (len < 0) { exePath[0] = '.'; exePath[1] = '\0'; }
+		#endif
+		String exePathStr(exePath);
+		Int32 sep = exePathStr.LastIndexOf('/');
+		Int32 sep2 = exePathStr.LastIndexOf('\\');
+		if (sep2 > sep) sep = sep2;
+		String exeDir = (sep >= 0) ? exePathStr.Substring(0, sep) : String(".");
+		setenv("MS_EXE_DIR", exeDir.c_str(), 1);
+	}
+
+	// Default MS_SCRIPT_DIR to the current directory; overridden below for script files.
+	setenv("MS_SCRIPT_DIR", ".", 1);
+
 	// Handle inline code (-c), file argument, or REPL
 	if (!IsNull(inlineCode)) {
 		if (debugMode) IOHelper::Print(StringUtils::Format("Compiling: {0}", inlineCode));
@@ -97,6 +120,14 @@ void App::MainProgram(List<String> args) {
 		if (ShellIntrinsics::ExitASAP) DoExit();
 	} else if (fileArgIndex != -1) {
 		String filePath = args[fileArgIndex];
+		{
+			String fp(filePath.c_str());
+			Int32 sep = fp.LastIndexOf('/');
+			Int32 sep2 = fp.LastIndexOf('\\');
+			if (sep2 > sep) sep = sep2;
+			String scriptDir = (sep >= 0) ? fp.Substring(0, sep) : String(".");
+			setenv("MS_SCRIPT_DIR", scriptDir.c_str(), 1);
+		}
 		Interpreter interp = CreateInterpreter();
 		if (filePath.EndsWith(".ms")) {
 			// Source file: read, join, and compile via Interpreter

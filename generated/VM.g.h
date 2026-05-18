@@ -64,6 +64,9 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	private: Int32 _pendingCalleeBase; // base index for reconstructing Context
 	private: Int32 _pendingArgCount; // arg count for reconstructing Context
 	private: Int32 _pendingResultIndex; // absolute stack index for result (and partial result)
+	private: Boolean _hasPendingManualCall;
+	private: Int32 _pendingManualCallDepth; // callStackTop value after the push
+	public: Value ManualCallResult; // return value of the manually-pushed call
 	public: bool yielding;
 	private: std::chrono::steady_clock::time_point _startTime;
 
@@ -85,6 +88,10 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	// Pending intrinsic continuation: when an intrinsic returns done=false,
 	// we store the state here so Run can re-invoke it on the next call.
 	// The partial result value is stored in stack[_pendingResultIndex].
+
+	// Support for manually-pushed calls (used by the import intrinsic).
+	// When _hasPendingManualCall is true, Run() skips callback re-invocation
+	// and runs RunInner so the pushed function can execute first.
 
 	// Set by the "yield" intrinsic; host app can check and clear this.
 
@@ -132,6 +139,21 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	public: static void MarkRoots(object user_data);
 
 	public: void RegisterFunction(FuncDef funcDef);
+
+	// Push a manually-constructed call to a set of compiled functions (used by import).
+	// The first function in importFunctions is treated as @main for the pushed call.
+	// After this returns, the VM will run that function before re-invoking the pending
+	// intrinsic callback.  The function's return value is placed in ManualCallResult.
+	// intrinsicCalleeBase is ctx.baseIndex from the calling intrinsic.
+	public: void ManuallyPushCall(Int32 intrinsicCalleeBase, List<FuncDef> importFunctions);
+
+	// Set a variable by name in the current frame's locals VarMap.
+	// Matches the runtime behavior of user code "locals[varName] = value":
+	// if varName is already a named register, the value lands there directly;
+	// otherwise a plain map entry is created and LookupVariable will find it.
+	// In REPL mode (ReplGlobals != null) at the top level, writes to ReplGlobals
+	// so the variable persists across REPL iterations.
+	public: void SetVar(String varName, Value value);
 
 	public: void Reset(List<FuncDef> allFunctions);
 
@@ -293,6 +315,12 @@ struct VM {
 	private: void set__pendingArgCount(Int32 _v); // arg count for reconstructing Context
 	private: Int32 _pendingResultIndex(); // absolute stack index for result (and partial result)
 	private: void set__pendingResultIndex(Int32 _v); // absolute stack index for result (and partial result)
+	private: Boolean _hasPendingManualCall();
+	private: void set__hasPendingManualCall(Boolean _v);
+	private: Int32 _pendingManualCallDepth(); // callStackTop value after the push
+	private: void set__pendingManualCallDepth(Int32 _v); // callStackTop value after the push
+	public: Value ManualCallResult(); // return value of the manually-pushed call
+	public: void set_ManualCallResult(Value _v); // return value of the manually-pushed call
 	public: bool yielding();
 	public: void set_yielding(bool _v);
 
@@ -314,6 +342,10 @@ struct VM {
 	// Pending intrinsic continuation: when an intrinsic returns done=false,
 	// we store the state here so Run can re-invoke it on the next call.
 	// The partial result value is stored in stack[_pendingResultIndex].
+
+	// Support for manually-pushed calls (used by the import intrinsic).
+	// When _hasPendingManualCall is true, Run() skips callback re-invocation
+	// and runs RunInner so the pushed function can execute first.
 
 	// Set by the "yield" intrinsic; host app can check and clear this.
 
@@ -360,6 +392,21 @@ struct VM {
 	public: static void MarkRoots(object user_data) { return VMStorage::MarkRoots(user_data); }
 
 	public: inline void RegisterFunction(FuncDef funcDef);
+
+	// Push a manually-constructed call to a set of compiled functions (used by import).
+	// The first function in importFunctions is treated as @main for the pushed call.
+	// After this returns, the VM will run that function before re-invoking the pending
+	// intrinsic callback.  The function's return value is placed in ManualCallResult.
+	// intrinsicCalleeBase is ctx.baseIndex from the calling intrinsic.
+	public: inline void ManuallyPushCall(Int32 intrinsicCalleeBase, List<FuncDef> importFunctions);
+
+	// Set a variable by name in the current frame's locals VarMap.
+	// Matches the runtime behavior of user code "locals[varName] = value":
+	// if varName is already a named register, the value lands there directly;
+	// otherwise a plain map entry is created and LookupVariable will find it.
+	// In REPL mode (ReplGlobals != null) at the top level, writes to ReplGlobals
+	// so the variable persists across REPL iterations.
+	public: inline void SetVar(String varName, Value value);
 
 	public: inline void Reset(List<FuncDef> allFunctions);
 
@@ -503,6 +550,12 @@ inline Int32 VM::_pendingArgCount() { return get()->_pendingArgCount; } // arg c
 inline void VM::set__pendingArgCount(Int32 _v) { get()->_pendingArgCount = _v; } // arg count for reconstructing Context
 inline Int32 VM::_pendingResultIndex() { return get()->_pendingResultIndex; } // absolute stack index for result (and partial result)
 inline void VM::set__pendingResultIndex(Int32 _v) { get()->_pendingResultIndex = _v; } // absolute stack index for result (and partial result)
+inline Boolean VM::_hasPendingManualCall() { return get()->_hasPendingManualCall; }
+inline void VM::set__hasPendingManualCall(Boolean _v) { get()->_hasPendingManualCall = _v; }
+inline Int32 VM::_pendingManualCallDepth() { return get()->_pendingManualCallDepth; } // callStackTop value after the push
+inline void VM::set__pendingManualCallDepth(Int32 _v) { get()->_pendingManualCallDepth = _v; } // callStackTop value after the push
+inline Value VM::ManualCallResult() { return get()->ManualCallResult; } // return value of the manually-pushed call
+inline void VM::set_ManualCallResult(Value _v) { get()->ManualCallResult = _v; } // return value of the manually-pushed call
 inline bool VM::yielding() { return get()->yielding; }
 inline void VM::set_yielding(bool _v) { get()->yielding = _v; }
 inline double VM::ElapsedTime() { return get()->ElapsedTime(); }
@@ -521,6 +574,8 @@ inline String VM::FindShortName(Value v) { return get()->FindShortName(v); }
 inline void VM::InitVM(Int32 stackSlots,Int32 callSlots) { return get()->InitVM(stackSlots, callSlots); }
 inline void VM::CleanupVM() { return get()->CleanupVM(); }
 inline void VM::RegisterFunction(FuncDef funcDef) { return get()->RegisterFunction(funcDef); }
+inline void VM::ManuallyPushCall(Int32 intrinsicCalleeBase,List<FuncDef> importFunctions) { return get()->ManuallyPushCall(intrinsicCalleeBase, importFunctions); }
+inline void VM::SetVar(String varName,Value value) { return get()->SetVar(varName, value); }
 inline void VM::Reset(List<FuncDef> allFunctions) { return get()->Reset(allFunctions); }
 inline void VM::Reset(List<FuncDef> allFunctions,Value replGlobals) { return get()->Reset(allFunctions, replGlobals); }
 inline void VM::Stop() { return get()->Stop(); }

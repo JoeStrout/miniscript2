@@ -107,6 +107,7 @@ fixStringInterpolation = function(s)
 	while true
 		pos0 = s.indexOf("$""", pos0)
 		if pos0 == null then return s
+		if pos0 > 0 and s[pos0-1] == """" then continue
 		pos1 = s.indexOf("""", pos0+1)
 		while pos1 and s[pos1-1] == "\"
 			pos1 = s.indexOf("""", pos1)

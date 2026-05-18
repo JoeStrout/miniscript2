@@ -34,6 +34,10 @@ class ErrorType {
 
 	// Create a runtime error value with the given message (no stack trace).
 	public: static Value RuntimeError(String msg);
+	
+	// ToDo: provide a factory for parameter errors, and another specifically for
+	// "number required, but got <some other type>" errors, and then use this in
+	// various numeric intrinsics (sin, cos, round, etc.) and anywhere else appropriate.
 
 	// GC mark callback to protect our static error prototypes from collection.
 	public: static void MarkRoots(object user_data);

@@ -5,6 +5,11 @@
 #include "Intrinsic.g.h"
 #include "IntrinsicAPI.g.h"
 #include "VM.g.h"
+#include "Parser.g.h"
+#include "CodeGenerator.g.h"
+#include "CodeEmitter.g.h"
+#include "AST.g.h"
+#include "FuncDef.g.h"
 #include "value_list.h"
 #include "value_map.h"
 #include "value_string.h"
@@ -131,6 +136,67 @@ IntrinsicResult ShellIntrinsics::FinishExec(Value handle) {
 	map_set(result, make_string("status"), make_double(status));
 	return IntrinsicResult(result, Boolean(true));
 }
+List<String> ShellIntrinsics::SplitOn(String s,String delim) {
+	List<String> result =  List<String>::New();
+	String remaining = s;
+	while (remaining.Length() > 0) {
+		Int32 pos = remaining.IndexOf(delim);
+		if (pos < 0) {
+			result.Add(remaining);
+			remaining = "";
+		} else {
+			if (pos > 0) result.Add(remaining.Substring(0, pos));
+			remaining = remaining.Substring(pos + delim.Length());
+		}
+	}
+	return result;
+}
+String ShellIntrinsics::ExpandVariables(String path) {
+	Value envMap = GetEnvMap();
+	Value varVal;
+	String varName;
+	// Handle ${VAR} form
+	Int32 p0 = path.IndexOf("${");
+	while (p0 >= 0) {
+		Int32 p1 = path.IndexOf("}", p0 + 1);
+		if (p1 < 0) break;
+		varName = path.Substring(p0 + 2, p1 - p0 - 2);
+		String repl = "";
+		if (map_try_get(envMap, make_string(varName), &varVal)) repl = as_cstring(varVal);
+		path = path.Substring(0, p0) + repl + path.Substring(p1 + 1);
+		p0 = path.IndexOf("${");
+	}
+	// Handle $VAR form (name = alphanumerics + underscore)
+	p0 = path.IndexOf("$");
+	while (p0 >= 0 && p0 < path.Length() - 1) {
+		Int32 p1 = p0 + 1;
+		while (p1 < path.Length()) {
+			Int32 code = (Int32)(unsigned char)path.AtB(p1);
+			if (!((code >= (Int32)'A' && code <= (Int32)'Z') || (code >= (Int32)'a' && code <= (Int32)'z')
+					|| (code >= (Int32)'0' && code <= (Int32)'9') || code == (Int32)'_')) break;
+			p1++;
+		}
+		if (p1 > p0 + 1) {
+			varName = path.Substring(p0 + 1, p1 - p0 - 1);
+			String repl = "";
+			if (map_try_get(envMap, make_string(varName), &varVal)) repl = as_cstring(varVal);
+			path = path.Substring(0, p0) + repl + path.Substring(p1);
+			p0 = path.IndexOf("$");
+		} else {
+			break;  // lone $ with no valid name; stop
+		}
+	}
+	return path;
+}
+String ShellIntrinsics::TryReadSource(String path) {
+	FILE* handle = fopen(path.c_str(), "r");
+	if (!handle) return String("");
+	String result;
+	char buf[4096];
+	while (fgets(buf, sizeof(buf), handle)) result += buf;
+	fclose(handle);
+	return result;
+}
 void ShellIntrinsics::Init() {
 	GCManager::RegisterMarkCallback(ShellIntrinsics::MarkRoots, nullptr);
 
@@ -179,6 +245,83 @@ void ShellIntrinsics::Init() {
 		}
 		Value handle = BeginExec(cmd);
 		return FinishExec(handle);
+	});
+
+	// import(libname) — load and run a MiniScript module, then store its locals
+	// under the library name in the caller's scope.  Uses the partialResult
+	// mechanism and ManuallyPushCall so the module runs inside the current VM.
+	// Search path comes from the MS_IMPORT_PATH env var (colon-separated);
+	// defaults to "$MS_SCRIPT_DIR:$MS_SCRIPT_DIR/lib:$MS_EXE_DIR/lib".
+	f = Intrinsic::Create("import");
+	f.AddParam("libname", make_string(""));
+	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
+		if (!partialResult.done) {
+			// Phase 2: the module finished running.  Store its locals map
+			// under the library name in the caller's scope, and also return
+			// it as the result value (for the `foo = import("foo")` form).
+			String lib = as_cstring(partialResult.result);
+			Value importedValues = ctx.vm.ManualCallResult;
+			ctx.vm.SetVar(lib, importedValues);
+			return IntrinsicResult(importedValues, Boolean(true));
+		}
+		// Phase 1: find, parse, compile, and push the module.
+		String libname = as_cstring(ctx.GetArg(0));
+		if (libname.Length() == 0) {
+			ctx.vm.RaiseRuntimeError("import: libname required");
+			return IntrinsicResult::Null;
+		}
+		// Determine the search path.
+		Value pathVal;
+		String searchPath;
+		if (!map_try_get(GetEnvMap(), make_string("MS_IMPORT_PATH"), &pathVal) || is_null(pathVal)) {
+			searchPath = "$MS_SCRIPT_DIR:$MS_SCRIPT_DIR/lib:$MS_EXE_DIR/lib";
+		} else {
+			searchPath = as_cstring(pathVal);
+		}
+		List<String> libDirs = SplitOn(searchPath, ":");
+		// Find and read the module source file.
+		String source = "";
+		Boolean found = Boolean(false);
+		for (Int32 i = 0; i < libDirs.Count(); i++) {
+			String dir = libDirs[i];
+			if (dir.Length() == 0) dir = ".";
+			else if (!dir.EndsWith("/") && !dir.EndsWith("\\")) dir += "/";
+			String path = ExpandVariables(dir) + libname + ".ms";
+			String src = TryReadSource(path);
+			if (src.Length() == 0) continue;
+			source = src;
+			found = Boolean(true);
+			break;
+		}
+		if (!found) {
+			ctx.vm.RaiseRuntimeError(StringUtils::Format("import: library not found: {0}", libname));
+			return IntrinsicResult::Null;
+		}
+		// Parse the module source.
+		Parser p =  Parser::New();
+		p.Init(source);
+		List<ASTNode> stmts = p.ParseProgram();
+		if (p.HadError()) {
+			ctx.vm.RaiseRuntimeError(StringUtils::Format("import: parse error in {0}.ms", libname));
+			return IntrinsicResult::Null;
+		}
+		// Simplify AST (constant folding, etc.).
+		for (Int32 i = 0; i < stmts.Count(); i++) {
+			stmts[i] = stmts[i].Simplify();
+		}
+		// Compile the module to bytecode.
+		BytecodeEmitter emitter =  BytecodeEmitter::New();
+		CodeGenerator gen =  CodeGenerator::New(emitter);
+		gen.set_FileName(libname + ".ms");
+		gen.set_FunctionIndexOffset(ctx.vm.FunctionCount());
+		List<FuncDef> fns = gen.CompileImport(stmts, libname + ".ms");
+		if (!is_null(gen.Error())) {
+			ctx.vm.RaiseRuntimeError(StringUtils::Format("import: compile error in {0}.ms", libname));
+			return IntrinsicResult::Null;
+		}
+		// Push the module call; we will be re-invoked when it finishes.
+		ctx.vm.ManuallyPushCall(ctx.baseIndex, fns);
+		return IntrinsicResult(make_string(libname), Boolean(false));
 	});
 }
 

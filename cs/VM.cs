@@ -130,6 +130,13 @@ public class VM {
 	private Int32 _pendingArgCount;     // arg count for reconstructing Context
 	private Int32 _pendingResultIndex;  // absolute stack index for result (and partial result)
 
+	// Support for manually-pushed calls (used by the import intrinsic).
+	// When _hasPendingManualCall is true, Run() skips callback re-invocation
+	// and runs RunInner so the pushed function can execute first.
+	private Boolean _hasPendingManualCall;
+	private Int32 _pendingManualCallDepth;  // callStackTop value after the push
+	public Value ManualCallResult;          // return value of the manually-pushed call
+
 	// Set by the "yield" intrinsic; host app can check and clear this.
 	public bool yielding;
 
@@ -281,10 +288,74 @@ public class VM {
 				GCManager.Mark(consts[ci]);
 			}
 		}
+		// Mark LocalVarMap and OuterVarMap stored in CallInfo structs.
+		// These are not reachable from the stack scan and must be marked explicitly.
+		for (Int32 ci = 0; ci < vm.callStackTop; ci++) {
+			GCManager.Mark(vm.callStack[ci].LocalVarMap);
+			GCManager.Mark(vm.callStack[ci].OuterVarMap);
+		}
+		GCManager.Mark(vm.ManualCallResult);
 	}
 
 	public void RegisterFunction(FuncDef funcDef) {
 		functions.Add(funcDef);
+	}
+
+	// Push a manually-constructed call to a set of compiled functions (used by import).
+	// The first function in importFunctions is treated as @main for the pushed call.
+	// After this returns, the VM will run that function before re-invoking the pending
+	// intrinsic callback.  The function's return value is placed in ManualCallResult.
+	// intrinsicCalleeBase is ctx.baseIndex from the calling intrinsic.
+	public void ManuallyPushCall(Int32 intrinsicCalleeBase, List<FuncDef> importFunctions) {
+		Int32 importMainIdx = functions.Count;
+		for (Int32 i = 0; i < importFunctions.Count; i++) {
+			functions.Add(importFunctions[i]);
+		}
+		FuncDef importMain = functions[importMainIdx];
+
+		/*** BEGIN CPP_ONLY ***
+		// C++ only: keep functionsRaw in sync with the newly added functions.
+		for (Int32 i = importMainIdx; i < functions.Count(); i++) {
+			functionsRaw.push_back(functions[i].get_storage());
+		}
+		*** END CPP_ONLY ***/
+
+		// Module frame sits just above the import intrinsic's 2-register frame (r0 + libname).
+		Int32 calleeBase = intrinsicCalleeBase + 2;
+		EnsureFrame(calleeBase, importMain.MaxRegs);
+		for (Int32 i = 0; i < importMain.MaxRegs; i++) {
+			stack[calleeBase + i] = val_null;
+			names[calleeBase + i] = val_null;
+		}
+
+		if (callStackTop >= callStack.Count) callStack.Add(new CallInfo(0, 0, -1));
+		callStack[callStackTop] = new CallInfo(PC, BaseIndex, _currentFuncIndex);
+		callStackTop++;
+
+		BaseIndex = calleeBase;
+		_currentFuncIndex = importMainIdx;
+		CurrentFunction = importMain;
+		PC = 0;
+
+		_hasPendingManualCall = true;
+		_pendingManualCallDepth = callStackTop;
+		ManualCallResult = val_null;
+	}
+
+	// Set a variable by name in the current frame's locals VarMap.
+	// Matches the runtime behavior of user code "locals[varName] = value":
+	// if varName is already a named register, the value lands there directly;
+	// otherwise a plain map entry is created and LookupVariable will find it.
+	// In REPL mode (ReplGlobals != null) at the top level, writes to ReplGlobals
+	// so the variable persists across REPL iterations.
+	public void SetVar(String varName, Value value) {
+		Value targetMap;
+		if (!is_null(ReplGlobals) && callStackTop <= 1) {
+			targetMap = ReplGlobals;
+		} else {
+			targetMap = GetCurrentLocalVarMap(BaseIndex, CurrentFunction.MaxRegs);
+		}
+		map_set(targetMap, make_string(varName), value);
 	}
 
 
@@ -645,16 +716,21 @@ public class VM {
 		VM previousVM = _activeVM;
 		_activeVM = this;
 
-		// If we have a pending intrinsic continuation, re-invoke it
-		// before resuming normal execution.
+		// If we have a pending intrinsic continuation, handle it.
 		if (_pendingCallback != null) {
-			IntrinsicResult partialResult = new IntrinsicResult(stack[_pendingResultIndex], false);
-			if (!InvokeNativeCallback(_pendingCallback, _pendingCalleeBase, _pendingArgCount, partialResult, _pendingResultIndex)) {
-				// Still not done; return without running any bytecode
-				_activeVM = previousVM;
-				return val_null;
+			if (_hasPendingManualCall) {
+				// A manually-pushed call (e.g. from the import intrinsic) is still
+				// running.  Fall through to RunInner so the module code can execute.
+			} else {
+				// Normal case: re-invoke the pending intrinsic callback.
+				IntrinsicResult partialResult = new IntrinsicResult(stack[_pendingResultIndex], false);
+				if (!InvokeNativeCallback(_pendingCallback, _pendingCalleeBase, _pendingArgCount, partialResult, _pendingResultIndex)) {
+					// Still not done; return without running any bytecode
+					_activeVM = previousVM;
+					return val_null;
+				}
+				_pendingCallback = null;
 			}
-			_pendingCallback = null;
 		}
 
 		Value runResult = RunInner(maxCycles);
@@ -1562,7 +1638,18 @@ public class VM {
 						pc = nextPC;
 						SaveState(pc, baseIndex, currentFuncIndex);
 						if (!InvokeNativeCallback(callee.NativeCallback, calleeBase, argCount + selfParam, IntrinsicResult.Null, baseIndex + resultReg)) {
-							cyclesLeft = 0;
+							if (_hasPendingManualCall) {
+								// The intrinsic pushed a manual call (e.g. import).  Resync
+								// local state from the instance variables ManuallyPushCall set,
+								// and continue execution — the module code runs inline.
+								pc = PC;
+								baseIndex = BaseIndex;
+								currentFuncIndex = _currentFuncIndex;
+								SwitchFrame(currentFuncIndex, baseIndex, ref curFunc, ref codeCount, ref curCode, ref curConstants, ref localStack); // CPP:
+								// CPP: SwitchFrame(currentFuncIndex, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack, stackPtr);
+							} else {
+								cyclesLeft = 0;
+							}
 						}
 						break;
 					}
@@ -1684,7 +1771,15 @@ public class VM {
 					if (callee.NativeCallback != null) {
 						SaveState(pc, baseIndex, currentFuncIndex);
 						if (!InvokeNativeCallback(callee.NativeCallback, calleeBase, selfParam, IntrinsicResult.Null, baseIndex + a)) {
-							cyclesLeft = 0;
+							if (_hasPendingManualCall) {
+								pc = PC;
+								baseIndex = BaseIndex;
+								currentFuncIndex = _currentFuncIndex;
+								SwitchFrame(currentFuncIndex, baseIndex, ref curFunc, ref codeCount, ref curCode, ref curConstants, ref localStack); // CPP:
+								// CPP: SwitchFrame(currentFuncIndex, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack, stackPtr);
+							} else {
+								cyclesLeft = 0;
+							}
 						}
 						break;
 					}
@@ -1933,6 +2028,14 @@ public class VM {
 					if (callInfo.CopyResultToReg >= 0) {
 						stack[baseIndex + callInfo.CopyResultToReg] = val;
 					}
+
+					// Detect return from a manually-pushed call (e.g. import module).
+					// Save the result and exit RunInner so Run() re-invokes the callback.
+					if (_hasPendingManualCall && callStackTop == _pendingManualCallDepth - 1) {
+						ManualCallResult = val;
+						_hasPendingManualCall = false;
+						cyclesLeft = 0;
+					}
 					break;
 				}
 
@@ -2063,6 +2166,13 @@ public class VM {
 		Value result;		
 		if (callStackTop > 0) {
 			CallInfo currentFrame = callStack[callStackTop - 1];  // Current frame, not next frame
+			// Check locals VarMap for variables set dynamically (e.g. by the import intrinsic).
+			// This mirrors what user code "locals[varName] = x" does at runtime.
+			if (!is_null(currentFrame.LocalVarMap)) {
+				if (map_try_get(currentFrame.LocalVarMap, varName, out result)) {
+					return result;
+				}
+			}
 			if (!is_null(currentFrame.OuterVarMap)) {
 				if (map_try_get(currentFrame.OuterVarMap, varName, out result)) {
 					return result;

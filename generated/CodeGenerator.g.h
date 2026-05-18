@@ -68,6 +68,11 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 	// Compile a complete function from a single expression/statement
 	public: FuncDef CompileFunction(ASTNode ast, String funcName);
 
+	// Compile a module for import: like CompileProgram but appends LOCALS + RETURN
+	// so the module returns its own top-level locals map as its result.
+	// Returns all compiled functions (index 0 = @main, 1+ = inner functions).
+	public: List<FuncDef> CompileImport(List<ASTNode> statements, String funcName);
+
 	// Compile a complete function from a list of statements (program)
 	public: FuncDef CompileProgram(List<ASTNode> statements, String funcName);
 
@@ -248,6 +253,11 @@ struct CodeGenerator : public IASTVisitor {
 	// Compile a complete function from a single expression/statement
 	public: inline FuncDef CompileFunction(ASTNode ast, String funcName);
 
+	// Compile a module for import: like CompileProgram but appends LOCALS + RETURN
+	// so the module returns its own top-level locals map as its result.
+	// Returns all compiled functions (index 0 = @main, 1+ = inner functions).
+	public: inline List<FuncDef> CompileImport(List<ASTNode> statements, String funcName);
+
 	// Compile a complete function from a list of statements (program)
 	public: inline FuncDef CompileProgram(List<ASTNode> statements, String funcName);
 
@@ -389,6 +399,7 @@ inline Int32 CodeGenerator::Compile(ASTNode ast) { return get()->Compile(ast); }
 inline void CodeGenerator::ResetTempRegisters() { return get()->ResetTempRegisters(); }
 inline void CodeGenerator::CompileBody(List<ASTNode> body) { return get()->CompileBody(body); }
 inline FuncDef CodeGenerator::CompileFunction(ASTNode ast,String funcName) { return get()->CompileFunction(ast, funcName); }
+inline List<FuncDef> CodeGenerator::CompileImport(List<ASTNode> statements,String funcName) { return get()->CompileImport(statements, funcName); }
 inline FuncDef CodeGenerator::CompileProgram(List<ASTNode> statements,String funcName) { return get()->CompileProgram(statements, funcName); }
 inline Int32 CodeGenerator::Visit(NumberNode node) { return get()->Visit(node); }
 inline Int32 CodeGenerator::Visit(StringNode node) { return get()->Visit(node); }

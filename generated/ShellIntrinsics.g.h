@@ -48,6 +48,18 @@ class ShellIntrinsics {
 	// done=false with the same handle so the VM will call us again.
 	private: static IntrinsicResult FinishExec(Value handle);
 
+	// Split a string on a single-character (string) delimiter, returning all parts
+	// (empty parts are skipped).
+	private: static List<String> SplitOn(String s, String delim);
+
+	// Expand shell variable references ($VAR, ${VAR}) in a path string,
+	// looking up values in the cached env map.
+	private: static String ExpandVariables(String path);
+
+	// Try to read a source file. Returns the file contents if the file exists,
+	// or null (empty string in C++) if it does not.  Used by the import intrinsic.
+	private: static String TryReadSource(String path);
+
 	// Register all shell intrinsics.  Must be called before any Interpreter is Reset.
 	public: static void Init();
 }; // end of struct ShellIntrinsics

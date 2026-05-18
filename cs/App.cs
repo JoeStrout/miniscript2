@@ -5,31 +5,34 @@ using System.Threading;
 using MiniScript;
 using static MiniScript.ValueHelpers;
 
-// CPP: #include "CodeEmitter.g.h"
-// CPP: #include "ErrorTypes.g.h"
-// CPP: #include "UnitTests.g.h"
-// CPP: #include "VM.g.h"
-// CPP: #include "value_string.h"
-// CPP: #include "dispatch_macros.h"
-// CPP: #include "VMVis.g.h"
-// CPP: #include "Assembler.g.h"
-// CPP: #include "Disassembler.g.h"
-// CPP: #include "Parser.g.h"
-// CPP: #include "CodeGenerator.g.h"
-// CPP: #include "StringUtils.g.h"
-// CPP: #include "IOHelper.g.h"
-// CPP: #include "Interpreter.g.h"
-// CPP: #include "Intrinsic.g.h" // ToDo: remove this once we've refactored set_FunctionIndexOffset away
-// CPP: #include "CoreIntrinsics.g.h"
-// CPP: #include "ShellIntrinsics.g.h"
-// CPP: #include <thread>
-// CPP: #include <chrono>
 /*** BEGIN CPP_ONLY ***
+#include "CodeEmitter.g.h"
+#include "ErrorTypes.g.h"
+#include "UnitTests.g.h"
+#include "VM.g.h"
+#include "value_string.h"
+#include "dispatch_macros.h"
+#include "VMVis.g.h"
+#include "Assembler.g.h"
+#include "Disassembler.g.h"
+#include "Parser.g.h"
+#include "CodeGenerator.g.h"
+#include "StringUtils.g.h"
+#include "IOHelper.g.h"
+#include "Interpreter.g.h"
+#include "Intrinsic.g.h" // ToDo: remove this once we've refactored set_FunctionIndexOffset away
+#include "CoreIntrinsics.g.h"
+#include "ShellIntrinsics.g.h"
+#include <thread>
+#include <chrono>
 #if USE_EDITLINE
 #include "editline/editline.h"
 #endif
+#ifndef _WIN32
+#include <unistd.h>
+#endif
+using namespace MiniScript;
 *** END CPP_ONLY ***/
-// CPP: using namespace MiniScript;
 
 namespace MiniScript {
 
@@ -91,6 +94,40 @@ public struct App {
 			IOHelper.Print("Integration tests complete.");
 		}
 		
+		// Set MS_SCRIPT_DIR and MS_EXE_DIR so import can find library files.
+		//*** BEGIN CS_ONLY ***
+		String exeDir = System.IO.Path.GetDirectoryName(
+			System.Diagnostics.Process.GetCurrentProcess().MainModule.FileName);
+		if (exeDir == null) exeDir = ".";
+		System.Environment.SetEnvironmentVariable("MS_EXE_DIR", exeDir);
+		//*** END CS_ONLY ***
+		/*** BEGIN CPP_ONLY ***
+		{
+			char exePath[1024] = {0};
+			#ifdef _WIN32
+				GetModuleFileNameA(nullptr, exePath, sizeof(exePath));
+			#else
+				ssize_t len = readlink("/proc/self/exe", exePath, sizeof(exePath) - 1);
+				if (len < 0) { exePath[0] = '.'; exePath[1] = '\0'; }
+			#endif
+			String exePathStr(exePath);
+			Int32 sep = exePathStr.LastIndexOf('/');
+			Int32 sep2 = exePathStr.LastIndexOf('\\');
+			if (sep2 > sep) sep = sep2;
+			String exeDir = (sep >= 0) ? exePathStr.Substring(0, sep) : String(".");
+			setenv("MS_EXE_DIR", exeDir.c_str(), 1);
+		}
+		*** END CPP_ONLY ***/
+
+		// Default MS_SCRIPT_DIR to the current directory; overridden below for script files.
+		//*** BEGIN CS_ONLY ***
+		System.Environment.SetEnvironmentVariable("MS_SCRIPT_DIR",
+			System.IO.Directory.GetCurrentDirectory());
+		//*** END CS_ONLY ***
+		/*** BEGIN CPP_ONLY ***
+		setenv("MS_SCRIPT_DIR", ".", 1);
+		*** END CPP_ONLY ***/
+
 		// Handle inline code (-c), file argument, or REPL
 		if (inlineCode != null) {
 			if (debugMode) IOHelper.Print(StringUtils.Format("Compiling: {0}", inlineCode));
@@ -100,6 +137,20 @@ public struct App {
 			if (ShellIntrinsics.ExitASAP) DoExit();
 		} else if (fileArgIndex != -1) {
 			String filePath = args[fileArgIndex];
+			//*** BEGIN CS_ONLY ***
+			System.Environment.SetEnvironmentVariable("MS_SCRIPT_DIR",
+				System.IO.Path.GetDirectoryName(System.IO.Path.GetFullPath(filePath)));
+			//*** END CS_ONLY ***
+			/*** BEGIN CPP_ONLY ***
+			{
+				String fp(filePath.c_str());
+				Int32 sep = fp.LastIndexOf('/');
+				Int32 sep2 = fp.LastIndexOf('\\');
+				if (sep2 > sep) sep = sep2;
+				String scriptDir = (sep >= 0) ? fp.Substring(0, sep) : String(".");
+				setenv("MS_SCRIPT_DIR", scriptDir.c_str(), 1);
+			}
+			*** END CPP_ONLY ***/
 			Interpreter interp = CreateInterpreter();
 			if (filePath.EndsWith(".ms")) {
 				// Source file: read, join, and compile via Interpreter

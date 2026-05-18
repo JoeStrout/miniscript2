@@ -198,6 +198,33 @@ public class CodeGenerator : IASTVisitor {
 		return _emitter.Finalize(funcName);
 	}
 
+	// Compile a module for import: like CompileProgram but appends LOCALS + RETURN
+	// so the module returns its own top-level locals map as its result.
+	// Returns all compiled functions (index 0 = @main, 1+ = inner functions).
+	public List<FuncDef> CompileImport(List<ASTNode> statements, String funcName) {
+		_regInUse.Clear();
+		_firstAvailable = 0;
+		_maxRegUsed = -1;
+		_variableRegs.Clear();
+
+		_functions.Clear();
+		_functions.Add(null);
+
+		for (Int32 i = 0; i < statements.Count; i++) {
+			ResetTempRegisters();
+			if (statements[i].Line != 0) _emitter.CurrentLine = statements[i].Line;
+			CompileInto(statements[i], 0);
+		}
+
+		_emitter.EmitA(Opcode.LOCALS_rA, 0, "return locals");
+		_emitter.Emit(Opcode.RETURN, null);
+
+		FuncDef mainFunc = _emitter.Finalize(funcName);
+		mainFunc.FileName = funcName;
+		_functions[0] = mainFunc;
+		return _functions;
+	}
+
 	// Compile a complete function from a list of statements (program)
 	public FuncDef CompileProgram(List<ASTNode> statements, String funcName) {
 		_regInUse.Clear();

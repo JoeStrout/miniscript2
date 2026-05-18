@@ -574,6 +574,7 @@ public static class CoreIntrinsics {
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value v = ctx.GetArg(0);
 			if (is_error(v)) return ctx.vm.RaiseUncaughtError(v);
+			// ToDo: if v is neither null nor a number, return a parameter error
 			int seed = is_null(v) ? 0 : (int)numeric_val(v);
 			return new IntrinsicResult(make_double(GetNextRandom(seed)));
 		};
@@ -584,6 +585,8 @@ public static class CoreIntrinsics {
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value v = ctx.GetArg(0);
 			if (is_error(v)) return new IntrinsicResult(v);
+			// ToDo: if v is neither null nor a number, return a parameter error
+			// (and similar for other numeric functions)
 			return new IntrinsicResult(make_int(Math.Sign(numeric_val(v))));
 		};
 

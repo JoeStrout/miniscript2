@@ -880,6 +880,13 @@ While testing the `gc` intrinsic though, we stumbled upon a deeper bug.  It seem
 Going to sit on the `info` idea for now.  Do we really want to expose any implementation details about the GC entry index?  I can't think of a use case.
 
 
+## May 18, 2026
+
+We're getting pretty close to "done" here.  The big thing lacking, for command-line MiniScript, is a set of shell intrinsics (notably including `file` and `import`) equivalent to MS1.  These will differ slightly in their error handling, but correct code that does not encounter errors should work exactly the same.
+
+But I also want to start gathering a to-do list, including places where the code can be improved.  For example, since we have our new GC system, we no longer need to worry about declaring Value variables inside a loop or if-block.  So, everywhere we refrained from that before, we should probably go back and move the declarations down to the smallest scope possible.
+
+I also had a thought about how intrinsics are declared.  I wonder if it would be nicer for implementors to declare an intrinsic function using MiniScript syntax -- not for the actual code, but for the parameter list.  We could use the compiler to convert that to the AddParam calls we're doing now.  But I don't know, nobody has complained about the current format and maybe we shouldn't change too much at once.
 
 
 

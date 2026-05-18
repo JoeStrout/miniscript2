@@ -18,6 +18,7 @@
 #include "Interpreter.g.h"
 #include "Intrinsic.g.h" // ToDo: remove this once we've refactored set_FunctionIndexOffset away
 #include "CoreIntrinsics.g.h"
+#include "ShellIntrinsics.g.h"
 #include <thread>
 #include <chrono>
 #if USE_EDITLINE
@@ -39,6 +40,7 @@ void App::MainProgram(List<String> args) {
 	value_init_constants();
 	GCManager::Init();
 	ErrorType::Init();
+	ShellIntrinsics::Init();
 
 	// Parse command-line switches
 	Int32 fileArgIndex = -1;
@@ -58,6 +60,10 @@ void App::MainProgram(List<String> args) {
 		}
 	}
 	
+	// Populate shell args: everything after the script path (or empty if none).
+	Int32 shellArgsStart = (fileArgIndex >= 0) ? fileArgIndex + 1 : args.Count();
+	ShellIntrinsics::SetShellArgs(args, shellArgsStart);
+
 	IOHelper::Print("MiniScript 2.0", TextStyle::Strong);
 	#if VM_USE_COMPUTED_GOTO
 	#define VARIANT "(goto)"
@@ -88,6 +94,7 @@ void App::MainProgram(List<String> args) {
 		Interpreter interp = CreateInterpreter();
 		interp.Reset(inlineCode);
 		RunInterpreter(interp);
+		if (ShellIntrinsics::ExitASAP) DoExit();
 	} else if (fileArgIndex != -1) {
 		String filePath = args[fileArgIndex];
 		Interpreter interp = CreateInterpreter();
@@ -107,6 +114,7 @@ void App::MainProgram(List<String> args) {
 				interp.set_SourceFile(GetPathFilename(filePath));
 				interp.Reset(source);
 				RunInterpreter(interp);
+				if (ShellIntrinsics::ExitASAP) DoExit();
 			}
 		} else {
 			// Assembly file (.msa or any other extension)
@@ -114,6 +122,7 @@ void App::MainProgram(List<String> args) {
 			if (!IsNull(functions)) {
 				interp.Reset(functions);
 				RunInterpreter(interp);
+				if (ShellIntrinsics::ExitASAP) DoExit();
 			}
 		}
 	} else if (!debugMode) {
@@ -122,6 +131,9 @@ void App::MainProgram(List<String> args) {
 	}
 
 	IOHelper::Print("All done!");
+}
+void App::DoExit() {
+	exit(ShellIntrinsics::ExitCode);
 }
 String App::GetPathFilename(String filePath) {
 	int pos = filePath.LastIndexOf('/');
@@ -482,6 +494,7 @@ void App::RunREPL() {
 
 		inListBefore = CoreIntrinsics::replInList;
 		interp.REPL(line, 60);
+		if (ShellIntrinsics::ExitASAP) DoExit();
 
 		// When the interaction completes, record it and display implicit output.
 		// Skip recording if reset was called (it replaces the lists with fresh ones).

@@ -88,7 +88,13 @@ public:
 		if (!cstr) return;
 		ref = FindOrCreate(cstr);
 	}
-	
+
+	// Construct from a byte buffer with explicit length (need not be null-terminated).
+	String(const char* data, size_t byteLen) {
+		if (!data || byteLen == 0) return;
+		ref = FindOrCreate(data, (int)byteLen);
+	}
+
 	String(char c) {
 		char buf[2] = {c, 0};
 		ref = FindOrCreate(buf);

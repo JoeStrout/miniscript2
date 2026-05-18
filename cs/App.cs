@@ -21,6 +21,7 @@ using static MiniScript.ValueHelpers;
 // CPP: #include "Interpreter.g.h"
 // CPP: #include "Intrinsic.g.h" // ToDo: remove this once we've refactored set_FunctionIndexOffset away
 // CPP: #include "CoreIntrinsics.g.h"
+// CPP: #include "ShellIntrinsics.g.h"
 // CPP: #include <thread>
 // CPP: #include <chrono>
 /*** BEGIN CPP_ONLY ***
@@ -40,6 +41,7 @@ public struct App {
 		// CPP: value_init_constants();
 		GCManager.Init();
 		ErrorType.Init();
+		ShellIntrinsics.Init();
 
 		// Parse command-line switches
 		Int32 fileArgIndex = -1;
@@ -59,6 +61,10 @@ public struct App {
 			}
 		}
 		
+		// Populate shell args: everything after the script path (or empty if none).
+		Int32 shellArgsStart = (fileArgIndex >= 0) ? fileArgIndex + 1 : args.Count;
+		ShellIntrinsics.SetShellArgs(args, shellArgsStart);
+
 		IOHelper.Print("MiniScript 2.0", TextStyle.Strong);
 		/*** BEGIN CPP_ONLY ***
 		#if VM_USE_COMPUTED_GOTO
@@ -91,6 +97,7 @@ public struct App {
 			Interpreter interp = CreateInterpreter();
 			interp.Reset(inlineCode);
 			RunInterpreter(interp);
+			if (ShellIntrinsics.ExitASAP) DoExit();
 		} else if (fileArgIndex != -1) {
 			String filePath = args[fileArgIndex];
 			Interpreter interp = CreateInterpreter();
@@ -110,6 +117,7 @@ public struct App {
 					interp.SourceFile = GetPathFilename(filePath);
 					interp.Reset(source);
 					RunInterpreter(interp);
+					if (ShellIntrinsics.ExitASAP) DoExit();
 				}
 			} else {
 				// Assembly file (.msa or any other extension)
@@ -117,6 +125,7 @@ public struct App {
 				if (functions != null) {
 					interp.Reset(functions);
 					RunInterpreter(interp);
+					if (ShellIntrinsics.ExitASAP) DoExit();
 				}
 			}
 		} else if (!debugMode) {
@@ -125,6 +134,11 @@ public struct App {
 		}
 
 		IOHelper.Print("All done!");
+	}
+
+	// Exit the process with the code set by the `exit` intrinsic.
+	private static void DoExit() {
+		System.Environment.Exit(ShellIntrinsics.ExitCode); // CPP: exit(ShellIntrinsics::ExitCode);
 	}
 
 	// Return just the filename portion of a path (e.g. "/foo/bar.ms" -> "bar.ms").
@@ -529,6 +543,7 @@ public struct App {
 
 			inListBefore = CoreIntrinsics.replInList;
 			interp.REPL(line, 60);
+			if (ShellIntrinsics.ExitASAP) DoExit();
 
 			// When the interaction completes, record it and display implicit output.
 			// Skip recording if reset was called (it replaces the lists with fresh ones).

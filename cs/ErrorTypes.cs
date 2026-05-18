@@ -52,6 +52,10 @@ public static class ErrorType {
 		if (is_null(runtime)) Init();
 		return make_error(make_string(msg), val_null, val_null, runtime);
 	}
+	
+	// ToDo: provide a factory for parameter errors, and another specifically for
+	// "number required, but got <some other type>" errors, and then use this in
+	// various numeric intrinsics (sin, cos, round, etc.) and anywhere else appropriate.
 
 	// GC mark callback to protect our static error prototypes from collection.
 	public static void MarkRoots(object user_data) {

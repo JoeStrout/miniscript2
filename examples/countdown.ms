@@ -1,8 +1,9 @@
-// Count down from 5 to 1, with 1-second waits in between.
+// Countdown
+// This is the tiniest Mini Micro demo.
+// It shows basic looping, plus use of range, print, and wait.
 
-for i in range(5, 1)
+for i in range(10,1)
 	print i + "..."
 	wait
 end for
-
-print "LIFTOFF!!!!"
+print "BLASTOFF!"

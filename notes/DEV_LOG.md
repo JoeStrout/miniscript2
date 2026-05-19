@@ -917,9 +917,7 @@ To solve this properly, without just emitting NAME on every assignment, we're no
 
 I discovered this bug by trying to run lib/vt.ms -- as we run more existing code with MS2, I'm sure we'll find more!  But for now that demo, at least, is working perfectly (after also fixing an output delimiter bug in the App class).  Real progress.
 
-
-
-
+Trying to run textAdventure.ms uncovered a somewhat deep bug with `super`.  We need a register to hold the `super` value, and that needs to be pre-allocated right up front, when the VM needs to store it, and not allocated later (which might reuse some register that already clobbered a value stored by the VM).  But *most* methods don't need `super`, so I don't want to reserve a register for it in every one.  So I'm going to scan the AST and see if it's actually using `super` before allocating it a register.
 
 
 

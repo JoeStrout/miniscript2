@@ -1152,6 +1152,10 @@ public class CodeGenerator : IASTVisitor {
 			}
 		}
 
+		// Reserve self/super registers before compiling the body, so they
+		// can't collide with recycled temporary registers.
+		innerGen.ReserveSelfSuperRegs(bodyToCompile);
+
 		// Compile the function body
 		innerGen.CompileBody(bodyToCompile);
 		if (is_null(Error) && !is_null(innerGen.Error)) Error = innerGen.Error;
@@ -1225,6 +1229,119 @@ public class CodeGenerator : IASTVisitor {
 		// Don't emit NAME here — see GetSelfReg comment.
 		fd.SuperReg = (Int16)reg;
 		return reg;
+	}
+
+	// Pre-scan a function body to reserve the self/super registers up front,
+	// before any temporary registers are allocated.  The VM populates these
+	// registers with method-call context at function entry, so if they were
+	// allocated lazily (on first reference) they could land on a slot already
+	// used and freed as a temp — and a later temp would clobber the context.
+	// Does NOT descend into nested function bodies: a self/super reference
+	// inside an inner function needs a register in that function, not this one.
+	private Boolean _scanUsesSelf;
+	private Boolean _scanUsesSuper;
+
+	private void ReserveSelfSuperRegs(List<ASTNode> body) {
+		_scanUsesSelf = false;
+		_scanUsesSuper = false;
+		ScanNodeList(body);
+		if (_scanUsesSelf) GetSelfReg();
+		if (_scanUsesSuper) GetSuperReg();
+	}
+
+	private void ScanNodeList(List<ASTNode> nodes) {
+		for (Int32 i = 0; i < nodes.Count; i++) {
+			ScanNode(nodes[i]);
+		}
+	}
+
+	private void ScanNode(ASTNode node) {
+		if (node == null) return;
+		if (_scanUsesSuper) return;  // already found everything worth finding
+
+		SuperNode superN = node as SuperNode;
+		if (superN != null) {
+			// A super reference also needs the self register (SETSELF preserves
+			// the current self across the super call).
+			_scanUsesSelf = true;
+			_scanUsesSuper = true;
+			return;
+		}
+		SelfNode selfN = node as SelfNode;
+		if (selfN != null) { _scanUsesSelf = true; return; }
+
+		// Do not descend into nested function definitions.
+		FunctionNode funcN = node as FunctionNode;
+		if (funcN != null) return;
+
+		AssignmentNode assignN = node as AssignmentNode;
+		if (assignN != null) { ScanNode(assignN.Value); return; }
+
+		IndexedAssignmentNode idxAssignN = node as IndexedAssignmentNode;
+		if (idxAssignN != null) {
+			ScanNode(idxAssignN.Target);
+			ScanNode(idxAssignN.Index);
+			ScanNode(idxAssignN.Value);
+			return;
+		}
+
+		UnaryOpNode unaryN = node as UnaryOpNode;
+		if (unaryN != null) { ScanNode(unaryN.Operand); return; }
+
+		BinaryOpNode binN = node as BinaryOpNode;
+		if (binN != null) { ScanNode(binN.Left); ScanNode(binN.Right); return; }
+
+		ComparisonChainNode cmpN = node as ComparisonChainNode;
+		if (cmpN != null) { ScanNodeList(cmpN.Operands); return; }
+
+		CallNode callN = node as CallNode;
+		if (callN != null) { ScanNodeList(callN.Arguments); return; }
+
+		GroupNode groupN = node as GroupNode;
+		if (groupN != null) { ScanNode(groupN.Expression); return; }
+
+		ListNode listN = node as ListNode;
+		if (listN != null) { ScanNodeList(listN.Elements); return; }
+
+		MapNode mapN = node as MapNode;
+		if (mapN != null) { ScanNodeList(mapN.Keys); ScanNodeList(mapN.Values); return; }
+
+		IndexNode indexN = node as IndexNode;
+		if (indexN != null) { ScanNode(indexN.Target); ScanNode(indexN.Index); return; }
+
+		SliceNode sliceN = node as SliceNode;
+		if (sliceN != null) {
+			ScanNode(sliceN.Target);
+			ScanNode(sliceN.StartIndex);
+			ScanNode(sliceN.EndIndex);
+			return;
+		}
+
+		MemberNode memberN = node as MemberNode;
+		if (memberN != null) { ScanNode(memberN.Target); return; }
+
+		MethodCallNode methN = node as MethodCallNode;
+		if (methN != null) { ScanNode(methN.Target); ScanNodeList(methN.Arguments); return; }
+
+		ExprCallNode exprCallN = node as ExprCallNode;
+		if (exprCallN != null) { ScanNode(exprCallN.Function); ScanNodeList(exprCallN.Arguments); return; }
+
+		WhileNode whileN = node as WhileNode;
+		if (whileN != null) { ScanNode(whileN.Condition); ScanNodeList(whileN.Body); return; }
+
+		IfNode ifN = node as IfNode;
+		if (ifN != null) {
+			ScanNode(ifN.Condition);
+			ScanNodeList(ifN.ThenBody);
+			ScanNodeList(ifN.ElseBody);
+			return;
+		}
+
+		ForNode forN = node as ForNode;
+		if (forN != null) { ScanNode(forN.Iterable); ScanNodeList(forN.Body); return; }
+
+		ReturnNode returnN = node as ReturnNode;
+		if (returnN != null) { ScanNode(returnN.Value); return; }
 	}
 
 	public Int32 Visit(SelfNode node) {

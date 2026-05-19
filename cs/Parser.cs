@@ -447,6 +447,17 @@ public class Parser : IParser {
 			String lhsName2 = memNode2.Target.ToStr() + "." + memNode2.Member;
 			return new IndexedAssignmentNode(memNode2.Target, index, value, lhsName2);
 		}
+
+		// Check for no-parens call on an expression result, e.g. super.speak msg
+		if (_current.AfterSpace && CanStartExpression(_current.Type)) {
+			List<ASTNode> args = new List<ASTNode>();
+			args.Add(ParseExpression());
+			while (Match(TokenType.COMMA)) {
+				args.Add(ParseExpression());
+			}
+			return new ExprCallNode(expr2, args);
+		}
+
 		return expr2;
 	}
 

@@ -377,6 +377,17 @@ ASTNode ParserStorage::ParseSimpleStatement() {
 		String lhsName2 = memNode2.Target().ToStr() + "." + memNode2.Member();
 		return  IndexedAssignmentNode::New(memNode2.Target(), index, value, lhsName2);
 	}
+
+	// Check for no-parens call on an expression result, e.g. super.speak msg
+	if (_current.AfterSpace && CanStartExpression(_current.Type)) {
+		List<ASTNode> args =  List<ASTNode>::New();
+		args.Add(ParseExpression());
+		while (Match(TokenType::COMMA)) {
+			args.Add(ParseExpression());
+		}
+		return  ExprCallNode::New(expr2, args);
+	}
+
 	return expr2;
 }
 Boolean ParserStorage::IsBlockTerminator(TokenType t1,TokenType t2) {

@@ -4204,6 +4204,23 @@ print r
 --------------------------------
 11
 ================================
+==== super method call with no-parens argument
+================================
+Animal = {}
+Animal.speak = function(msg)
+	print "Animal says " + msg
+end function
+Dog = new Animal
+Dog.speak = function(msg)
+	print "Dog says " + msg
+	super.speak msg
+end function
+d = new Dog
+d.speak "hi"
+--------------------------------
+Dog says hi
+Animal says hi
+================================
 ==== END OF TESTS
 ================================================================================
 

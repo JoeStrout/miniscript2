@@ -173,6 +173,22 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 
 	// Allocate (or retrieve) the register for 'super'
 	private: Int32 GetSuperReg();
+	private: Boolean _scanUsesSelf;
+	private: Boolean _scanUsesSuper;
+
+	// Pre-scan a function body to reserve the self/super registers up front,
+	// before any temporary registers are allocated.  The VM populates these
+	// registers with method-call context at function entry, so if they were
+	// allocated lazily (on first reference) they could land on a slot already
+	// used and freed as a temp — and a later temp would clobber the context.
+	// Does NOT descend into nested function bodies: a self/super reference
+	// inside an inner function needs a register in that function, not this one.
+
+	private: void ReserveSelfSuperRegs(List<ASTNode> body);
+
+	private: void ScanNodeList(List<ASTNode> nodes);
+
+	private: void ScanNode(ASTNode node);
 
 	public: Int32 Visit(SelfNode node);
 
@@ -371,6 +387,24 @@ struct CodeGenerator : public IASTVisitor {
 
 	// Allocate (or retrieve) the register for 'super'
 	private: inline Int32 GetSuperReg();
+	private: Boolean _scanUsesSelf();
+	private: void set__scanUsesSelf(Boolean _v);
+	private: Boolean _scanUsesSuper();
+	private: void set__scanUsesSuper(Boolean _v);
+
+	// Pre-scan a function body to reserve the self/super registers up front,
+	// before any temporary registers are allocated.  The VM populates these
+	// registers with method-call context at function entry, so if they were
+	// allocated lazily (on first reference) they could land on a slot already
+	// used and freed as a temp — and a later temp would clobber the context.
+	// Does NOT descend into nested function bodies: a self/super reference
+	// inside an inner function needs a register in that function, not this one.
+
+	private: inline void ReserveSelfSuperRegs(List<ASTNode> body);
+
+	private: inline void ScanNodeList(List<ASTNode> nodes);
+
+	private: inline void ScanNode(ASTNode node);
 
 	public: inline Int32 Visit(SelfNode node);
 
@@ -462,6 +496,13 @@ inline Int32 CodeGenerator::Visit(ContinueNode node) { return get()->Visit(node)
 inline Int32 CodeGenerator::Visit(FunctionNode node) { return get()->Visit(node); }
 inline Int32 CodeGenerator::GetSelfReg() { return get()->GetSelfReg(); }
 inline Int32 CodeGenerator::GetSuperReg() { return get()->GetSuperReg(); }
+inline Boolean CodeGenerator::_scanUsesSelf() { return get()->_scanUsesSelf; }
+inline void CodeGenerator::set__scanUsesSelf(Boolean _v) { get()->_scanUsesSelf = _v; }
+inline Boolean CodeGenerator::_scanUsesSuper() { return get()->_scanUsesSuper; }
+inline void CodeGenerator::set__scanUsesSuper(Boolean _v) { get()->_scanUsesSuper = _v; }
+inline void CodeGenerator::ReserveSelfSuperRegs(List<ASTNode> body) { return get()->ReserveSelfSuperRegs(body); }
+inline void CodeGenerator::ScanNodeList(List<ASTNode> nodes) { return get()->ScanNodeList(nodes); }
+inline void CodeGenerator::ScanNode(ASTNode node) { return get()->ScanNode(node); }
 inline Int32 CodeGenerator::Visit(SelfNode node) { return get()->Visit(node); }
 inline Int32 CodeGenerator::Visit(SuperNode node) { return get()->Visit(node); }
 inline Int32 CodeGenerator::Visit(ScopeNode node) { return get()->Visit(node); }

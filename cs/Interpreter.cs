@@ -208,7 +208,6 @@ public class Interpreter {
 		// Compile to bytecode (offset past intrinsics so indices don't collide)
 		BytecodeEmitter emitter = new BytecodeEmitter();
 		CodeGenerator generator = new CodeGenerator(emitter);
-		generator.FunctionIndexOffset = Intrinsic.Count();
 		generator.FileName = SourceFile;
 		generator.CompileProgram(statements, "@main");
 
@@ -353,11 +352,10 @@ public class Interpreter {
 			hasImplicitOutput = true;
 		}
 
-		// Compile to bytecode (offset past intrinsics + previous user functions)
-		Int32 funcOffset = (vm != null) ? vm.FunctionCount() : Intrinsic.Count();
+		// Compile to bytecode.  Each REPL line is its own @main; previously
+		// defined functions are reached as funcref values in the globals VarMap.
 		BytecodeEmitter emitter = new BytecodeEmitter();
 		CodeGenerator generator = new CodeGenerator(emitter);
-		generator.FunctionIndexOffset = funcOffset;
 		generator.CompileProgram(statements, "@main");
 
 		if (!is_null(generator.Error)) {

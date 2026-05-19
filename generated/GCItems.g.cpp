@@ -145,6 +145,17 @@ void GCError::MarkChildren() {
 
 void GCFunction::MarkChildren() {
 	GCManager::Mark(OuterVars);
+	// Mark the function's compile-time constants so that nested-function
+	// templates (and any interned strings) remain reachable.  This is what
+	// roots the whole FuncDef graph now that the VM keeps no functions list.
+	if (!IsNull(Func)) {
+		List<Value> consts = Func.Constants();
+		for (Int32 i = 0; i < consts.Count(); i++) GCManager::Mark(consts[i]);
+		List<Value> pnames = Func.ParamNames();
+		for (Int32 i = 0; i < pnames.Count(); i++) GCManager::Mark(pnames[i]);
+		List<Value> pdefs = Func.ParamDefaults();
+		for (Int32 i = 0; i < pdefs.Count(); i++) GCManager::Mark(pdefs[i]);
+	}
 }
 
 void GCHandle::MarkChildren() {

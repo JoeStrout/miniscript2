@@ -1371,14 +1371,15 @@ void ShellIntrinsics::Init() {
 		BytecodeEmitter emitter =  BytecodeEmitter::New();
 		CodeGenerator gen =  CodeGenerator::New(emitter);
 		gen.set_FileName(libname + ".ms");
-		gen.set_FunctionIndexOffset(ctx.vm.FunctionCount());
 		List<FuncDef> fns = gen.CompileImport(stmts, libname + ".ms");
 		if (!is_null(gen.Error())) {
 			ctx.vm.RaiseRuntimeError(StringUtils::Format("import: compile error in {0}.ms", libname));
 			return IntrinsicResult::Null;
 		}
 		// Push the module call; we will be re-invoked when it finishes.
-		ctx.vm.ManuallyPushCall(ctx.baseIndex, fns);
+		// fns[0] is the module's @main; nested functions are reachable
+		// from its constant pool.
+		ctx.vm.ManuallyPushCall(ctx.baseIndex, fns[0]);
 		return IntrinsicResult(make_string(libname), Boolean(false));
 	});
 }

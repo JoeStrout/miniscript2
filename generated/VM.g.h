@@ -13,7 +13,6 @@
 #include "GCManager.g.h"
 
 namespace MiniScript {
-typedef const FuncDefStorage& FuncDefRef;
 
 // DECLARATIONS
 
@@ -21,14 +20,14 @@ typedef const FuncDefStorage& FuncDefRef;
 struct CallInfo {
 	public: Int32 ReturnPC; // where to continue in caller (PC index)
 	public: Int32 ReturnBase; // caller's base pointer (stack index)
-	public: Int32 ReturnFuncIndex; // caller's function index in functions list
+	public: FuncDef ReturnFunc; // caller's function definition
 	public: Int32 CopyResultToReg; // register number to copy result to, or -1
 	public: Value LocalVarMap; // VarMap representing locals, if any
 	public: Value OuterVarMap; // VarMap representing outer variables (closure context)
 
-	public: CallInfo(Int32 returnPC, Int32 returnBase, Int32 returnFuncIndex, Int32 copyToReg=-1);
+	public: CallInfo(Int32 returnPC, Int32 returnBase, FuncDef returnFunc, Int32 copyToReg=-1);
 
-	public: CallInfo(Int32 returnPC, Int32 returnBase, Int32 returnFuncIndex, Int32 copyToReg, Value outerVars);
+	public: CallInfo(Int32 returnPC, Int32 returnBase, FuncDef returnFunc, Int32 copyToReg, Value outerVars);
 
 	public: Value GetLocalVarMap(List<Value> registers, List<Value> names, int baseIdx, int regCount);
 }; // end of struct CallInfo
@@ -47,11 +46,8 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	public: Interpreter GetInterpreter(); // NO_INLINE
 	private: List<CallInfo> callStack;
 	private: Int32 callStackTop;
-	private: List<FuncDef> functions; // functions addressed by CALLF
-	private: std::vector<FuncDefStorage*> functionsRaw;
 	private: Dictionary<String, Value> _intrinsics; // intrinsic name -> FuncRef Value
 	public: Int32 PC;
-	private: Int32 _currentFuncIndex = -1;
 	public: FuncDef CurrentFunction;
 	public: Boolean IsRunning;
 	public: Int32 BaseIndex;
@@ -74,8 +70,6 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	// context (globals live here), callStack[1] is the first user function call, etc.
 	// callStackTop is the index of the next free slot (== current depth + 1).
 	// Invariant: callStackTop >= 1 during all execution (set up in Reset).
-
-	
 
 	// Execution state (persistent across RunSteps calls)
 
@@ -118,10 +112,6 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 
 	public: CallInfo GetCallStackFrame(Int32 index);
 
-	public: String GetFunctionName(Int32 funcIndex);
-
-	public: FuncDef GetFuncDef(Int32 funcIndex);
-
 	public: String FindShortName(Value v);
 
 	public: VMStorage(Int32 stackSlots=1024, Int32 callSlots=256);
@@ -138,14 +128,16 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	// intrinsics from collection.
 	public: static void MarkRoots(object user_data);
 
-	public: void RegisterFunction(FuncDef funcDef);
+	// Mark a function's compile-time constants (used by the GC root scan).
+	// Recursion into nested-function templates happens via GCFunction.MarkChildren.
+	private: void MarkFuncConstants(FuncDef func);
 
 	// Push a manually-constructed call to a set of compiled functions (used by import).
 	// The first function in importFunctions is treated as @main for the pushed call.
 	// After this returns, the VM will run that function before re-invoking the pending
 	// intrinsic callback.  The function's return value is placed in ManualCallResult.
 	// intrinsicCalleeBase is ctx.baseIndex from the calling intrinsic.
-	public: void ManuallyPushCall(Int32 intrinsicCalleeBase, List<FuncDef> importFunctions);
+	public: void ManuallyPushCall(Int32 intrinsicCalleeBase, FuncDef importMain);
 
 	// Set a variable by name in the current frame's locals VarMap.
 	// Matches the runtime behavior of user code "locals[varName] = value":
@@ -183,37 +175,40 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	// point of the call (typically vm.PC - 1 at the call site).
 	public: Value BuildStackTrace();
 
-	public: Int32 FunctionCount();
-
+	// Collect every function reachable from @main, by walking constant pools
+	// for funcref templates.  Used for disassembly and debug output.
 	public: List<FuncDef> GetFunctions();
+
+	private: static void CollectFunctions(FuncDef func, List<FuncDef> outList);
 
 	// Helper for argument processing (FUNCTION_CALLS.md steps 1-3):
 	// Process ARG instructions, validate argument count, and set up parameter registers.
 	// Returns the PC after the CALL instruction, or -1 on error.
 	// Check whether pendingSelf should be injected as the first parameter.
 	// Returns 1 if the callee's first param is named "self" and we have pending context, else 0.
-	private: Int32 SelfParamOffset(FuncDefRef callee);
+	private: Int32 SelfParamOffset(FuncDef callee);
 
-	private: Int32 ProcessArguments(Int32 argCount, Int32 selfParam, Int32 startPC, Int32 callerBase, Int32 calleeBase, FuncDefRef callee, List<UInt32> code);
+	private: Int32 ProcessArguments(Int32 argCount, Int32 selfParam, Int32 startPC, Int32 callerBase, Int32 calleeBase, FuncDef callee, List<UInt32> code);
 
 	// Apply pending self/super context to a callee's frame, if any.
 	// Called after SetupCallFrame to populate the callee's self/super registers.
-	private: void ApplyPendingContext(Int32 calleeBase, FuncDefRef callee);
+	private: void ApplyPendingContext(Int32 calleeBase, FuncDef callee);
 
 	// Helper for call setup (FUNCTION_CALLS.md steps 4-6):
 	// Initialize remaining parameters with defaults and clear callee's registers.
 	// Note: Parameters start at r1 (r0 is reserved for return value)
 	// selfParam is 1 if pendingSelf was injected as the first arg, else 0.
-	private: void SetupCallFrame(Int32 argCount, Int32 selfParam, Int32 calleeBase, FuncDefRef callee);
+	private: void SetupCallFrame(Int32 argCount, Int32 selfParam, Int32 calleeBase, FuncDef callee);
 
 	// Auto-invoke a zero-arg funcref (used by LOADC and CALLIFREF).
 	// Resolves the funcref, then either:
 	//   - Native callback (done):    stores result, returns -1.
 	//   - Native callback (pending): stores pending state, returns -2.
-	//   - User function: pushes CallInfo and sets up callee frame, returns the callee function index.
-	//     Caller must switch its local execution state (pc, baseIndex, curFunc, etc.).
+	//   - User function: pushes CallInfo and sets up callee frame, returns 0
+	//     and sets calleeOut to the callee FuncDef.  Caller must switch its
+	//     local execution state (pc, baseIndex, curFunc, etc.).
 	// On error, calls RaiseRuntimeError and returns -1.
-	private: Int32 AutoInvokeFuncRef(Value funcRefVal, Int32 resultReg, Int32 returnPC, Int32 baseIndex, Int32 currentFuncIndex, FuncDefRef curFunc);
+	private: Int32 AutoInvokeFuncRef(Value funcRefVal, Int32 resultReg, Int32 returnPC, Int32 baseIndex, FuncDef currentFunc, FuncDef* calleeOut);
 
 	// Invoke a native callback and handle the result.  If done, writes the
 	// result to stack[absoluteResultIndex] and returns true.  If not done,
@@ -229,14 +224,14 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	private: Value RunInner(UInt32 maxCycles);
 
 	private: void EnsureFrame(Int32 baseIndex, UInt16 neededRegs);
-	void SwitchFrame(Int32 currentFuncIndex, Int32 baseIndex, FuncDefStorage* &curFuncRaw, Int32 &codeCount, UInt32* &curCode, Value* &curConstants, Value* &localStack, Value* stackPtr);
+	void SwitchFrame(const FuncDef& currentFunc, Int32 baseIndex, FuncDefStorage* &curFuncRaw, Int32 &codeCount, UInt32* &curCode, Value* &curConstants, Value* &localStack, Value* stackPtr);
 
-	// Switch all frame-local execution state to the function at currentFuncIndex.
+	// Switch all frame-local execution state to the given function.
 
 	// Get the globals VarMap.  In REPL mode, returns the persistent ReplGlobals.
 	// Otherwise, returns @main's cached callStack[0].LocalVarMap (creating it on
 	// first use).  The cache stays current because NAME_rA_kBC keeps a live frame
-	// VarMap in sync as new variables are declared.  callStack[0].ReturnFuncIndex
+	// VarMap in sync as new variables are declared.  callStack[0].ReturnFunc
 	// holds @main's own function index (by convention for this slot), used to
 	// find @main's MaxRegs.
 	private: Value GetGlobalsVarMap();
@@ -246,7 +241,7 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	// (callStackTop >= 1 is guaranteed since @main's frame is always at callStack[0]).
 	private: Value GetCurrentLocalVarMap(Int32 baseIndex, UInt16 maxRegs);
 
-	private: void SaveState(Int32 pc, Int32 baseIndex, Int32 currentFuncIndex);
+	private: void SaveState(Int32 pc, Int32 baseIndex, FuncDef currentFunc);
 
 	public: Value LookupParamByName(String varName);
 
@@ -283,14 +278,10 @@ struct VM {
 	private: void set_callStack(List<CallInfo> _v);
 	private: Int32 callStackTop();
 	private: void set_callStackTop(Int32 _v);
-	private: List<FuncDef> functions(); // functions addressed by CALLF
-	private: void set_functions(List<FuncDef> _v); // functions addressed by CALLF
 	private: Dictionary<String, Value> _intrinsics(); // intrinsic name -> FuncRef Value
 	private: void set__intrinsics(Dictionary<String, Value> _v); // intrinsic name -> FuncRef Value
 	public: Int32 PC();
 	public: void set_PC(Int32 _v);
-	private: Int32 _currentFuncIndex();
-	private: void set__currentFuncIndex(Int32 _v);
 	public: FuncDef CurrentFunction();
 	public: void set_CurrentFunction(FuncDef _v);
 	public: Boolean IsRunning();
@@ -328,8 +319,6 @@ struct VM {
 	// context (globals live here), callStack[1] is the first user function call, etc.
 	// callStackTop is the index of the next free slot (== current depth + 1).
 	// Invariant: callStackTop >= 1 during all execution (set up in Reset).
-
-	
 
 	// Execution state (persistent across RunSteps calls)
 
@@ -373,10 +362,6 @@ struct VM {
 
 	public: inline CallInfo GetCallStackFrame(Int32 index);
 
-	public: inline String GetFunctionName(Int32 funcIndex);
-
-	public: inline FuncDef GetFuncDef(Int32 funcIndex);
-
 	public: inline String FindShortName(Value v);
 
 	public: static VM New(Int32 stackSlots=1024, Int32 callSlots=256) {
@@ -391,14 +376,16 @@ struct VM {
 	// intrinsics from collection.
 	public: static void MarkRoots(object user_data) { return VMStorage::MarkRoots(user_data); }
 
-	public: inline void RegisterFunction(FuncDef funcDef);
+	// Mark a function's compile-time constants (used by the GC root scan).
+	// Recursion into nested-function templates happens via GCFunction.MarkChildren.
+	private: inline void MarkFuncConstants(FuncDef func);
 
 	// Push a manually-constructed call to a set of compiled functions (used by import).
 	// The first function in importFunctions is treated as @main for the pushed call.
 	// After this returns, the VM will run that function before re-invoking the pending
 	// intrinsic callback.  The function's return value is placed in ManualCallResult.
 	// intrinsicCalleeBase is ctx.baseIndex from the calling intrinsic.
-	public: inline void ManuallyPushCall(Int32 intrinsicCalleeBase, List<FuncDef> importFunctions);
+	public: inline void ManuallyPushCall(Int32 intrinsicCalleeBase, FuncDef importMain);
 
 	// Set a variable by name in the current frame's locals VarMap.
 	// Matches the runtime behavior of user code "locals[varName] = value":
@@ -436,37 +423,40 @@ struct VM {
 	// point of the call (typically vm.PC - 1 at the call site).
 	public: inline Value BuildStackTrace();
 
-	public: inline Int32 FunctionCount();
-
+	// Collect every function reachable from @main, by walking constant pools
+	// for funcref templates.  Used for disassembly and debug output.
 	public: inline List<FuncDef> GetFunctions();
+
+	private: static void CollectFunctions(FuncDef func, List<FuncDef> outList) { return VMStorage::CollectFunctions(func, outList); }
 
 	// Helper for argument processing (FUNCTION_CALLS.md steps 1-3):
 	// Process ARG instructions, validate argument count, and set up parameter registers.
 	// Returns the PC after the CALL instruction, or -1 on error.
 	// Check whether pendingSelf should be injected as the first parameter.
 	// Returns 1 if the callee's first param is named "self" and we have pending context, else 0.
-	private: inline Int32 SelfParamOffset(FuncDefRef callee);
+	private: inline Int32 SelfParamOffset(FuncDef callee);
 
-	private: inline Int32 ProcessArguments(Int32 argCount, Int32 selfParam, Int32 startPC, Int32 callerBase, Int32 calleeBase, FuncDefRef callee, List<UInt32> code);
+	private: inline Int32 ProcessArguments(Int32 argCount, Int32 selfParam, Int32 startPC, Int32 callerBase, Int32 calleeBase, FuncDef callee, List<UInt32> code);
 
 	// Apply pending self/super context to a callee's frame, if any.
 	// Called after SetupCallFrame to populate the callee's self/super registers.
-	private: inline void ApplyPendingContext(Int32 calleeBase, FuncDefRef callee);
+	private: inline void ApplyPendingContext(Int32 calleeBase, FuncDef callee);
 
 	// Helper for call setup (FUNCTION_CALLS.md steps 4-6):
 	// Initialize remaining parameters with defaults and clear callee's registers.
 	// Note: Parameters start at r1 (r0 is reserved for return value)
 	// selfParam is 1 if pendingSelf was injected as the first arg, else 0.
-	private: inline void SetupCallFrame(Int32 argCount, Int32 selfParam, Int32 calleeBase, FuncDefRef callee);
+	private: inline void SetupCallFrame(Int32 argCount, Int32 selfParam, Int32 calleeBase, FuncDef callee);
 
 	// Auto-invoke a zero-arg funcref (used by LOADC and CALLIFREF).
 	// Resolves the funcref, then either:
 	//   - Native callback (done):    stores result, returns -1.
 	//   - Native callback (pending): stores pending state, returns -2.
-	//   - User function: pushes CallInfo and sets up callee frame, returns the callee function index.
-	//     Caller must switch its local execution state (pc, baseIndex, curFunc, etc.).
+	//   - User function: pushes CallInfo and sets up callee frame, returns 0
+	//     and sets calleeOut to the callee FuncDef.  Caller must switch its
+	//     local execution state (pc, baseIndex, curFunc, etc.).
 	// On error, calls RaiseRuntimeError and returns -1.
-	private: inline Int32 AutoInvokeFuncRef(Value funcRefVal, Int32 resultReg, Int32 returnPC, Int32 baseIndex, Int32 currentFuncIndex, FuncDefRef curFunc);
+	private: inline Int32 AutoInvokeFuncRef(Value funcRefVal, Int32 resultReg, Int32 returnPC, Int32 baseIndex, FuncDef currentFunc, FuncDef* calleeOut);
 
 	// Invoke a native callback and handle the result.  If done, writes the
 	// result to stack[absoluteResultIndex] and returns true.  If not done,
@@ -483,12 +473,12 @@ struct VM {
 
 	private: inline void EnsureFrame(Int32 baseIndex, UInt16 neededRegs);
 
-	// Switch all frame-local execution state to the function at currentFuncIndex.
+	// Switch all frame-local execution state to the given function.
 
 	// Get the globals VarMap.  In REPL mode, returns the persistent ReplGlobals.
 	// Otherwise, returns @main's cached callStack[0].LocalVarMap (creating it on
 	// first use).  The cache stays current because NAME_rA_kBC keeps a live frame
-	// VarMap in sync as new variables are declared.  callStack[0].ReturnFuncIndex
+	// VarMap in sync as new variables are declared.  callStack[0].ReturnFunc
 	// holds @main's own function index (by convention for this slot), used to
 	// find @main's MaxRegs.
 	private: inline Value GetGlobalsVarMap();
@@ -498,7 +488,7 @@ struct VM {
 	// (callStackTop >= 1 is guaranteed since @main's frame is always at callStack[0]).
 	private: inline Value GetCurrentLocalVarMap(Int32 baseIndex, UInt16 maxRegs);
 
-	private: inline void SaveState(Int32 pc, Int32 baseIndex, Int32 currentFuncIndex);
+	private: inline void SaveState(Int32 pc, Int32 baseIndex, FuncDef currentFunc);
 
 	public: inline Value LookupParamByName(String varName);
 
@@ -518,14 +508,10 @@ inline List<CallInfo> VM::callStack() { return get()->callStack; }
 inline void VM::set_callStack(List<CallInfo> _v) { get()->callStack = _v; }
 inline Int32 VM::callStackTop() { return get()->callStackTop; }
 inline void VM::set_callStackTop(Int32 _v) { get()->callStackTop = _v; }
-inline List<FuncDef> VM::functions() { return get()->functions; } // functions addressed by CALLF
-inline void VM::set_functions(List<FuncDef> _v) { get()->functions = _v; } // functions addressed by CALLF
 inline Dictionary<String, Value> VM::_intrinsics() { return get()->_intrinsics; } // intrinsic name -> FuncRef Value
 inline void VM::set__intrinsics(Dictionary<String, Value> _v) { get()->_intrinsics = _v; } // intrinsic name -> FuncRef Value
 inline Int32 VM::PC() { return get()->PC; }
 inline void VM::set_PC(Int32 _v) { get()->PC = _v; }
-inline Int32 VM::_currentFuncIndex() { return get()->_currentFuncIndex; }
-inline void VM::set__currentFuncIndex(Int32 _v) { get()->_currentFuncIndex = _v; }
 inline FuncDef VM::CurrentFunction() { return get()->CurrentFunction; }
 inline void VM::set_CurrentFunction(FuncDef _v) { get()->CurrentFunction = _v; }
 inline Boolean VM::IsRunning() { return get()->IsRunning; }
@@ -568,13 +554,11 @@ inline Int32 VM::CallStackDepth() { return get()->CallStackDepth(); }
 inline Value VM::GetStackValue(Int32 index) { return get()->GetStackValue(index); }
 inline Value VM::GetStackName(Int32 index) { return get()->GetStackName(index); }
 inline CallInfo VM::GetCallStackFrame(Int32 index) { return get()->GetCallStackFrame(index); }
-inline String VM::GetFunctionName(Int32 funcIndex) { return get()->GetFunctionName(funcIndex); }
-inline FuncDef VM::GetFuncDef(Int32 funcIndex) { return get()->GetFuncDef(funcIndex); }
 inline String VM::FindShortName(Value v) { return get()->FindShortName(v); }
 inline void VM::InitVM(Int32 stackSlots,Int32 callSlots) { return get()->InitVM(stackSlots, callSlots); }
 inline void VM::CleanupVM() { return get()->CleanupVM(); }
-inline void VM::RegisterFunction(FuncDef funcDef) { return get()->RegisterFunction(funcDef); }
-inline void VM::ManuallyPushCall(Int32 intrinsicCalleeBase,List<FuncDef> importFunctions) { return get()->ManuallyPushCall(intrinsicCalleeBase, importFunctions); }
+inline void VM::MarkFuncConstants(FuncDef func) { return get()->MarkFuncConstants(func); }
+inline void VM::ManuallyPushCall(Int32 intrinsicCalleeBase,FuncDef importMain) { return get()->ManuallyPushCall(intrinsicCalleeBase, importMain); }
 inline void VM::SetVar(String varName,Value value) { return get()->SetVar(varName, value); }
 inline void VM::Reset(List<FuncDef> allFunctions) { return get()->Reset(allFunctions); }
 inline void VM::Reset(List<FuncDef> allFunctions,Value replGlobals) { return get()->Reset(allFunctions, replGlobals); }
@@ -584,13 +568,12 @@ inline void VM::RaiseRuntimeError(Value error) { return get()->RaiseRuntimeError
 inline IntrinsicResult VM::RaiseUncaughtError(Value error) { return get()->RaiseUncaughtError(error); }
 inline bool VM::ReportRuntimeError() { return get()->ReportRuntimeError(); }
 inline Value VM::BuildStackTrace() { return get()->BuildStackTrace(); }
-inline Int32 VM::FunctionCount() { return get()->FunctionCount(); }
 inline List<FuncDef> VM::GetFunctions() { return get()->GetFunctions(); }
-inline Int32 VM::SelfParamOffset(FuncDefRef callee) { return get()->SelfParamOffset(callee); }
-inline Int32 VM::ProcessArguments(Int32 argCount,Int32 selfParam,Int32 startPC,Int32 callerBase,Int32 calleeBase,FuncDefRef callee,List<UInt32> code) { return get()->ProcessArguments(argCount, selfParam, startPC, callerBase, calleeBase, callee, code); }
-inline void VM::ApplyPendingContext(Int32 calleeBase,FuncDefRef callee) { return get()->ApplyPendingContext(calleeBase, callee); }
-inline void VM::SetupCallFrame(Int32 argCount,Int32 selfParam,Int32 calleeBase,FuncDefRef callee) { return get()->SetupCallFrame(argCount, selfParam, calleeBase, callee); }
-inline Int32 VM::AutoInvokeFuncRef(Value funcRefVal,Int32 resultReg,Int32 returnPC,Int32 baseIndex,Int32 currentFuncIndex,FuncDefRef curFunc) { return get()->AutoInvokeFuncRef(funcRefVal, resultReg, returnPC, baseIndex, currentFuncIndex, curFunc); }
+inline Int32 VM::SelfParamOffset(FuncDef callee) { return get()->SelfParamOffset(callee); }
+inline Int32 VM::ProcessArguments(Int32 argCount,Int32 selfParam,Int32 startPC,Int32 callerBase,Int32 calleeBase,FuncDef callee,List<UInt32> code) { return get()->ProcessArguments(argCount, selfParam, startPC, callerBase, calleeBase, callee, code); }
+inline void VM::ApplyPendingContext(Int32 calleeBase,FuncDef callee) { return get()->ApplyPendingContext(calleeBase, callee); }
+inline void VM::SetupCallFrame(Int32 argCount,Int32 selfParam,Int32 calleeBase,FuncDef callee) { return get()->SetupCallFrame(argCount, selfParam, calleeBase, callee); }
+inline Int32 VM::AutoInvokeFuncRef(Value funcRefVal,Int32 resultReg,Int32 returnPC,Int32 baseIndex,FuncDef currentFunc,FuncDef* calleeOut) { return get()->AutoInvokeFuncRef(funcRefVal, resultReg, returnPC, baseIndex, currentFunc, calleeOut); }
 inline bool VM::InvokeNativeCallback(NativeCallbackDelegate callback,Int32 calleeBase,Int32 argCount,IntrinsicResult partialResult,Int32 absoluteResultIndex) { return get()->InvokeNativeCallback(callback, calleeBase, argCount, partialResult, absoluteResultIndex); }
 inline Value VM::Execute(FuncDef entry) { return get()->Execute(entry); }
 inline Value VM::Execute(FuncDef entry,UInt32 maxCycles) { return get()->Execute(entry, maxCycles); }
@@ -612,12 +595,11 @@ inline Value VMStorage::GetCurrentLocalVarMap(Int32 baseIndex,UInt16 maxRegs) {
 	callStack[callStackTop - 1] = frame;  // write back (CallInfo is a struct)
 	return result;
 }
-inline void VM::SaveState(Int32 pc,Int32 baseIndex,Int32 currentFuncIndex) { return get()->SaveState(pc, baseIndex, currentFuncIndex); }
-inline void VMStorage::SaveState(Int32 pc,Int32 baseIndex,Int32 currentFuncIndex) {
+inline void VM::SaveState(Int32 pc,Int32 baseIndex,FuncDef currentFunc) { return get()->SaveState(pc, baseIndex, currentFunc); }
+inline void VMStorage::SaveState(Int32 pc,Int32 baseIndex,FuncDef currentFunc) {
 	PC = pc;
 	BaseIndex = baseIndex;
-	_currentFuncIndex = currentFuncIndex;
-	CurrentFunction = functions[currentFuncIndex];
+	CurrentFunction = currentFunc;
 }
 inline Value VM::LookupParamByName(String varName) { return get()->LookupParamByName(varName); }
 inline Value VM::LookupVariable(Value varName) { return get()->LookupVariable(varName); }

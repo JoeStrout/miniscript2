@@ -70,9 +70,9 @@ Value GCManager::NewError(Value message,Value inner,Value stack,Value isa) {
 	Errors.SetFields(idx, message, inner, stack, isa);
 	return make_gc(ErrorSet, idx);
 }
-Value GCManager::NewFuncRef(Int32 funcIndex,Value outerVars) {
+Value GCManager::NewFuncRef(FuncDef func,Value outerVars) {
 	Int32 idx = Functions.AllocItem();
-	Functions.SetFields(idx, funcIndex, outerVars);
+	Functions.SetFields(idx, func, outerVars);
 	return make_gc(FunctionSet, idx);
 }
 Value GCManager::NewHandle(object userData,HandleFinalizer callback) {

@@ -114,9 +114,9 @@ public static class GCManager {
 		return make_gc(ErrorSet, idx);
 	}
 
-	public static Value NewFuncRef(Int32 funcIndex, Value outerVars) {
+	public static Value NewFuncRef(FuncDef func, Value outerVars) {
 		Int32 idx = Functions.AllocItem();
-		Functions.SetFields(idx, funcIndex, outerVars);
+		Functions.SetFields(idx, func, outerVars);
 		return make_gc(FunctionSet, idx);
 	}
 

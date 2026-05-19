@@ -7,6 +7,7 @@
 #include "GCInterfaces.g.h"
 #include "value.h"
 #include "VarMap.g.h"
+#include "FuncDef.g.h"
 #include "CS_Math.h"
 
 namespace MiniScript {
@@ -112,7 +113,7 @@ struct GCError {
 // ── GCFunction ────────────────────────────────────────────────────────────────
 
 struct GCFunction {
-	public: Int32 FuncIndex;
+	public: FuncDef Func;
 	public: Value OuterVars;
 
 	public: void MarkChildren();
@@ -176,7 +177,7 @@ inline void GCError::OnSweep() {
 }
 
 inline void GCFunction::OnSweep() {
-	FuncIndex = -1;
+	Func = nullptr;
 	OuterVars = val_null;
 }
 

@@ -141,11 +141,16 @@ String Disassembler::ToString(UInt32 instruction) {
 				mnemonic,
 				(Int32)BytecodeUtil::Au(instruction),
 				(Int32)BytecodeUtil::BCu(instruction));
+		// rA, kBC (constant-pool index)
+		case Opcode::FUNCREF_iA_iBC:
+			return StringUtils::Format("{0} r{1}, k{2}",
+				mnemonic,
+				(Int32)BytecodeUtil::Au(instruction),
+				(Int32)BytecodeUtil::BCu(instruction));
 		// rA, iBC
 		case Opcode::LOAD_rA_iBC:
 		case Opcode::LIST_rA_iBC:
 		case Opcode::MAP_rA_iBC:
-		case Opcode::FUNCREF_iA_iBC:
 		case Opcode::IFLT_rA_iBC:
 		case Opcode::IFLE_rA_iBC:
 		case Opcode::IFEQ_rA_iBC:
@@ -174,12 +179,12 @@ String Disassembler::ToString(UInt32 instruction) {
 			return StringUtils::Format("{0} r{1}",
 				mnemonic,
 				(Int32)BytecodeUtil::Au(instruction));
-		// iA, iBC
+		// iA, kBC (constant-pool index)
 		case Opcode::CALLF_iA_iBC:
-			return StringUtils::Format("{0} {1}, {2}",
+			return StringUtils::Format("{0} {1}, k{2}",
 				mnemonic,
 				(Int32)BytecodeUtil::As(instruction),
-				(Int32)BytecodeUtil::BCs(instruction));
+				(Int32)BytecodeUtil::BCu(instruction));
 		// iA, kBC
 		case Opcode::CALLFN_iA_kBC:
 			return StringUtils::Format("{0} {1}, k{2}",

@@ -1012,8 +1012,7 @@ Int32 CodeGeneratorStorage::Visit(FunctionNode node) {
 	// Create a new CodeGenerator for the inner function
 	BytecodeEmitter innerEmitter =  BytecodeEmitter::New();
 	CodeGenerator innerGen =  CodeGenerator::New(innerEmitter);
-	innerGen.set__functions(_functions);  // share the function list
-	innerGen.set_FunctionIndexOffset(FunctionIndexOffset);  // share the offset too
+	innerGen.set__functions(_functions);  // share the function registry
 	innerGen.set_FileName(FileName);      // share the source file name
 
 	// Reserve r0 for return value, then set up param registers (r1, r2, ...)
@@ -1046,8 +1045,7 @@ Int32 CodeGeneratorStorage::Visit(FunctionNode node) {
 	innerEmitter.Emit(Opcode::RETURN, nullptr);
 
 	// Finalize the inner function
-	Int32 globalFuncIndex = funcIndex + FunctionIndexOffset;
-	String funcName = StringUtils::Format("@f{0}", globalFuncIndex);
+	String funcName = StringUtils::Format("@f{0}", funcIndex);
 	FuncDef funcDef = innerEmitter.Finalize(funcName);
 
 	// Set the note (docstring) and file name
@@ -1077,11 +1075,14 @@ Int32 CodeGeneratorStorage::Visit(FunctionNode node) {
 	if (funcDef.SelfReg() >= 0) GetSelfReg();
 	if (funcDef.SuperReg() >= 0) GetSuperReg();
 
-	// Store in the shared functions list
+	// Store in the compile-time function registry
 	_functions[funcIndex] = funcDef;
 
-	// In the outer function, emit FUNCREF to create a reference
-	_emitter.EmitAB(Opcode::FUNCREF_iA_iBC, resultReg, globalFuncIndex,
+	// Store a template funcref (no captured outer vars) in this function's
+	// constant pool, and emit FUNCREF to bind it into a closure at runtime.
+	Value funcTemplate = make_funcref(funcDef, val_null);
+	Int32 templateConst = _emitter.AddConstant(funcTemplate);
+	_emitter.EmitAB(Opcode::FUNCREF_iA_iBC, resultReg, templateConst,
 		Interp("r{} = funcref {}", resultReg, funcName));
 
 	return resultReg;

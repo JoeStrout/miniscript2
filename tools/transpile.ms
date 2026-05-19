@@ -486,7 +486,7 @@ Transpiler.transformStatement = function(trimmedLine)
 	// non-identifier string.
 	tokens = roughTokenize(trimmedLine)
 	
-	deepDebug = trimmedLine.contains("kvp");
+	deepDebug = trimmedLine.contains("ParamNames");
 	ddprint = function(s); if deepDebug then print "====> " + s; end function
 	summarize = function(obj)
 		if obj == null then return "<null>"
@@ -1308,7 +1308,7 @@ Transpiler.updateStateCLASS = function
 		// standard method
 		else if self.match("≤scope:w≥ ≤type:w≥ ≤name:w≥(≤params≥) {") or
 				self.match("≤scope:w≥ ref ≤type:w≥ ≤name:w≥(≤params≥) {")then
-			if line.trimmed.contains(" ref ") then self.m.type += "&"
+			if line.trimmed.split("(")[0].contains(" ref ") then self.m.type += "&"
 			self.enterState State.METHOD
 			if self.curClass.type == ClassType.CLASS then
 				self.curClass.storageLines.push self.fill("	≤scope≥: ≤type≥ ≤name≥(≤params≥);")

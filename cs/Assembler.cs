@@ -21,14 +21,10 @@ public class Assembler {
 	// Multiple functions support
 	public List<FuncDef> Functions = new List<FuncDef>(); // all functions
 	public FuncDef Current = new FuncDef(); // function we are currently building
-	public Int32 FunctionIndexOffset = 0; // added to assembled CALLF/FUNCREF targets
 	private List<String> _labelNames = new List<String>(); // label names within current function
 	private List<Int32> _labelAddresses = new List<Int32>(); // corresponding instruction addresses within current function
 
-	public void SetFunctionIndexOffset(Int32 offset) {
-		FunctionIndexOffset = offset;
-	}
-	
+
 	// Error handling state
 	public Boolean HasError { get; private set; }
 	public String ErrorMessage { get; private set; }
@@ -278,26 +274,26 @@ public class Assembler {
 			instruction = BytecodeUtil.INS_ABC(Opcode.LOADC_rA_rB_kC, dest, src, (Byte)constIdx);
 
 		} else if (mnemonic == "FUNCREF") {
-			// FUNCREF r1, 5  -->  FUNCREF_iA_iBC
-			// Store make_funcref(funcIndex) into register A
+			// FUNCREF r1, someFunc  -->  FUNCREF_iA_iBC
+			// Store a template funcref for someFunc in the constant pool, and
+			// emit FUNCREF to bind it (with closure context) into register A.
 			if (parts.Count != 3) {
 				Error("Syntax error: FUNCREF requires exactly 2 operands");
 				return 0;
 			}
 			Byte dest = ParseRegister(parts[1]);
 			Current.ReserveRegister(dest);
-			Int32 localIdx = FindFunctionIndex(parts[2]);
-			if (localIdx < 0) {
+			FuncDef target = FindFunction(parts[2]);
+			if (target == null) {
 				Error(StringUtils.Format("Unknown function: '{0}'", parts[2]));
 				return 0;
 			}
-			Int32 resolvedIdx = localIdx + FunctionIndexOffset;
-			if (resolvedIdx < Int16.MinValue || resolvedIdx > Int16.MaxValue) {
-				Error(StringUtils.Format("Function index out of range for FUNCREF: {0}", resolvedIdx));
+			Int32 funcConstIdx = AddConstant(make_funcref(target, val_null));
+			if (funcConstIdx > Int16.MaxValue) {
+				Error("Constant index out of range for FUNCREF");
 				return 0;
 			}
-			Int16 funcIdx = (Int16)resolvedIdx;
-			instruction = BytecodeUtil.INS_AB(Opcode.FUNCREF_iA_iBC, dest, funcIdx);
+			instruction = BytecodeUtil.INS_AB(Opcode.FUNCREF_iA_iBC, dest, (Int16)funcConstIdx);
 
 		} else if (mnemonic == "ASSIGN") {
 			// ASSIGN r1, r2, k3  -->  ASSIGN_rA_rB_kC
@@ -569,18 +565,17 @@ public class Assembler {
 		} else if (mnemonic == "CALLF") {
 			if (parts.Count != 3) { Error("Syntax error"); return 0; }
 			Byte reserveRegs = (Byte)ParseInt16(parts[1]);	// ToDo: check range before typecast
-			Int32 localIdx = FindFunctionIndex(parts[2]);
-			if (localIdx < 0) {
+			FuncDef target = FindFunction(parts[2]);
+			if (target == null) {
 				Error(StringUtils.Format("Unknown function: '{0}'", parts[2]));
 				return 0;
 			}
-			Int32 resolvedIdx = localIdx + FunctionIndexOffset;
-			if (resolvedIdx < Int16.MinValue || resolvedIdx > Int16.MaxValue) {
-				Error(StringUtils.Format("Function index out of range for CALLF: {0}", resolvedIdx));
+			Int32 funcConstIdx = AddConstant(make_funcref(target, val_null));
+			if (funcConstIdx > Int16.MaxValue) {
+				Error("Constant index out of range for CALLF");
 				return 0;
 			}
-			Int16 funcIdx = (Int16)resolvedIdx;
-			instruction = BytecodeUtil.INS_AB(Opcode.CALLF_iA_iBC, reserveRegs, funcIdx);
+			instruction = BytecodeUtil.INS_AB(Opcode.CALLF_iA_iBC, reserveRegs, (Int16)funcConstIdx);
 
 		} else if (mnemonic == "CALLFN") {
 			if (parts.Count != 3) { Error("Syntax error"); return 0; }
@@ -987,28 +982,20 @@ public class Assembler {
 			
 			// Our first non-empty line will either be "@main:" or an instruction
 			// (to go into the implicit @main function).  After that, we will
-			// always have a function name (@someFunc) here.
-			if (IsFunctionLabel(tokens[0])) {
-				// Starting a new function.
-				Current.Name = ParseLabel(tokens[0]);
-			} else {
-				// No function name -- implicit @main.
-				Current.Name = "@main";
-			}
-			
+			// always have a function name (@someFunc) here.  Assemble into the
+			// FuncDef object created during the skim pass, so that any funcref
+			// templates already pointing at it stay valid.
+			String funcName = IsFunctionLabel(tokens[0]) ? ParseLabel(tokens[0]) : "@main";
+			Current = FindFunction(funcName);
+
 			// Assemble one function, starting at lineNum+1, and proceeding
 			// until the next function or end-of-input.  The result will be
-			// the line number where we should continue with the next function.	
+			// the line number where we should continue with the next function.
 			lineNum = AssembleFunction(sourceLines, lineNum);
 
 			// Bail out if error occurred during function assembly
 			if (HasError) break;
 
-			// Then, store the just-assembled Current function in our function list.
-			Int32 slot = FindFunctionIndex(Current.Name);
-			Functions[slot] = Current;
-
-			Current = new FuncDef();
 		}
 	}
 

@@ -4,7 +4,7 @@
 
 _build_sh() {
     local state
-    local -a subcommands cpp_opts goto_opts cs_files
+    local -a subcommands cpp_opts cs_files cpp_files
 
     subcommands=(
         'setup:Set up development environment'
@@ -32,6 +32,17 @@ _build_sh() {
     local script_dir
     script_dir="$(dirname "${words[1]}")"
     local cs_dir="$script_dir/../cs"
+    local gen_dir="$script_dir/../generated"
+    local core_dir="$script_dir/../cpp/core"
+
+    # Check whether any prior word on this cpp/all command is already a .cpp file
+    _build_sh_has_cpp_file() {
+        local w
+        for w in "${words[@]:2}"; do
+            [[ "$w" == *.cpp ]] && return 0
+        done
+        return 1
+    }
 
     if (( CURRENT == 2 )); then
         _describe 'subcommand' subcommands
@@ -45,8 +56,19 @@ _build_sh() {
                 _describe 'C# source file' cs_files
                 ;;
             cpp|all)
-                # Any combination of: debug, auto, on, off
-                _describe 'build option' cpp_opts
+                # If no .cpp file given yet, offer build options AND cpp source files
+                if ! _build_sh_has_cpp_file; then
+                    cpp_files=( $(find "$gen_dir" -maxdepth 1 -name "*.g.cpp" \
+                        -exec basename {} \; 2>/dev/null) )
+                    cpp_files+=( $(find "$core_dir" -maxdepth 1 -name "*.cpp" \
+                        -not -name "test_*" -not -name "debug_*" \
+                        -exec basename {} \; 2>/dev/null) )
+                    _describe 'build option' cpp_opts -- \
+                              'C++ source file (compile only)' cpp_files
+                else
+                    # A file is already specified; only offer remaining build flags
+                    _describe 'build option' cpp_opts
+                fi
                 ;;
         esac
     fi

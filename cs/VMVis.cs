@@ -228,7 +228,7 @@ public struct VMVis {
 		Int32 callDepth = _vm.CallStackDepth();
 		for (Int32 i = callDepth - 1; i >= 0 && displayRow <= maxRows; i--) {
 			CallInfo frame = _vm.GetCallStackFrame(i);
-			String funcName = _vm.GetFunctionName(frame.ReturnFuncIndex);
+			String funcName = (frame.ReturnFunc != null) ? frame.ReturnFunc.Name : "???";
 			String prefix = "  "; // indent to show stack depth
 			String line = prefix + funcName + ":" + StringUtils.ZeroPad(frame.ReturnPC, 3);
 

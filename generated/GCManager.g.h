@@ -72,7 +72,7 @@ class GCManager {
 
 	public: static Value NewError(Value message, Value inner, Value stack, Value isa);
 
-	public: static Value NewFuncRef(Int32 funcIndex, Value outerVars);
+	public: static Value NewFuncRef(FuncDef func, Value outerVars);
 
 	public: static Value NewHandle(object userData, HandleFinalizer callback);
 

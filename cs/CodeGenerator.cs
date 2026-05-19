@@ -23,8 +23,7 @@ public class CodeGenerator : IASTVisitor {
 	private Int32 _targetReg;           // Target register for next expression (-1 = allocate)
 	private List<Int32> _loopExitLabels;      // Stack of loop exit labels for break
 	private List<Int32> _loopContinueLabels;  // Stack of loop continue labels for continue
-	private List<FuncDef> _functions;          // All compiled functions (shared across inner generators)
-	public Int32 FunctionIndexOffset;          // Offset added to local function indices for FUNCREF emission
+	private List<FuncDef> _functions;          // Compile-time registry of all functions (for naming + disassembly)
 	public String FileName = "";               // Source file name, copied to each compiled FuncDef
 	public Value Error;
 
@@ -1092,8 +1091,7 @@ public class CodeGenerator : IASTVisitor {
 		// Create a new CodeGenerator for the inner function
 		BytecodeEmitter innerEmitter = new BytecodeEmitter();
 		CodeGenerator innerGen = new CodeGenerator(innerEmitter);
-		innerGen._functions = _functions;  // share the function list
-		innerGen.FunctionIndexOffset = FunctionIndexOffset;  // share the offset too
+		innerGen._functions = _functions;  // share the function registry
 		innerGen.FileName = FileName;      // share the source file name
 
 		// Reserve r0 for return value, then set up param registers (r1, r2, ...)
@@ -1126,8 +1124,7 @@ public class CodeGenerator : IASTVisitor {
 		innerEmitter.Emit(Opcode.RETURN, null);
 
 		// Finalize the inner function
-		Int32 globalFuncIndex = funcIndex + FunctionIndexOffset;
-		String funcName = StringUtils.Format("@f{0}", globalFuncIndex);
+		String funcName = StringUtils.Format("@f{0}", funcIndex);
 		FuncDef funcDef = innerEmitter.Finalize(funcName);
 
 		// Set the note (docstring) and file name
@@ -1157,11 +1154,14 @@ public class CodeGenerator : IASTVisitor {
 		if (funcDef.SelfReg >= 0) GetSelfReg();
 		if (funcDef.SuperReg >= 0) GetSuperReg();
 
-		// Store in the shared functions list
+		// Store in the compile-time function registry
 		_functions[funcIndex] = funcDef;
 
-		// In the outer function, emit FUNCREF to create a reference
-		_emitter.EmitAB(Opcode.FUNCREF_iA_iBC, resultReg, globalFuncIndex,
+		// Store a template funcref (no captured outer vars) in this function's
+		// constant pool, and emit FUNCREF to bind it into a closure at runtime.
+		Value funcTemplate = make_funcref(funcDef, val_null);
+		Int32 templateConst = _emitter.AddConstant(funcTemplate);
+		_emitter.EmitAB(Opcode.FUNCREF_iA_iBC, resultReg, templateConst,
 			$"r{resultReg} = funcref {funcName}");
 
 		return resultReg;

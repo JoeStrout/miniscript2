@@ -18,6 +18,7 @@ using static System.Runtime.CompilerServices.MethodImplOptions;
 // CPP: #include "IOHelper.g.h"
 // CPP: #include "Disassembler.g.h"
 // CPP: #include "StringUtils.g.h"
+// CPP: #include "CS_value_util.h"
 // CPP: #include "dispatch_macros.h"
 // CPP: #include "vm_error.h"
 // CPP: #include "Interpreter.g.h"
@@ -27,30 +28,28 @@ using static MiniScript.ValueHelpers;
 
 namespace MiniScript {
 
-using FuncDefRef = FuncDef; // H: typedef const FuncDefStorage& FuncDefRef;
-
 // Call stack frame (return info)
 public struct CallInfo {
 	public Int32 ReturnPC;        // where to continue in caller (PC index)
 	public Int32 ReturnBase;      // caller's base pointer (stack index)
-	public Int32 ReturnFuncIndex; // caller's function index in functions list
+	public FuncDef ReturnFunc;    // caller's function definition
 	public Int32 CopyResultToReg; // register number to copy result to, or -1
 	public Value LocalVarMap;     // VarMap representing locals, if any
 	public Value OuterVarMap;     // VarMap representing outer variables (closure context)
 
-	public CallInfo(Int32 returnPC, Int32 returnBase, Int32 returnFuncIndex, Int32 copyToReg=-1) {
+	public CallInfo(Int32 returnPC, Int32 returnBase, FuncDef returnFunc, Int32 copyToReg=-1) {
 		ReturnPC = returnPC;
 		ReturnBase = returnBase;
-		ReturnFuncIndex = returnFuncIndex;
+		ReturnFunc = returnFunc;
 		CopyResultToReg = copyToReg;
 		LocalVarMap = val_null;
 		OuterVarMap = val_null;
 	}
 
-	public CallInfo(Int32 returnPC, Int32 returnBase, Int32 returnFuncIndex, Int32 copyToReg, Value outerVars) {
+	public CallInfo(Int32 returnPC, Int32 returnBase, FuncDef returnFunc, Int32 copyToReg, Value outerVars) {
 		ReturnPC = returnPC;
 		ReturnBase = returnBase;
-		ReturnFuncIndex = returnFuncIndex;
+		ReturnFunc = returnFunc;
 		CopyResultToReg = copyToReg;
 		LocalVarMap = val_null;
 		OuterVarMap = outerVars;
@@ -97,16 +96,10 @@ public class VM {
 	private List<CallInfo> callStack;
 	private Int32 callStackTop;
 
-	private List<FuncDef> functions; // functions addressed by CALLF
-	/*** BEGIN H_ONLY ***
-	private: std::vector<FuncDefStorage*> functionsRaw;
-	*** END H_ONLY ***/
-	
 	private Dictionary<String, Value> _intrinsics; // intrinsic name -> FuncRef Value
 
 	// Execution state (persistent across RunSteps calls)
 	public Int32 PC { get; private set; }
-	private Int32 _currentFuncIndex = -1;
 	public FuncDef CurrentFunction { get; private set; }
 	public Boolean IsRunning { get; private set; }
 	public Int32 BaseIndex { get; private set; }
@@ -187,26 +180,17 @@ public class VM {
 	}
 
 	public CallInfo GetCallStackFrame(Int32 index) {
-		if (index < 0 || index >= callStackTop) return new CallInfo(0, 0, -1);
+		if (index < 0 || index >= callStackTop) return new CallInfo(0, 0, null);
 		return callStack[index];
-	}
-
-	public String GetFunctionName(Int32 funcIndex) {
-		if (funcIndex < 0 || funcIndex >= functions.Count) return "???";
-		return functions[funcIndex].Name;
-	}
-
-	public FuncDef GetFuncDef(Int32 funcIndex) {
-		if (funcIndex < 0 || funcIndex >= functions.Count) return new FuncDef();
-		return functions[funcIndex];
 	}
 
 	public String FindShortName(Value v) {
 		// Search global variable names directly on the stack — allocation-free and GC-safe.
-		Int32 regCount = functions[callStack[0].ReturnFuncIndex].MaxRegs;
+		FuncDef rf = callStack[0].ReturnFunc;
+		Int32 regCount = rf.MaxRegs;
 		for (Int32 i = 0; i < regCount; i++) {
 			if (!is_null(names[i]) && value_identical(stack[i], v) && !value_identical(names[i], v))
-				return as_cstring(names[i]);
+				return to_String(names[i]);
 		}
 		// Fall back to the intrinsic short-name registry (type maps, etc.)
 		return Intrinsic.GetShortName(v);
@@ -220,7 +204,6 @@ public class VM {
 		stack = new List<Value>();
 		names = new List<Value>();
 		callStack = new List<CallInfo>();
-		functions = new List<FuncDef>();
 		callStackTop = 0;
 		Error = val_null;
 
@@ -233,7 +216,7 @@ public class VM {
 		
 		// Pre-allocate call stack capacity
 		for (Int32 i = 0; i < callSlots; i++) {
-			callStack.Add(new CallInfo(0, 0, -1)); // -1 = invalid function index
+			callStack.Add(new CallInfo(0, 0, null));
 		}
 		
 		// Register as a source of roots for the GC system.
@@ -280,25 +263,28 @@ public class VM {
 				GCManager.Mark(val);
 			}
 		}
-		// Mark compile-time constants in all registered functions (includes interned strings).
-		for (Int32 fi = 0; fi < vm.functions.Count; fi++) {
-			FuncDef f = vm.functions[fi];
-			List<Value> consts = f.Constants;
-			for (Int32 ci = 0; ci < consts.Count; ci++) {
-				GCManager.Mark(consts[ci]);
-			}
-		}
-		// Mark LocalVarMap and OuterVarMap stored in CallInfo structs.
-		// These are not reachable from the stack scan and must be marked explicitly.
+		// Mark compile-time constants of every function on the call chain.
+		// Marking a function's constants reaches its nested-function templates
+		// (themselves funcrefs), which cascade through GCFunction.MarkChildren —
+		// so this transitively keeps the whole reachable FuncDef graph alive.
+		vm.MarkFuncConstants(vm.CurrentFunction);
+		// Mark LocalVarMap and OuterVarMap stored in CallInfo structs, plus the
+		// caller FuncDef recorded in each frame.  These are not reachable from
+		// the stack scan and must be marked explicitly.
 		for (Int32 ci = 0; ci < vm.callStackTop; ci++) {
 			GCManager.Mark(vm.callStack[ci].LocalVarMap);
 			GCManager.Mark(vm.callStack[ci].OuterVarMap);
+			vm.MarkFuncConstants(vm.callStack[ci].ReturnFunc);
 		}
 		GCManager.Mark(vm.ManualCallResult);
 	}
 
-	public void RegisterFunction(FuncDef funcDef) {
-		functions.Add(funcDef);
+	// Mark a function's compile-time constants (used by the GC root scan).
+	// Recursion into nested-function templates happens via GCFunction.MarkChildren.
+	private void MarkFuncConstants(FuncDef func) {
+		if (func == null) return;
+		List<Value> consts = func.Constants;
+		for (Int32 i = 0; i < consts.Count; i++) GCManager.Mark(consts[i]);
 	}
 
 	// Push a manually-constructed call to a set of compiled functions (used by import).
@@ -306,20 +292,7 @@ public class VM {
 	// After this returns, the VM will run that function before re-invoking the pending
 	// intrinsic callback.  The function's return value is placed in ManualCallResult.
 	// intrinsicCalleeBase is ctx.baseIndex from the calling intrinsic.
-	public void ManuallyPushCall(Int32 intrinsicCalleeBase, List<FuncDef> importFunctions) {
-		Int32 importMainIdx = functions.Count;
-		for (Int32 i = 0; i < importFunctions.Count; i++) {
-			functions.Add(importFunctions[i]);
-		}
-		FuncDef importMain = functions[importMainIdx];
-
-		/*** BEGIN CPP_ONLY ***
-		// C++ only: keep functionsRaw in sync with the newly added functions.
-		for (Int32 i = importMainIdx; i < functions.Count(); i++) {
-			functionsRaw.push_back(functions[i].get_storage());
-		}
-		*** END CPP_ONLY ***/
-
+	public void ManuallyPushCall(Int32 intrinsicCalleeBase, FuncDef importMain) {
 		// Module frame sits just above the import intrinsic's 2-register frame (r0 + libname).
 		Int32 calleeBase = intrinsicCalleeBase + 2;
 		EnsureFrame(calleeBase, importMain.MaxRegs);
@@ -328,12 +301,11 @@ public class VM {
 			names[calleeBase + i] = val_null;
 		}
 
-		if (callStackTop >= callStack.Count) callStack.Add(new CallInfo(0, 0, -1));
-		callStack[callStackTop] = new CallInfo(PC, BaseIndex, _currentFuncIndex);
+		if (callStackTop >= callStack.Count) callStack.Add(new CallInfo(0, 0, null));
+		callStack[callStackTop] = new CallInfo(PC, BaseIndex, CurrentFunction);
 		callStackTop++;
 
 		BaseIndex = calleeBase;
-		_currentFuncIndex = importMainIdx;
 		CurrentFunction = importMain;
 		PC = 0;
 
@@ -366,49 +338,31 @@ public class VM {
 	public void Reset(List<FuncDef> allFunctions, Value replGlobals) {
 		bool partialReset = !is_null(replGlobals);
 
-		Int32 mainIdx = -1;
-		if (partialReset) {
-			// REPL mode: intrinsics and previous user functions are already in the list.
-			// Just append the newly compiled functions (which were compiled with an
-			// offset matching the current functions.Count, so indices line up).
-			for (Int32 i = 0; i < allFunctions.Count; i++) {
-				if (allFunctions[i].Name == "@main") mainIdx = functions.Count;
-				functions.Add(allFunctions[i]);
-			}
-		} else {
-			// Full reset: register intrinsics first, then add user functions.
-			// User functions are compiled with FunctionIndexOffset = intrinsic count,
-			// so their indices in the bytecode already account for the intrinsics.
-			functions.Clear();
-			_intrinsics = new Dictionary<String, Value>();
-			Intrinsic.RegisterAll(functions, _intrinsics);
-			for (Int32 i = 0; i < allFunctions.Count; i++) {
-				if (allFunctions[i].Name == "@main") mainIdx = functions.Count;
-				functions.Add(allFunctions[i]);
-			}
+		// Locate @main.  All other functions are reachable from @main via its
+		// constant pool (nested-function templates), so the VM keeps no
+		// functions list — it just needs the entry point.
+		FuncDef mainFunc = null;
+		for (Int32 i = 0; i < allFunctions.Count; i++) {
+			if (allFunctions[i].Name == "@main") mainFunc = allFunctions[i];
 		}
-		
+
+		// Intrinsics are built once and shared; (re)build the name->funcref
+		// table on a full reset.  In REPL mode it already exists.
+		if (!partialReset) {
+			_intrinsics = new Dictionary<String, Value>();
+			Intrinsic.RegisterAll(_intrinsics);
+		}
+
 		// Basic validation
-		if (mainIdx < 0) {
+		if (mainFunc == null) {
 			IOHelper.Print("ERROR: No @main function found in VM.Reset");
 			return;
 		}
-		FuncDef mainFunc = functions[mainIdx];
-		_currentFuncIndex = mainIdx;
 
 		if (mainFunc.Code.Count == 0) {
 			IOHelper.Print("Entry function has no code");
 			return;
 		}
-
-		/*** BEGIN CPP_ONLY ***
-		// C++ only: copy functions into functionsRaw vector for quick access
-		functionsRaw.clear();
-		functionsRaw.reserve(functions.Count());
-		for (Int32 i = 0; i < functions.Count(); i++) {
-			functionsRaw.push_back(functions[i].get_storage());
-		}
-		*** END CPP_ONLY ***/
 
 		// Initialize execution state
 		BaseIndex = 0;			  // entry executes at stack base
@@ -419,8 +373,8 @@ public class VM {
 		// Push @main's own execution-context frame at callStack[0] so that
 		// globals (= @main's locals) are always accessible via callStack[0].
 		// This means real function calls start at callStack[1], callStack[2], etc.
-		// ReturnFuncIndex is set to mainIdx so GetGlobalsVarMap can find @main's MaxRegs.
-		callStack[0] = new CallInfo(0, 0, mainIdx);
+		// ReturnFunc is set to @main so GetGlobalsVarMap can find @main's MaxRegs.
+		callStack[0] = new CallInfo(0, 0, mainFunc);
 		callStackTop = 1;
 		Error = val_null;
 		pendingSelf = val_null;
@@ -449,7 +403,7 @@ public class VM {
 		_stopwatch.Restart(); // CPP: _startTime = std::chrono::steady_clock::now();
 
 		if (DebugMode) {
-			IOHelper.Print(StringUtils.Format("VM Reset: Executing {0} out of {1} functions", mainFunc.Name, functions.Count));
+			IOHelper.Print(StringUtils.Format("VM Reset: Executing {0}", mainFunc.Name));
 		}
 	}
 
@@ -502,7 +456,7 @@ public class VM {
 		// callStack[0] is @main's own frame (not a caller), so stop at i=1.
 		for (Int32 i = CallStackDepth() - 1; i >= 1; i--) {
 			CallInfo ci = GetCallStackFrame(i);
-			FuncDef callerFunc = GetFuncDef(ci.ReturnFuncIndex);
+			FuncDef callerFunc = ci.ReturnFunc;
 			Int32 callerPC = ci.ReturnPC - 1;
 			if (callerPC < 0) callerPC = 0;
 			String callerFile = callerFunc.FileName;
@@ -513,12 +467,24 @@ public class VM {
 		return result;
 	}
 
-	public Int32 FunctionCount() {
-		return functions.Count;
+	// Collect every function reachable from @main, by walking constant pools
+	// for funcref templates.  Used for disassembly and debug output.
+	public List<FuncDef> GetFunctions() {
+		List<FuncDef> result = new List<FuncDef>();
+		CollectFunctions(CurrentFunction, result);
+		return result;
 	}
 
-	public List<FuncDef> GetFunctions() {
-		return functions;
+	private static void CollectFunctions(FuncDef func, List<FuncDef> outList) {
+		if (func == null) return;
+		for (Int32 i = 0; i < outList.Count; i++) {
+			if (outList[i].Name == func.Name) return;  // already collected
+		}
+		outList.Add(func);
+		List<Value> consts = func.Constants;
+		for (Int32 i = 0; i < consts.Count; i++) {
+			if (is_funcref(consts[i])) CollectFunctions(funcref_funcdef(consts[i]), outList);
+		}
 	}
 
 	// Helper for argument processing (FUNCTION_CALLS.md steps 1-3):
@@ -526,14 +492,14 @@ public class VM {
 	// Returns the PC after the CALL instruction, or -1 on error.
 	// Check whether pendingSelf should be injected as the first parameter.
 	// Returns 1 if the callee's first param is named "self" and we have pending context, else 0.
-	private Int32 SelfParamOffset(FuncDefRef callee) {
+	private Int32 SelfParamOffset(FuncDef callee) {
 		if (hasPendingContext && callee.ParamNames.Count > 0 && value_equal(callee.ParamNames[0], val_self)) {
 			return 1;
 		}
 		return 0;
 	}
 
-	private Int32 ProcessArguments(Int32 argCount, Int32 selfParam, Int32 startPC, Int32 callerBase, Int32 calleeBase, FuncDefRef callee, List<UInt32> code) {
+	private Int32 ProcessArguments(Int32 argCount, Int32 selfParam, Int32 startPC, Int32 callerBase, Int32 calleeBase, FuncDef callee, List<UInt32> code) {
 		Int32 paramCount = callee.ParamNames.Count;
 
 		// Step 1: Validate argument count (selfParam accounts for the injected self)
@@ -579,7 +545,7 @@ public class VM {
 
 	// Apply pending self/super context to a callee's frame, if any.
 	// Called after SetupCallFrame to populate the callee's self/super registers.
-	private void ApplyPendingContext(Int32 calleeBase, FuncDefRef callee) {
+	private void ApplyPendingContext(Int32 calleeBase, FuncDef callee) {
 		if (!hasPendingContext) return;
 		if (callee.SelfReg >= 0) {
 			stack[calleeBase + callee.SelfReg] = pendingSelf;
@@ -598,7 +564,7 @@ public class VM {
 	// Initialize remaining parameters with defaults and clear callee's registers.
 	// Note: Parameters start at r1 (r0 is reserved for return value)
 	// selfParam is 1 if pendingSelf was injected as the first arg, else 0.
-	private void SetupCallFrame(Int32 argCount, Int32 selfParam, Int32 calleeBase, FuncDefRef callee) {
+	private void SetupCallFrame(Int32 argCount, Int32 selfParam, Int32 calleeBase, FuncDef callee) {
 		Int32 paramCount = callee.ParamNames.Count;
 
 		// Step 4: Set up remaining parameters with default values
@@ -623,21 +589,20 @@ public class VM {
 	// Resolves the funcref, then either:
 	//   - Native callback (done):    stores result, returns -1.
 	//   - Native callback (pending): stores pending state, returns -2.
-	//   - User function: pushes CallInfo and sets up callee frame, returns the callee function index.
-	//     Caller must switch its local execution state (pc, baseIndex, curFunc, etc.).
+	//   - User function: pushes CallInfo and sets up callee frame, returns 0
+	//     and sets calleeOut to the callee FuncDef.  Caller must switch its
+	//     local execution state (pc, baseIndex, curFunc, etc.).
 	// On error, calls RaiseRuntimeError and returns -1.
-	private Int32 AutoInvokeFuncRef(Value funcRefVal, Int32 resultReg, Int32 returnPC, Int32 baseIndex, Int32 currentFuncIndex, FuncDefRef curFunc) {
-		Int32 funcIndex = funcref_index(funcRefVal);
-		if (funcIndex < 0 || funcIndex >= functions.Count) {
-			RaiseRuntimeError("Auto-invoke: Invalid function index");
+	private Int32 AutoInvokeFuncRef(Value funcRefVal, Int32 resultReg, Int32 returnPC, Int32 baseIndex, FuncDef currentFunc, ref FuncDef calleeOut) {
+		FuncDef callee = funcref_funcdef(funcRefVal);
+		if (callee == null) {
+			RaiseRuntimeError("Auto-invoke: Invalid function reference");
 			return -1;
 		}
 
-		FuncDefRef callee =
-		   functions[funcIndex]; // CPP: *functionsRaw[funcIndex];
 		Value outerVars = funcref_outer_vars(funcRefVal);
 
-		Int32 calleeBase = baseIndex + curFunc.MaxRegs;
+		Int32 calleeBase = baseIndex + currentFunc.MaxRegs;
 
 		Int32 selfParam = SelfParamOffset(callee);
 
@@ -651,7 +616,7 @@ public class VM {
 				pendingSelf = val_null;
 				hasPendingContext = false;
 			}
-			SaveState(returnPC, baseIndex, currentFuncIndex);
+			SaveState(returnPC, baseIndex, currentFunc);
 			if (InvokeNativeCallback(callee.NativeCallback, calleeBase, selfParam, IntrinsicResult.Null, baseIndex + resultReg)) {
 				return -1;  // done
 			}
@@ -663,7 +628,7 @@ public class VM {
 			RaiseRuntimeError("Call stack overflow");
 			return -1;
 		}
-		callStack[callStackTop] = new CallInfo(returnPC, baseIndex, currentFuncIndex, resultReg, outerVars);
+		callStack[callStackTop] = new CallInfo(returnPC, baseIndex, currentFunc, resultReg, outerVars);
 		callStackTop++;
 
 		if (selfParam > 0) {
@@ -673,7 +638,8 @@ public class VM {
 		SetupCallFrame(0, selfParam, calleeBase, callee);
 		ApplyPendingContext(calleeBase, callee);
 		EnsureFrame(calleeBase, callee.MaxRegs);
-		return funcIndex;
+		calleeOut = callee;
+		return 0;
 	}
 
 	// Invoke a native callback and handle the result.  If done, writes the
@@ -742,7 +708,7 @@ public class VM {
 		// Copy instance variables to locals for performance
 		Int32 pc = PC;
 		Int32 baseIndex = BaseIndex;
-		Int32 currentFuncIndex = _currentFuncIndex;
+		FuncDef currentFunc = CurrentFunction;
 
 		// CPP: Value* stackPtr = &stack[0];
 		// Note: CollectionsMarshal.AsSpan requires .NET 5+; not compatible with Mono.
@@ -755,8 +721,8 @@ public class VM {
 		List<Value> curConstants = null; // CPP: Value* curConstants = nullptr;
 		Span<Value> localStack = default; // CPP: Value* localStack = nullptr;
 		
-		SwitchFrame(currentFuncIndex, baseIndex, ref curFunc, ref codeCount, ref curCode, ref curConstants, ref localStack); // CPP:
-		// CPP: SwitchFrame(currentFuncIndex, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack, stackPtr);
+		SwitchFrame(currentFunc, baseIndex, ref curFunc, ref codeCount, ref curCode, ref curConstants, ref localStack); // CPP:
+		// CPP: SwitchFrame(currentFunc, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack, stackPtr);
 
 		UInt32 cyclesLeft = maxCycles;
 		if (maxCycles == 0) cyclesLeft--;  // wraps to MAX_UINT32
@@ -779,14 +745,14 @@ public class VM {
 		while (IsRunning) {
 			// CPP: VM_DISPATCH_TOP();
 			if (cyclesLeft == 0) {
-				SaveState(pc, baseIndex, currentFuncIndex);
+				SaveState(pc, baseIndex, currentFunc);
 				return val_null;
 			}
 			cyclesLeft--;
 
 			if (pc >= codeCount) {
 				IsRunning = false;
-				SaveState(pc, baseIndex, currentFuncIndex);
+				SaveState(pc, baseIndex, currentFunc);
 				return val_null;
 			}
 
@@ -880,31 +846,33 @@ public class VM {
 						localStack[a] = valB;
 					} else {
 						// Value is a funcref — auto-invoke with zero args
-						Int32 calleeIdx = AutoInvokeFuncRef(valB, a, pc, baseIndex, currentFuncIndex,
-						  functions[currentFuncIndex]); // CPP: *functionsRaw[currentFuncIndex]);
-						if (calleeIdx == -2) {
+						FuncDef autoCallee = null;
+						Int32 status = AutoInvokeFuncRef(valB, a, pc, baseIndex, currentFunc, ref autoCallee);
+						if (status == -2) {
 							// Native callback pending — exit RunInner
 							cyclesLeft = 0;
-						} else if (calleeIdx >= 0) {
+						} else if (status == 0) {
 							// Frame was pushed — switch to callee
 							baseIndex += curFunc.MaxRegs; // CPP: baseIndex += curFuncRaw->MaxRegs;
 							pc = 0;
-							currentFuncIndex = calleeIdx;
-							SwitchFrame(currentFuncIndex, baseIndex, ref curFunc, ref codeCount, ref curCode, ref curConstants, ref localStack); // CPP:
-							// CPP: SwitchFrame(currentFuncIndex, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack, stackPtr);
+							currentFunc = autoCallee;
+							SwitchFrame(currentFunc, baseIndex, ref curFunc, ref codeCount, ref curCode, ref curConstants, ref localStack); // CPP:
+							// CPP: SwitchFrame(currentFunc, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack, stackPtr);
 						}
 					}
 					break;
 				}
 
 				case Opcode.FUNCREF_iA_iBC: {
-					// R[A] := make_funcref(BC) with closure context
+					// R[A] := a closure: the FuncDef from the template funcref at
+					// constants[BC], bound with our locals as the closure context.
 					Byte a = BytecodeUtil.Au(instruction);
-					Int16 funcIndex = BytecodeUtil.BCs(instruction);
+					UInt16 constIdx = BytecodeUtil.BCu(instruction);
+					FuncDef func = funcref_funcdef(curConstants[constIdx]);
 
 					// Create function reference with our locals as the closure context
 					val = GetCurrentLocalVarMap(baseIndex, curFunc.MaxRegs); // CPP: val = GetCurrentLocalVarMap(baseIndex, curFuncRaw->MaxRegs);
-					localStack[a] = make_funcref(funcIndex, val);
+					localStack[a] = make_funcref(func, val);
 					break;
 				}
 
@@ -1620,13 +1588,11 @@ public class VM {
 						return val_null;
 					}
 
-					Int32 funcIndex = funcref_index(valC);
-					if (funcIndex < 0 || funcIndex >= functions.Count) {
-						RaiseRuntimeError("ARGBLK/CALL: Invalid function index");
+					FuncDef callee = funcref_funcdef(valC);
+					if (callee == null) {
+						RaiseRuntimeError("ARGBLK/CALL: Invalid function reference");
 						return val_null;
 					}
-					FuncDefRef callee = 
-					  functions[funcIndex]; // CPP: *functionsRaw[funcIndex];
 					Int32 calleeBase = baseIndex + b;
 					Int32 resultReg = a;
 
@@ -1649,7 +1615,7 @@ public class VM {
 					// Native intrinsic: invoke callback directly, no frame push
 					if (callee.NativeCallback != null) {
 						pc = nextPC;
-						SaveState(pc, baseIndex, currentFuncIndex);
+						SaveState(pc, baseIndex, currentFunc);
 						if (!InvokeNativeCallback(callee.NativeCallback, calleeBase, argCount + selfParam, IntrinsicResult.Null, baseIndex + resultReg)) {
 							if (_hasPendingManualCall) {
 								// The intrinsic pushed a manual call (e.g. import).  Resync
@@ -1657,9 +1623,9 @@ public class VM {
 								// and continue execution — the module code runs inline.
 								pc = PC;
 								baseIndex = BaseIndex;
-								currentFuncIndex = _currentFuncIndex;
-								SwitchFrame(currentFuncIndex, baseIndex, ref curFunc, ref codeCount, ref curCode, ref curConstants, ref localStack); // CPP:
-								// CPP: SwitchFrame(currentFuncIndex, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack, stackPtr);
+								currentFunc = CurrentFunction;
+								SwitchFrame(currentFunc, baseIndex, ref curFunc, ref codeCount, ref curCode, ref curConstants, ref localStack); // CPP:
+								// CPP: SwitchFrame(currentFunc, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack, stackPtr);
 							} else {
 								cyclesLeft = 0;
 							}
@@ -1674,14 +1640,14 @@ public class VM {
 					}
 
 					val = funcref_outer_vars(valC);
-					callStack[callStackTop] = new CallInfo(nextPC, baseIndex, currentFuncIndex, resultReg, val);
+					callStack[callStackTop] = new CallInfo(nextPC, baseIndex, currentFunc, resultReg, val);
 					callStackTop++;
 
 					baseIndex = calleeBase;
-					currentFuncIndex = funcIndex; // Switch to callee function
+					currentFunc = callee; // Switch to callee function
 					pc = 0; // Start at beginning of callee code
-					SwitchFrame(currentFuncIndex, baseIndex, ref curFunc, ref codeCount, ref curCode, ref curConstants, ref localStack); // CPP:
-					// CPP: SwitchFrame(currentFuncIndex, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack, stackPtr);
+					SwitchFrame(currentFunc, baseIndex, ref curFunc, ref codeCount, ref curCode, ref curConstants, ref localStack); // CPP:
+					// CPP: SwitchFrame(currentFunc, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack, stackPtr);
 					EnsureFrame(baseIndex, callee.MaxRegs);
 					break;
 				}
@@ -1704,33 +1670,31 @@ public class VM {
 
 				case Opcode.CALLF_iA_iBC: {
 					// A: arg window start (callee executes with base = base + A)
-					// BC: function index
+					// BC: constant-pool index of a template funcref for the callee
 					Byte a = BytecodeUtil.Au(instruction);
-					UInt16 funcIndex = BytecodeUtil.BCu(instruction);
-					
-					if (funcIndex >= functions.Count) {
-						RaiseRuntimeError("CALLF: Invalid function index");
+					UInt16 constIdx = BytecodeUtil.BCu(instruction);
+
+					FuncDef callee = funcref_funcdef(curConstants[constIdx]);
+					if (callee == null) {
+						RaiseRuntimeError("CALLF: Invalid function reference");
 						break;
 					}
-
-					FuncDefRef callee =
-					  functions[funcIndex]; // CPP: *functionsRaw[funcIndex];
 
 					// Push return info
 					if (callStackTop >= callStack.Count) {
 						RaiseRuntimeError("Call stack overflow");
 						break;
 					}
-					callStack[callStackTop] = new CallInfo(pc, baseIndex, currentFuncIndex);
+					callStack[callStackTop] = new CallInfo(pc, baseIndex, currentFunc);
 					callStackTop++;
 
 					// Switch to callee frame: base slides to argument window
 					baseIndex += a;
 					// Note: ApplyPendingContext skipped for CALLF (only needed for method dispatch via CALL)
 					pc = 0; // Start at beginning of callee code
-					currentFuncIndex = funcIndex; // Switch to callee function
-					SwitchFrame(currentFuncIndex, baseIndex, ref curFunc, ref codeCount, ref curCode, ref curConstants, ref localStack); // CPP:
-					// CPP: SwitchFrame(currentFuncIndex, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack, stackPtr);
+					currentFunc = callee; // Switch to callee function
+					SwitchFrame(currentFunc, baseIndex, ref curFunc, ref codeCount, ref curCode, ref curConstants, ref localStack); // CPP:
+					// CPP: SwitchFrame(currentFunc, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack, stackPtr);
 
 					EnsureFrame(baseIndex, callee.MaxRegs);
 					break;
@@ -1760,13 +1724,11 @@ public class VM {
 						break;
 					}
 
-					Int32 funcIndex = funcref_index(valC);
-					if (funcIndex < 0 || funcIndex >= functions.Count) {
-						RaiseRuntimeError("CALL: Invalid function index in FuncRef");
+					FuncDef callee = funcref_funcdef(valC);
+					if (callee == null) {
+						RaiseRuntimeError("CALL: Invalid function reference");
 						break;
 					}
-					FuncDefRef callee =
-					   functions[funcIndex]; // CPP: *functionsRaw[funcIndex];
 					valD = funcref_outer_vars(valC);  // valD: "outer" VarMap of func valC
 
 					// For naked CALL (without ARGBLK): set up parameters with defaults
@@ -1782,14 +1744,14 @@ public class VM {
 
 					// Native intrinsic: invoke callback directly, no frame push
 					if (callee.NativeCallback != null) {
-						SaveState(pc, baseIndex, currentFuncIndex);
+						SaveState(pc, baseIndex, currentFunc);
 						if (!InvokeNativeCallback(callee.NativeCallback, calleeBase, selfParam, IntrinsicResult.Null, baseIndex + a)) {
 							if (_hasPendingManualCall) {
 								pc = PC;
 								baseIndex = BaseIndex;
-								currentFuncIndex = _currentFuncIndex;
-								SwitchFrame(currentFuncIndex, baseIndex, ref curFunc, ref codeCount, ref curCode, ref curConstants, ref localStack); // CPP:
-								// CPP: SwitchFrame(currentFuncIndex, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack, stackPtr);
+								currentFunc = CurrentFunction;
+								SwitchFrame(currentFunc, baseIndex, ref curFunc, ref codeCount, ref curCode, ref curConstants, ref localStack); // CPP:
+								// CPP: SwitchFrame(currentFunc, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack, stackPtr);
 							} else {
 								cyclesLeft = 0;
 							}
@@ -1801,15 +1763,15 @@ public class VM {
 						RaiseRuntimeError("Call stack overflow");
 						break;
 					}
-					callStack[callStackTop] = new CallInfo(pc, baseIndex, currentFuncIndex, a, valD);
+					callStack[callStackTop] = new CallInfo(pc, baseIndex, currentFunc, a, valD);
 					callStackTop++;
 
 					// Set up call frame starting at baseIndex + b
 					baseIndex = calleeBase;
 					pc = 0; // Start at beginning of callee code
-					currentFuncIndex = funcIndex; // Switch to callee function
-					SwitchFrame(currentFuncIndex, baseIndex, ref curFunc, ref codeCount, ref curCode, ref curConstants, ref localStack); // CPP:
-					// CPP: SwitchFrame(currentFuncIndex, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack, stackPtr);
+					currentFunc = callee; // Switch to callee function
+					SwitchFrame(currentFunc, baseIndex, ref curFunc, ref codeCount, ref curCode, ref curConstants, ref localStack); // CPP:
+					// CPP: SwitchFrame(currentFunc, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack, stackPtr);
 					EnsureFrame(baseIndex, callee.MaxRegs);
 					break;
 				}
@@ -1992,18 +1954,18 @@ public class VM {
 					}
 
 					// Auto-invoke the funcref with zero args
-					Int32 calleeIdx = AutoInvokeFuncRef(val, a, pc, baseIndex, currentFuncIndex,
-					  functions[currentFuncIndex]); // CPP: *functionsRaw[currentFuncIndex]);
-					if (calleeIdx == -2) {
+					FuncDef autoCallee = null;
+					Int32 status = AutoInvokeFuncRef(val, a, pc, baseIndex, currentFunc, ref autoCallee);
+					if (status == -2) {
 						// Native callback pending — exit RunInner
 						cyclesLeft = 0;
-					} else if (calleeIdx >= 0) {
+					} else if (status == 0) {
 						// Frame was pushed — switch to callee
 						baseIndex += curFunc.MaxRegs; // CPP: baseIndex += curFuncRaw->MaxRegs;
 						pc = 0;
-						currentFuncIndex = calleeIdx;
-						SwitchFrame(currentFuncIndex, baseIndex, ref curFunc, ref codeCount, ref curCode, ref curConstants, ref localStack); // CPP:
-						// CPP: SwitchFrame(currentFuncIndex, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack, stackPtr);
+						currentFunc = autoCallee;
+						SwitchFrame(currentFunc, baseIndex, ref curFunc, ref codeCount, ref curCode, ref curConstants, ref localStack); // CPP:
+						// CPP: SwitchFrame(currentFunc, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack, stackPtr);
 					}
 					break; // CPP: VM_NEXT();
 				}
@@ -2025,7 +1987,7 @@ public class VM {
 					callStackTop--;
 					if (callStackTop == 0) {
 						// We just popped @main's frame — execution is complete.
-						SaveState(pc, baseIndex, currentFuncIndex);
+						SaveState(pc, baseIndex, currentFunc);
 						IsRunning = false;
 						return val;
 					}
@@ -2034,9 +1996,9 @@ public class VM {
 					CallInfo callInfo = callStack[callStackTop];
 					pc = callInfo.ReturnPC;
 					baseIndex = callInfo.ReturnBase;
-					currentFuncIndex = callInfo.ReturnFuncIndex;
-					SwitchFrame(currentFuncIndex, baseIndex, ref curFunc, ref codeCount, ref curCode, ref curConstants, ref localStack); // CPP:
-					// CPP: SwitchFrame(currentFuncIndex, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack, stackPtr);
+					currentFunc = callInfo.ReturnFunc;
+					SwitchFrame(currentFunc, baseIndex, ref curFunc, ref codeCount, ref curCode, ref curConstants, ref localStack); // CPP:
+					// CPP: SwitchFrame(currentFunc, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack, stackPtr);
 
 					if (callInfo.CopyResultToReg >= 0) {
 						stack[baseIndex + callInfo.CopyResultToReg] = val;
@@ -2079,7 +2041,7 @@ public class VM {
 //*** BEGIN CS_ONLY ***
 				default:
 					IOHelper.Print("Unknown opcode");
-					SaveState(pc, baseIndex, currentFuncIndex);
+					SaveState(pc, baseIndex, currentFunc);
 					return val_null;
 			}
 //*** END CS_ONLY ***
@@ -2087,7 +2049,7 @@ public class VM {
 		// CPP: VM_DISPATCH_BOTTOM();
 		
 		// Save state after loop exit (e.g. from error condition)
-		SaveState(pc, baseIndex, currentFuncIndex);
+		SaveState(pc, baseIndex, currentFunc);
 		return val_null;
 	}
 
@@ -2098,27 +2060,27 @@ public class VM {
 		}
 	}
 
-	// Switch all frame-local execution state to the function at currentFuncIndex.
+	// Switch all frame-local execution state to the given function.
 	//*** BEGIN CS_ONLY ***
 	[MethodImpl(AggressiveInlining)]
-	private void SwitchFrame(Int32 currentFuncIndex, Int32 baseIndex,
+	private void SwitchFrame(FuncDef currentFunc, Int32 baseIndex,
 			ref FuncDef curFunc, ref Int32 codeCount,
 			ref List<UInt32> curCode, ref List<Value> curConstants,
 			ref Span<Value> localStack) {
-		curFunc = functions[currentFuncIndex];
+		curFunc = currentFunc;
 		codeCount = curFunc.Code.Count;
 		curCode = curFunc.Code;
 		curConstants = curFunc.Constants;
 		localStack = CollectionsMarshal.AsSpan(stack).Slice(baseIndex);
 	}
 	//*** END CS_ONLY ***
-	// H: void SwitchFrame(Int32 currentFuncIndex, Int32 baseIndex, FuncDefStorage* &curFuncRaw, Int32 &codeCount, UInt32* &curCode, Value* &curConstants, Value* &localStack, Value* stackPtr);
+	// H: void SwitchFrame(const FuncDef& currentFunc, Int32 baseIndex, FuncDefStorage* &curFuncRaw, Int32 &codeCount, UInt32* &curCode, Value* &curConstants, Value* &localStack, Value* stackPtr);
 	/*** BEGIN CPP_ONLY ***
-	FORCE_INLINE void VMStorage::SwitchFrame(Int32 currentFuncIndex, Int32 baseIndex,
+	FORCE_INLINE void VMStorage::SwitchFrame(const FuncDef& currentFunc, Int32 baseIndex,
 			FuncDefStorage* &curFuncRaw, Int32 &codeCount,
 			UInt32* &curCode, Value* &curConstants,
 			Value* &localStack, Value* stackPtr) {
-		curFuncRaw = functions[currentFuncIndex].get_storage();
+		curFuncRaw = currentFunc.get_storage();
 		codeCount = curFuncRaw->Code.Count();
 		curCode = &curFuncRaw->Code[0];
 		curConstants = &curFuncRaw->Constants[0];
@@ -2129,13 +2091,14 @@ public class VM {
 	// Get the globals VarMap.  In REPL mode, returns the persistent ReplGlobals.
 	// Otherwise, returns @main's cached callStack[0].LocalVarMap (creating it on
 	// first use).  The cache stays current because NAME_rA_kBC keeps a live frame
-	// VarMap in sync as new variables are declared.  callStack[0].ReturnFuncIndex
+	// VarMap in sync as new variables are declared.  callStack[0].ReturnFunc
 	// holds @main's own function index (by convention for this slot), used to
 	// find @main's MaxRegs.
 	private Value GetGlobalsVarMap() {
 		if (!is_null(ReplGlobals)) return ReplGlobals;
 		CallInfo gframe = callStack[0];
-		Int32 regCount = functions[gframe.ReturnFuncIndex].MaxRegs;
+		FuncDef rf = gframe.ReturnFunc;
+		Int32 regCount = rf.MaxRegs;
 		Value result = gframe.GetLocalVarMap(stack, names, 0, regCount);
 		callStack[0] = gframe;  // write back (CallInfo is a struct)
 		return result;
@@ -2155,11 +2118,10 @@ public class VM {
 	}
 
 	[MethodImpl(AggressiveInlining)]
-	private void SaveState(Int32 pc, Int32 baseIndex, Int32 currentFuncIndex) {
+	private void SaveState(Int32 pc, Int32 baseIndex, FuncDef currentFunc) {
 		PC = pc;
 		BaseIndex = baseIndex;
-		_currentFuncIndex = currentFuncIndex;
-		CurrentFunction = functions[currentFuncIndex];
+		CurrentFunction = currentFunc;
 	}
 
 	public Value LookupParamByName(String varName) {

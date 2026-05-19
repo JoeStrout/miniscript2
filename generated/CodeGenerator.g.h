@@ -25,8 +25,7 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 	private: Int32 _targetReg; // Target register for next expression (-1 = allocate)
 	private: List<Int32> _loopExitLabels; // Stack of loop exit labels for break
 	private: List<Int32> _loopContinueLabels; // Stack of loop continue labels for continue
-	private: List<FuncDef> _functions; // All compiled functions (shared across inner generators)
-	public: Int32 FunctionIndexOffset; // Offset added to local function indices for FUNCREF emission
+	private: List<FuncDef> _functions; // Compile-time registry of all functions (for naming + disassembly)
 	public: String FileName = ""; // Source file name, copied to each compiled FuncDef
 	public: Value Error;
 
@@ -204,10 +203,8 @@ struct CodeGenerator : public IASTVisitor {
 	private: void set__loopExitLabels(List<Int32> _v); // Stack of loop exit labels for break
 	private: List<Int32> _loopContinueLabels(); // Stack of loop continue labels for continue
 	private: void set__loopContinueLabels(List<Int32> _v); // Stack of loop continue labels for continue
-	private: List<FuncDef> _functions(); // All compiled functions (shared across inner generators)
-	private: void set__functions(List<FuncDef> _v); // All compiled functions (shared across inner generators)
-	public: Int32 FunctionIndexOffset(); // Offset added to local function indices for FUNCREF emission
-	public: void set_FunctionIndexOffset(Int32 _v); // Offset added to local function indices for FUNCREF emission
+	private: List<FuncDef> _functions(); // Compile-time registry of all functions (for naming + disassembly)
+	private: void set__functions(List<FuncDef> _v); // Compile-time registry of all functions (for naming + disassembly)
 	public: String FileName(); // Source file name, copied to each compiled FuncDef
 	public: void set_FileName(String _v); // Source file name, copied to each compiled FuncDef
 	public: Value Error();
@@ -381,10 +378,8 @@ inline List<Int32> CodeGenerator::_loopExitLabels() { return get()->_loopExitLab
 inline void CodeGenerator::set__loopExitLabels(List<Int32> _v) { get()->_loopExitLabels = _v; } // Stack of loop exit labels for break
 inline List<Int32> CodeGenerator::_loopContinueLabels() { return get()->_loopContinueLabels; } // Stack of loop continue labels for continue
 inline void CodeGenerator::set__loopContinueLabels(List<Int32> _v) { get()->_loopContinueLabels = _v; } // Stack of loop continue labels for continue
-inline List<FuncDef> CodeGenerator::_functions() { return get()->_functions; } // All compiled functions (shared across inner generators)
-inline void CodeGenerator::set__functions(List<FuncDef> _v) { get()->_functions = _v; } // All compiled functions (shared across inner generators)
-inline Int32 CodeGenerator::FunctionIndexOffset() { return get()->FunctionIndexOffset; } // Offset added to local function indices for FUNCREF emission
-inline void CodeGenerator::set_FunctionIndexOffset(Int32 _v) { get()->FunctionIndexOffset = _v; } // Offset added to local function indices for FUNCREF emission
+inline List<FuncDef> CodeGenerator::_functions() { return get()->_functions; } // Compile-time registry of all functions (for naming + disassembly)
+inline void CodeGenerator::set__functions(List<FuncDef> _v) { get()->_functions = _v; } // Compile-time registry of all functions (for naming + disassembly)
 inline String CodeGenerator::FileName() { return get()->FileName; } // Source file name, copied to each compiled FuncDef
 inline void CodeGenerator::set_FileName(String _v) { get()->FileName = _v; } // Source file name, copied to each compiled FuncDef
 inline Value CodeGenerator::Error() { return get()->Error; }

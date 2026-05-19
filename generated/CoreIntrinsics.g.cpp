@@ -237,9 +237,7 @@ void CoreIntrinsics::Init() {
 		Value pinfo = val_null;
 		if (is_funcref(arg)) {
 			map_set(result, make_string("type"), make_string("funcRef"));
-			Int32 funcIndex = funcref_index(arg);
-			map_set(result, make_string("__idx"), make_int(funcIndex));
-			FuncDef func = ctx.vm.GetFuncDef(funcIndex);
+			FuncDef func = funcref_funcdef(arg);
 			map_set(result, make_string("name"), make_string(func.Name()));
 			map_set(result, make_string("note"), make_string(func.Note()));
 			parameters = make_list(func.ParamNames().Count());

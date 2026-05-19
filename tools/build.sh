@@ -73,14 +73,16 @@ case "$TARGET" in
             exit 1
         fi
 
-        # Parse cpp sub-arguments: [debug] [goto_mode]
+        # Parse cpp sub-arguments: [debug] [goto_mode] [file.cpp]
         BUILD_MODE="release"
         CPP_GOTO_MODE="auto"
+        COMPILE_FILE=""
         shift  # consume "cpp"
         for arg in "$@"; do
             case "$arg" in
-                "debug")   BUILD_MODE="debug" ;;
+                "debug")           BUILD_MODE="debug" ;;
                 "on"|"off"|"auto") CPP_GOTO_MODE="$arg" ;;
+                *.cpp)             COMPILE_FILE="$arg" ;;
             esac
         done
 
@@ -106,8 +108,24 @@ case "$TARGET" in
                 ;;
         esac
 
-        make -C cpp $MAKE_ARGS
-        echo "C++ build complete."
+        if [ -n "$COMPILE_FILE" ]; then
+            # Compile a single file without linking
+            BASENAME="${COMPILE_FILE##*/}"
+            if [[ "$BASENAME" == *.g.cpp ]]; then
+                STEM="${BASENAME%.g.cpp}"
+                OBJ="../build/cpp/obj/gen_${STEM}.o"
+            else
+                STEM="${BASENAME%.cpp}"
+                OBJ="../build/cpp/obj/core_${STEM}.o"
+            fi
+            echo "Compiling $BASENAME only (no link)..."
+            rm -f "$OBJ"
+            make -C cpp "$OBJ" $MAKE_ARGS
+            echo "Compile of $BASENAME complete."
+        else
+            make -C cpp $MAKE_ARGS
+            echo "C++ build complete."
+        fi
         ;;
     
     "all")
@@ -180,7 +198,7 @@ case "$TARGET" in
         echo "  setup       - Set up development environment"
         echo "  cs          - Build C# version only"
         echo "  transpile [file.cs] - Transpile C# to C++ (all files, or single file)"
-        echo "  cpp [debug] [goto_mode] - Build C++ version only"
+        echo "  cpp [debug] [goto_mode] [file.cpp] - Build C++ version (or compile single file)"
         echo "  all         - Build everything"
         echo "  clean       - Clean build artifacts"
         echo ""
@@ -201,9 +219,11 @@ case "$TARGET" in
         echo "  off         - Force computed-goto OFF"
         echo ""
         echo "Examples:"
-        echo "  $0 cpp              # Release build, auto goto"
-        echo "  $0 cpp debug        # Debug build, auto goto"
-        echo "  $0 cpp debug on     # Debug build, computed-goto forced on"
+        echo "  $0 cpp                   # Release build, auto goto"
+        echo "  $0 cpp debug             # Debug build, auto goto"
+        echo "  $0 cpp debug on          # Debug build, computed-goto forced on"
+        echo "  $0 cpp VM.g.cpp          # Compile only VM.g.cpp (no link)"
+        echo "  $0 cpp debug value.cpp   # Compile only value.cpp in debug mode"
         exit 1
         ;;
 esac

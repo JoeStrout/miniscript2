@@ -23,7 +23,8 @@ class IntrinsicStorage : public std::enable_shared_from_this<IntrinsicStorage> {
 	public: NativeCallbackDelegate Code;
 	private: List<String> _paramNames;
 	private: List<Value> _paramDefaults;
-	private: Int32 _funcIndex = -1;
+	private: FuncDef _funcDef = null;
+	private: Value _funcRef = val_null;
 	private: static List<Intrinsic> _all;
 	private: static Boolean _initialized;
 	private: static List<Value> _shortNameKeys;
@@ -52,14 +53,19 @@ class IntrinsicStorage : public std::enable_shared_from_this<IntrinsicStorage> {
 	public: static Int32 AllCount(); // ToDo: isn't this redundant with Count, above?
 	public: static Intrinsic GetByIndex(Int32 i);
 
+	// Build (once) this intrinsic's FuncDef and a stable funcref Value.
+	// The funcref is added as a permanent GC root: intrinsics live for the
+	// lifetime of the process and are shared across VMs and resets.
+	private: void EnsureBuilt();
+
 	public: Value GetFunc();
 
 	// Build a FuncDef from this intrinsic's definition.
 	public: FuncDef BuildFuncDef();
 
-	// Register all intrinsics into the VM's function list and intrinsics table.
-	// Called by VM.Reset() after user functions are loaded.
-	public: static void RegisterAll(List<FuncDef> functions, Dictionary<String, Value> intrinsics);
+	// Populate the VM's intrinsics name->funcref table.  Intrinsic FuncDefs and
+	// their funcref Values are built once (lazily) and shared across all VMs.
+	public: static void RegisterAll(Dictionary<String, Value> intrinsics);
 }; // end of class IntrinsicStorage
 
 struct Intrinsic {
@@ -80,8 +86,10 @@ struct Intrinsic {
 	private: void set__paramNames(List<String> _v);
 	private: List<Value> _paramDefaults();
 	private: void set__paramDefaults(List<Value> _v);
-	private: Int32 _funcIndex();
-	private: void set__funcIndex(Int32 _v);
+	private: FuncDef _funcDef();
+	private: void set__funcDef(FuncDef _v);
+	private: Value _funcRef();
+	private: void set__funcRef(Value _v);
 	private: List<Intrinsic> _all();
 	private: void set__all(List<Intrinsic> _v);
 	private: Boolean _initialized();
@@ -116,14 +124,19 @@ struct Intrinsic {
 	public: static Int32 AllCount() { return IntrinsicStorage::AllCount(); } // ToDo: isn't this redundant with Count, above?
 	public: static Intrinsic GetByIndex(Int32 i) { return IntrinsicStorage::GetByIndex(i); }
 
+	// Build (once) this intrinsic's FuncDef and a stable funcref Value.
+	// The funcref is added as a permanent GC root: intrinsics live for the
+	// lifetime of the process and are shared across VMs and resets.
+	private: inline void EnsureBuilt();
+
 	public: inline Value GetFunc();
 
 	// Build a FuncDef from this intrinsic's definition.
 	public: inline FuncDef BuildFuncDef();
 
-	// Register all intrinsics into the VM's function list and intrinsics table.
-	// Called by VM.Reset() after user functions are loaded.
-	public: static void RegisterAll(List<FuncDef> functions, Dictionary<String, Value> intrinsics) { return IntrinsicStorage::RegisterAll(functions, intrinsics); }
+	// Populate the VM's intrinsics name->funcref table.  Intrinsic FuncDefs and
+	// their funcref Values are built once (lazily) and shared across all VMs.
+	public: static void RegisterAll(Dictionary<String, Value> intrinsics) { return IntrinsicStorage::RegisterAll(intrinsics); }
 }; // end of struct Intrinsic
 
 // INLINE METHODS
@@ -137,8 +150,10 @@ inline List<String> Intrinsic::_paramNames() { return get()->_paramNames; }
 inline void Intrinsic::set__paramNames(List<String> _v) { get()->_paramNames = _v; }
 inline List<Value> Intrinsic::_paramDefaults() { return get()->_paramDefaults; }
 inline void Intrinsic::set__paramDefaults(List<Value> _v) { get()->_paramDefaults = _v; }
-inline Int32 Intrinsic::_funcIndex() { return get()->_funcIndex; }
-inline void Intrinsic::set__funcIndex(Int32 _v) { get()->_funcIndex = _v; }
+inline FuncDef Intrinsic::_funcDef() { return get()->_funcDef; }
+inline void Intrinsic::set__funcDef(FuncDef _v) { get()->_funcDef = _v; }
+inline Value Intrinsic::_funcRef() { return get()->_funcRef; }
+inline void Intrinsic::set__funcRef(Value _v) { get()->_funcRef = _v; }
 inline List<Intrinsic> Intrinsic::_all() { return get()->_all; }
 inline void Intrinsic::set__all(List<Intrinsic> _v) { get()->_all = _v; }
 inline Boolean Intrinsic::_initialized() { return get()->_initialized; }
@@ -149,6 +164,7 @@ inline List<String> Intrinsic::_shortNameVals() { return get()->_shortNameVals; 
 inline void Intrinsic::set__shortNameVals(List<String> _v) { get()->_shortNameVals = _v; }
 inline void Intrinsic::AddParam(String name) { return get()->AddParam(name); }
 inline void Intrinsic::AddParam(String name,Value defaultValue) { return get()->AddParam(name, defaultValue); }
+inline void Intrinsic::EnsureBuilt() { return get()->EnsureBuilt(); }
 inline Value Intrinsic::GetFunc() { return get()->GetFunc(); }
 inline FuncDef Intrinsic::BuildFuncDef() { return get()->BuildFuncDef(); }
 

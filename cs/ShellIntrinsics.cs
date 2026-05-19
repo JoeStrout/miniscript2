@@ -1981,14 +1981,15 @@ public static class ShellIntrinsics {
 			BytecodeEmitter emitter = new BytecodeEmitter();
 			CodeGenerator gen = new CodeGenerator(emitter);
 			gen.FileName = libname + ".ms";
-			gen.FunctionIndexOffset = ctx.vm.FunctionCount();
 			List<FuncDef> fns = gen.CompileImport(stmts, libname + ".ms");
 			if (!is_null(gen.Error)) {
 				ctx.vm.RaiseRuntimeError(StringUtils.Format("import: compile error in {0}.ms", libname));
 				return IntrinsicResult.Null;
 			}
 			// Push the module call; we will be re-invoked when it finishes.
-			ctx.vm.ManuallyPushCall(ctx.baseIndex, fns);
+			// fns[0] is the module's @main; nested functions are reachable
+			// from its constant pool.
+			ctx.vm.ManuallyPushCall(ctx.baseIndex, fns[0]);
 			return new IntrinsicResult(make_string(libname), false);
 		};
 	}

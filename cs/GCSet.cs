@@ -324,9 +324,9 @@ public class GCFuncRefSet : GCSetBase {
 	}
 
 	[MethodImpl(AggressiveInlining)]
-	public void SetFields(Int32 idx, Int32 funcIndex, Value outerVars) {
+	public void SetFields(Int32 idx, FuncDef func, Value outerVars) {
 		GCFunction item = _items[idx];
-		item.FuncIndex = funcIndex;
+		item.Func = func;
 		item.OuterVars = outerVars;
 		_items[idx] = item;
 	}

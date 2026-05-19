@@ -74,7 +74,6 @@ void InterpreterStorage::Compile() {
 	// Compile to bytecode (offset past intrinsics so indices don't collide)
 	BytecodeEmitter emitter =  BytecodeEmitter::New();
 	CodeGenerator generator =  CodeGenerator::New(emitter);
-	generator.set_FunctionIndexOffset(Intrinsic::Count());
 	generator.set_FileName(SourceFile);
 	generator.CompileProgram(statements, "@main");
 
@@ -183,11 +182,10 @@ void InterpreterStorage::REPL(String sourceLine,double timeLimit) {
 		hasImplicitOutput = Boolean(true);
 	}
 
-	// Compile to bytecode (offset past intrinsics + previous user functions)
-	Int32 funcOffset = (!IsNull(vm)) ? vm.FunctionCount() : Intrinsic::Count();
+	// Compile to bytecode.  Each REPL line is its own @main; previously
+	// defined functions are reached as funcref values in the globals VarMap.
 	BytecodeEmitter emitter =  BytecodeEmitter::New();
 	CodeGenerator generator =  CodeGenerator::New(emitter);
-	generator.set_FunctionIndexOffset(funcOffset);
 	generator.CompileProgram(statements, "@main");
 
 	if (!is_null(generator.Error())) {

@@ -84,14 +84,18 @@ bool error_isa_contains(Value error, Value base) {
 
 // ── FuncRef accessors ───────────────────────────────────────────────────
 
-Value make_funcref(int32_t funcIndex, Value outerVars) {
-    return GCManager::NewFuncRef(funcIndex, outerVars);
+}  // end extern "C": make_funcref/funcref_funcdef use the C++ type FuncDef
+
+Value make_funcref(MiniScript::FuncDef func, Value outerVars) {
+    return GCManager::NewFuncRef(func, outerVars);
 }
 
-int32_t funcref_index(Value v) {
-    if (!is_funcref(v)) return -1;
-    return GCManager::Functions.Get(value_item_index(v)).FuncIndex;
+MiniScript::FuncDef funcref_funcdef(Value v) {
+    if (!is_funcref(v)) return MiniScript::FuncDef();
+    return GCManager::Functions.Get(value_item_index(v)).Func;
 }
+
+extern "C" {
 
 Value funcref_outer_vars(Value v) {
     if (!is_funcref(v)) return val_null;
@@ -294,12 +298,12 @@ Value code_form(Value v, void* vm, int recursion_limit) {
     }
 
     if (is_funcref(v)) {
-        int32_t idx = funcref_index(v);
+        MiniScript::FuncDef fn = funcref_funcdef(v);
         Value outer = funcref_outer_vars(v);
         if (!is_null(outer))
-            std::snprintf(buf, sizeof buf, "FuncRef(#%d, closure)", idx);
+            std::snprintf(buf, sizeof buf, "FuncRef(%s, closure)", fn.Name().c_str());
         else
-            std::snprintf(buf, sizeof buf, "FuncRef(#%d)", idx);
+            std::snprintf(buf, sizeof buf, "FuncRef(%s)", fn.Name().c_str());
         return make_string(buf);
     }
 

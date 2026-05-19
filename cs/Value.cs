@@ -146,12 +146,12 @@ public static class ValueHelpers {
 	public static Value make_map(int initial_capacity) => GCManager.NewMap(initial_capacity);
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value make_funcref(Int32 funcIndex, Value outerVars) => GCManager.NewFuncRef(funcIndex, outerVars);
+	public static Value make_funcref(FuncDef func, Value outerVars) => GCManager.NewFuncRef(func, outerVars);
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Int32 funcref_index(Value v) {
-		if (!is_funcref(v)) return -1;
-		return GCManager.Functions.Get(value_item_index(v)).FuncIndex;
+	public static FuncDef funcref_funcdef(Value v) {
+		if (!is_funcref(v)) return null;
+		return GCManager.Functions.Get(value_item_index(v)).Func;
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -367,10 +367,10 @@ public static class ValueHelpers {
 		}
 		if (is_funcref(v)) {
 			GCFunction fr = GCManager.Functions.Get(value_item_index(v));
-			if (fr.FuncIndex < 0) return "<funcref?>";
+			if (fr.Func == null) return "<funcref?>";
 			return is_null(fr.OuterVars)
-				? StringUtils.Format("FuncRef(#{0})", fr.FuncIndex)
-				: StringUtils.Format("FuncRef(#{0}, closure)", fr.FuncIndex);
+				? StringUtils.Format("FuncRef({0})", fr.Func.Name)
+				: StringUtils.Format("FuncRef({0}, closure)", fr.Func.Name);
 		}
 		if (is_error(v)) {
 			GCError err = GCManager.Errors.Get(value_item_index(v));

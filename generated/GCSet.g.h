@@ -208,7 +208,7 @@ class GCFuncRefSetStorage : public GCSetBaseStorage {
 
 	public: GCFunction Get(Int32 idx);
 
-	public: void SetFields(Int32 idx, Int32 funcIndex, Value outerVars);
+	public: void SetFields(Int32 idx, FuncDef func, Value outerVars);
 }; // end of class GCFuncRefSetStorage
 
 // ── GCStringSet ───────────────────────────────────────────────────────────────
@@ -364,7 +364,7 @@ struct GCFuncRefSet : public GCSetBase {
 
 	public: inline GCFunction Get(Int32 idx);
 
-	public: inline void SetFields(Int32 idx, Int32 funcIndex, Value outerVars);
+	public: inline void SetFields(Int32 idx, FuncDef func, Value outerVars);
 }; // end of struct GCFuncRefSet
 
 // INLINE METHODS
@@ -486,10 +486,10 @@ inline GCFunction GCFuncRefSet::Get(Int32 idx) { return get()->Get(idx); }
 inline GCFunction GCFuncRefSetStorage::Get(Int32 idx) {
 	return _items[idx];
 }
-inline void GCFuncRefSet::SetFields(Int32 idx,Int32 funcIndex,Value outerVars) { return get()->SetFields(idx, funcIndex, outerVars); }
-inline void GCFuncRefSetStorage::SetFields(Int32 idx,Int32 funcIndex,Value outerVars) {
+inline void GCFuncRefSet::SetFields(Int32 idx,FuncDef func,Value outerVars) { return get()->SetFields(idx, func, outerVars); }
+inline void GCFuncRefSetStorage::SetFields(Int32 idx,FuncDef func,Value outerVars) {
 	GCFunction item = _items[idx];
-	item.FuncIndex = funcIndex;
+	item.Func = func;
 	item.OuterVars = outerVars;
 	_items[idx] = item;
 }

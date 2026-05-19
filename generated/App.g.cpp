@@ -189,7 +189,6 @@ List<FuncDef> App::AssembleFile(String filePath) {
 
 	if (debugMode) IOHelper::Print(StringUtils::Format("Assembling {0} lines...", lines.Count()));
 	Assembler assembler =  Assembler::New();
-	assembler.SetFunctionIndexOffset(Intrinsic::Count());
 
 	// Assemble the code
 	assembler.Assemble(lines);

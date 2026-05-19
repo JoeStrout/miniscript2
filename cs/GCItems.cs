@@ -6,6 +6,7 @@ using static MiniScript.ValueHelpers;
 // H: #include "GCInterfaces.g.h"
 // H: #include "value.h"
 // H: #include "VarMap.g.h"
+// H: #include "FuncDef.g.h"
 // H: #include "CS_Math.h"
 // CPP: #include "GCManager.g.h"
 
@@ -261,16 +262,27 @@ public struct GCError : IGCItem {
 // ── GCFunction ────────────────────────────────────────────────────────────────
 
 public struct GCFunction : IGCItem {
-	public Int32 FuncIndex;
+	public FuncDef Func;
 	public Value OuterVars;
 
 	public void MarkChildren() {
 		GCManager.Mark(OuterVars);
+		// Mark the function's compile-time constants so that nested-function
+		// templates (and any interned strings) remain reachable.  This is what
+		// roots the whole FuncDef graph now that the VM keeps no functions list.
+		if (Func != null) {
+			List<Value> consts = Func.Constants;
+			for (Int32 i = 0; i < consts.Count; i++) GCManager.Mark(consts[i]);
+			List<Value> pnames = Func.ParamNames;
+			for (Int32 i = 0; i < pnames.Count; i++) GCManager.Mark(pnames[i]);
+			List<Value> pdefs = Func.ParamDefaults;
+			for (Int32 i = 0; i < pdefs.Count; i++) GCManager.Mark(pdefs[i]);
+		}
 	}
 
 	[MethodImpl(AggressiveInlining)]
 	public void OnSweep() {
-		FuncIndex = -1;
+		Func = null;
 		OuterVars = val_null;
 	}
 }

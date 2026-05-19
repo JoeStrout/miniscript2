@@ -20,7 +20,8 @@ public class Intrinsic {
 
 	private List<String> _paramNames;
 	private List<Value> _paramDefaults;
-	private Int32 _funcIndex = -1;
+	private FuncDef _funcDef = null;
+	private Value _funcRef = val_null;
 
 	private static List<Intrinsic> _all = new List<Intrinsic>();
 	private static Boolean _initialized = false;
@@ -90,8 +91,20 @@ public class Intrinsic {
 		return _all[i];
 	}
 
+	// Build (once) this intrinsic's FuncDef and a stable funcref Value.
+	// The funcref is added as a permanent GC root: intrinsics live for the
+	// lifetime of the process and are shared across VMs and resets.
+	private void EnsureBuilt() {
+		if (_funcDef == null) {
+			_funcDef = BuildFuncDef();
+			_funcRef = make_funcref(_funcDef, val_null);
+			GCManager.AddRoot(_funcRef);
+		}
+	}
+
 	public Value GetFunc() {
-		return make_funcref(_funcIndex, val_null);
+		EnsureBuilt();
+		return _funcRef;
 	}
 
 	// Build a FuncDef from this intrinsic's definition.
@@ -107,9 +120,9 @@ public class Intrinsic {
 		return def;
 	}
 
-	// Register all intrinsics into the VM's function list and intrinsics table.
-	// Called by VM.Reset() after user functions are loaded.
-	public static void RegisterAll(List<FuncDef> functions, Dictionary<String, Value> intrinsics) {
+	// Populate the VM's intrinsics name->funcref table.  Intrinsic FuncDefs and
+	// their funcref Values are built once (lazily) and shared across all VMs.
+	public static void RegisterAll(Dictionary<String, Value> intrinsics) {
 		if (!_initialized) {
 			CoreIntrinsics.Init();
 			_initialized = true;
@@ -117,13 +130,10 @@ public class Intrinsic {
 		intrinsics.Clear();
 		for (Int32 i = 0; i < _all.Count; i++) {
 			Intrinsic intr = _all[i];
-			FuncDef def = intr.BuildFuncDef();
-			Int32 funcIndex = functions.Count;
-			intr._funcIndex = funcIndex;
-			functions.Add(def);
-			intrinsics[intr.Name] = make_funcref(funcIndex, val_null);
+			intr.EnsureBuilt();
+			intrinsics[intr.Name] = intr._funcRef;
 		}
-		// Invalidate type maps so they get rebuilt with current function indices
+		// Rebuild cached type maps (they are GC objects that may have been swept).
 		CoreIntrinsics.InvalidateTypeMaps();
 	}
 }

@@ -59,8 +59,16 @@ Int32 IntrinsicStorage::AllCount() { // ToDo: isn't this redundant with Count, a
 Intrinsic IntrinsicStorage::GetByIndex(Int32 i) {
 	return _all[i];
 }
+void IntrinsicStorage::EnsureBuilt() {
+	if (IsNull(_funcDef)) {
+		_funcDef = BuildFuncDef();
+		_funcRef = make_funcref(_funcDef, val_null);
+		GCManager::AddRoot(_funcRef);
+	}
+}
 Value IntrinsicStorage::GetFunc() {
-	return make_funcref(_funcIndex, val_null);
+	EnsureBuilt();
+	return _funcRef;
 }
 FuncDef IntrinsicStorage::BuildFuncDef() {
 	FuncDef def =  FuncDef::New();
@@ -73,7 +81,7 @@ FuncDef IntrinsicStorage::BuildFuncDef() {
 	def.set_NativeCallback(Code);
 	return def;
 }
-void IntrinsicStorage::RegisterAll(List<FuncDef> functions,Dictionary<String, Value> intrinsics) {
+void IntrinsicStorage::RegisterAll(Dictionary<String, Value> intrinsics) {
 	if (!_initialized) {
 		CoreIntrinsics::Init();
 		_initialized = Boolean(true);
@@ -81,13 +89,10 @@ void IntrinsicStorage::RegisterAll(List<FuncDef> functions,Dictionary<String, Va
 	intrinsics.Clear();
 	for (Int32 i = 0; i < _all.Count(); i++) {
 		Intrinsic intr = _all[i];
-		FuncDef def = intr.BuildFuncDef();
-		Int32 funcIndex = functions.Count();
-		intr.set__funcIndex(funcIndex);
-		functions.Add(def);
-		intrinsics[intr.Name()] = make_funcref(funcIndex, val_null);
+		intr.EnsureBuilt();
+		intrinsics[intr.Name()] = intr._funcRef();
 	}
-	// Invalidate type maps so they get rebuilt with current function indices
+	// Rebuild cached type maps (they are GC objects that may have been swept).
 	CoreIntrinsics::InvalidateTypeMaps();
 }
 

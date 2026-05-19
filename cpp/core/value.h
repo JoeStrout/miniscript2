@@ -28,6 +28,7 @@
 #define CORE_LAYER_2A
 
 #ifdef __cplusplus
+namespace MiniScript { struct FuncDef; }
 extern "C" {
 #endif
 
@@ -188,9 +189,7 @@ Value error_stack(Value error);
 Value error_isa(Value error);
 bool  error_isa_contains(Value error, Value base);
 
-Value   make_funcref(int32_t funcIndex, Value outerVars);
-int32_t funcref_index(Value v);
-Value   funcref_outer_vars(Value v);
+Value funcref_outer_vars(Value v);
 
 // ── Tiny string buffer access ───────────────────────────────────────────
 #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
@@ -348,6 +347,11 @@ inline int Hash(uint64_t v) {
 inline bool DictKeyEqual(uint64_t a, uint64_t b) {
     return value_equal((Value)a, (Value)b);
 }
+
+// A funcref Value pairs a FuncDef with an optional captured-variable map.
+// Declared with C++ linkage (FuncDef is a C++ type, defined in FuncDef.g.h).
+Value               make_funcref(MiniScript::FuncDef func, Value outerVars);
+MiniScript::FuncDef funcref_funcdef(Value v);
 #endif
 
 #endif // NANBOX_H

@@ -903,7 +903,13 @@ Turned to File next, but that leads to RawData, and _that_ leads to GCHandle, ou
 So that's working nicely.  However, the way intrinsic module (like `file` and `gc` and their methods are managed is much more onerous than it was in MS1.  You currently have to delay registering the functions until after the VM has been initialized, register a callback to clear the cache of such functions when the machine is reset, etc.  And I'm not even sure it would work if you have multiple VMs going at once.  It's a mess.  I wonder if we can clean all that up by storing the function code right in the GCFunction, and ditch the whole concept of a "function index".
 
 
+## May 19, 2026
 
+Today I'm doing that refactoring mentioned at the end of yesterday's entry, i.e., replacing all the function indices with direct FuncDefs.  This is a pretty deep change that affects a lot of code, but it should be much cleaner in the end.
+
+One side-effect of this code, though, is that at least make_funcref and related functions in value.h must use C++ linkage (since they take/return the C++ type FuncDef).  It might soon be time to give up the idea of having a C core, and just embrace C++ throughout.
+
+Sometime soon I need to audit our conversion of Values to value strings or host Strings, because right now I think that's being done inconsistently, and often inefficiently.
 
 
 

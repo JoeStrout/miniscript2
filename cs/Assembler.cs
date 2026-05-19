@@ -476,6 +476,13 @@ public class Assembler {
 			if (HasError) return 0;
 			instruction = BytecodeUtil.INS_AB(Opcode.BRFALSE_rA_iBC, reg1, (Int16)offset);
 
+		} else if (mnemonic == "BRERR") {
+			if (parts.Count != 3) { Error("Syntax error"); return 0; }
+			Byte reg1 = ParseRegister(parts[1]);
+			Int32 offset = ResolveBranchOffset(parts[2], Int16.MinValue, Int16.MaxValue, "Int16");
+			if (HasError) return 0;
+			instruction = BytecodeUtil.INS_AB(Opcode.BRERR_rA_iBC, reg1, (Int16)offset);
+
 		} else if (mnemonic == "BRLT") {
 			if (parts.Count != 4) { Error("Syntax error"); return 0; }
 			Int32 offset = ResolveBranchOffset(parts[3], SByte.MinValue, SByte.MaxValue, "SByte");

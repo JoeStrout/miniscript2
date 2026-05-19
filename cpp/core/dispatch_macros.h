@@ -84,6 +84,7 @@
 	X(BREQ_rA_iB_iC) \
 	X(BRNE_rA_rB_iC) \
 	X(BRNE_rA_iB_iC) \
+	X(BRERR_rA_iBC) \
 	X(IFLT_rA_rB) \
 	X(IFLT_rA_iBC) \
 	X(IFLT_iAB_rC) \

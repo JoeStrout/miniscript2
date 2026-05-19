@@ -921,6 +921,8 @@ Trying to run textAdventure.ms uncovered a somewhat deep bug with `super`.  We n
 
 With that fix, textAdventure.ms gets much farther, but later errors out with a "can't index into null" error.  And that one is harder to pin down because it doesn't include a line number.  So, I'm taking a side-quest to get line numbers on those error reports.  (This was mostly implemented already, but failing on some edge cases.)
 
+And another -- looks like adding error types, with the cool `someErr or otherValue` semantics, has broken short-circuiting in general.  And getting it back, without losing the error semantics, is a bit tricky.  The fix involved adding a new opcode (BRERR) which branches if the register contains an error, and some tweaks to the code generated for `if`, `and`, and `or`.
+
 
 
 

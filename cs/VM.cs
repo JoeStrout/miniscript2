@@ -1321,6 +1321,18 @@ public class VM {
 					break;
 				}
 
+				case Opcode.BRERR_rA_iBC: {
+					// if R[A] is an error then jump offset BC (no throw).
+					// Used for short-circuit 'and'/'or' to peel off the error
+					// case before the (throwing) BRTRUE/BRFALSE test.
+					Byte a = BytecodeUtil.Au(instruction);
+					Int32 offset = BytecodeUtil.BCs(instruction);
+					if (is_error(localStack[a])) {
+						pc += offset;
+					}
+					break;
+				}
+
 				case Opcode.BRLT_rA_rB_iC: {
 					// if R[A] < R[B] then jump offset C.
 					Byte a = BytecodeUtil.Au(instruction);

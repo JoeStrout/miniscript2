@@ -63,6 +63,7 @@ public static class Disassembler {
 			case Opcode.BREQ_rA_iB_iC: return "BREQ";
 			case Opcode.BRNE_rA_rB_iC:
 			case Opcode.BRNE_rA_iB_iC: return "BRNE";
+			case Opcode.BRERR_rA_iBC:  return "BRERR";
 			case Opcode.IFLT_rA_rB:
 			case Opcode.IFLT_rA_iBC:
 			case Opcode.IFLT_iAB_rC:   return "IFLT";
@@ -161,6 +162,7 @@ public static class Disassembler {
 			case Opcode.IFNE_rA_iBC:
 			case Opcode.BRTRUE_rA_iBC:
 			case Opcode.BRFALSE_rA_iBC:
+			case Opcode.BRERR_rA_iBC:
 				return StringUtils.Format("{0} r{1}, {2}",
 					mnemonic,
 					(Int32)BytecodeUtil.Au(instruction),

@@ -341,9 +341,14 @@ Value to_number(Value v) {
 }
 
 bool is_truthy(Value v) {
-    return !is_null(v) && (
-        (is_double(v) && as_double(v) != 0.0) ||
-        (is_string(v) && string_length(v) != 0));
+    // Falsy values: null, 0, "", [], {}.  Everything else (including
+    // funcrefs and host handles) is truthy.
+    if (is_null(v)) return false;
+    if (is_double(v)) return as_double(v) != 0.0;
+    if (is_string(v)) return string_length(v) != 0;
+    if (is_list(v)) return list_count(v) != 0;
+    if (is_map(v)) return map_count(v) != 0;
+    return true;
 }
 
 uint32_t value_hash(Value v) {

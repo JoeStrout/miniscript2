@@ -400,6 +400,12 @@ Int32 CodeGeneratorStorage::Visit(UnaryOpNode node) {
 }
 Int32 CodeGeneratorStorage::Visit(BinaryOpNode node) {
 	CodeGenerator _this(std::static_pointer_cast<CodeGeneratorStorage>(shared_from_this()));
+	// 'and'/'or' use short-circuit evaluation: the right operand is not
+	// evaluated if the left operand alone determines the result.
+	if (node.Op() == Op::AND || node.Op() == Op::OR) {
+		return CompileShortCircuit(node);
+	}
+
 	Int32 resultReg = GetTargetOrAlloc();  // Capture target before any recursive calls
 	Int32 leftReg = node.Left().Accept(_this);
 	Int32 rightReg = node.Right().Accept(_this);
@@ -453,14 +459,6 @@ Int32 CodeGeneratorStorage::Visit(BinaryOpNode node) {
 	} else if (node.Op() == Op::POWER) {
 		op = Opcode::POW_rA_rB_rC;
 		opSymbol = "^";
-	} else if (node.Op() == Op::AND) {
-		// Fuzzy logic AND: AbsClamp01(a * b)
-		op = Opcode::AND_rA_rB_rC;
-		opSymbol = "and";
-	} else if (node.Op() == Op::OR) {
-		// Fuzzy logic OR: AbsClamp01(a + b - a*b)
-		op = Opcode::OR_rA_rB_rC;
-		opSymbol = "or";
 	} else if (node.Op() == Op::ISA) {
 		op = Opcode::ISA_rA_rB_rC;
 		opSymbol = "isa";
@@ -473,6 +471,66 @@ Int32 CodeGeneratorStorage::Visit(BinaryOpNode node) {
 
 	FreeReg(rightReg);
 	FreeReg(leftReg);
+	return resultReg;
+}
+Int32 CodeGeneratorStorage::CompileShortCircuit(BinaryOpNode node) {
+	CodeGenerator _this(std::static_pointer_cast<CodeGeneratorStorage>(shared_from_this()));
+	Boolean isAnd = (node.Op() == Op::AND);
+	Int32 resultReg = GetTargetOrAlloc();
+	Int32 doneLabel = _emitter.CreateLabel();
+
+	Int32 leftReg = node.Left().Accept(_this);
+
+	if (isAnd) {
+		// 'and': error left -> result is the error; false left -> result 0;
+		// true left -> evaluate right and combine with the fuzzy AND op.
+		Int32 errLabel = _emitter.CreateLabel();
+		Int32 zeroLabel = _emitter.CreateLabel();
+		_emitter.EmitBranch(Opcode::BRERR_rA_iBC, leftReg, errLabel, "short-circuit 'and': left is error");
+		_emitter.EmitBranch(Opcode::BRFALSE_rA_iBC, leftReg, zeroLabel, "short-circuit 'and': left is false");
+
+		Int32 rightReg = node.Right().Accept(_this);
+		_emitter.EmitABC(Opcode::AND_rA_rB_rC, resultReg, leftReg, rightReg,
+			Interp("r{} = {} and {}", resultReg, node.Left().ToStr(), node.Right().ToStr()));
+		FreeReg(rightReg);
+		_emitter.EmitJump(Opcode::JUMP_iABC, doneLabel, "skip short-circuit value");
+
+		_emitter.PlaceLabel(errLabel);
+		_emitter.EmitABC(Opcode::LOAD_rA_rB, resultReg, leftReg, 0,
+			Interp("r{} = {} (error short-circuit)", resultReg, node.Left().ToStr()));
+		_emitter.EmitJump(Opcode::JUMP_iABC, doneLabel, "skip short-circuit value");
+
+		_emitter.PlaceLabel(zeroLabel);
+		_emitter.EmitAB(Opcode::LOAD_rA_iBC, resultReg, 0, Interp("r{} = 0 (short-circuit)", resultReg));
+	} else {
+		// 'or': error left -> evaluate right (the fuzzy OR op returns the
+		// right operand); a fully-true left -> result 1; otherwise evaluate
+		// right and combine with the fuzzy OR op.  The result is 1 only when
+		// the left operand's fuzzy value is >= 1 (a partial value like 0.5
+		// must NOT short-circuit, since 0.5 or x is genuinely fuzzy).  We
+		// test that by negating: not(left) is false exactly when left is
+		// fully true, which reduces the question to a plain BRFALSE.
+		Int32 oneLabel = _emitter.CreateLabel();
+		Int32 evalLabel = _emitter.CreateLabel();
+		_emitter.EmitBranch(Opcode::BRERR_rA_iBC, leftReg, evalLabel, "short-circuit 'or': left is error");
+		Int32 notReg = AllocReg();
+		_emitter.EmitABC(Opcode::NOT_rA_rB, notReg, leftReg, 0, Interp("r{} = not {}", notReg, node.Left().ToStr()));
+		_emitter.EmitBranch(Opcode::BRFALSE_rA_iBC, notReg, oneLabel, "short-circuit 'or': left is fully true");
+		FreeReg(notReg);
+
+		_emitter.PlaceLabel(evalLabel);
+		Int32 rightReg = node.Right().Accept(_this);
+		_emitter.EmitABC(Opcode::OR_rA_rB_rC, resultReg, leftReg, rightReg,
+			Interp("r{} = {} or {}", resultReg, node.Left().ToStr(), node.Right().ToStr()));
+		FreeReg(rightReg);
+		_emitter.EmitJump(Opcode::JUMP_iABC, doneLabel, "skip short-circuit value");
+
+		_emitter.PlaceLabel(oneLabel);
+		_emitter.EmitAB(Opcode::LOAD_rA_iBC, resultReg, 1, Interp("r{} = 1 (short-circuit)", resultReg));
+	}
+
+	FreeReg(leftReg);
+	_emitter.PlaceLabel(doneLabel);
 	return resultReg;
 }
 Int32 CodeGeneratorStorage::Visit(ComparisonChainNode node) {

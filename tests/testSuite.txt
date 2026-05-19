@@ -864,6 +864,120 @@ print not 42
 --------------------------------
 0
 ================================================================================
+==== SECTION 6b: SHORT-CIRCUIT EVALUATION AND COLLECTION TRUTHINESS
+================================================================================
+==== 'and' short-circuits: a false left skips the right operand, so the
+==== otherwise-fatal index into null is never evaluated
+================================
+x = null
+print 0 and x[1]
+--------------------------------
+0
+================================
+==== 'or' short-circuits: a true left skips the right operand
+================================
+x = null
+print 1 or x[1]
+--------------------------------
+1
+================================
+==== 'and' with a truthy left still evaluates the right operand
+================================
+a = 1
+b = 0
+print a and b
+--------------------------------
+0
+================================
+==== fuzzy 'and' at runtime (variable operands are not constant-folded)
+================================
+a = 0.5
+b = 0.5
+print a and b
+--------------------------------
+0.25
+================================
+==== fuzzy 'or' at runtime: a partial-truth left must NOT short-circuit
+================================
+a = 0.5
+b = 0.5
+print a or b
+--------------------------------
+0.75
+================================
+==== 'or' with a partial-truth left evaluates the right operand
+================================
+a = 0.3
+print a or 0
+--------------------------------
+0.3
+================================
+==== 'or' short-circuits when the left operand is fully true (>= 1)
+================================
+a = 2
+x = null
+print a or x[1]
+--------------------------------
+1
+================================
+==== 'or' with an error left evaluates the right operand (fallback)
+================================
+e = err("boom")
+print e or "fallback"
+--------------------------------
+fallback
+================================
+==== 'and' with an error left yields that error
+================================
+e = err("boom")
+print e and "z"
+--------------------------------
+error: boom
+================================
+==== 'and' with an error left short-circuits past a would-be error
+================================
+x = null
+e = err("oops")
+print e and x[1]
+--------------------------------
+error: oops
+================================
+==== a non-empty list is truthy
+================================
+x = [1, 2]
+if x then print "truthy" else print "falsy"
+--------------------------------
+truthy
+================================
+==== an empty list is falsy
+================================
+x = []
+if x then print "truthy" else print "falsy"
+--------------------------------
+falsy
+================================
+==== a non-empty map is truthy
+================================
+x = {"a": 1}
+if x then print "truthy" else print "falsy"
+--------------------------------
+truthy
+================================
+==== an empty map is falsy
+================================
+x = {}
+if x then print "truthy" else print "falsy"
+--------------------------------
+falsy
+================================
+==== a non-empty list is fully true in a logical operation
+================================
+a = [1]
+b = [2]
+print a and b
+--------------------------------
+1
+================================================================================
 ==== SECTION 7: MULTI-LINE TESTS
 ================================================================================
 ==== Multiple print statements

@@ -69,6 +69,7 @@ public enum Opcode : Byte {
 	BREQ_rA_iB_iC,
 	BRNE_rA_rB_iC,
 	BRNE_rA_iB_iC,
+	BRERR_rA_iBC,
 	IFLT_rA_rB,
 	IFLT_rA_iBC,
 	IFLT_iAB_rC,
@@ -244,6 +245,7 @@ public static class BytecodeUtil {
 			case Opcode.BREQ_rA_iB_iC:  return "BREQ_rA_iB_iC";
 			case Opcode.BRNE_rA_rB_iC:  return "BRNE_rA_rB_iC";
 			case Opcode.BRNE_rA_iB_iC:  return "BRNE_rA_iB_iC";
+			case Opcode.BRERR_rA_iBC:   return "BRERR_rA_iBC";
 			case Opcode.IFLT_rA_rB:     return "IFLT_rA_rB";
 			case Opcode.IFLT_rA_iBC:    return "IFLT_rA_iBC";
 			case Opcode.IFLT_iAB_rC:    return "IFLT_iAB_rC";
@@ -325,6 +327,7 @@ public static class BytecodeUtil {
 		if (s == "BREQ_rA_iB_iC")   return Opcode.BREQ_rA_iB_iC;
 		if (s == "BRNE_rA_rB_iC")   return Opcode.BRNE_rA_rB_iC;
 		if (s == "BRNE_rA_iB_iC")   return Opcode.BRNE_rA_iB_iC;
+		if (s == "BRERR_rA_iBC")    return Opcode.BRERR_rA_iBC;
 		if (s == "IFLT_rA_rB")      return Opcode.IFLT_rA_rB;
 		if (s == "IFLT_rA_iBC")     return Opcode.IFLT_rA_iBC;
 		if (s == "IFLT_iAB_rC")     return Opcode.IFLT_iAB_rC;

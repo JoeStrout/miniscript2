@@ -247,9 +247,16 @@ public static class ValueHelpers {
 	public static bool is_number(Value v) => is_double(v);
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool is_truthy(Value v) => !is_null(v) &&
-		((is_double(v) && as_double(v) != 0.0) ||
-		 (is_string(v) && string_length(v) != 0));
+	public static bool is_truthy(Value v) {
+		// Falsy values: null, 0, "", [], {}.  Everything else (including
+		// funcrefs and host handles) is truthy.
+		if (is_null(v)) return false;
+		if (is_double(v)) return as_double(v) != 0.0;
+		if (is_string(v)) return string_length(v) != 0;
+		if (is_list(v)) return list_count(v) != 0;
+		if (is_map(v)) return map_count(v) != 0;
+		return true;
+	}
 
 	// ── Numeric accessors ────────────────────────────────────────────────────
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]

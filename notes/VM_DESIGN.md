@@ -67,8 +67,9 @@ Our internal opcode names include a verb/mnemonic, and a description of how the 
 | Mnemonic | Description |
 | --- | --- |
 | JUMP_iABC | PC += ABC (24-bit signed value) |
-| BRTRUE_rA_iBC | if R[A] is true then PC += BC (16-bit signed) |
-| BRFALSE_rA_iBC | if R[A] is false then PC += BC (16-bit signed) |
+| BRTRUE_rA_iBC | if R[A] is true then PC += BC (16-bit signed); raises a runtime error if R[A] is an error |
+| BRFALSE_rA_iBC | if R[A] is false then PC += BC (16-bit signed); raises a runtime error if R[A] is an error |
+| BRERR_rA_iBC | if R[A] is an error then PC += BC (16-bit signed) |
 | BRLT_rA_rB_iC | if R[A] < R[B] then PC += C (8-bit signed) |
 | BRLT_rA_iB_iC | if R[A] < B then PC += C (8-bit signed) |
 | BRLT_iA_rB_iC | if A < R[B] then PC += C (8-bit signed) |
@@ -133,6 +134,18 @@ For when we have a truth value already in a register (a common situation when co
 
 - `BRTRUE_rA_iBC` jumps ±32767 steps if the register value is truthy
 - `BRFALSE_rA_iBC` jumps ±32767 steps if the register value is falsey
+- `BRERR_rA_iBC` jumps ±32767 steps if the register value is an error
+
+`BRTRUE`/`BRFALSE` deliberately raise a runtime error when given an error value, since an error used as an `if`/`while` condition should terminate the program.  `BRERR` makes no such judgment — it simply tests for an error value without raising — which is what lets short-circuit `and`/`or` handle errors (see below).
+
+### Short-circuit `and`/`or`
+
+The `and` and `or` operators short-circuit: the right operand is not evaluated when the left operand alone determines the result.  Because an error value must *not* short-circuit through `BRTRUE`/`BRFALSE` (that would raise), the code generator emits a `BRERR` first to peel off the error case, after which the surviving `BRTRUE`/`BRFALSE` only ever sees a non-error value:
+
+- `a and b`: if `a` is an error, the result is that error (right operand skipped); if `a` is false, the result is `0` (right operand skipped); otherwise `b` is evaluated and combined with `AND_rA_rB_rC`.
+- `a or b`: if `a` is an error, `b` is evaluated and combined with `OR_rA_rB_rC` (so `someErr or fallback` yields `fallback`); if `a` is *fully* true, the result is `1` (right operand skipped); otherwise `b` is evaluated and combined with `OR_rA_rB_rC`.
+
+A subtlety for `or`: short-circuiting to `1` is only valid when the left operand alone forces the fuzzy result to `1` — that is, when its fuzzy value is >= 1.  A *partial* truth value such as `0.5` must **not** short-circuit, since `0.5 or x` is genuinely fuzzy.  The code generator tests this by negating: `not a` is false exactly when `a` is fully true, which reduces the question to a plain `BRFALSE`.  (The `and` side needs no such trick: a fuzzy `and` is `0` exactly when the left operand is false, which `BRFALSE` already tests directly.)
 
 Note that when emitting code, we often don't know whether a branch is going to be ±127 steps or less; we "back-patch" the jump later, once we've found the branch target.  We can accomplish that with these opcodes by first emitting a long branch:
 

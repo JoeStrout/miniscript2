@@ -73,6 +73,7 @@ enum class Opcode : Byte {
 	BREQ_rA_iB_iC,
 	BRNE_rA_rB_iC,
 	BRNE_rA_iB_iC,
+	BRERR_rA_iBC,
 	IFLT_rA_rB,
 	IFLT_rA_iBC,
 	IFLT_iAB_rC,

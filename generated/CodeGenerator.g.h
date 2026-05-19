@@ -107,6 +107,13 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 
 	public: Int32 Visit(BinaryOpNode node);
 
+	// Compile 'and'/'or' with short-circuit evaluation.  The right operand is
+	// only evaluated when the left operand does not already determine the
+	// result.  An error operand never short-circuits the truthiness test
+	// (which would throw); BRERR peels it off first so the surviving
+	// BRTRUE/BRFALSE only ever sees a non-error value.
+	private: Int32 CompileShortCircuit(BinaryOpNode node);
+
 	public: Int32 Visit(ComparisonChainNode node);
 
 	// Emit a single comparison opcode into destReg
@@ -321,6 +328,13 @@ struct CodeGenerator : public IASTVisitor {
 
 	public: inline Int32 Visit(BinaryOpNode node);
 
+	// Compile 'and'/'or' with short-circuit evaluation.  The right operand is
+	// only evaluated when the left operand does not already determine the
+	// result.  An error operand never short-circuits the truthiness test
+	// (which would throw); BRERR peels it off first so the surviving
+	// BRTRUE/BRFALSE only ever sees a non-error value.
+	private: inline Int32 CompileShortCircuit(BinaryOpNode node);
+
 	public: inline Int32 Visit(ComparisonChainNode node);
 
 	// Emit a single comparison opcode into destReg
@@ -471,6 +485,7 @@ inline Int32 CodeGenerator::Visit(AssignmentNode node) { return get()->Visit(nod
 inline Int32 CodeGenerator::Visit(IndexedAssignmentNode node) { return get()->Visit(node); }
 inline Int32 CodeGenerator::Visit(UnaryOpNode node) { return get()->Visit(node); }
 inline Int32 CodeGenerator::Visit(BinaryOpNode node) { return get()->Visit(node); }
+inline Int32 CodeGenerator::CompileShortCircuit(BinaryOpNode node) { return get()->CompileShortCircuit(node); }
 inline Int32 CodeGenerator::Visit(ComparisonChainNode node) { return get()->Visit(node); }
 inline void CodeGenerator::EmitComparison(String op,Int32 destReg,Int32 leftReg,Int32 rightReg) { return get()->EmitComparison(op, destReg, leftReg, rightReg); }
 inline Int32 CodeGenerator::Visit(CallNode node) { return get()->Visit(node); }

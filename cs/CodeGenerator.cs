@@ -20,6 +20,7 @@ public class CodeGenerator : IASTVisitor {
 	private Int32 _firstAvailable;      // Lowest index that might be free
 	private Int32 _maxRegUsed;          // High water mark for register usage
 	private Dictionary<String, Int32> _variableRegs;  // variable name -> register
+	private List<String> _namedStack;   // variables whose NAME op dominates the current point (stack-disciplined by conditional nesting)
 	private Int32 _targetReg;           // Target register for next expression (-1 = allocate)
 	private List<Int32> _loopExitLabels;      // Stack of loop exit labels for break
 	private List<Int32> _loopContinueLabels;  // Stack of loop continue labels for continue
@@ -33,6 +34,7 @@ public class CodeGenerator : IASTVisitor {
 		_firstAvailable = 0;
 		_maxRegUsed = -1;
 		_variableRegs = new Dictionary<String, Int32>();
+		_namedStack = new List<String>();
 		_targetReg = -1;
 		_loopExitLabels = new List<Int32>();
 		_loopContinueLabels = new List<Int32>();
@@ -179,12 +181,37 @@ public class CodeGenerator : IASTVisitor {
 		}
 	}
 
+	// Compile a body of statements that executes conditionally (an if/else branch
+	// or a loop body).  A NAME op emitted inside this body does not dominate code
+	// after it, so any names recorded while compiling the body are forgotten on
+	// exit (the body's names sit at the tail of _namedStack, since any nested
+	// conditional bodies have already been entered and exited).
+	private void CompileConditionalBody(List<ASTNode> body) {
+		Int32 mark = _namedStack.Count;
+		CompileBody(body);
+		while (_namedStack.Count > mark) _namedStack.RemoveAt(_namedStack.Count - 1);
+	}
+
+	// Ensure a NAME op has been emitted for the given variable on a path that
+	// dominates the current point.  If not, emit one now and record it.  This is
+	// what makes a variable "exist" at runtime; it must run on every path that
+	// assigns the variable (e.g. both branches of a single-line if).
+	private void EnsureNamed(String varName, Int32 varReg) {
+		for (Int32 i = 0; i < _namedStack.Count; i++) {
+			if (_namedStack[i] == varName) return;
+		}
+		Int32 nameIdx = _emitter.AddConstant(make_string(varName));
+		_emitter.EmitAB(Opcode.NAME_rA_kBC, varReg, nameIdx, $"use r{varReg} for {varName}");
+		_namedStack.Add(varName);
+	}
+
 	// Compile a complete function from a single expression/statement
 	public FuncDef CompileFunction(ASTNode ast, String funcName) {
 		_regInUse.Clear();
 		_firstAvailable = 0;
 		_maxRegUsed = -1;
 		_variableRegs.Clear();
+		_namedStack.Clear();
 
 		Int32 resultReg = ast.Accept(this);
 
@@ -205,6 +232,7 @@ public class CodeGenerator : IASTVisitor {
 		_firstAvailable = 0;
 		_maxRegUsed = -1;
 		_variableRegs.Clear();
+		_namedStack.Clear();
 
 		_functions.Clear();
 		_functions.Add(null);
@@ -230,6 +258,7 @@ public class CodeGenerator : IASTVisitor {
 		_firstAvailable = 0;
 		_maxRegUsed = -1;
 		_variableRegs.Clear();
+		_namedStack.Clear();
 
 		// Reserve index 0 for @main
 		_functions.Clear();
@@ -325,7 +354,7 @@ public class CodeGenerator : IASTVisitor {
 		// Get or allocate register for this variable
 		Int32 varReg;
 		if (_variableRegs.TryGetValue(node.Variable, out varReg)) {
-			// Variable already has a register - reuse it (and don't bother with naming)
+			// Variable already has a register - reuse it
 		} else {
 			// Hmm.  Should we allocate a new register for this variable, or
 			// just claim the target register as our storage?  I'm going to alloc
@@ -334,9 +363,12 @@ public class CodeGenerator : IASTVisitor {
 			// this later and see if we can optimize it more.
 			varReg = AllocReg();
 			_variableRegs[node.Variable] = varReg;
-			Int32 nameIdx = _emitter.AddConstant(make_string(node.Variable));
-			_emitter.EmitAB(Opcode.NAME_rA_kBC, varReg, nameIdx, $"use r{varReg} for {node.Variable}");
 		}
+		// Emit a NAME op unless one already dominates this point.  This must run
+		// on every path that assigns the variable, including conditional branches
+		// (e.g. the else clause of a single-line if), or the variable would be
+		// undefined at runtime when only that path executes.
+		EnsureNamed(node.Variable, varReg);
 		// If the RHS is a function expression, note the current function count so we
 		// can assign the variable name to the resulting FuncDef afterward.
 		FunctionNode rhsFunc = node.Value as FunctionNode;
@@ -859,7 +891,7 @@ public class CodeGenerator : IASTVisitor {
 		FreeReg(condReg);
 
 		// Compile body statements
-		CompileBody(node.Body);
+		CompileConditionalBody(node.Body);
 
 		// Jump back to loopStart
 		_emitter.EmitJump(Opcode.JUMP_iABC, loopStart, "loop back");
@@ -896,7 +928,7 @@ public class CodeGenerator : IASTVisitor {
 		FreeReg(condReg);
 
 		// Compile "then" body
-		CompileBody(node.ThenBody);
+		CompileConditionalBody(node.ThenBody);
 
 		// Jump over else body (if there is one)
 		if (node.ElseBody.Count > 0) {
@@ -906,7 +938,7 @@ public class CodeGenerator : IASTVisitor {
 			_emitter.PlaceLabel(elseLabel);
 
 			// Compile "else" body
-			CompileBody(node.ElseBody);
+			CompileConditionalBody(node.ElseBody);
 		}
 
 		// Place afterIf label
@@ -956,9 +988,10 @@ public class CodeGenerator : IASTVisitor {
 		} else {
 			varReg = AllocReg();
 			_variableRegs[node.Variable] = varReg;
-			Int32 nameIdx = _emitter.AddConstant(make_string(node.Variable));
-			_emitter.EmitAB(Opcode.NAME_rA_kBC, varReg, nameIdx, $"use r{varReg} for {node.Variable}");
 		}
+		// The loop variable is assigned each iteration; this NAME runs once before
+		// the loop, so it dominates the body but not code after a zero-iteration loop.
+		EnsureNamed(node.Variable, varReg);
 
 		// Place loopStart label
 		_emitter.PlaceLabel(loopStart);
@@ -972,7 +1005,7 @@ public class CodeGenerator : IASTVisitor {
 		_emitter.EmitABC(Opcode.ITERGET_rA_rB_rC, varReg, listReg, indexReg, $"{node.Variable} = iterget(container, index)");
 
 		// Compile body statements
-		CompileBody(node.Body);
+		CompileConditionalBody(node.Body);
 
 		// Jump back to loopStart
 		_emitter.EmitJump(Opcode.JUMP_iABC, loopStart, "loop back");
@@ -1102,6 +1135,9 @@ public class CodeGenerator : IASTVisitor {
 			innerGen._variableRegs[name] = paramReg;
 			Int32 nameIdx = innerEmitter.AddConstant(make_string(name));
 			innerEmitter.EmitAB(Opcode.NAME_rA_kBC, paramReg, nameIdx, $"param {name}");
+			// Params are named unconditionally at function entry, so reassigning
+			// one in the body needn't re-emit NAME.
+			innerGen._namedStack.Add(name);
 		}
 
 		// Check for a docstring: if the first body statement is a string literal,

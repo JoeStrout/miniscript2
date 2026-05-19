@@ -22,6 +22,7 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 	private: Int32 _firstAvailable; // Lowest index that might be free
 	private: Int32 _maxRegUsed; // High water mark for register usage
 	private: Dictionary<String, Int32> _variableRegs; // variable name -> register
+	private: List<String> _namedStack; // variables whose NAME op dominates the current point (stack-disciplined by conditional nesting)
 	private: Int32 _targetReg; // Target register for next expression (-1 = allocate)
 	private: List<Int32> _loopExitLabels; // Stack of loop exit labels for break
 	private: List<Int32> _loopContinueLabels; // Stack of loop continue labels for continue
@@ -63,6 +64,19 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 	// Compile a list of statements (a block body).
 	// Resets temporary registers before each statement.
 	private: void CompileBody(List<ASTNode> body);
+
+	// Compile a body of statements that executes conditionally (an if/else branch
+	// or a loop body).  A NAME op emitted inside this body does not dominate code
+	// after it, so any names recorded while compiling the body are forgotten on
+	// exit (the body's names sit at the tail of _namedStack, since any nested
+	// conditional bodies have already been entered and exited).
+	private: void CompileConditionalBody(List<ASTNode> body);
+
+	// Ensure a NAME op has been emitted for the given variable on a path that
+	// dominates the current point.  If not, emit one now and record it.  This is
+	// what makes a variable "exist" at runtime; it must run on every path that
+	// assigns the variable (e.g. both branches of a single-line if).
+	private: void EnsureNamed(String varName, Int32 varReg);
 
 	// Compile a complete function from a single expression/statement
 	public: FuncDef CompileFunction(ASTNode ast, String funcName);
@@ -197,6 +211,8 @@ struct CodeGenerator : public IASTVisitor {
 	private: void set__maxRegUsed(Int32 _v); // High water mark for register usage
 	private: Dictionary<String, Int32> _variableRegs(); // variable name -> register
 	private: void set__variableRegs(Dictionary<String, Int32> _v); // variable name -> register
+	private: List<String> _namedStack(); // variables whose NAME op dominates the current point (stack-disciplined by conditional nesting)
+	private: void set__namedStack(List<String> _v); // variables whose NAME op dominates the current point (stack-disciplined by conditional nesting)
 	private: Int32 _targetReg(); // Target register for next expression (-1 = allocate)
 	private: void set__targetReg(Int32 _v); // Target register for next expression (-1 = allocate)
 	private: List<Int32> _loopExitLabels(); // Stack of loop exit labels for break
@@ -246,6 +262,19 @@ struct CodeGenerator : public IASTVisitor {
 	// Compile a list of statements (a block body).
 	// Resets temporary registers before each statement.
 	private: inline void CompileBody(List<ASTNode> body);
+
+	// Compile a body of statements that executes conditionally (an if/else branch
+	// or a loop body).  A NAME op emitted inside this body does not dominate code
+	// after it, so any names recorded while compiling the body are forgotten on
+	// exit (the body's names sit at the tail of _namedStack, since any nested
+	// conditional bodies have already been entered and exited).
+	private: inline void CompileConditionalBody(List<ASTNode> body);
+
+	// Ensure a NAME op has been emitted for the given variable on a path that
+	// dominates the current point.  If not, emit one now and record it.  This is
+	// what makes a variable "exist" at runtime; it must run on every path that
+	// assigns the variable (e.g. both branches of a single-line if).
+	private: inline void EnsureNamed(String varName, Int32 varReg);
 
 	// Compile a complete function from a single expression/statement
 	public: inline FuncDef CompileFunction(ASTNode ast, String funcName);
@@ -372,6 +401,8 @@ inline Int32 CodeGenerator::_maxRegUsed() { return get()->_maxRegUsed; } // High
 inline void CodeGenerator::set__maxRegUsed(Int32 _v) { get()->_maxRegUsed = _v; } // High water mark for register usage
 inline Dictionary<String, Int32> CodeGenerator::_variableRegs() { return get()->_variableRegs; } // variable name -> register
 inline void CodeGenerator::set__variableRegs(Dictionary<String, Int32> _v) { get()->_variableRegs = _v; } // variable name -> register
+inline List<String> CodeGenerator::_namedStack() { return get()->_namedStack; } // variables whose NAME op dominates the current point (stack-disciplined by conditional nesting)
+inline void CodeGenerator::set__namedStack(List<String> _v) { get()->_namedStack = _v; } // variables whose NAME op dominates the current point (stack-disciplined by conditional nesting)
 inline Int32 CodeGenerator::_targetReg() { return get()->_targetReg; } // Target register for next expression (-1 = allocate)
 inline void CodeGenerator::set__targetReg(Int32 _v) { get()->_targetReg = _v; } // Target register for next expression (-1 = allocate)
 inline List<Int32> CodeGenerator::_loopExitLabels() { return get()->_loopExitLabels; } // Stack of loop exit labels for break
@@ -393,6 +424,8 @@ inline Int32 CodeGenerator::GetTargetOrAlloc() { return get()->GetTargetOrAlloc(
 inline Int32 CodeGenerator::Compile(ASTNode ast) { return get()->Compile(ast); }
 inline void CodeGenerator::ResetTempRegisters() { return get()->ResetTempRegisters(); }
 inline void CodeGenerator::CompileBody(List<ASTNode> body) { return get()->CompileBody(body); }
+inline void CodeGenerator::CompileConditionalBody(List<ASTNode> body) { return get()->CompileConditionalBody(body); }
+inline void CodeGenerator::EnsureNamed(String varName,Int32 varReg) { return get()->EnsureNamed(varName, varReg); }
 inline FuncDef CodeGenerator::CompileFunction(ASTNode ast,String funcName) { return get()->CompileFunction(ast, funcName); }
 inline List<FuncDef> CodeGenerator::CompileImport(List<ASTNode> statements,String funcName) { return get()->CompileImport(statements, funcName); }
 inline FuncDef CodeGenerator::CompileProgram(List<ASTNode> statements,String funcName) { return get()->CompileProgram(statements, funcName); }

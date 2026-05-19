@@ -911,6 +911,13 @@ One side-effect of this code, though, is that at least make_funcref and related 
 
 Sometime soon I need to audit our conversion of Values to value strings or host Strings, because right now I think that's being done inconsistently, and often inefficiently.
 
+I discovered a little bug with variable name tracking in the compiler.  The symptom was: if you did something like `if false then x=1 else x=2`, where `x` was not previously defined, it would still be undefined afterwards.  The compiler was doing the assignment, but not including the NAME opcode in the `else` block, because it figured the variable was already named (in the `then` block).
+
+To solve this properly, without just emitting NAME on every assignment, we're now keeping track of the conditional depth (block indent level) where a variable was named, clearing those records when we reduce our depth (`end if`, `end for` etc.).  So within any block, we should be able to do multiple assignments without extra NAMEs, but we should still get them wherever we might need them.
+
+I discovered this bug by trying to run lib/vt.ms -- as we run more existing code with MS2, I'm sure we'll find more!  But for now that demo, at least, is working perfectly (after also fixing an output delimiter bug in the App class).  Real progress.
+
+
 
 
 

@@ -208,8 +208,8 @@ public struct App {
 	// Create an Interpreter with standard output wiring
 	private static Interpreter CreateInterpreter() {
 		Interpreter interp = new Interpreter();
-		interp.standardOutput = (String s, bool eol) => { IOHelper.Print(s); }; // CPP:
-		// CPP: interp.set_standardOutput([](String s, Boolean) { IOHelper::Print(s); });
+		interp.standardOutput = (String s, bool addLineBreak) => { if (addLineBreak) IOHelper.Print(s); else IOHelper.PrintNoCR(s); }; // CPP:
+		// CPP: interp.set_standardOutput([](String s, Boolean addLineBreak) { if (addLineBreak) IOHelper::Print(s); else IOHelper::PrintNoCR(s); });
 		interp.errorOutput = (String s, bool eol) => { IOHelper.Print(s); }; // CPP:
 		// CPP: interp.set_errorOutput([](String s, Boolean) { IOHelper::Print(s); });
 		return interp;

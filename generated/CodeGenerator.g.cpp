@@ -13,6 +13,7 @@ CodeGeneratorStorage::CodeGeneratorStorage(CodeEmitterBase emitter) {
 	_firstAvailable = 0;
 	_maxRegUsed = -1;
 	_variableRegs =  Dictionary<String, Int32>::New();
+	_namedStack =  List<String>::New();
 	_targetReg = -1;
 	_loopExitLabels =  List<Int32>::New();
 	_loopContinueLabels =  List<Int32>::New();
@@ -137,12 +138,26 @@ void CodeGeneratorStorage::CompileBody(List<ASTNode> body) {
 		body[i].Accept(_this);
 	}
 }
+void CodeGeneratorStorage::CompileConditionalBody(List<ASTNode> body) {
+	Int32 mark = _namedStack.Count();
+	CompileBody(body);
+	while (_namedStack.Count() > mark) _namedStack.RemoveAt(_namedStack.Count() - 1);
+}
+void CodeGeneratorStorage::EnsureNamed(String varName,Int32 varReg) {
+	for (Int32 i = 0; i < _namedStack.Count(); i++) {
+		if (_namedStack[i] == varName) return;
+	}
+	Int32 nameIdx = _emitter.AddConstant(make_string(varName));
+	_emitter.EmitAB(Opcode::NAME_rA_kBC, varReg, nameIdx, Interp("use r{} for {}", varReg, varName));
+	_namedStack.Add(varName);
+}
 FuncDef CodeGeneratorStorage::CompileFunction(ASTNode ast,String funcName) {
 	CodeGenerator _this(std::static_pointer_cast<CodeGeneratorStorage>(shared_from_this()));
 	_regInUse.Clear();
 	_firstAvailable = 0;
 	_maxRegUsed = -1;
 	_variableRegs.Clear();
+	_namedStack.Clear();
 
 	Int32 resultReg = ast.Accept(_this);
 
@@ -159,6 +174,7 @@ List<FuncDef> CodeGeneratorStorage::CompileImport(List<ASTNode> statements,Strin
 	_firstAvailable = 0;
 	_maxRegUsed = -1;
 	_variableRegs.Clear();
+	_namedStack.Clear();
 
 	_functions.Clear();
 	_functions.Add(nullptr);
@@ -182,6 +198,7 @@ FuncDef CodeGeneratorStorage::CompileProgram(List<ASTNode> statements,String fun
 	_firstAvailable = 0;
 	_maxRegUsed = -1;
 	_variableRegs.Clear();
+	_namedStack.Clear();
 
 	// Reserve index 0 for @main
 	_functions.Clear();
@@ -270,7 +287,7 @@ Int32 CodeGeneratorStorage::Visit(AssignmentNode node) {
 	// Get or allocate register for this variable
 	Int32 varReg;
 	if (_variableRegs.TryGetValue(node.Variable(), &varReg)) {
-		// Variable already has a register - reuse it (and don't bother with naming)
+		// Variable already has a register - reuse it
 	} else {
 		// Hmm.  Should we allocate a new register for this variable, or
 		// just claim the target register as our storage?  I'm going to alloc
@@ -279,9 +296,12 @@ Int32 CodeGeneratorStorage::Visit(AssignmentNode node) {
 		// this later and see if we can optimize it more.
 		varReg = AllocReg();
 		_variableRegs[node.Variable()] = varReg;
-		Int32 nameIdx = _emitter.AddConstant(make_string(node.Variable()));
-		_emitter.EmitAB(Opcode::NAME_rA_kBC, varReg, nameIdx, Interp("use r{} for {}", varReg, node.Variable()));
 	}
+	// Emit a NAME op unless one already dominates this point.  This must run
+	// on every path that assigns the variable, including conditional branches
+	// (e.g. the else clause of a single-line if), or the variable would be
+	// undefined at runtime when only that path executes.
+	EnsureNamed(node.Variable(), varReg);
 	// If the RHS is a function expression, note the current function count so we
 	// can assign the variable name to the resulting FuncDef afterward.
 	FunctionNode rhsFunc = As<FunctionNode, FunctionNodeStorage>(node.Value());
@@ -788,7 +808,7 @@ Int32 CodeGeneratorStorage::Visit(WhileNode node) {
 	FreeReg(condReg);
 
 	// Compile body statements
-	CompileBody(node.Body());
+	CompileConditionalBody(node.Body());
 
 	// Jump back to loopStart
 	_emitter.EmitJump(Opcode::JUMP_iABC, loopStart, "loop back");
@@ -825,7 +845,7 @@ Int32 CodeGeneratorStorage::Visit(IfNode node) {
 	FreeReg(condReg);
 
 	// Compile "then" body
-	CompileBody(node.ThenBody());
+	CompileConditionalBody(node.ThenBody());
 
 	// Jump over else body (if there is one)
 	if (node.ElseBody().Count() > 0) {
@@ -835,7 +855,7 @@ Int32 CodeGeneratorStorage::Visit(IfNode node) {
 		_emitter.PlaceLabel(elseLabel);
 
 		// Compile "else" body
-		CompileBody(node.ElseBody());
+		CompileConditionalBody(node.ElseBody());
 	}
 
 	// Place afterIf label
@@ -885,9 +905,10 @@ Int32 CodeGeneratorStorage::Visit(ForNode node) {
 	} else {
 		varReg = AllocReg();
 		_variableRegs[node.Variable()] = varReg;
-		Int32 nameIdx = _emitter.AddConstant(make_string(node.Variable()));
-		_emitter.EmitAB(Opcode::NAME_rA_kBC, varReg, nameIdx, Interp("use r{} for {}", varReg, node.Variable()));
 	}
+	// The loop variable is assigned each iteration; this NAME runs once before
+	// the loop, so it dominates the body but not code after a zero-iteration loop.
+	EnsureNamed(node.Variable(), varReg);
 
 	// Place loopStart label
 	_emitter.PlaceLabel(loopStart);
@@ -901,7 +922,7 @@ Int32 CodeGeneratorStorage::Visit(ForNode node) {
 	_emitter.EmitABC(Opcode::ITERGET_rA_rB_rC, varReg, listReg, indexReg, Interp("{} = iterget(container, index)", node.Variable()));
 
 	// Compile body statements
-	CompileBody(node.Body());
+	CompileConditionalBody(node.Body());
 
 	// Jump back to loopStart
 	_emitter.EmitJump(Opcode::JUMP_iABC, loopStart, "loop back");
@@ -1023,6 +1044,9 @@ Int32 CodeGeneratorStorage::Visit(FunctionNode node) {
 		innerGen._variableRegs()[name] = paramReg;
 		Int32 nameIdx = innerEmitter.AddConstant(make_string(name));
 		innerEmitter.EmitAB(Opcode::NAME_rA_kBC, paramReg, nameIdx, Interp("param {}", name));
+		// Params are named unconditionally at function entry, so reassigning
+		// one in the body needn't re-emit NAME.
+		innerGen._namedStack().Add(name);
 	}
 
 	// Check for a docstring: if the first body statement is a string literal,

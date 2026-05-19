@@ -174,7 +174,7 @@ demo = function
 		y += 1
 		if y > 11 then; y = 2; x += 13; end if
 	end for
-
+	
 	print bold + cursor.goto(7,45) + "*"
 	for ang in range(0,360*5,10)
 		row = round(7 + 4*sin(ang*pi/180))

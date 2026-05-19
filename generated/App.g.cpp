@@ -174,7 +174,7 @@ String App::GetPathFilename(String filePath) {
 }
 Interpreter App::CreateInterpreter() {
 	Interpreter interp =  Interpreter::New();
-	interp.set_standardOutput([](String s, Boolean) { IOHelper::Print(s); });
+	interp.set_standardOutput([](String s, Boolean addLineBreak) { if (addLineBreak) IOHelper::Print(s); else IOHelper::PrintNoCR(s); });
 	interp.set_errorOutput([](String s, Boolean) { IOHelper::Print(s); });
 	return interp;
 }

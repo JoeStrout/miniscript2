@@ -1182,6 +1182,12 @@ if x > 10 then if x < 20 then print "mid" else print "not mid"
 --------------------------------
 mid
 ================================
+// Make sure variable assignments in "else" clause fully work
+if false then aoeu = 1 else aoeu = 2
+print aoeu
+--------------------------------
+2
+================================
 ==== Block if (no else)
 ================================
 x = 5

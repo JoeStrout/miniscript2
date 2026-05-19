@@ -810,6 +810,11 @@ public class CodeGenerator : IASTVisitor {
 			Int32 receiverReg = indexTarget.Target.Accept(this);
 			Int32 keyReg = indexTarget.Index.Accept(this);
 
+			// Compile arguments before the method lookup, so that a METHFIND
+			// emitted while evaluating an argument can't clobber the pending
+			// self/super context for this call.
+			List<Int32> argRegs = CompileArguments(node.Arguments);
+
 			// Use METHFIND instead of INDEX
 			Int32 funcReg = AllocReg();
 			_emitter.EmitABC(Opcode.METHFIND_rA_rB_rC, funcReg, receiverReg, keyReg,
@@ -822,8 +827,6 @@ public class CodeGenerator : IASTVisitor {
 			}
 
 			FreeReg(keyReg);
-
-			List<Int32> argRegs = CompileArguments(node.Arguments);
 			Int32 resultReg = EmitCallSequence(funcReg, argRegs, explicitTarget, "method call via index");
 			FreeReg(funcReg);
 			FreeReg(receiverReg);
@@ -1383,6 +1386,12 @@ public class CodeGenerator : IASTVisitor {
 		Int32 explicitTarget = _targetReg;
 		_targetReg = -1;
 
+		// Compile arguments first.  Evaluating an argument expression may emit
+		// its own METHFIND (e.g. a member access like `self.name`), which would
+		// clobber the pending self/super context.  By compiling args before the
+		// method lookup, nothing comes between METHFIND and CALL to disturb it.
+		List<Int32> argRegs = CompileArguments(arguments);
+
 		// Look up the method using METHFIND (walks __isa chain, sets pending self/super)
 		Int32 keyReg = AllocReg();
 		Int32 constIdx = _emitter.AddConstant(make_string(methodKey));
@@ -1397,8 +1406,6 @@ public class CodeGenerator : IASTVisitor {
 			Int32 selfReg = GetSelfReg();
 			_emitter.EmitA(Opcode.SETSELF_rA, selfReg, $"preserve self for super call");
 		}
-
-		List<Int32> argRegs = CompileArguments(arguments);
 		Int32 resultReg = EmitCallSequence(funcReg, argRegs, explicitTarget, $"method call {methodKey}");
 		FreeReg(funcReg);
 

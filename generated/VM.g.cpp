@@ -281,9 +281,17 @@ void VMStorage::Stop() {
 	IsRunning = Boolean(false);
 }
 void VMStorage::RaiseRuntimeError(String message) {
-	Value stack = (IsRunning && CurrentFunction) ? BuildStackTrace() : val_null;
-	Error = ErrorType::RuntimeError(message, stack);
+	Error = ErrorType::RuntimeError(message);
+	_errorStackPending = Boolean(true);
 	IsRunning = Boolean(false);
+}
+void VMStorage::FinalizeErrorStackTrace() {
+	_errorStackPending = Boolean(false);
+	if (!is_error(Error)) return;
+	Value stack = CurrentFunction ? BuildStackTrace() : val_null;
+	Int32 idx = value_item_index(Error);
+	GCError ge = GCManager::Errors.Get(idx);
+	GCManager::Errors.SetFields(idx, ge.Message, ge.Inner, stack, ge.Isa);
 }
 void VMStorage::RaiseRuntimeError(Value error) {
 	Error = error;
@@ -296,7 +304,23 @@ IntrinsicResult VMStorage::RaiseUncaughtError(Value error) {
 }
 bool VMStorage::ReportRuntimeError() {
 	if (is_null(Error)) return Boolean(false);
-	IOHelper::Print(StringUtils::Format("Runtime Error: {0}", StringUtils::Format("{0}", error_message(Error))));
+	String msg = StringUtils::Format("{0}", error_message(Error));
+	String loc = "";
+	Value stack = error_stack(Error);
+	if (is_list(stack) && list_count(stack) > 0) {
+		loc = StringUtils::Format("{0}", list_get(stack, 0));
+		// Drop the "(current program) " prefix used for the top-level
+		// script, leaving just "line N" for the common case.
+		String prefix = "(current program) ";
+		if (loc.Length() >= prefix.Length() && loc.Left(prefix.Length()) == prefix) {
+			loc = loc.Substring(prefix.Length());
+		}
+	}
+	if (loc == "") {
+		IOHelper::Print(StringUtils::Format("Runtime Error: {0}", msg));
+	} else {
+		IOHelper::Print(StringUtils::Format("Runtime Error: {0} [{1}]", msg, loc));
+	}
 	return Boolean(true);
 }
 Value VMStorage::BuildStackTrace() {
@@ -1450,7 +1474,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				// Now execute the CALL (step 6): push CallInfo and switch to callee
 				if (callStackTop >= callStack.Count()) {
 					RaiseRuntimeError("Call stack overflow");
-					return val_null;
+					VM_NEXT();
 				}
 
 				val = funcref_outer_vars(valC);
@@ -1470,7 +1494,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				// be processed as part of the ARGBLK opcode.  So if we get
 				// here, it's an error.
 				RaiseRuntimeError("Internal error: ARG without ARGBLK");
-				return val_null;
+				VM_NEXT();
 			}
 
 			VM_CASE(ARG_iABC) {
@@ -1478,7 +1502,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				// be processed as part of the ARGBLK opcode.  So if we get
 				// here, it's an error.
 				RaiseRuntimeError("Internal error: ARG without ARGBLK");
-				return val_null;
+				VM_NEXT();
 			}
 
 			VM_CASE(CALLF_iA_iBC) {

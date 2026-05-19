@@ -105,6 +105,12 @@ public class VM {
 	public Int32 BaseIndex { get; private set; }
 	public Value Error { get; private set; }
 
+	// True when a runtime error has been raised but its stack trace has not
+	// yet been attached.  Errors are often raised mid-instruction, before VM
+	// state (PC, CurrentFunction) has been saved; the stack trace is therefore
+	// built later, at the next SaveState, when that state is accurate.
+	private Boolean _errorStackPending = false;
+
 	// REPL mode: persistent globals VarMap shared across REPL entries.
 	// When set (not val_null), used instead of callStack[0].GetLocalVarMap for globals.
 	public Value ReplGlobals = val_null;
@@ -412,11 +418,24 @@ public class VM {
 	}
 
 	// Stop the VM with a runtime error described by a string message.
-	// Creates an error Value (with stack trace) and stores it in Error.
+	// Creates an error Value and stores it in Error.  The stack trace is
+	// attached later (see FinalizeErrorStackTrace), once VM state has been
+	// saved and accurately reflects the failing instruction.
 	public void RaiseRuntimeError(String message) {
-		Value stack = (IsRunning && CurrentFunction) ? BuildStackTrace() : val_null;
-		Error = ErrorType.RuntimeError(message, stack);
+		Error = ErrorType.RuntimeError(message);
+		_errorStackPending = true;
 		IsRunning = false;
+	}
+
+	// Attach a stack trace to a pending runtime error.  Called from SaveState,
+	// so that PC and CurrentFunction reflect the instruction that failed.
+	private void FinalizeErrorStackTrace() {
+		_errorStackPending = false;
+		if (!is_error(Error)) return;
+		Value stack = CurrentFunction ? BuildStackTrace() : val_null;
+		Int32 idx = value_item_index(Error);
+		GCError ge = GCManager.Errors.Get(idx);
+		GCManager.Errors.SetFields(idx, ge.Message, ge.Inner, stack, ge.Isa);
 	}
 
 	// Stop the VM with a pre-built error value (e.g. an uncaught user error).
@@ -438,7 +457,23 @@ public class VM {
 	// Returns false if there is no error.
 	public bool ReportRuntimeError() {
 		if (is_null(Error)) return false;
-		IOHelper.Print(StringUtils.Format("Runtime Error: {0}", StringUtils.Format("{0}", error_message(Error))));
+		String msg = StringUtils.Format("{0}", error_message(Error));
+		String loc = "";
+		Value stack = error_stack(Error);
+		if (is_list(stack) && list_count(stack) > 0) {
+			loc = StringUtils.Format("{0}", list_get(stack, 0));
+			// Drop the "(current program) " prefix used for the top-level
+			// script, leaving just "line N" for the common case.
+			String prefix = "(current program) ";
+			if (loc.Length >= prefix.Length && loc.Left(prefix.Length) == prefix) {
+				loc = loc.Substring(prefix.Length);
+			}
+		}
+		if (loc == "") {
+			IOHelper.Print(StringUtils.Format("Runtime Error: {0}", msg));
+		} else {
+			IOHelper.Print(StringUtils.Format("Runtime Error: {0} [{1}]", msg, loc));
+		}
 		return true;
 	}
 
@@ -1636,7 +1671,7 @@ public class VM {
 					// Now execute the CALL (step 6): push CallInfo and switch to callee
 					if (callStackTop >= callStack.Count) {
 						RaiseRuntimeError("Call stack overflow");
-						return val_null;
+						break;
 					}
 
 					val = funcref_outer_vars(valC);
@@ -1657,7 +1692,7 @@ public class VM {
 					// be processed as part of the ARGBLK opcode.  So if we get
 					// here, it's an error.
 					RaiseRuntimeError("Internal error: ARG without ARGBLK");
-					return val_null;
+					break;
 				}
 
 				case Opcode.ARG_iABC: {
@@ -1665,7 +1700,7 @@ public class VM {
 					// be processed as part of the ARGBLK opcode.  So if we get
 					// here, it's an error.
 					RaiseRuntimeError("Internal error: ARG without ARGBLK");
-					return val_null;
+					break;
 				}
 
 				case Opcode.CALLF_iA_iBC: {
@@ -2122,6 +2157,7 @@ public class VM {
 		PC = pc;
 		BaseIndex = baseIndex;
 		CurrentFunction = currentFunc;
+		if (_errorStackPending) FinalizeErrorStackTrace();
 	}
 
 	public Value LookupParamByName(String varName) {

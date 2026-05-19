@@ -52,6 +52,7 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	public: Boolean IsRunning;
 	public: Int32 BaseIndex;
 	public: Value Error;
+	private: Boolean _errorStackPending = false;
 	public: Value ReplGlobals = val_null;
 	private: Value pendingSelf;
 	private: Value pendingSuper;
@@ -72,6 +73,11 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	// Invariant: callStackTop >= 1 during all execution (set up in Reset).
 
 	// Execution state (persistent across RunSteps calls)
+
+	// True when a runtime error has been raised but its stack trace has not
+	// yet been attached.  Errors are often raised mid-instruction, before VM
+	// state (PC, CurrentFunction) has been saved; the stack trace is therefore
+	// built later, at the next SaveState, when that state is accurate.
 
 	// REPL mode: persistent globals VarMap shared across REPL entries.
 	// When set (not val_null), used instead of callStack[0].GetLocalVarMap for globals.
@@ -154,8 +160,14 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	public: void Stop();
 
 	// Stop the VM with a runtime error described by a string message.
-	// Creates an error Value (with stack trace) and stores it in Error.
+	// Creates an error Value and stores it in Error.  The stack trace is
+	// attached later (see FinalizeErrorStackTrace), once VM state has been
+	// saved and accurately reflects the failing instruction.
 	public: void RaiseRuntimeError(String message);
+
+	// Attach a stack trace to a pending runtime error.  Called from SaveState,
+	// so that PC and CurrentFunction reflect the instruction that failed.
+	private: void FinalizeErrorStackTrace();
 
 	// Stop the VM with a pre-built error value (e.g. an uncaught user error).
 	public: void RaiseRuntimeError(Value error);
@@ -290,6 +302,8 @@ struct VM {
 	public: void set_BaseIndex(Int32 _v);
 	public: Value Error();
 	public: void set_Error(Value _v);
+	private: Boolean _errorStackPending();
+	private: void set__errorStackPending(Boolean _v);
 	public: Value ReplGlobals();
 	public: void set_ReplGlobals(Value _v);
 	private: Value pendingSelf();
@@ -321,6 +335,11 @@ struct VM {
 	// Invariant: callStackTop >= 1 during all execution (set up in Reset).
 
 	// Execution state (persistent across RunSteps calls)
+
+	// True when a runtime error has been raised but its stack trace has not
+	// yet been attached.  Errors are often raised mid-instruction, before VM
+	// state (PC, CurrentFunction) has been saved; the stack trace is therefore
+	// built later, at the next SaveState, when that state is accurate.
 
 	// REPL mode: persistent globals VarMap shared across REPL entries.
 	// When set (not val_null), used instead of callStack[0].GetLocalVarMap for globals.
@@ -402,8 +421,14 @@ struct VM {
 	public: inline void Stop();
 
 	// Stop the VM with a runtime error described by a string message.
-	// Creates an error Value (with stack trace) and stores it in Error.
+	// Creates an error Value and stores it in Error.  The stack trace is
+	// attached later (see FinalizeErrorStackTrace), once VM state has been
+	// saved and accurately reflects the failing instruction.
 	public: inline void RaiseRuntimeError(String message);
+
+	// Attach a stack trace to a pending runtime error.  Called from SaveState,
+	// so that PC and CurrentFunction reflect the instruction that failed.
+	private: inline void FinalizeErrorStackTrace();
 
 	// Stop the VM with a pre-built error value (e.g. an uncaught user error).
 	public: inline void RaiseRuntimeError(Value error);
@@ -520,6 +545,8 @@ inline Int32 VM::BaseIndex() { return get()->BaseIndex; }
 inline void VM::set_BaseIndex(Int32 _v) { get()->BaseIndex = _v; }
 inline Value VM::Error() { return get()->Error; }
 inline void VM::set_Error(Value _v) { get()->Error = _v; }
+inline Boolean VM::_errorStackPending() { return get()->_errorStackPending; }
+inline void VM::set__errorStackPending(Boolean _v) { get()->_errorStackPending = _v; }
 inline Value VM::ReplGlobals() { return get()->ReplGlobals; }
 inline void VM::set_ReplGlobals(Value _v) { get()->ReplGlobals = _v; }
 inline Value VM::pendingSelf() { return get()->pendingSelf; }
@@ -564,6 +591,7 @@ inline void VM::Reset(List<FuncDef> allFunctions) { return get()->Reset(allFunct
 inline void VM::Reset(List<FuncDef> allFunctions,Value replGlobals) { return get()->Reset(allFunctions, replGlobals); }
 inline void VM::Stop() { return get()->Stop(); }
 inline void VM::RaiseRuntimeError(String message) { return get()->RaiseRuntimeError(message); }
+inline void VM::FinalizeErrorStackTrace() { return get()->FinalizeErrorStackTrace(); }
 inline void VM::RaiseRuntimeError(Value error) { return get()->RaiseRuntimeError(error); }
 inline IntrinsicResult VM::RaiseUncaughtError(Value error) { return get()->RaiseUncaughtError(error); }
 inline bool VM::ReportRuntimeError() { return get()->ReportRuntimeError(); }
@@ -600,6 +628,7 @@ inline void VMStorage::SaveState(Int32 pc,Int32 baseIndex,FuncDef currentFunc) {
 	PC = pc;
 	BaseIndex = baseIndex;
 	CurrentFunction = currentFunc;
+	if (_errorStackPending) FinalizeErrorStackTrace();
 }
 inline Value VM::LookupParamByName(String varName) { return get()->LookupParamByName(varName); }
 inline Value VM::LookupVariable(Value varName) { return get()->LookupVariable(varName); }

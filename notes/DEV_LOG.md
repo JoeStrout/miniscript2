@@ -919,6 +919,10 @@ I discovered this bug by trying to run lib/vt.ms -- as we run more existing code
 
 Trying to run textAdventure.ms uncovered a somewhat deep bug with `super`.  We need a register to hold the `super` value, and that needs to be pre-allocated right up front, when the VM needs to store it, and not allocated later (which might reuse some register that already clobbered a value stored by the VM).  But *most* methods don't need `super`, so I don't want to reserve a register for it in every one.  So I'm going to scan the AST and see if it's actually using `super` before allocating it a register.
 
+With that fix, textAdventure.ms gets much farther, but later errors out with a "can't index into null" error.  And that one is harder to pin down because it doesn't include a line number.  So, I'm taking a side-quest to get line numbers on those error reports.  (This was mostly implemented already, but failing on some edge cases.)
+
+
+
 
 
 

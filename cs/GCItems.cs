@@ -31,6 +31,8 @@ public struct GCString : IGCItem {
 public struct GCList : IGCItem {
 	public List<Value> Items;
 	public Boolean Frozen;
+	// ToDo: add Computed flag, and support for computed lists
+	// (making Items private so we can hide the details)
 
 	[MethodImpl(AggressiveInlining)]
 	public void Init(Int32 capacity = 8) {

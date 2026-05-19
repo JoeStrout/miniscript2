@@ -923,6 +923,10 @@ With that fix, textAdventure.ms gets much farther, but later errors out with a "
 
 And another -- looks like adding error types, with the cool `someErr or otherValue` semantics, has broken short-circuiting in general.  And getting it back, without losing the error semantics, is a bit tricky.  The fix involved adding a new opcode (BRERR) which branches if the register contains an error, and some tweaks to the code generated for `if`, `and`, and `or`.
 
+So, after the initial refactoring, today has been mostly finding and fixing bugs by attempting to run existing code from the MiniScript command-line demos.  The superstartrek demo was especially good at probing edge cases.  But those are all resolved now, and the demos are working well!
+
+I've been leaving "ToDo" comments pretty liberally in the code wherever I spot an opportunity for improvement, without the time to address it immediately.  To supplement that, I just asked Claude Opus to analyze the C# and C++ code, looking for opportunities for improvement (OFIs).  It wrote up its suggestions in [OFI.md](notes/OFI.md).  Next week -- if not before -- I will start going through these ToDo's and OFIs, improving the code as much as I can.
+
 
 
 

@@ -578,7 +578,8 @@ Transpiler.transformStatement = function(trimmedLine)
 		else if tokens[i] == "new" then
 			// when `new` is followed by the name of a C# class (which we convert
 			// using our storage-wrapper pattern), call the `New()` static method instead.
-			cl = self.findClass(tokens[i+2])  // (skipping space)
+			cl = null
+			if i+2 < tokens.len then cl = self.findClass(tokens[i+2])  // (skipping space)
 			if cl and cl.type == ClassType.CLASS then
 				tokens.remove i  // remove "new"; i now points to " "
 				tok = tokens[i+1]  // should be something like `Foo` or `Dictionary<Foo, Bar>`

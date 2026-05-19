@@ -11,6 +11,7 @@
 #include "GCManager.g.h"
 
 namespace MiniScript {
+typedef void (*VoidCallback)();
 
 // DECLARATIONS
 
@@ -77,6 +78,10 @@ class CoreIntrinsics {
 	private: static Value _gcMap;
 	private: static Intrinsic _gcCollectIntr;
 	private: static Intrinsic _gcStatsIntr;
+	
+	private: static List<VoidCallback> _invalidateCallbacks;
+
+	public: static void RegisterInvalidateCallback(VoidCallback callback);
 
 	public: static void InvalidateTypeMaps();
 

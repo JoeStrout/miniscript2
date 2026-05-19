@@ -35,6 +35,11 @@ class ErrorType {
 	// Create a runtime error value with the given message (no stack trace).
 	public: static Value RuntimeError(String msg);
 	
+	// Create a file error value with the given message.
+	// All file-I/O failures funnel through here so the error type can be
+	// refined later (e.g., give it a dedicated "file.Error" __isa prototype).
+	public: static Value FileError(String msg);
+
 	// ToDo: provide a factory for parameter errors, and another specifically for
 	// "number required, but got <some other type>" errors, and then use this in
 	// various numeric intrinsics (sin, cos, round, etc.) and anywhere else appropriate.

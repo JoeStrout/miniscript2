@@ -83,6 +83,13 @@ public class Intrinsic {
 		return null;
 	}
 
+	public static Int32 AllCount() {	// ToDo: isn't this redundant with Count, above?
+		return _all.Count;
+	}
+	public static Intrinsic GetByIndex(Int32 i) {
+		return _all[i];
+	}
+
 	public Value GetFunc() {
 		return make_funcref(_funcIndex, val_null);
 	}

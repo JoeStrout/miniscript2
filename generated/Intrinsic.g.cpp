@@ -53,6 +53,12 @@ Intrinsic IntrinsicStorage::GetByName(String name) {
 	}
 	return nullptr;
 }
+Int32 IntrinsicStorage::AllCount() { // ToDo: isn't this redundant with Count, above?
+	return _all.Count();
+}
+Intrinsic IntrinsicStorage::GetByIndex(Int32 i) {
+	return _all[i];
+}
 Value IntrinsicStorage::GetFunc() {
 	return make_funcref(_funcIndex, val_null);
 }

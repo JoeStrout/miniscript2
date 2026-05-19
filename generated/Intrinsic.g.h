@@ -49,6 +49,9 @@ class IntrinsicStorage : public std::enable_shared_from_this<IntrinsicStorage> {
 
 	public: static Intrinsic GetByName(String name);
 
+	public: static Int32 AllCount(); // ToDo: isn't this redundant with Count, above?
+	public: static Intrinsic GetByIndex(Int32 i);
+
 	public: Value GetFunc();
 
 	// Build a FuncDef from this intrinsic's definition.
@@ -109,6 +112,9 @@ struct Intrinsic {
 	public: inline void AddParam(String name, Value defaultValue);
 
 	public: static Intrinsic GetByName(String name) { return IntrinsicStorage::GetByName(name); }
+
+	public: static Int32 AllCount() { return IntrinsicStorage::AllCount(); } // ToDo: isn't this redundant with Count, above?
+	public: static Intrinsic GetByIndex(Int32 i) { return IntrinsicStorage::GetByIndex(i); }
 
 	public: inline Value GetFunc();
 

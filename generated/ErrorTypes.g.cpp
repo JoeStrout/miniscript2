@@ -34,6 +34,9 @@ Value ErrorType::RuntimeError(String msg) {
 	if (is_null(runtime)) Init();
 	return make_error(make_string(msg), val_null, val_null, runtime);
 }
+Value ErrorType::FileError(String msg) {
+	return RuntimeError("File error: " + msg);
+}
 void ErrorType::MarkRoots(object user_data) {
 	GCManager::Mark(compiler);
 	GCManager::Mark(runtime);

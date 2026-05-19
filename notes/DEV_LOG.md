@@ -900,6 +900,9 @@ For example, it appears that `locals == globals` is not true, even at the global
 
 Turned to File next, but that leads to RawData, and _that_ leads to GCHandle, our last type of garbage-collected object, which we haven't actually implemented yet.  So, a side quest to go implement that.  It's a leaf type, like String, so it shouldn't be too complicated; it just needs some kind of raw user data, and a callback to be invoked when it is GC'd.
 
+So that's working nicely.  However, the way intrinsic module (like `file` and `gc` and their methods are managed is much more onerous than it was in MS1.  You currently have to delay registering the functions until after the VM has been initialized, register a callback to clear the cache of such functions when the machine is reset, etc.  And I'm not even sure it would work if you have multiple VMs going at once.  It's a mess.  I wonder if we can clean all that up by storing the function code right in the GCFunction, and ditch the whole concept of a "function index".
+
+
 
 
 

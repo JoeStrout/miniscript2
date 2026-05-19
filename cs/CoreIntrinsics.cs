@@ -21,6 +21,8 @@ using static MiniScript.ValueHelpers;
 
 namespace MiniScript {
 
+// H: typedef void (*VoidCallback)();
+
 public static class CoreIntrinsics {
 
 	static Random _random;  // CPP: 
@@ -1265,6 +1267,14 @@ public static class CoreIntrinsics {
 	private static Intrinsic _gcCollectIntr = null;
 	private static Intrinsic _gcStatsIntr = null;
 
+	public delegate void VoidCallback(); // H: 
+	private static List<VoidCallback> _invalidateCallbacks = null;
+
+	public static void RegisterInvalidateCallback(VoidCallback callback) {
+		if (_invalidateCallbacks == null) _invalidateCallbacks = new List<VoidCallback>();
+		_invalidateCallbacks.Add(callback);
+	}
+
 	public static void InvalidateTypeMaps() {
 		_listType = val_null;
 		_stringType = val_null;
@@ -1273,6 +1283,9 @@ public static class CoreIntrinsics {
 		_functionType = val_null;
 		_errorType = val_null;
 		_gcMap = val_null;
+		if (_invalidateCallbacks != null) {
+			for (Int32 i = 0; i < _invalidateCallbacks.Count; i++) _invalidateCallbacks[i]();
+		}
 		Intrinsic.ClearShortNames();
 	}
 

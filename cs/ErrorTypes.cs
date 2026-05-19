@@ -53,6 +53,13 @@ public static class ErrorType {
 		return make_error(make_string(msg), val_null, val_null, runtime);
 	}
 	
+	// Create a file error value with the given message.
+	// All file-I/O failures funnel through here so the error type can be
+	// refined later (e.g., give it a dedicated "file.Error" __isa prototype).
+	public static Value FileError(String msg) {
+		return RuntimeError("File error: " + msg);
+	}
+
 	// ToDo: provide a factory for parameter errors, and another specifically for
 	// "number required, but got <some other type>" errors, and then use this in
 	// various numeric intrinsics (sin, cos, round, etc.) and anywhere else appropriate.

@@ -35,8 +35,7 @@ void GCManager::Init() {
 	Errors          =  GCErrorSet::New();
 	Functions       =  GCFuncRefSet::New();
 	Handles         =  GCHandleSet::New();
-
-	  Dictionary<String, Int32>();
+	_internTable    = Dictionary<String, Int32>();
 	_roots          =  List<Value>::New();
 	_markCallbackFns  =  List<MarkCallback>::New();
 	_markCallbackData =  List<object>::New();

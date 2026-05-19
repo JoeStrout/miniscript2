@@ -1207,6 +1207,11 @@ Value CoreIntrinsics::GCMap() {
 Value CoreIntrinsics::_gcMap = val_null;
 Intrinsic CoreIntrinsics::_gcCollectIntr = nullptr;
 Intrinsic CoreIntrinsics::_gcStatsIntr = nullptr;
+List<VoidCallback> CoreIntrinsics::_invalidateCallbacks = nullptr;
+void CoreIntrinsics::RegisterInvalidateCallback(VoidCallback callback) {
+	if (IsNull(_invalidateCallbacks)) _invalidateCallbacks =  List<VoidCallback>::New();
+	_invalidateCallbacks.Add(callback);
+}
 void CoreIntrinsics::InvalidateTypeMaps() {
 	_listType = val_null;
 	_stringType = val_null;
@@ -1215,6 +1220,9 @@ void CoreIntrinsics::InvalidateTypeMaps() {
 	_functionType = val_null;
 	_errorType = val_null;
 	_gcMap = val_null;
+	if (!IsNull(_invalidateCallbacks)) {
+		for (Int32 i = 0; i < _invalidateCallbacks.Count(); i++) _invalidateCallbacks[i]();
+	}
 	Intrinsic::ClearShortNames();
 }
 

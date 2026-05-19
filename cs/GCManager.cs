@@ -69,8 +69,7 @@ public static class GCManager {
 		Errors          = new GCErrorSet();
 		Functions       = new GCFuncRefSet();
 		Handles         = new GCHandleSet();
-		_internTable    = new 
-		  Dictionary<String, Int32>(StringComparer.Ordinal); // CPP: Dictionary<String, Int32>();
+		_internTable    = new Dictionary<String, Int32>(StringComparer.Ordinal); // CPP: _internTable    = Dictionary<String, Int32>();
 		_roots          = new List<Value>();
 		_markCallbackFns  = new List<MarkCallback>();
 		_markCallbackData = new List<object>();

@@ -20,6 +20,17 @@ class ShellIntrinsics {
 	public: static Int32 ExitCode;
 	private: static Value _shellArgs;
 	private: static Value _envMap;
+	private: static Value _fileModuleMap;
+	private: static Value _fileHandleClassMap;
+	private: static Value _rawDataClassMap;
+	private: static Int32 _rdStart;
+	private: static List<String> _rdKeys;
+	private: static List<String> _fhKeys;
+	private: static List<String> _fmKeys;
+
+	// ── File module static fields ─────────────────────────────────────────────
+
+	// Platform-specific wrapper types for FileHandle and RawData.
 
 	// Populate _shellArgs from the given argument list, starting at startIdx.
 	// Call this from App.MainProgram after parsing command-line switches.
@@ -59,6 +70,127 @@ class ShellIntrinsics {
 	// Try to read a source file. Returns the file contents if the file exists,
 	// or null (empty string in C++) if it does not.  Used by the import intrinsic.
 	private: static String TryReadSource(String path);
+
+	// ── GCHandle finalizers ───────────────────────────────────────────────────
+
+	private: static void FileHandleFinalizer(object userData);
+
+	private: static void RawBufFinalizer(object userData);
+
+	// ── CS-only buffer-access helpers ────────────────────────────────────────
+
+	// ── RawData buffer helpers ────────────────────────────────────────────────
+
+	// Allocate a GCHandle wrapping a zero-filled buffer of `size` bytes.
+	private: static Value AllocRawBuf(Int32 size);
+
+	// Return the byte length of the buffer in `handleVal`, or -1 if invalid.
+	private: static Int32 GetRawBufLen(Value handleVal);
+
+	// Allocate new buffer of `newSize` bytes, copy old data, update self._handle.
+	private: static void ResizeRawBuf(Value self, Int32 newSize);
+
+	// Create a new RawData instance map backed by `handleVal`.
+	private: static Value NewRawDataInstance(Value handleVal);
+
+	// ── RawData typed accessors ───────────────────────────────────────────────
+	// Each getter returns -1 (or 0.0) on invalid handle/offset.
+	// Each setter silently no-ops on invalid inputs.
+
+	private: static Int32 RawGetByte(Value h, Int32 off);
+	private: static void RawSetByte(Value h, Int32 off, Int32 val);
+	private: static Int32 RawGetSByte(Value h, Int32 off);
+	private: static void RawSetSByte(Value h, Int32 off, Int32 val);
+	private: static Int32 RawGetU16(Value h, Int32 off, Boolean le);
+	private: static void RawSetU16(Value h, Int32 off, Int32 val, Boolean le);
+	private: static Int32 RawGetI16(Value h, Int32 off, Boolean le);
+	private: static void RawSetI16(Value h, Int32 off, Int32 val, Boolean le);
+	private: static Double RawGetU32(Value h, Int32 off, Boolean le);
+	private: static void RawSetU32(Value h, Int32 off, Double dval, Boolean le);
+	private: static Int32 RawGetI32(Value h, Int32 off, Boolean le);
+	private: static void RawSetI32(Value h, Int32 off, Int32 val, Boolean le);
+	private: static Double RawGetF32(Value h, Int32 off, Boolean le);
+	private: static void RawSetF32(Value h, Int32 off, Double dval, Boolean le);
+	private: static Double RawGetF64(Value h, Int32 off, Boolean le);
+	private: static void RawSetF64(Value h, Int32 off, Double dval, Boolean le);
+	private: static String RawGetUTF8(Value h, Int32 off, Int32 byteCount);
+	private: static Int32 RawSetUTF8(Value h, Int32 off, String val);
+
+	// ── FileHandle helpers ────────────────────────────────────────────────────
+
+	// Open a file and return a GCHandle value wrapping the native file handle.
+	// Returns val_null on failure.
+	private: static Value MakeFileHandle(String path, String mode);
+
+	// Close the file and mark the handle as closed (set Stream/f to null).
+	private: static void CloseFileHandle(Value handleVal);
+
+	private: static Boolean IsFileHandleOpen(Value handleVal);
+
+	private: static Int32 WriteToFile(Value handleVal, String data);
+
+	// Read up to `byteCount` bytes (or all remaining if < 0). Returns string.
+	private: static String ReadFromFile(Value handleVal, Int32 byteCount);
+
+	// Read the next line (stripped of trailing \n/\r\n). Returns val_null at EOF.
+	private: static Value ReadLineFromFile(Value handleVal);
+
+	private: static Int32 GetFilePosition(Value handleVal);
+
+	private: static Boolean IsFileAtEnd(Value handleVal);
+
+	private: static void SeekFilePosition(Value handleVal, Int32 pos);
+
+	// ── Filesystem helpers ────────────────────────────────────────────────────
+
+	private: static String FsCurrentDir();
+
+	private: static Boolean FsSetDir(String path);
+
+	private: static Value FsChildren(String path);
+
+	private: static String FsBasename(String path);
+
+	private: static String FsDirname(String path);
+
+	private: static String FsChild(String parent, String child);
+
+	private: static Boolean FsExists(String path);
+
+	// Returns a map {path, isDirectory, size, date} or val_null if path not found.
+	private: static Value FsInfo(String path);
+
+	private: static Boolean FsMakeDir(String path);
+
+	private: static Boolean FsMove(String oldPath, String newPath);
+
+	private: static Boolean FsCopy(String oldPath, String newPath);
+
+	private: static Boolean FsDelete(String path);
+
+	private: static Value FsReadLines(String path);
+
+	private: static Value FsWriteLines(String path, Value lines);
+
+	private: static Value FsLoadRaw(String path);
+
+	private: static Value FsSaveRaw(String path, Value rawDataMap);
+
+	// ── File module lazy map builders ────────────────────────────────────────
+	// These are called on first access, after Intrinsic.RegisterAll() has
+	// assigned real function indices to all intrinsics.
+
+	private: static Value GetRawDataClassMap();
+
+	private: static Value GetFileHandleClassMap();
+
+	private: static Value GetFileModuleMap();
+
+	// ── File module init ──────────────────────────────────────────────────────
+
+	// Register file/FileHandle/RawData intrinsics with internal names.
+	// Maps are built lazily via Get*Map() on first access after RegisterAll().
+	private: static void InitFileIntrinsics();
 
 	// Register all shell intrinsics.  Must be called before any Interpreter is Reset.
 	public: static void Init();

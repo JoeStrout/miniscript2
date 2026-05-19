@@ -770,7 +770,7 @@ public class CodeGenerator : IASTVisitor {
 		Int32 indexReg = node.Index.Accept(this);
 		String comment = $"{node.Target.ToStr()}[{node.Index.ToStr()}]";
 
-		EmitAccessOrInvoke(resultReg, targetReg, indexReg, addressOf, node.Target, comment);
+		EmitAccessOrInvoke(resultReg, targetReg, indexReg, addressOf, false, node.Target, comment);
 
 		FreeReg(indexReg);
 		FreeReg(targetReg);
@@ -819,20 +819,21 @@ public class CodeGenerator : IASTVisitor {
 		_emitter.EmitAB(Opcode.LOAD_rA_kBC, indexReg, constIdx, $"r{indexReg} = \"{node.Member}\"");
 		String comment = $"{node.Target.ToStr()}.{node.Member}";
 
-		EmitAccessOrInvoke(resultReg, targetReg, indexReg, addressOf, node.Target, comment);
+		EmitAccessOrInvoke(resultReg, targetReg, indexReg, addressOf, true, node.Target, comment);
 
 		FreeReg(indexReg);
 		FreeReg(targetReg);
 		return resultReg;
 	}
 
-	// Shared tail for VisitIndex/VisitMember: emit INDEX (address-of) or
-	// METHFIND + optional SETSELF + CALLIFREF (normal access with auto-invoke).
-	private void EmitAccessOrInvoke(Int32 resultReg, Int32 targetReg, Int32 indexReg, bool addressOf, ASTNode targetNode, String comment) {
+	// Shared tail for VisitIndex/VisitMember: emit INDEX (address-of),
+	// IDXGET (bracket access, no auto-invoke), or
+	// METHFIND + optional SETSELF + CALLIFREF (dot access with auto-invoke).
+	private void EmitAccessOrInvoke(Int32 resultReg, Int32 targetReg, Int32 indexReg, bool addressOf, bool isDotAccess, ASTNode targetNode, String comment) {
 		if (addressOf) {
 			_emitter.EmitABC(Opcode.INDEX_rA_rB_rC, resultReg, targetReg, indexReg,
 				$"@{comment}");
-		} else {
+		} else if (isDotAccess) {
 			_emitter.EmitABC(Opcode.METHFIND_rA_rB_rC, resultReg, targetReg, indexReg, comment);
 			SuperNode superTarget = targetNode as SuperNode;
 			if (superTarget != null) {
@@ -840,6 +841,9 @@ public class CodeGenerator : IASTVisitor {
 				_emitter.EmitA(Opcode.SETSELF_rA, selfReg, $"preserve self for super access");
 			}
 			_emitter.EmitA(Opcode.CALLIFREF_rA, resultReg, $"auto-invoke if funcref");
+		} else {
+			// Bracket access: look up value (with type-map fallback) but never auto-invoke a funcRef.
+			_emitter.EmitABC(Opcode.IDXGET_rA_rB_rC, resultReg, targetReg, indexReg, comment);
 		}
 	}
 

@@ -1250,7 +1250,28 @@ public static class CoreIntrinsics {
 			return new IntrinsicResult(GCMap());
 		};
 
+		// intrinsics — returns a map of all named intrinsic functions.
+		f = Intrinsic.Create("intrinsics");
+		f.Code = (Context ctx, IntrinsicResult partialResult) => {
+			return new IntrinsicResult(IntrinsicsMap());
+		};
+
 	}
+
+	public static Value IntrinsicsMap() {
+		if (is_null(_intrinsicsMap)) {
+			int count = Intrinsic.Count();
+			_intrinsicsMap = make_map(count);
+			for (Int32 i = 0; i < count; i++) {
+				Intrinsic intr = Intrinsic.GetByIndex(i);
+				if (intr == null || intr.Name == null || intr.Name.Length == 0) continue;
+				map_set(_intrinsicsMap, make_string(intr.Name), intr.GetFunc());
+			}
+			freeze_value(_intrinsicsMap);
+		}
+		return _intrinsicsMap;
+	}
+	private static Value _intrinsicsMap = val_null;
 
 	public static Value GCMap() {
 		if (is_null(_gcMap)) {
@@ -1281,6 +1302,7 @@ public static class CoreIntrinsics {
 		_functionType = val_null;
 		_errorType = val_null;
 		_gcMap = val_null;
+		_intrinsicsMap = val_null;
 		if (_invalidateCallbacks != null) {
 			for (Int32 i = 0; i < _invalidateCallbacks.Count; i++) _invalidateCallbacks[i]();
 		}

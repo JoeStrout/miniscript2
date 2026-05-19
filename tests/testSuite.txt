@@ -264,6 +264,15 @@ print 123.456789
 --------------------------------
 123.456789
 ================================
+// Scientific notation literals
+print 1E-12
+print 1e6
+print round(42 - 1E-12, 5)
+--------------------------------
+1.000000E-12
+1000000
+42
+================================
 ================================================================================
 ==== SECTION 2: STRING OPERATIONS
 ================================================================================
@@ -2267,7 +2276,7 @@ print dog.speak
 --------------------------------
 I am Rex
 ================================
-==== self: bracket-syntax method call
+==== self: bracket-syntax returns funcRef (no auto-invoke)
 ================================
 Animal = {}
 Animal.greet = function
@@ -2278,7 +2287,7 @@ cat.name = "Whiskers"
 f = "greet"
 print cat[f]
 --------------------------------
-Hello from Whiskers
+FuncRef(Animal.greet, closure)
 ================================
 ==== self: method inherited via __isa chain
 ================================
@@ -3425,9 +3434,9 @@ print funcs[0]
 print funcs[1]
 print funcs[2]
 --------------------------------
-3
-3
-3
+FuncRef(@f1, closure)
+FuncRef(@f1, closure)
+FuncRef(@f1, closure)
 ================================
 ================================================================================
 ==== SECTION 27: NULL IN EXPRESSIONS
@@ -4349,6 +4358,25 @@ foo.push ["random", @rnd]
 print foo
 --------------------------------
 [["random", FuncRef(rnd)]]
+================================
+==== intrinsics() returns a map of named intrinsic functions (bracket syntax)
+================================
+m = intrinsics
+print @m["abs"]
+fn = @m["abs"]
+print fn(-7)
+--------------------------------
+FuncRef(abs)
+7
+================================
+==== intrinsics() returns a map of named intrinsic functions (dot syntax)
+================================
+print @intrinsics.abs
+fn = @intrinsics.abs
+print fn(-7)
+--------------------------------
+FuncRef(abs)
+7
 ==== END OF TESTS
 ================================================================================
 

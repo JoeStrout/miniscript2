@@ -74,6 +74,9 @@ class CoreIntrinsics {
 
 	public: static void Init();
 
+	public: static Value IntrinsicsMap();
+	private: static Value _intrinsicsMap;
+
 	public: static Value GCMap();
 	private: static Value _gcMap;
 	private: static Intrinsic _gcCollectIntr;

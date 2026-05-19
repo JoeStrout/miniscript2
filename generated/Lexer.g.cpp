@@ -67,10 +67,27 @@ Token Lexer::NextToken() {
 				Advance();
 			}
 		}
+		// Check for exponent (e.g. 1E-12, 2.5e6)
+		bool hasExponent = Boolean(false);
+		if (_position < _input.Length() && (_input[_position] == 'E' || _input[_position] == 'e')) {
+			Int32 savedPos = _position;
+			Advance(); // consume 'E'/'e'
+			if (_position < _input.Length() && (_input[_position] == '+' || _input[_position] == '-')) {
+				Advance(); // consume sign
+			}
+			if (_position < _input.Length() && IsDigit(_input[_position])) {
+				while (_position < _input.Length() && IsDigit(_input[_position])) {
+					Advance();
+				}
+				hasExponent = Boolean(true);
+			} else {
+				_position = savedPos; // not a valid exponent; backtrack
+			}
+		}
 		String numStr = _input.Substring(start, _position - start);
 		Token tok = Token(TokenType::NUMBER, numStr, startLine, startColumn);
 		tok.AfterSpace = hadWhitespace;
-		if (numStr.Contains(".")) {
+		if (numStr.Contains(".") || hasExponent) {
 			tok.DoubleValue = StringUtils::ParseDouble(numStr);
 		} else {
 			tok.IntValue = StringUtils::ParseInt32(numStr);

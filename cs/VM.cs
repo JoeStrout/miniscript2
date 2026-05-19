@@ -1977,6 +1977,53 @@ public class VM {
 					break; // CPP: VM_NEXT();
 				}
 
+				case Opcode.IDXGET_rA_rB_rC: {
+					// Bracket-index lookup: R[A] = R[B][R[C]], with type-map fallback,
+					// but never auto-invokes a funcRef result.
+					Byte a = BytecodeUtil.Au(instruction);
+					Byte b = BytecodeUtil.Bu(instruction);
+					Byte c = BytecodeUtil.Cu(instruction);
+					valB = localStack[b];  // container
+					valC = localStack[c];  // index
+					typeMap = val_null;
+
+					if (is_map(valB)) {
+						if (map_lookup_with_origin(valB, valC, out val, out valD)) {
+							localStack[a] = val;
+							hasPendingContext = false;
+							break; // CPP: VM_NEXT();
+						}
+						typeMap = CoreIntrinsics.MapType();
+					} else if (is_list(valB)) {
+						typeMap = CoreIntrinsics.ListType();
+					} else if (is_string(valB)) {
+						typeMap = CoreIntrinsics.StringType();
+					} else if (is_number(valB)) {
+						typeMap = CoreIntrinsics.NumberType();
+					}
+					if (is_null(typeMap)) {
+						RaiseRuntimeError(StringUtils.Format("Can't index into {0}", valB));
+						localStack[a] = val_null;
+					} else if (map_try_get(typeMap, valC, out val)) {
+						localStack[a] = val;
+					} else if (is_number(valC)) {
+						int index = as_int(valC);
+						if (is_list(valB)) {
+							localStack[a] = list_get(valB, index);
+						} else if (is_string(valB)) {
+							localStack[a] = string_substring(valB, index, 1);
+						} else {
+							RaiseRuntimeError(StringUtils.Format("Can't index into {0}", valB));
+							localStack[a] = val_null;
+						}
+					} else {
+						RaiseRuntimeError(StringUtils.Format("Key Not Found: '{0}' not found in map", valC));
+						localStack[a] = val_null;
+					}
+					hasPendingContext = false;
+					break; // CPP: VM_NEXT();
+				}
+
 				case Opcode.SETSELF_rA: {
 					// Override pendingSelf with R[A] (used for super.method() calls)
 					Byte a = BytecodeUtil.Au(instruction);

@@ -1192,7 +1192,27 @@ void CoreIntrinsics::Init() {
 		return IntrinsicResult(GCMap());
 	});
 
+	// intrinsics — returns a map of all named intrinsic functions.
+	f = Intrinsic::Create("intrinsics");
+	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
+		return IntrinsicResult(IntrinsicsMap());
+	});
+
 }
+Value CoreIntrinsics::IntrinsicsMap() {
+	if (is_null(_intrinsicsMap)) {
+		int count = Intrinsic::Count();
+		_intrinsicsMap = make_map(count);
+		for (Int32 i = 0; i < count; i++) {
+			Intrinsic intr = Intrinsic::GetByIndex(i);
+			if (IsNull(intr) || IsNull(intr.Name()) || intr.Name().Length() == 0) continue;
+			map_set(_intrinsicsMap, make_string(intr.Name()), intr.GetFunc());
+		}
+		freeze_value(_intrinsicsMap);
+	}
+	return _intrinsicsMap;
+}
+Value CoreIntrinsics::_intrinsicsMap = val_null;
 Value CoreIntrinsics::GCMap() {
 	if (is_null(_gcMap)) {
 		_gcMap = make_map(2);
@@ -1218,6 +1238,7 @@ void CoreIntrinsics::InvalidateTypeMaps() {
 	_functionType = val_null;
 	_errorType = val_null;
 	_gcMap = val_null;
+	_intrinsicsMap = val_null;
 	if (!IsNull(_invalidateCallbacks)) {
 		for (Int32 i = 0; i < _invalidateCallbacks.Count(); i++) _invalidateCallbacks[i]();
 	}

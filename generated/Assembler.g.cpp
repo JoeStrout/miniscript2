@@ -594,6 +594,14 @@ UInt32 AssemblerStorage::AddLine(String line,Int32 lineNumber) {
 		Byte key = ParseRegister(parts[3]);
 		instruction = BytecodeUtil::INS_ABC(Opcode::METHFIND_rA_rB_rC, dest, obj, key);
 
+	} else if (mnemonic == "IDXGET") {
+		if (parts.Count() != 4) { Error("IDXGET requires 3 operands"); return 0; }
+		Byte dest = ParseRegister(parts[1]);
+		Current.ReserveRegister(dest);
+		Byte obj = ParseRegister(parts[2]);
+		Byte key = ParseRegister(parts[3]);
+		instruction = BytecodeUtil::INS_ABC(Opcode::IDXGET_rA_rB_rC, dest, obj, key);
+
 	} else if (mnemonic == "SETSELF") {
 		if (parts.Count() != 2) { Error("SETSELF requires 1 operand"); return 0; }
 		Byte reg = ParseRegister(parts[1]);

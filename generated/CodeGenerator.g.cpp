@@ -687,7 +687,7 @@ Int32 CodeGeneratorStorage::VisitIndex(IndexNode node,bool addressOf) {
 	Int32 indexReg = node.Index().Accept(_this);
 	String comment = Interp("{}[{}]", node.Target().ToStr(), node.Index().ToStr());
 
-	EmitAccessOrInvoke(resultReg, targetReg, indexReg, addressOf, node.Target(), comment);
+	EmitAccessOrInvoke(resultReg, targetReg, indexReg, addressOf, Boolean(false), node.Target(), comment);
 
 	FreeReg(indexReg);
 	FreeReg(targetReg);
@@ -734,17 +734,17 @@ Int32 CodeGeneratorStorage::VisitMember(MemberNode node,bool addressOf) {
 	_emitter.EmitAB(Opcode::LOAD_rA_kBC, indexReg, constIdx, Interp("r{} = \"{}\"", indexReg, node.Member()));
 	String comment = Interp("{}.{}", node.Target().ToStr(), node.Member());
 
-	EmitAccessOrInvoke(resultReg, targetReg, indexReg, addressOf, node.Target(), comment);
+	EmitAccessOrInvoke(resultReg, targetReg, indexReg, addressOf, Boolean(true), node.Target(), comment);
 
 	FreeReg(indexReg);
 	FreeReg(targetReg);
 	return resultReg;
 }
-void CodeGeneratorStorage::EmitAccessOrInvoke(Int32 resultReg,Int32 targetReg,Int32 indexReg,bool addressOf,ASTNode targetNode,String comment) {
+void CodeGeneratorStorage::EmitAccessOrInvoke(Int32 resultReg,Int32 targetReg,Int32 indexReg,bool addressOf,bool isDotAccess,ASTNode targetNode,String comment) {
 	if (addressOf) {
 		_emitter.EmitABC(Opcode::INDEX_rA_rB_rC, resultReg, targetReg, indexReg,
 			Interp("@{}", comment));
-	} else {
+	} else if (isDotAccess) {
 		_emitter.EmitABC(Opcode::METHFIND_rA_rB_rC, resultReg, targetReg, indexReg, comment);
 		SuperNode superTarget = As<SuperNode, SuperNodeStorage>(targetNode);
 		if (!IsNull(superTarget)) {
@@ -752,6 +752,9 @@ void CodeGeneratorStorage::EmitAccessOrInvoke(Int32 resultReg,Int32 targetReg,In
 			_emitter.EmitA(Opcode::SETSELF_rA, selfReg, Interp("preserve self for super access"));
 		}
 		_emitter.EmitA(Opcode::CALLIFREF_rA, resultReg, Interp("auto-invoke if funcref"));
+	} else {
+		// Bracket access: look up value (with type-map fallback) but never auto-invoke a funcRef.
+		_emitter.EmitABC(Opcode::IDXGET_rA_rB_rC, resultReg, targetReg, indexReg, comment);
 	}
 }
 Int32 CodeGeneratorStorage::Visit(ExprCallNode node) {

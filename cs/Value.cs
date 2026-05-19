@@ -327,7 +327,15 @@ public static class ValueHelpers {
 				return result;
 			} else if (value > 1E10 || value < -1E10 || (value < 1E-6 && value > -1E-6)) {
 				string s = value.ToString("E6", CultureInfo.InvariantCulture);
-				s = s.Replace("E-00", "E-0");
+				// Normalize exponent to exactly 2 digits (e.g. E-012 → E-12, E+006 → E+06)
+				int eIdx = s.IndexOf('E');
+				if (eIdx >= 0) {
+					string mantissa = s.Substring(0, eIdx + 2); // includes E and sign
+					string expDigits = s.Substring(eIdx + 2).TrimStart('0');
+					if (expDigits.Length == 0) expDigits = "0";
+					while (expDigits.Length < 2) expDigits = "0" + expDigits;
+					s = mantissa + expDigits;
+				}
 				return s;
 			} else {
 				string result = value.ToString("0.0#####", CultureInfo.InvariantCulture);

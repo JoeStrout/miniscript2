@@ -85,6 +85,7 @@ public static class Disassembler {
 			case Opcode.NEW_rA_rB:     return "NEW";
 			case Opcode.ISA_rA_rB_rC:  return "ISA";
 			case Opcode.METHFIND_rA_rB_rC: return "METHFIND";
+			case Opcode.IDXGET_rA_rB_rC: return "IDXGET";
 			case Opcode.SETSELF_rA:    return "SETSELF";
 			case Opcode.CALLIFREF_rA:  return "CALLIFREF";
 			case Opcode.ITERGET_rA_rB_rC: return "ITERGET";
@@ -219,6 +220,7 @@ public static class Disassembler {
 			case Opcode.CALL_rA_rB_rC:
 			case Opcode.ISA_rA_rB_rC:
 			case Opcode.METHFIND_rA_rB_rC:
+			case Opcode.IDXGET_rA_rB_rC:
 			case Opcode.ITERGET_rA_rB_rC:
 				return StringUtils.Format("{0} r{1}, r{2}, r{3}",
 					mnemonic,

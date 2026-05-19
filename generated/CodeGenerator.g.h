@@ -149,9 +149,10 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 	// Compile member access, optionally as address-of (no auto-invoke)
 	private: Int32 VisitMember(MemberNode node, bool addressOf);
 
-	// Shared tail for VisitIndex/VisitMember: emit INDEX (address-of) or
-	// METHFIND + optional SETSELF + CALLIFREF (normal access with auto-invoke).
-	private: void EmitAccessOrInvoke(Int32 resultReg, Int32 targetReg, Int32 indexReg, bool addressOf, ASTNode targetNode, String comment);
+	// Shared tail for VisitIndex/VisitMember: emit INDEX (address-of),
+	// IDXGET (bracket access, no auto-invoke), or
+	// METHFIND + optional SETSELF + CALLIFREF (dot access with auto-invoke).
+	private: void EmitAccessOrInvoke(Int32 resultReg, Int32 targetReg, Int32 indexReg, bool addressOf, bool isDotAccess, ASTNode targetNode, String comment);
 
 	public: Int32 Visit(ExprCallNode node);
 
@@ -370,9 +371,10 @@ struct CodeGenerator : public IASTVisitor {
 	// Compile member access, optionally as address-of (no auto-invoke)
 	private: inline Int32 VisitMember(MemberNode node, bool addressOf);
 
-	// Shared tail for VisitIndex/VisitMember: emit INDEX (address-of) or
-	// METHFIND + optional SETSELF + CALLIFREF (normal access with auto-invoke).
-	private: inline void EmitAccessOrInvoke(Int32 resultReg, Int32 targetReg, Int32 indexReg, bool addressOf, ASTNode targetNode, String comment);
+	// Shared tail for VisitIndex/VisitMember: emit INDEX (address-of),
+	// IDXGET (bracket access, no auto-invoke), or
+	// METHFIND + optional SETSELF + CALLIFREF (dot access with auto-invoke).
+	private: inline void EmitAccessOrInvoke(Int32 resultReg, Int32 targetReg, Int32 indexReg, bool addressOf, bool isDotAccess, ASTNode targetNode, String comment);
 
 	public: inline Int32 Visit(ExprCallNode node);
 
@@ -500,7 +502,7 @@ inline Int32 CodeGenerator::VisitIndex(IndexNode node,bool addressOf) { return g
 inline Int32 CodeGenerator::Visit(SliceNode node) { return get()->Visit(node); }
 inline Int32 CodeGenerator::Visit(MemberNode node) { return get()->Visit(node); }
 inline Int32 CodeGenerator::VisitMember(MemberNode node,bool addressOf) { return get()->VisitMember(node, addressOf); }
-inline void CodeGenerator::EmitAccessOrInvoke(Int32 resultReg,Int32 targetReg,Int32 indexReg,bool addressOf,ASTNode targetNode,String comment) { return get()->EmitAccessOrInvoke(resultReg, targetReg, indexReg, addressOf, targetNode, comment); }
+inline void CodeGenerator::EmitAccessOrInvoke(Int32 resultReg,Int32 targetReg,Int32 indexReg,bool addressOf,bool isDotAccess,ASTNode targetNode,String comment) { return get()->EmitAccessOrInvoke(resultReg, targetReg, indexReg, addressOf, isDotAccess, targetNode, comment); }
 inline Int32 CodeGenerator::Visit(ExprCallNode node) { return get()->Visit(node); }
 inline Int32 CodeGenerator::Visit(MethodCallNode node) { return get()->Visit(node); }
 inline Int32 CodeGenerator::Visit(WhileNode node) { return get()->Visit(node); }

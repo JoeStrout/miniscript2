@@ -150,6 +150,7 @@ public class ListParselet : PrefixParselet {
 
 		if (!parser.Check(TokenType.RBRACKET)) {
 			do {
+				if (parser.Check(TokenType.RBRACKET)) break; // allow trailing comma
 				elements.Add(parser.ParseExpression(Precedence.NONE));
 			} while (parser.Match(TokenType.COMMA));
 		}
@@ -168,6 +169,7 @@ public class MapParselet : PrefixParselet {
 
 		if (!parser.Check(TokenType.RBRACE)) {
 			do {
+				if (parser.Check(TokenType.RBRACE)) break; // allow trailing comma
 				ASTNode key = parser.ParseExpression(Precedence.NONE);
 				parser.Expect(TokenType.COLON, "Expected ':' after map key");
 				ASTNode value = parser.ParseExpression(Precedence.NONE);

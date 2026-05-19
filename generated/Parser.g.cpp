@@ -163,6 +163,11 @@ Token ParserStorage::Expect(TokenType type,String errorMessage) {
 	return Token(TokenType::ERROR, "", _current.Line, _current.Column);
 }
 Precedence ParserStorage::GetPrecedence() {
+	// A '[' preceded by whitespace is not an index operator; it begins a
+	// separate list argument (e.g. "foo.push [1, 2]" is a call, not an index).
+	if (_current.Type == TokenType::LBRACKET && _current.AfterSpace) {
+		return Precedence::NONE;
+	}
 	InfixParselet parselet = nullptr;
 	if (_infixParselets.TryGetValue(_current.Type, &parselet)) {
 		return parselet.Prec();

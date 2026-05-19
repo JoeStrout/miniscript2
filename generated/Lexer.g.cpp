@@ -155,9 +155,6 @@ Token Lexer::NextToken() {
 				}
 				break; // closing quote
 			}
-			if (_input[_position] == '\\' && _position + 1 < _input.Length()) {
-				Advance(); // skip escape character
-			}
 			Advance();
 		}
 		String text;

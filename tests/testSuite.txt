@@ -42,8 +42,13 @@ print [
 ================================
 print [1,
   2, 3]
+print [
+  4,
+  5,
+]
 --------------------------------
 [1, 2, 3]
+[4, 5]
 ================================
 print (
   6 * 7)
@@ -281,8 +286,10 @@ print "She said ""hi"" to me"
 She said "hi" to me
 ================================
 print "use """" for a quote"
+print "and backslash is NOT an escape character: \"
 --------------------------------
 use "" for a quote
+and backslash is NOT an escape character: \
 ================================
 ==== String concatenation
 ================================
@@ -4335,6 +4342,13 @@ d.speak "hi"
 Dog says hi
 Animal says hi
 ================================
+==== Misc lexer/compiler bugs found in testing
+================================
+foo = []
+foo.push ["random", @rnd]
+print foo
+--------------------------------
+[["random", FuncRef(rnd)]]
 ==== END OF TESTS
 ================================================================================
 

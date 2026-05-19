@@ -222,6 +222,11 @@ public class Parser : IParser {
 
 	// Get the precedence of the infix parselet for the current token
 	private Precedence GetPrecedence() {
+		// A '[' preceded by whitespace is not an index operator; it begins a
+		// separate list argument (e.g. "foo.push [1, 2]" is a call, not an index).
+		if (_current.Type == TokenType.LBRACKET && _current.AfterSpace) {
+			return Precedence.NONE;
+		}
 		InfixParselet parselet = null;
 		if (_infixParselets.TryGetValue(_current.Type, out parselet)) {
 			return parselet.Prec;

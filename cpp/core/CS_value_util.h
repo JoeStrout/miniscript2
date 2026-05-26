@@ -12,11 +12,8 @@
 #include "CS_String.h"
 
 #ifdef __cplusplus
-extern "C" {
-#endif
 
 // Convert CS_String (host string) to Value (runtime string)
-// This is inline for efficiency but we keep the .cpp file for future utilities
 static inline Value make_string(String s) {
     return make_string(s.c_str());
 }
@@ -24,11 +21,9 @@ static inline Value make_string(String s) {
 // Convert Value to CS_String (host string)
 static inline String to_String(Value v) {
 	// ToDo: look for a way to do this that doesn't go through as_cstring
-	// (which copies the buffer); in most cases we should be able to 
+	// (which copies the buffer); in most cases we should be able to
 	// directly reference the StringStorage to which v already refers.
     return String(as_cstring(to_string(v, NULL)));
 }
 
-#ifdef __cplusplus
-} // extern "C"
-#endif
+#endif // __cplusplus

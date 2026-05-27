@@ -57,7 +57,7 @@ public struct Context {
 		return vm.LookupParamByName(variableName);
 	}
 	
-	public Interpreter Interpreter() {
+	public Interpreter GetInterpreter() {
 		return vm.GetInterpreter();
 	}
 }

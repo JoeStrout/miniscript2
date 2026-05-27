@@ -10,6 +10,7 @@
 #include "ErrorTypes.g.h"
 #include "value_map.h"
 #include <vector>
+#include <chrono>
 #include "GCManager.g.h"
 
 namespace MiniScript {

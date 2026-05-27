@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.15)
 project(miniscript2 LANGUAGES C CXX)
 
 set(CMAKE_C_STANDARD 99)
+set(CMAKE_C_EXTENSIONS ON)   # gnu++11, needed for POSIX extensions
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_EXTENSIONS ON)   # gnu++11, needed for computed-goto
 

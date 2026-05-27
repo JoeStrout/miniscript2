@@ -173,6 +173,7 @@ class GCErrorSetStorage : public GCSetBaseStorage {
 	public: GCErrorSetStorage(Int32 initialCapacity = 64);
 
 	protected: void CallMarkChildren(Int32 idx);
+
 	protected: void CallOnSweep(Int32 idx);
 	protected: void AppendItem();
 
@@ -309,6 +310,7 @@ struct GCErrorSet : public GCSetBase {
 	}
 
 	protected: void CallMarkChildren(Int32 idx) { return get()->CallMarkChildren(idx); }
+
 	protected: void CallOnSweep(Int32 idx) { return get()->CallOnSweep(idx); }
 	protected: void AppendItem() { return get()->AppendItem(); }
 

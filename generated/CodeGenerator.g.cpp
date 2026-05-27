@@ -22,6 +22,7 @@ CodeGeneratorStorage::CodeGeneratorStorage(CodeEmitterBase emitter) {
 }
 List<FuncDef> CodeGeneratorStorage::GetFunctions() {
 	return _functions;
+
 }
 Int32 CodeGeneratorStorage::AllocReg() {
 	// Scan from _firstAvailable to find first free register
@@ -407,6 +408,7 @@ Int32 CodeGeneratorStorage::Visit(BinaryOpNode node) {
 	}
 
 	Int32 resultReg = GetTargetOrAlloc();  // Capture target before any recursive calls
+
 	Int32 leftReg = node.Left().Accept(_this);
 	Int32 rightReg = node.Right().Accept(_this);
 

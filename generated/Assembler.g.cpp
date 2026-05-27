@@ -555,7 +555,7 @@ UInt32 AssemblerStorage::AddLine(String line,Int32 lineNumber) {
 		Byte reserveRegs = (Byte)ParseInt16(parts[1]);	// ToDo: check range before typecast
 		constantValue = ParseAsConstant(parts[2]);
 		if (!is_string(constantValue)) {
-			Error(StringUtils::Format("Function name must be a string"));
+			Error("Function name must be a string");
 			return 0;
 		}
 		Int32 constIdx = AddConstant(constantValue);
@@ -771,6 +771,7 @@ String AssemblerStorage::ParseLabel(String token) {
 	return token.Substring(0, token.Length()-1);
 }
 bool AssemblerStorage::AddFunction(String functionName) {
+
 	if (HasFunction(functionName)) {
 		IOHelper::Print(StringUtils::Format("ERROR: Function {0} is defined multiple times", functionName));
 		return Boolean(false);

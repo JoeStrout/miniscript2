@@ -45,12 +45,12 @@
         #include <sys/sendfile.h>
     #endif
     #define PATHSEP "/"
+extern "C" {
+	extern char **environ;
+}
 #endif
 #include <cerrno>
 #include <ctime>
-extern "C" {
-extern char **environ;
-}
 
 namespace MiniScript {
 
@@ -881,6 +881,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value self = ctx.GetArg(0);
 		Value hv = val_null; map_try_get(self, make_string("_handle"), &hv);
+
 		Int32 len = GetRawBufLen(hv); if (len < 0) return IntrinsicResult(ErrorType::FileError("RawData has no buffer"));
 		Int32 off = (Int32)as_double(ctx.GetArg(1)); if (off < 0) off += len;
 		if (off < 0 || off + 4 > len) return IntrinsicResult(ErrorType::FileError("index out of bounds"));

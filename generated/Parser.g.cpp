@@ -171,6 +171,7 @@ Precedence ParserStorage::GetPrecedence() {
 	InfixParselet parselet = nullptr;
 	if (_infixParselets.TryGetValue(_current.Type, &parselet)) {
 		return parselet.Prec();
+
 	}
 	return Precedence::NONE;
 }

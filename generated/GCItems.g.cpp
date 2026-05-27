@@ -42,6 +42,7 @@ Int32 GCList::IndexOf(Value item,Int32 afterIdx) {
 void GCList::MarkChildren() {
 	if (IsNull(Items)) return;
 	for (Int32 i = 0; i < Items.Count(); i++) GCManager::Mark(Items[i]);
+
 }
 
 Int32 GCMap::Count() {

@@ -124,6 +124,7 @@ void VarMapBackingStorage::Rebind(Int32 mapIdx,List<Value> registers,List<Value>
 	_names     = names;
 	_regOrder.Clear();
 	_regIndices.Clear();
+
 	GCManager::Maps.SetVmb(mapIdx, _this);
 }
 void VarMapBackingStorage::MapToRegister(Int32 mapIdx,Value varName,List<Value> registers,Int32 regIndex) {

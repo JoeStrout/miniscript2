@@ -66,6 +66,7 @@ enum class TokenType : Int32 {
 	COLON,
 	DOT,
 	NOT,
+
 	AND,
 	OR,
 	WHILE,

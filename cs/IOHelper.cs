@@ -9,6 +9,49 @@ using System.Collections.Generic;
 // CPP: #include <string>
 // CPP: #include <algorithm>
 
+/*** BEGIN CPP_ONLY ***
+#ifdef _WIN32 // define POSIX getline if on Windows
+#include <cstdio>
+#include <cstdlib>
+
+int getline(char** lineptr, size_t* n, FILE* stream) {
+    if (!lineptr || !n || !stream) return -1;
+
+    size_t pos = 0;
+
+    // Allocate if needed
+    if (*lineptr == nullptr || *n == 0) {
+        *n = 128;
+        *lineptr = (char*)malloc(*n);
+        if (!*lineptr) return -1;
+    }
+
+    int c;
+    while ((c = fgetc(stream)) != EOF) {
+        // Grow buffer if needed
+        if (pos + 1 >= *n) {
+            size_t new_size = *n * 2;
+            char* new_ptr = (char*)realloc(*lineptr, new_size);
+            if (!new_ptr) return -1;
+            *lineptr = new_ptr;
+            *n = new_size;
+        }
+
+        (*lineptr)[pos++] = (char)c;
+
+        if (c == '\n') break;
+    }
+
+    if (pos == 0 && c == EOF) {
+        return -1; // EOF with no data
+    }
+
+    (*lineptr)[pos] = '\0';
+    return (int)pos;
+}
+#endif // defined(_WIN32)
+*** END CPP_ONLY ***/
+
 namespace MiniScript {
 
 public enum TextStyle : Int32 {

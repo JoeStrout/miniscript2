@@ -140,6 +140,7 @@ void InterpreterStorage::REPL(String sourceLine,double timeLimit) {
 	Error = val_null;
 	if (IsNull(parser)) parser =  Parser::New();
 	parser.Init(_pendingSource);
+
 	List<ASTNode> statements = parser.ParseProgram();
 
 	// If parser needs more input, return and wait for next line

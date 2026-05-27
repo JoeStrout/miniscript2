@@ -18,6 +18,7 @@ EmitPattern BytecodeUtil::GetEmitPattern(Opcode opcode) {
 	// _rA_rB_rC, _rA_rB_iC, _rA_iB_rC, _iA_rB_iC, _rA_rB_kC, _rA_rB (two registers)
 	if (mnemonic.Contains("_rA_rB_rC") || mnemonic.Contains("_rA_rB_iC") ||
 		mnemonic.Contains("_rA_iB_rC") || mnemonic.Contains("_iA_rB_iC") ||
+
 		mnemonic.Contains("_rA_rB_kC") || mnemonic.EndsWith("_rA_rB")) {
 		return EmitPattern::ABC;
 	}

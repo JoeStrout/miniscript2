@@ -21,11 +21,11 @@ else
 endif
 
 CXXFLAGS = -std=gnu++11 -Wall -Wextra $(OPT_FLAGS) -Icore -I$(GENDIR) -I. $(GOTO_FLAG) $(EDITLINE_DEFINE) -MMD -MP
-CFLAGS = -std=c99 -Wall -Wextra $(OPT_FLAGS) -Icore $(GOTO_FLAG) -MMD -MP
+CFLAGS = -std=gnu99 -Wall -Wextra $(OPT_FLAGS) -Icore $(GOTO_FLAG) -MMD -MP
 
 # AddressSanitizer flags for debugging
 ASAN_CXXFLAGS = -std=gnu++11 -Wall -Wextra -O0 -g -fsanitize=address -Icore -I$(GENDIR) -I. $(GOTO_FLAG) $(EDITLINE_DEFINE) -MMD -MP
-ASAN_CFLAGS = -std=c99 -Wall -Wextra -O0 -g -fsanitize=address -Icore $(GOTO_FLAG) -MMD -MP
+ASAN_CFLAGS = -std=gnu99 -Wall -Wextra -O0 -g -fsanitize=address -Icore $(GOTO_FLAG) -MMD -MP
 ASAN_LDFLAGS = -fsanitize=address
 COREDIR = core
 EDITLINEDIR = editline
@@ -135,7 +135,7 @@ $(OBJDIR)/gen_%.o: $(GENDIR)/%.g.cpp | $(OBJDIR)
 
 # editline C object files (Unix/macOS only)
 $(OBJDIR)/editline_%.o: $(EDITLINEDIR)/%.c | $(OBJDIR)
-	$(CC) -std=c99 -Wall $(OPT_FLAGS) $(EDITLINE_CFLAGS) -c $< -o $@
+	$(CC) -std=gnu99 -Wall $(OPT_FLAGS) $(EDITLINE_CFLAGS) -c $< -o $@
 
 # ASAN target
 $(ASAN_TARGET): $(ASAN_OBJECTS) | $(BUILDDIR)
@@ -155,7 +155,7 @@ $(ASAN_OBJDIR)/gen_%.o: $(GENDIR)/%.g.cpp | $(ASAN_OBJDIR)
 
 # ASAN editline C object files (Unix/macOS only)
 $(ASAN_OBJDIR)/editline_%.o: $(EDITLINEDIR)/%.c | $(ASAN_OBJDIR)
-	$(CC) -std=c99 -Wall -O0 -g -fsanitize=address $(EDITLINE_CFLAGS) -c $< -o $@
+	$(CC) -std=gnu99 -Wall -O0 -g -fsanitize=address $(EDITLINE_CFLAGS) -c $< -o $@
 
 $(ASAN_OBJDIR):
 	mkdir -p $(ASAN_OBJDIR)

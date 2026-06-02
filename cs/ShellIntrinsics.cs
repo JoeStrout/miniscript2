@@ -1088,7 +1088,7 @@ public static class ShellIntrinsics {
 				localtime_r(&stats.st_mtime, &t);
 			#endif
 		#endif
-		char dateBuf[72];
+		char dateBuf[72];  // (never need more than 20, but some compilers are dumb)
 		snprintf(dateBuf, sizeof(dateBuf), "%04d-%02d-%02d %02d:%02d:%02d",
 			1900 + t.tm_year, 1 + t.tm_mon, t.tm_mday, t.tm_hour, t.tm_min, t.tm_sec);
 		Value result = make_map(4);

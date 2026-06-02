@@ -3,6 +3,7 @@
 // as well as possible.  Memory management is done via std::shared_ptr and std::vector.
 
 #pragma once
+#include <cstdint>
 #include <memory>
 #include <vector>
 #include <initializer_list>

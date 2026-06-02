@@ -31,6 +31,13 @@ using static MiniScript.ValueHelpers;
 #ifndef _WIN32
 #include <unistd.h>
 #endif
+#ifdef _WIN32
+#include <windows.h>
+// POSIX setenv stub
+// Contract: we always ignore the return value and always want to overwrite a previous value
+// ^^^^^^^^^ if either of these things change in the below code, this will need rewritten
+void setenv(const char *name, const char *value, int overwrite) { SetEnvironmentVariableA(name, value); }
+#endif
 using namespace MiniScript;
 *** END CPP_ONLY ***/
 

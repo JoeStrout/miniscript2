@@ -280,6 +280,7 @@ public static class GCManager {
 		return Handles.Get(value_item_index(v));
 	}
 
+	//*** BEGIN CS_ONLY ***
 	// ── Static helper for content-based string access ─────────────────────────
 	// Used by GCMap for content-based key hashing and equality.
 	// (Or is it?  ToDo: see if this is still needed.)
@@ -300,6 +301,7 @@ public static class GCManager {
 		}
 		return "";
 	}
+	//*** END CS_ONLY ***
 }
 
 }

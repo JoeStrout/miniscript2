@@ -120,11 +120,6 @@ class GCManager {
 	public: static GCFunction GetFuncRef(Value v);
 	public: static GCHandle GetHandle(Value v);
 
-	// ── Static helper for content-based string access ─────────────────────────
-	// Used by GCMap for content-based key hashing and equality.
-	// (Or is it?  ToDo: see if this is still needed.)
-	
-	public: static String GetStringContent(Value v);
 }; // end of struct GCManager
 
 // INLINE METHODS
@@ -132,21 +127,6 @@ class GCManager {
 inline void GCManager::Mark(Value v) {
 	if (!is_gc_object(v)) return;
 	DispatchMark(value_gc_set_index(v), value_item_index(v));
-}
-inline String GCManager::GetStringContent(Value v) {
-	if (is_tiny_string(v)) {
-		Int32 len = value_tiny_len(v);
-		char chars[len];
-		for (Int32 i = 0; i < len; i++) chars[i] = (char)((value_bits(v) >> (8 * (i + 1))) & 0xFF);
-		return  String::New(chars);
-	}
-	if (is_heap_string(v)) {
-		GCStringSet set;
-		set = (value_gc_set_index(v) == InternedStringSet) ? InternedStrings : BigStrings;
-		String data = set.Get(value_item_index(v)).Data;
-		return !IsNull(data) ? data : "";
-	}
-	return "";
 }
 
 } // end of namespace MiniScript

@@ -52,12 +52,12 @@ using static MiniScript.ValueHelpers;
         #include <sys/sendfile.h>
     #endif
     #define PATHSEP "/"
+	extern "C" {
+		extern char **environ;
+	}
 #endif
 #include <cerrno>
 #include <ctime>
-extern "C" {
-	extern char **environ;
-}
 *** END CPP_ONLY ***/
 
 namespace MiniScript {

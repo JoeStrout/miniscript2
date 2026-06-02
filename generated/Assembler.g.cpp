@@ -555,7 +555,7 @@ UInt32 AssemblerStorage::AddLine(String line,Int32 lineNumber) {
 		Byte reserveRegs = (Byte)ParseInt16(parts[1]);	// ToDo: check range before typecast
 		constantValue = ParseAsConstant(parts[2]);
 		if (!is_string(constantValue)) {
-			Error(StringUtils::Format("Function name must be a string"));
+			Error("Function name must be a string");
 			return 0;
 		}
 		Int32 constIdx = AddConstant(constantValue);

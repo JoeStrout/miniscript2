@@ -61,8 +61,15 @@ public struct VMVis {
 		//*** END CS_ONLY ***
 		/*** BEGIN CPP_ONLY ***
 		#ifdef _WIN32
-			_screenWidth = csbi.srWindow.Right - csbi.srWindow.Left + 1;
-			_screenHeight = rows = csbi.srWindow.Bottom - csbi.srWindow.Top + 1;	
+			HANDLE hStdout;
+			CONSOLE_SCREEN_BUFFER_INFO csbi;
+			if ((hStdout = GetStdHandle(STD_OUTPUT_HANDLE))!=INVALID_HANDLE_VALUE && GetConsoleScreenBufferInfo(hStdout, &csbi)) {
+				_screenWidth = csbi.srWindow.Right - csbi.srWindow.Left + 1;
+				_screenHeight = csbi.srWindow.Bottom - csbi.srWindow.Top + 1;
+			} else {
+				_screenWidth = 80;
+				_screenHeight = 24;
+			}
 		#else
 			struct winsize w;
 			ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);

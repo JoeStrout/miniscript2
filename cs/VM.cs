@@ -9,6 +9,7 @@ using static System.Runtime.CompilerServices.MethodImplOptions;
 // H: #include "ErrorTypes.g.h"
 // H: #include "value_map.h"
 // H: #include <vector>
+// H: #include <chrono>
 // H: #include "GCManager.g.h"
 // CPP: #include "value_list.h"
 // CPP: #include "value_string.h"

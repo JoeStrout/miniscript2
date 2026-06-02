@@ -38,7 +38,7 @@ struct Context {
 	// argument values, which are far more efficiently found via GetArg (above).
 	public: Value GetVar(String variableName);
 	
-	public: Interpreter Interpreter();
+	public: Interpreter GetInterpreter();
 }; // end of struct Context
 
 // IntrinsicResult: represents the result of calling an intrinsic function

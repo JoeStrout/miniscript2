@@ -10,7 +10,7 @@ namespace MiniScript {
 Value Context::GetVar(String variableName) {
 	return vm.LookupParamByName(variableName);
 }
-Interpreter Context::Interpreter() {
+Interpreter Context::GetInterpreter() {
 	return vm.GetInterpreter();
 }
 

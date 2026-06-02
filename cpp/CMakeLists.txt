@@ -4,7 +4,7 @@ project(miniscript2 LANGUAGES C CXX)
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_EXTENSIONS ON)   # gnu++11, needed for POSIX extensions
 set(CMAKE_CXX_STANDARD 11)
-set(CMAKE_CXX_EXTENSIONS ON)   # gnu++11, needed for computed-goto
+set(CMAKE_CXX_EXTENSIONS ON) # gnu99, needed for computed-goto
 
 # Core sources (glob to stay in sync with Makefile)
 file(GLOB CORE_C_SOURCES core/*.c)

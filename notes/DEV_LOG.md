@@ -928,6 +928,16 @@ So, after the initial refactoring, today has been mostly finding and fixing bugs
 I've been leaving "ToDo" comments pretty liberally in the code wherever I spot an opportunity for improvement, without the time to address it immediately.  To supplement that, I just asked Claude Opus to analyze the C# and C++ code, looking for opportunities for improvement (OFIs).  It wrote up its suggestions in [OFI.md](notes/OFI.md).  Next week -- if not before -- I will start going through these ToDo's and OFIs, improving the code as much as I can.
 
 
+## Jun 3, 2026
+
+I'm addressing some of the Unicode-related ToDo's and OFIs today.  In unicodeUtil.c, Claude's comments in OFI.md are mostly spurious; but I do like the idea of using a binary search.  Currently sUpperTable is sorted, but sLowerTable is not.  I'm considering dynamically allocating and populating a lowercase-sorted copy of these tables; then we could use a binary search when changing case in either direction.
+
+So we're now doing that, and then searching with `bsearch`, a stdlib function that's been around since C89.
+
+Then I analyzed Lexer.cs, looking for Unicode issues, but actually it appears to be perfectly cromulent already.  The only issue found was that \r line endings (found in classic Mac text files!) were failing to increment the line number.  Fixed this by simply normalizing line endings to \n in `Lexer(String source)`.
+
+But while I'm at it, I'm going to put in a couple of optimations in StringStorage.h to speed up iteration over strings.  If it's an entirely ASCII string, we'll take a fast path that indexes directly; otherwise, we'll keep an internal cursor (mapping character index to byte index), and make use of that to avoid searching from the beginning of the string in most cases.
+
 
 
 

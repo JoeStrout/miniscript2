@@ -21,8 +21,10 @@ extern "C" {
 
 typedef struct StringStorage {
     int lenB;           // Length in bytes
-    int lenC;           // Length in characters (UTF-8)
-    uint32_t hash;      // String hash for fast comparison
+    int lenC;           // Length in characters (UTF-8); -1 if not yet computed
+    uint32_t hash;      // String hash for fast comparison; 0 if not yet computed
+    int cursorCharIdx;  // Most recently accessed character index (for sequential access)
+    int cursorByteIdx;  // Byte offset corresponding to cursorCharIdx
     char data[];        // Flexible array member for string data
 } StringStorage;
 

@@ -112,7 +112,7 @@ A survey of the hand-written C and C++ runtime layer.
 
 ## Code Duplication
 
-- **Massive duplicate case tables** (`unicodeUtil.c` ~17–169): `sUpperTable` and `sLowerTable` are ~600 lines each with no compression; a diff-encoded or combined table would be a fraction of the size.  (Without sacrificing performance?  Really?)
+- **Massive duplicate case tables** (`unicodeUtil.c` ~17–169): `sUpperTable` and `sLowerTable` are ~600 lines each with no compression; a diff-encoded or combined table would be a fraction of the size.  (Without sacrificing performance?  No.)  ⛌
 - **Repeated tiny-string bit-shifting** (`value_string.cpp` ~60–66, 117–142, etc.): Manual bit-shift logic for packing/unpacking tiny strings appears across `make_tiny_string`, `as_cstring`, `string_length`, and two `get_string_data_*` helpers; should be one set of inline helpers.
 - **`TempStorage` materialization pattern** (`value_string.cpp`): Eight or more functions create a `TempStorage`, call `ss_*`, then wrap the result — identical boilerplate each time.
 - **Repeated null/empty guard in list and map** (`value_list.cpp` ~40–44, `value_map.cpp` ~30–33): Every accessor begins with the same `if (!is_list/map(val)) return val_null` + GCManager lookup block.
@@ -122,7 +122,7 @@ A survey of the hand-written C and C++ runtime layer.
 ## Performance & Inefficiency
 
 - **Bubble sort** (`CS_List.h` ~230–244): O(n²) sort; should use `std::sort`.
-- **Linear scan of case tables** (`unicodeUtil.c` ~174–211): 600-element tables searched linearly despite being sorted; binary search would cut time by ~9×.  (ARE they fully sorted though?  That's not obvious.)
+- **Linear scan of case tables** (`unicodeUtil.c` ~174–211): 600-element tables searched linearly despite being sorted; binary search would cut time by ~9×.  (sLowerTable is not fully sorted; so we now dynamically allocate and sort a reverse copy.) ✔️
 - **`ss_split` double-pass** (`StringStorage.c` ~428–456): Counts separators in one pass (~430) then splits in a second pass (~442); a single-pass approach with a growable result array would suffice.  (But might perform worse overall -- "growable result" means reallocation and copying.)
 - **String concat overhead for tiny strings** (`value_string.cpp` ~195–205): `string_concat` allocates two `TempStorage` objects even when both strings are sub-5-byte tiny strings; the result could be produced inline.
 - **No string pooling or slab allocation** (`StringStorage.c` ~18, 34, 39): Each string is individually `malloc`'d with a variable-length tail; a pool allocator for small strings would reduce fragmentation.

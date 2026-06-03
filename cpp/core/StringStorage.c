@@ -25,6 +25,8 @@ StringStorage* ss_create(const char* cstr, StringStorageAllocator allocator) {
     storage->lenB = len;
     storage->lenC = -1;  // Compute lazily when needed
     storage->hash = 0;   // Compute lazily when needed
+    storage->cursorCharIdx = 0;
+    storage->cursorByteIdx = 0;
     strcpy(storage->data, cstr);
     
     return storage;
@@ -42,6 +44,8 @@ StringStorage* ss_createWithLength(int byteLen, StringStorageAllocator allocator
     storage->lenB = byteLen;
     storage->lenC = -1;  // Will be computed when needed
     storage->hash = 0;   // Will be computed when needed
+    storage->cursorCharIdx = 0;
+    storage->cursorByteIdx = 0;
     storage->data[byteLen] = '\0';  // Ensure null termination
     
     return storage;
@@ -81,10 +85,44 @@ char ss_charAt(const StringStorage* storage, int byteIndex) {
 
 uint32_t ss_codePointAt(const StringStorage* storage, int charIndex) {
     if (!storage || charIndex < 0) return 0;
-    int byteIndex = UTF8CharIndexToByteIndex(
-        (const unsigned char*)storage->data, charIndex, storage->lenB);
-    if (byteIndex < 0 || byteIndex >= storage->lenB) return 0;
-    return (uint32_t)UTF8Decode((unsigned char*)storage->data + byteIndex);
+
+    // Fast path: ASCII-only string (all chars are single bytes)
+    if (storage->lenC >= 0 && storage->lenC == storage->lenB) {
+        if (charIndex >= storage->lenB) return 0;
+        return (uint32_t)(unsigned char)storage->data[charIndex];
+    }
+
+    // Non-ASCII path: navigate using cursor to amortize sequential access cost.
+    // Cast away const to update the cursor (same pattern as lenC/hash lazy init).
+    StringStorage* mut = (StringStorage*)storage;
+    unsigned char* base = (unsigned char*)storage->data;
+    unsigned char* end = base + storage->lenB;
+    unsigned char* ptr;
+
+    int distFromStart = charIndex;
+    int distFromCursor = charIndex - mut->cursorCharIdx;
+
+    if (distFromCursor == 0) {
+        ptr = base + mut->cursorByteIdx;
+    } else if (distFromCursor > 0 && distFromCursor < distFromStart) {
+        // Forward from cursor is shorter than scanning from the start
+        ptr = base + mut->cursorByteIdx;
+        AdvanceUTF8(&ptr, end, distFromCursor);
+    } else if (distFromCursor < 0 && (-distFromCursor) < distFromStart) {
+        // Backward from cursor is shorter than scanning from the start
+        ptr = base + mut->cursorByteIdx;
+        BackupUTF8(&ptr, base, -distFromCursor);
+    } else {
+        ptr = base;
+        AdvanceUTF8(&ptr, end, charIndex);
+    }
+
+    if (ptr < base || ptr >= end) return 0;
+
+    mut->cursorCharIdx = charIndex;
+    mut->cursorByteIdx = (int)(ptr - base);
+
+    return (uint32_t)UTF8Decode(ptr);
 }
 
 // Comparison functions
@@ -519,6 +557,8 @@ StringStorage* ss_replace(const StringStorage* storage, const StringStorage* old
     result->lenB = new_total_len;
     result->lenC = -1; // Will be computed on demand
     result->hash = 0;  // Will be computed on demand
+    result->cursorCharIdx = 0;
+    result->cursorByteIdx = 0;
 
     // Build the result string
     char* dest = result->data;
@@ -560,6 +600,8 @@ StringStorage* ss_replaceByte(const StringStorage* storage, char oldChar, char n
     result->lenB = storage->lenB;
     result->lenC = -1; // Will be computed on demand
     result->hash = 0;  // Will be computed on demand
+    result->cursorCharIdx = 0;
+    result->cursorByteIdx = 0;
 
     // Build the result string
     char* dest = result->data;

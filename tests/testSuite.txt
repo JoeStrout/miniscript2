@@ -2879,6 +2879,61 @@ print "日本語"[1]
 --------------------------------
 本
 ================================
+==== String indexing: forward iteration ASCII
+================================
+s = "hello"
+result = ""
+for i in range(0, len(s)-1)
+  result = result + s[i]
+end for
+print result
+--------------------------------
+hello
+================================
+==== String indexing: backward iteration ASCII
+================================
+s = "hello"
+result = ""
+for i in range(len(s)-1, 0)
+  result = result + s[i]
+end for
+print result
+--------------------------------
+olleh
+================================
+==== String indexing: forward iteration non-ASCII
+================================
+s = "résumé"
+result = ""
+for i in range(0, len(s)-1)
+  result = result + s[i]
+end for
+print result
+--------------------------------
+résumé
+================================
+==== String indexing: backward iteration non-ASCII
+================================
+s = "résumé"
+result = ""
+for i in range(len(s)-1, 0)
+  result = result + s[i]
+end for
+print result
+--------------------------------
+émusér
+================================
+==== String indexing: negative indices non-ASCII
+================================
+s = "résumé"
+print s[-1]
+print s[-2]
+print s[-3]
+--------------------------------
+é
+m
+u
+================================
 ==== String slicing with non-ASCII
 ================================
 print "café"[0:3]

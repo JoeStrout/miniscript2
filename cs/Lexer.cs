@@ -44,7 +44,7 @@ public struct Lexer {
 
 	// H: public: Lexer() {}
 	public Lexer(String source) {
-		_input = source;
+		_input = source.Replace("\r\n", "\n").Replace("\r", "\n");
 		_position = 0;
 		_line = 1;
 		_column = 1;
@@ -77,7 +77,6 @@ public struct Lexer {
 	
 	[MethodImpl(AggressiveInlining)]
 	public static Boolean IsWhiteSpace(Char c) {
-		// ToDo: rework this whole file to be fully Unicode-savvy in both C# and C++
 		return Char.IsWhiteSpace(c); // CPP: return UnicodeCharIsWhitespace((long)c);
 	}
 		

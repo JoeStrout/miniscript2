@@ -170,44 +170,67 @@ static unsigned short sLowerTable[] = {
 // Get the size of the case conversion tables
 #define CASE_TABLE_SIZE ((int)(sizeof(sUpperTable) / sizeof(unsigned short)))
 
-// Linear search to find upper case character from lower case
-static unsigned short findLowerInUpperTable(unsigned short lower) {
-    // ASCII optimization: handle common case directly
-    if (lower < 0x80) {
-        if (lower >= 'a' && lower <= 'z') {
-            return lower - 32; // Convert to uppercase
-        }
-        return lower; // No case conversion for non-alphabetic ASCII
-    }
-    
-    // Linear search in sLowerTable, return corresponding sUpperTable entry
-    for (int i = 0; i < CASE_TABLE_SIZE; i++) {
-        if (sLowerTable[i] == lower) {
-            return sUpperTable[i]; // Return corresponding upper case
-        }
-    }
-    
-    return lower; // No case conversion found
+// Sorted (lower, upper) pairs for lower→upper lookup, built on first use.
+// sLowerTable is not sorted, so we can't binary-search it directly; instead we
+// build this auxiliary table once and sort it by lower value.
+typedef struct { unsigned short lower; unsigned short upper; } LowerUpperPair;
+static LowerUpperPair *sReverseLookupTable = NULL;
+static int sReverseLookupCount = 0;
+
+static int compareLowerUpperPair(const void *a, const void *b) {
+    return (int)((const LowerUpperPair*)a)->lower - (int)((const LowerUpperPair*)b)->lower;
 }
 
-// Linear search to find lower case character from upper case  
-static unsigned short findUpperInLowerTable(unsigned short upper) {
-    // ASCII optimization: handle common case directly
-    if (upper < 0x80) {
-        if (upper >= 'A' && upper <= 'Z') {
-            return upper + 32; // Convert to lowercase
-        }
-        return upper; // No case conversion for non-alphabetic ASCII
-    }
-    
-    // Linear search in sUpperTable, return corresponding sLowerTable entry
+static void buildReverseLookupTable(void) {
+    LowerUpperPair *tmp = malloc(CASE_TABLE_SIZE * sizeof(LowerUpperPair));
+    int count = 0;
     for (int i = 0; i < CASE_TABLE_SIZE; i++) {
-        if (sUpperTable[i] == upper) {
-            return sLowerTable[i]; // Return corresponding lower case
+        unsigned short lo = sLowerTable[i];
+        // Skip duplicate lower values; the earlier (first) entry is preferred.
+        bool isDuplicate = false;
+        for (int j = 0; j < count; j++) {
+            if (tmp[j].lower == lo) { isDuplicate = true; break; }
+        }
+        if (!isDuplicate) {
+            tmp[count].lower = lo;
+            tmp[count].upper = sUpperTable[i];
+            count++;
         }
     }
-    
-    return upper; // No case conversion found
+    qsort(tmp, count, sizeof(LowerUpperPair), compareLowerUpperPair);
+    sReverseLookupTable = tmp;
+    sReverseLookupCount = count;
+    // Note: not thread-safe; concurrent first calls would both build identical
+    // tables, leaking one allocation. Acceptable for this use case.
+}
+
+static int compareUShort(const void *a, const void *b) {
+    return (int)*(const unsigned short*)a - (int)*(const unsigned short*)b;
+}
+
+// Binary search to find upper case character from lower case
+static unsigned short findLowerInUpperTable(unsigned short lower) {
+    if (lower < 0x80) {
+        if (lower >= 'a' && lower <= 'z') return lower - 32;
+        return lower;
+    }
+    if (!sReverseLookupTable) buildReverseLookupTable();
+    LowerUpperPair key = { lower, 0 };
+    LowerUpperPair *result = bsearch(&key, sReverseLookupTable, sReverseLookupCount,
+                                      sizeof(LowerUpperPair), compareLowerUpperPair);
+    return result ? result->upper : lower;
+}
+
+// Binary search to find lower case character from upper case
+static unsigned short findUpperInLowerTable(unsigned short upper) {
+    if (upper < 0x80) {
+        if (upper >= 'A' && upper <= 'Z') return upper + 32;
+        return upper;
+    }
+    unsigned short *found = bsearch(&upper, sUpperTable, CASE_TABLE_SIZE,
+                                     sizeof(unsigned short), compareUShort);
+    if (!found) return upper;
+    return sLowerTable[found - sUpperTable];
 }
 
 // Public API functions

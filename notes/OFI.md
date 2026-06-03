@@ -28,7 +28,7 @@ A survey of the C# (`cs/`) and C/C++ (`cpp/core/`) source for bad smells, incons
 - **`Assembler.cs` ~867**: `AddConstant()` does a linear scan for duplicates on every call; a `Dictionary` lookup would be O(1).
 - **`Assembler.cs` ~889–906**: `NeedsConstant()` effectively parses an integer twice (once to detect, once to validate); a single parse pass suffices.
 - **`CodeGenerator.cs` ~87**: `AllocConsecutiveRegs()` scans with an O(n) loop; a bitmap or free-list would scale better for large register windows.
-- **`Intrinsic.cs` ~80–85**: `GetByName()` does a linear search every call despite the table being static after startup — should be a `Dictionary`.
+- **`Intrinsic.cs` ~80–85**: `GetByName()` does a linear search every call despite the table being static after startup — should be a `Dictionary`. ✔️
 - **`VM.cs` ~260–285**: `MarkRoots()` iterates full stack/names arrays even when mostly empty; tracking a high-water mark would avoid unnecessary work.
 
 ---
@@ -36,7 +36,7 @@ A survey of the C# (`cs/`) and C/C++ (`cpp/core/`) source for bad smells, incons
 ## Dead Code & Obsolete Patterns
 
 - **`Value.cs` ~44–45**: `ToString()` is marked `[Obsolete]`, suggesting callers still exist that haven't been migrated. (Somewhat complicated by the standard inherited ToString.)
-- **`Intrinsic.cs` ~87**: `AllCount()` has a comment asking whether it is redundant with `Count` — likely dead.
+- **`Intrinsic.cs` ~87**: `AllCount()` has a comment asking whether it is redundant with `Count` — likely dead. ✔️
 - **`Bytecode.cs` ~88**: `CALLFN_iA_kBC` is explicitly marked DEPRECATED; the opcode and any code paths handling it should be removed.
 - **`Interpreter.cs` ~152**: Commented-out `parser.PartialReset()` call left as a TODO.
 - **`CoreIntrinsics.cs` ~290–291**: `info()` intrinsic has a `// ToDo: return an error` comment on a null-argument path that silently does nothing.

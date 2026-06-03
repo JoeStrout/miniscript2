@@ -24,6 +24,7 @@ public class Intrinsic {
 	private Value _funcRef = val_null;
 
 	private static List<Intrinsic> _all = new List<Intrinsic>();
+	private static Dictionary<String, Intrinsic> _byName = new Dictionary<String, Intrinsic>();
 	private static Boolean _initialized = false;
 
 	// Short-name registry: maps known Values (e.g. type maps) to display names.
@@ -64,6 +65,7 @@ public class Intrinsic {
 		result._paramNames = new List<String>();
 		result._paramDefaults = new List<Value>();
 		_all.Add(result);
+		_byName[name] = result;
 		return result;
 	}
 
@@ -78,15 +80,11 @@ public class Intrinsic {
 	}
 
 	public static Intrinsic GetByName(String name) {
-		for (Int32 i = 0; i < _all.Count; i++) {
-			if (_all[i].Name == name) return _all[i];
-		}
+		Intrinsic result;
+		if (_byName.TryGetValue(name, out result)) return result;
 		return null;
 	}
 
-	public static Int32 AllCount() {	// ToDo: isn't this redundant with Count, above?
-		return _all.Count;
-	}
 	public static Intrinsic GetByIndex(Int32 i) {
 		return _all[i];
 	}

@@ -718,7 +718,7 @@ Value ShellIntrinsics::GetFileModuleMap() {
 void ShellIntrinsics::InitFileIntrinsics() {
 	Intrinsic f;
 
-	_rdKeys =  List<String>::New(); _rdStart = Intrinsic::AllCount();
+	_rdKeys =  List<String>::New(); _rdStart = Intrinsic::Count();
 	_fhKeys =  List<String>::New();
 	_fmKeys =  List<String>::New();
 
@@ -1007,7 +1007,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	_rdKeys.Add("setUtf8");
 
 	// ── FileHandle methods ─────────────────────────────────────────────────
-	_fhStart = Intrinsic::AllCount();
+	_fhStart = Intrinsic::Count();
 
 	f = Intrinsic::Create("");
 	f.AddParam("self", val_null);
@@ -1103,7 +1103,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	_fhKeys.Add("atEnd");
 
 	// ── file module functions ───────────────────────────────────────────────
-	_fmStart = Intrinsic::AllCount();
+	_fmStart = Intrinsic::Count();
 
 	f = Intrinsic::Create("");
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {

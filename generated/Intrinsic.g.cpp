@@ -7,6 +7,7 @@
 namespace MiniScript {
 
 	List<Intrinsic> IntrinsicStorage::_all;
+	Dictionary<String, Intrinsic> IntrinsicStorage::_byName;
 	Boolean IntrinsicStorage::_initialized;
 	List<Value> IntrinsicStorage::_shortNameKeys;
 	List<String> IntrinsicStorage::_shortNameVals;
@@ -37,6 +38,7 @@ Intrinsic IntrinsicStorage::Create(String name) {
 	result.set__paramNames( List<String>::New());
 	result.set__paramDefaults( List<Value>::New());
 	_all.Add(result);
+	_byName[name] = result;
 	return result;
 }
 void IntrinsicStorage::AddParam(String name) {
@@ -48,13 +50,9 @@ void IntrinsicStorage::AddParam(String name,Value defaultValue) {
 	_paramDefaults.Add(defaultValue);
 }
 Intrinsic IntrinsicStorage::GetByName(String name) {
-	for (Int32 i = 0; i < _all.Count(); i++) {
-		if (_all[i].Name() == name) return _all[i];
-	}
+	Intrinsic result;
+	if (_byName.TryGetValue(name, &result)) return result;
 	return nullptr;
-}
-Int32 IntrinsicStorage::AllCount() { // ToDo: isn't this redundant with Count, above?
-	return _all.Count();
 }
 Intrinsic IntrinsicStorage::GetByIndex(Int32 i) {
 	return _all[i];

@@ -58,7 +58,7 @@ A survey of the C# (`cs/`) and C/C++ (`cpp/core/`) source for bad smells, incons
 - **`Assembler.cs` ~127**: On error, processing stops but partial state is not cleared; a subsequent call on the same assembler instance may see stale data.
 - **`Assembler.cs` ~574, 589**: `(Byte)ParseInt16(parts[1])` casts without a bounds check; out-of-range values silently truncate.
 - **`VM.cs` ~189**: `GetCallStackFrame()` returns `CallInfo(0, 0, null)` on an out-of-bounds index instead of throwing — silent failure.
-- **`Lexer.cs` ~82**: TODO comment: "rework this whole file to be fully Unicode-savvy" — Unicode edge cases unhandled.
+- **`Lexer.cs` ~82**: TODO comment: "rework this whole file to be fully Unicode-savvy" — Unicode edge cases unhandled. (Turns out it was all Unicode-savvy already.)  ⛌
 - **`VM.cs` ~123**: `_errorStackPending` flag is fragile if an error is raised during error handling itself.
 - **`Parser.cs` ~220**: Returns a dummy `TokenType.ERROR` token but doesn't halt further parsing — subsequent errors may be misleading.  (Possibly irrelevant since we report only the first error.)
 

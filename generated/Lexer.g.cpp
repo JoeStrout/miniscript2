@@ -18,7 +18,7 @@ Token::Token(TokenType type,String text,Int32 line,Int32 column) {
 }
 
 Lexer::Lexer(String source) {
-	_input = source;
+	_input = source.Replace("\r\n", "\n").Replace("\r", "\n");
 	_position = 0;
 	_line = 1;
 	_column = 1;

@@ -938,6 +938,7 @@ Then I analyzed Lexer.cs, looking for Unicode issues, but actually it appears to
 
 But while I'm at it, I'm going to put in a couple of optimations in StringStorage.h to speed up iteration over strings.  If it's an entirely ASCII string, we'll take a fast path that indexes directly; otherwise, we'll keep an internal cursor (mapping character index to byte index), and make use of that to avoid searching from the beginning of the string in most cases.
 
+Next, I'm tackling the inefficient linear intrinsic by-name lookup (GetByName) with a dictionary lookup.  Also removed the redundant AllCount() method (using Count instead).
 
 
 

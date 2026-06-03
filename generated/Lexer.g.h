@@ -71,7 +71,6 @@ inline Boolean Lexer::IsDigit(Char c) {
 	return '0' <= c && c <= '9';
 }
 inline Boolean Lexer::IsWhiteSpace(Char c) {
-	// ToDo: rework this whole file to be fully Unicode-savvy in both C# and C++
 	return UnicodeCharIsWhitespace((long)c);
 }
 inline Boolean Lexer::IsIdentifierStartChar(Char c) {

@@ -1326,7 +1326,7 @@ public static class ShellIntrinsics {
 	private static void InitFileIntrinsics() {
 		Intrinsic f;
 
-		_rdKeys = new List<String>(); _rdStart = Intrinsic.AllCount();
+		_rdKeys = new List<String>(); _rdStart = Intrinsic.Count();
 		_fhKeys = new List<String>();
 		_fmKeys = new List<String>();
 
@@ -1615,7 +1615,7 @@ public static class ShellIntrinsics {
 		_rdKeys.Add("setUtf8");
 
 		// ── FileHandle methods ─────────────────────────────────────────────────
-		_fhStart = Intrinsic.AllCount();
+		_fhStart = Intrinsic.Count();
 
 		f = Intrinsic.Create("");
 		f.AddParam("self", val_null);
@@ -1711,7 +1711,7 @@ public static class ShellIntrinsics {
 		_fhKeys.Add("atEnd");
 
 		// ── file module functions ───────────────────────────────────────────────
-		_fmStart = Intrinsic.AllCount();
+		_fmStart = Intrinsic.Count();
 
 		f = Intrinsic.Create("");
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {

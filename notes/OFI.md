@@ -29,7 +29,7 @@ A survey of the C# (`cs/`) and C/C++ (`cpp/core/`) source for bad smells, incons
 - **`Assembler.cs` ~889–906**: `NeedsConstant()` effectively parses an integer twice (once to detect, once to validate); a single parse pass suffices.
 - **`CodeGenerator.cs` ~87**: `AllocConsecutiveRegs()` scans with an O(n) loop; a bitmap or free-list would scale better for large register windows.
 - **`Intrinsic.cs` ~80–85**: `GetByName()` does a linear search every call despite the table being static after startup — should be a `Dictionary`. ✔️
-- **`VM.cs` ~260–285**: `MarkRoots()` iterates full stack/names arrays even when mostly empty; tracking a high-water mark would avoid unnecessary work.
+- **`VM.cs` ~260–285**: `MarkRoots()` iterates full stack/names arrays even when mostly empty; tracking a high-water mark would avoid unnecessary work. ✔️
 
 ---
 

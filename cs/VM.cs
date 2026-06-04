@@ -260,16 +260,13 @@ public class VM {
 	// intrinsics from collection.
 	public static void MarkRoots(object user_data) {
 		VM vm = (VM)user_data; // CPP: VM vm(static_cast<VMStorage*>(user_data)->shared_from_this());
-		for (Int32 i = 0; i < vm.stack.Count; i++) {
+		Int32 liveTop = (vm.CurrentFunction != null) ? vm.BaseIndex + vm.CurrentFunction.MaxRegs : 0;
+		for (Int32 i = 0; i < liveTop; i++) {
 			GCManager.Mark(vm.stack[i]);
 			GCManager.Mark(vm.names[i]);
 		}
-		// Mark intrinsics dictionary values (funcrefs are GC-allocated)
-		if (vm._intrinsics != null) {
-			foreach (Value val in vm._intrinsics.Values) {
-				GCManager.Mark(val);
-			}
-		}
+		// Intrinsic funcrefs are permanent GC roots (added via GCManager.AddRoot in
+		// Intrinsic.EnsureBuilt), so they don't need to be marked here.
 		// Mark compile-time constants of every function on the call chain.
 		// Marking a function's constants reaches its nested-function templates
 		// (themselves funcrefs), which cascade through GCFunction.MarkChildren —

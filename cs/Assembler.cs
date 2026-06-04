@@ -584,17 +584,6 @@ public class Assembler {
 			}
 			instruction = BytecodeUtil.INS_AB(Opcode.CALLF_iA_iBC, reserveRegs, (Int16)funcConstIdx);
 
-		} else if (mnemonic == "CALLFN") {
-			if (parts.Count != 3) { Error("Syntax error"); return 0; }
-			Byte reserveRegs = (Byte)ParseInt16(parts[1]);	// ToDo: check range before typecast
-			constantValue = ParseAsConstant(parts[2]);
-			if (!is_string(constantValue)) {
-				Error("Function name must be a string");
-				return 0;
-			}
-			Int32 constIdx = AddConstant(constantValue);
-			instruction = BytecodeUtil.INS_AB(Opcode.CALLFN_iA_kBC, reserveRegs, (Int16)constIdx);
-
 		} else if (mnemonic == "CALL") {
 			if (parts.Count != 4) { Error("Syntax error: CALL requires exactly 3 operands"); return 0; }
 			Byte destReg = ParseRegister(parts[1]);

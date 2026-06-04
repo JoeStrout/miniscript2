@@ -76,7 +76,6 @@ String Disassembler::AssemOp(Opcode opcode) {
 		case Opcode::ARG_rA:
 		case Opcode::ARG_iABC:      return "ARG";
 		case Opcode::CALLF_iA_iBC:  return "CALLF";
-		case Opcode::CALLFN_iA_kBC: return "CALLFN";
 		case Opcode::CALL_rA_rB_rC: return "CALL";
 		case Opcode::RETURN:        return "RETURN";
 		case Opcode::NEW_rA_rB:     return "NEW";
@@ -188,14 +187,7 @@ String Disassembler::ToString(UInt32 instruction) {
 				mnemonic,
 				(Int32)BytecodeUtil::As(instruction),
 				(Int32)BytecodeUtil::BCu(instruction));
-		// iA, kBC
-		case Opcode::CALLFN_iA_kBC:
-			return StringUtils::Format("{0} {1}, k{2}",
-				mnemonic,
-				(Int32)BytecodeUtil::As(instruction),
-				(Int32)BytecodeUtil::BCs(instruction));
-		
-		
+
 		// Three Operands:
 		// rA, rB, rC
 		case Opcode::ADD_rA_rB_rC:

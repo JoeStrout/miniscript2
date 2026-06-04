@@ -945,6 +945,5 @@ Next, I'm tackling the inefficient linear intrinsic by-name lookup (GetByName) w
 
 Doing more clean-up/OFIs today:
 - renamed MULT_rA_rB_rC to MUL_rA_rB_rC
-
-
+- removed the deprecated CALLFN_iA_kBC opcode (deleting old .msa files that used it)
 

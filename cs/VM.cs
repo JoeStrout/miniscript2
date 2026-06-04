@@ -1748,13 +1748,6 @@ public class VM {
 					break;
 				}
 
-				case Opcode.CALLFN_iA_kBC: {
-					// DEPRECATED: no longer emitted by the compiler.
-					// Intrinsics are now callable FuncRefs resolved via LOADV + CALL.
-					RaiseRuntimeError("CALLFN is no longer supported; use LOADV + CALL instead");
-					break;
-				}
-
 				case Opcode.CALL_rA_rB_rC: {
 					// Invoke the FuncRef in R[C], with a stack frame starting at our register B,
 					// and upon return, copy the result from r[B] to r[A].

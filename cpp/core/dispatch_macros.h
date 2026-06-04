@@ -100,7 +100,6 @@
 	X(ARG_rA) \
 	X(ARG_iABC) \
 	X(CALLF_iA_iBC) \
-	X(CALLFN_iA_kBC) \
 	X(CALL_rA_rB_rC) \
 	X(RETURN) \
 	X(NEW_rA_rB) \

@@ -950,5 +950,16 @@ Doing more clean-up/OFIs today:
 - fixed `info(null)` to return an info map
 - added `!help` metacommand, to remind the user of history syntax.
 
+It's now getting somewhat harder to find OFIs that aren't in Assembler/Disassembler (which are low-priority modules that may go away entirely).  Command-line MiniScript 2 seems to be working well and presents a better UX (and better performance!) than MS1.  It might be just about time to start making preview builds.
 
+As usual, Windows is the difficult one: MSVC doesn't support computed-goto.  We have two options:
+
+- MSVC via cl.exe — lose computed goto (slight performance hit), and we need a CMake or Makefile that works with MSVC's syntax differences.
+- MinGW-w64 via MSYS2 — gives us GCC, computed-goto, and our existing Makefile works with minimal changes.  But we would statically link the MinGW libs, which would increase the exe size by maybe 5ish MB.
+
+Both kinds of builds could be done via GitHub Actions, on GitHub's servers, which is nice.  So we just have to decide which we want.
+
+I'm tempted to go with MinGW/gcc just because it's easier; it avoids all the little compiler differences.  But on the other hand, we want our code to be usable in a wide variety of environments, so we should code conservatively and defensively — so we should use MSVC (or do both).  We take on the pain, so other users don't have to.
+
+In either case, it's clear that I shouldn't rely on GitHub Actions for day-to-day development and testing of the code.  Really, I should run in an environment where Claude Code can directly attempt the build and fix issues; next best would be one where I do so manually.  That means I'll need to dust off a Windows VM (which I would need for testing the builds regardless).
 

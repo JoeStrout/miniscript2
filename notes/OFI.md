@@ -18,7 +18,7 @@ A survey of the C# (`cs/`) and C/C++ (`cpp/core/`) source for bad smells, incons
 
 - **`CoreIntrinsics.cs` ~64–137**: Six type-builder blocks (`ListType`, `StringType`, etc.) follow identical `AddIntrinsicToMap()` boilerplate — a shared factory would halve the code.
 - **`Assembler.cs` ~669–681, 783–824**: Branch-offset resolution and integer-parsing logic appear in multiple helper methods with near-identical logic.
-- **`App.cs` ~438–563**: REPL input handling, history search, and recall parsing each contain overlapping number/string-parsing branches.
+- **`App.cs` ~438–563**: REPL input handling, history search, and recall parsing each contain overlapping number/string-parsing branches.  (Overstated, but a minor refactoring is available.) ✔️
 - **`Disassembler.cs` ~205–278**: Each switch-case repeats similar operand-formatting code; an extracted `FormatOperand()` helper would reduce noise.
 
 ---
@@ -39,7 +39,7 @@ A survey of the C# (`cs/`) and C/C++ (`cpp/core/`) source for bad smells, incons
 - **`Intrinsic.cs` ~87**: `AllCount()` has a comment asking whether it is redundant with `Count` — likely dead. ✔️
 - **`Bytecode.cs` ~88**: `CALLFN_iA_kBC` is explicitly marked DEPRECATED; the opcode and any code paths handling it should be removed. ✔️
 - **`Interpreter.cs` ~152**: Commented-out `parser.PartialReset()` call left as a TODO.
-- **`CoreIntrinsics.cs` ~290–291**: `info()` intrinsic has a `// ToDo: return an error` comment on a null-argument path that silently does nothing.
+- **`CoreIntrinsics.cs` ~290–291**: `info()` intrinsic has a `// ToDo: return an error` comment on a null-argument path that silently does nothing. ✔️
 - **`Assembler.cs` ~74, 79**: Commented-out error-raising code on invalid insert operations.
 
 ---

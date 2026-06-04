@@ -87,7 +87,8 @@ public struct App {
 			"Build: C# version", // CPP: "Build: C++ " VARIANT " version",
 			TextStyle.Subdued
 		);
-		
+		IOHelper.Print("Enter !help for REPL help.", TextStyle.Subdued);
+
 		if (debugMode) {
 			IOHelper.Print("Running unit tests...");
 			if (!UnitTests.RunAll()) return;
@@ -484,6 +485,18 @@ public struct App {
 			// Handle ! metacommands (only valid on the first line of an interaction).
 			if (!interp.NeedMoreInput() && line.Length > 0 && line[0] == '!') {
 				String meta = line.Substring(1).Trim();
+				// !help — show available metacommands
+				if (meta == "help" || meta == "") {
+					IOHelper.Print("REPL metacommands (prefix with !):", TextStyle.Subdued);
+					IOHelper.Print("  !help           show this help", TextStyle.Subdued);
+					IOHelper.Print("  !?              show recent history", TextStyle.Subdued);
+					IOHelper.Print("  !? [N]          show last N history entries", TextStyle.Subdued);
+					IOHelper.Print("  !? [word]       show history entries containing word", TextStyle.Subdued);
+					IOHelper.Print("  !? [N] [word]   show last N entries containing word", TextStyle.Subdued);
+					IOHelper.Print("  !N              replay history entry N", TextStyle.Subdued);
+					IOHelper.Print("  !-N             replay the Nth most recent entry", TextStyle.Subdued);
+					continue; // prompt again
+				}
 				// !? [count] [search] — show history
 				if (meta.StartsWith("?")) {
 					HandleHistorySearch(meta.Substring(1).Trim());
@@ -524,15 +537,14 @@ public struct App {
 
 		// Parse optional leading integer count, then optional search term.
 		Int32 spacePos = metaRest.IndexOf(' ');
-		String countPart = spacePos >= 0 ? metaRest.Substring(0, spacePos) : metaRest;
-		String rest = spacePos >= 0 ? metaRest.Substring(spacePos + 1).Trim() : "";
-		Int32 parsed = ParseInt(countPart);
+		String firstWord = spacePos >= 0 ? metaRest.Substring(0, spacePos) : metaRest;
+		Int32 parsed = ParseInt(firstWord);
 		if (parsed > 0) {
 			count = parsed;
+			String rest = spacePos >= 0 ? metaRest.Substring(spacePos + 1).Trim() : "";
 			if (rest.Length > 0) search = rest;
-		} else {
-			// No leading number: treat whole metaRest as search term.
-			if (metaRest.Length > 0) search = metaRest;
+		} else if (metaRest.Length > 0) {
+			search = metaRest;
 		}
 
 		Int32 total = list_count(CoreIntrinsics.replInList);

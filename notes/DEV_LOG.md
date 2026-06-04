@@ -948,5 +948,7 @@ Doing more clean-up/OFIs today:
 - removed the deprecated CALLFN_iA_kBC opcode (deleting old .msa files that used it)
 - reduced iteration in MarkRoots, and removed redundant marking of intrinsics
 - fixed `info(null)` to return an info map
+- added `!help` metacommand, to remind the user of history syntax.
+
 
 

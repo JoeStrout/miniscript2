@@ -533,7 +533,7 @@ public static class UnitTests {
 		ok = ok && CheckCodeGen(parser, "6 * 7", new List<String> {
 			"  LOAD_rA_iBC r1, 6",
 			"  LOAD_rA_iBC r2, 7",
-			"  MULT_rA_rB_rC r0, r1, r2",
+			"  MUL_rA_rB_rC r0, r1, r2",
 			"  RETURN"
 		}); // CPP: }));
 
@@ -607,7 +607,7 @@ public static class UnitTests {
 
 		// Test nested expression (precedence)
 		// 2 + 3 * 4: outer result r0, load 2 into r1, inner mult result r2, load 3,4 into r3,r4
-		// LOAD r1,2; LOAD r3,3; LOAD r4,4; MULT r2,r3,r4; ADD r0,r1,r2; RETURN
+		// LOAD r1,2; LOAD r3,3; LOAD r4,4; MUL r2,r3,r4; ADD r0,r1,r2; RETURN
 		ok = ok && CheckBytecodeGen(parser, "2 + 3 * 4", 6, 0);
 
 		// Test register reuse with nested expressions

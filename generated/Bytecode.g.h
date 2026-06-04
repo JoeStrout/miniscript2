@@ -34,7 +34,7 @@ enum class Opcode : Byte {
 	NAME_rA_kBC,
 	ADD_rA_rB_rC,
 	SUB_rA_rB_rC,
-	MULT_rA_rB_rC,	// ToDo: rename this MUL, to match ADD SUB DIV and MOD
+	MUL_rA_rB_rC,
 	DIV_rA_rB_rC,
 	MOD_rA_rB_rC,
 	POW_rA_rB_rC,

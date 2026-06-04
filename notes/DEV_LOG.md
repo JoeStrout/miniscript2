@@ -941,6 +941,10 @@ But while I'm at it, I'm going to put in a couple of optimations in StringStorag
 Next, I'm tackling the inefficient linear intrinsic by-name lookup (GetByName) with a dictionary lookup.  Also removed the redundant AllCount() method (using Count instead).
 
 
+## Jun 4, 2026
+
+Doing more clean-up/OFIs today:
+- renamed MULT_rA_rB_rC to MUL_rA_rB_rC
 
 
 

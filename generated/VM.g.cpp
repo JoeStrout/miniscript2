@@ -778,7 +778,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				VM_NEXT();
 			}
 
-			VM_CASE(MULT_rA_rB_rC) {
+			VM_CASE(MUL_rA_rB_rC) {
 				// R[A] = R[B] * R[C]
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);

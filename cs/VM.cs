@@ -975,7 +975,7 @@ public class VM {
 					break;
 				}
 
-				case Opcode.MULT_rA_rB_rC: {
+				case Opcode.MUL_rA_rB_rC: {
 					// R[A] = R[B] * R[C]
 					Byte a = BytecodeUtil.Au(instruction);
 					Byte b = BytecodeUtil.Bu(instruction);

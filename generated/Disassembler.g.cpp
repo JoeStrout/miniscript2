@@ -20,7 +20,7 @@ String Disassembler::AssemOp(Opcode opcode) {
 		case Opcode::ASSIGN_rA_rB_kC: return "ASSIGN";
 		case Opcode::NAME_rA_kBC:   return "NAME";
 		case Opcode::ADD_rA_rB_rC:  return "ADD";
-		case Opcode::MULT_rA_rB_rC: return "MULT";
+		case Opcode::MUL_rA_rB_rC:  return "MUL";
 		case Opcode::DIV_rA_rB_rC:  return "DIV";
 		case Opcode::MOD_rA_rB_rC:  return "MOD";
 		case Opcode::POW_rA_rB_rC:  return "POW";
@@ -200,7 +200,7 @@ String Disassembler::ToString(UInt32 instruction) {
 		// rA, rB, rC
 		case Opcode::ADD_rA_rB_rC:
 		case Opcode::SUB_rA_rB_rC:
-		case Opcode::MULT_rA_rB_rC:
+		case Opcode::MUL_rA_rB_rC:
 		case Opcode::DIV_rA_rB_rC:
 		case Opcode::MOD_rA_rB_rC:
 		case Opcode::POW_rA_rB_rC:

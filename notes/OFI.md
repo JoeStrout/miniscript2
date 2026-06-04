@@ -6,8 +6,8 @@ A survey of the C# (`cs/`) and C/C++ (`cpp/core/`) source for bad smells, incons
 
 ## Naming & Consistency
 
-- **`Bytecode.cs` ~33**: Opcode `MULT_rA_rB_rC` uses `MULT` while all peers use three-letter forms — a TODO comment notes the rename.
-- **`Bytecode.cs` ~258–259**: `ToMnemonic()` returns `"IFLT_rA_rB"` for *both* `IFNE_rA_rB` and `IFNE_rA_iBC` cases — copy-paste error.
+- **`Bytecode.cs` ~33**: Opcode `MULT_rA_rB_rC` uses `MULT` while all peers use three-letter forms — a TODO comment notes the rename. ✔️
+- **`Bytecode.cs` ~258–259**: `ToMnemonic()` returns `"IFLT_rA_rB"` for *both* `IFNE_rA_rB` and `IFNE_rA_iBC` cases — copy-paste error. ✔️
 - **`Disassembler.cs` ~54–55**: Returns `"BCTRUE"`/`"BCFALSE"` where all other branch-display strings use the `BR` prefix.
 - **`Assembler.cs` ~190**: Comment laments scattered, inconsistent string↔Value conversions; no central helpers exist.
 - **`Intrinsic.cs` ~29–31**: Short-name registry uses parallel `List<Value>` / `List<String>` instead of a single `Dictionary`; harder to keep in sync.

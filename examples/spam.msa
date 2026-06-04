@@ -1,6 +1,6 @@
 @spam:   # spam(repeatCount) -> null
 	LOAD r1, "Spam "
-	MULT r1, r1, r0
+	MUL r1, r1, r0
 	CALLFN 1, "print"
 	RETURN
 	

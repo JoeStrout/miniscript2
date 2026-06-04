@@ -111,7 +111,7 @@ public static class VMTest {
 		source.Add("@main:");
 		source.Add("LOAD r0, 6");
 		source.Add("LOAD r1, 7");
-		source.Add("MULT r2, r0, r1");
+		source.Add("MUL r2, r0, r1");
 		source.Add("LOAD r0, r2");
 		source.Add("RETURN");
 

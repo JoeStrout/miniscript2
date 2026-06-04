@@ -25,7 +25,7 @@ public static class DisassemblerTest {
 		ok = TestFramework.AssertEqual(Disassembler.AssemOp(Opcode.LOAD_rA_kBC), "LOAD", "LOAD_rA_kBC mnemonic") && ok;
 		ok = TestFramework.AssertEqual(Disassembler.AssemOp(Opcode.ADD_rA_rB_rC), "ADD", "ADD mnemonic") && ok;
 		ok = TestFramework.AssertEqual(Disassembler.AssemOp(Opcode.SUB_rA_rB_rC), "SUB", "SUB mnemonic") && ok;
-		ok = TestFramework.AssertEqual(Disassembler.AssemOp(Opcode.MULT_rA_rB_rC), "MULT", "MULT mnemonic") && ok;
+		ok = TestFramework.AssertEqual(Disassembler.AssemOp(Opcode.MUL_rA_rB_rC), "MUL", "MUL mnemonic") && ok;
 		ok = TestFramework.AssertEqual(Disassembler.AssemOp(Opcode.RETURN), "RETURN", "RETURN mnemonic") && ok;
 		ok = TestFramework.AssertEqual(Disassembler.AssemOp(Opcode.JUMP_iABC), "JUMP", "JUMP mnemonic") && ok;
 		ok = TestFramework.AssertEqual(Disassembler.AssemOp(Opcode.CALLF_iA_iBC), "CALLF", "CALLF mnemonic") && ok;

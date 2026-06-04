@@ -42,7 +42,7 @@
 	LOAD r0, "String * 2"
 	LOAD r1, "abc"
 	LOAD r2, 2
-	MULT r1, r1, r2
+	MUL r1, r1, r2
 	LOAD r3, "abcabc"
 	IFNE r1, r3
 	RETURN
@@ -51,7 +51,7 @@
 	LOAD r0, "String * 0.5"
 	LOAD r1, "abcdef"
 	LOAD r2, 0.5
-	MULT r1, r1, r2
+	MUL r1, r1, r2
 	LOAD r3, "abc"
 	IFNE r1, r3
 	RETURN

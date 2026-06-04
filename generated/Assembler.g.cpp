@@ -298,7 +298,7 @@ UInt32 AssemblerStorage::AddLine(String line,Int32 lineNumber) {
 		instruction = BytecodeUtil::INS_AB(Opcode::NAME_rA_kBC, dest, (Int16)constIdx);
 		Current.ReserveRegister(dest);
 
-	} else if (mnemonic == "ADD" || mnemonic == "SUB" || mnemonic == "MULT"
+	} else if (mnemonic == "ADD" || mnemonic == "SUB" || mnemonic == "MUL"
 			|| mnemonic == "DIV" || mnemonic == "MOD" || mnemonic == "POW"
 			|| mnemonic == "AND" || mnemonic == "OR") {
 		// All simple rA_rB_rC arithmetic/logic ops
@@ -672,7 +672,7 @@ UInt32 AssemblerStorage::AssembleRegOrImmBranch(List<String> parts,Opcode opRR,O
 Opcode AssemblerStorage::ArithmeticOpcode(String mnemonic) {
 	if (mnemonic == "ADD") return Opcode::ADD_rA_rB_rC;
 	if (mnemonic == "SUB") return Opcode::SUB_rA_rB_rC;
-	if (mnemonic == "MULT") return Opcode::MULT_rA_rB_rC;
+	if (mnemonic == "MUL") return Opcode::MUL_rA_rB_rC;
 	if (mnemonic == "DIV") return Opcode::DIV_rA_rB_rC;
 	if (mnemonic == "MOD") return Opcode::MOD_rA_rB_rC;
 	if (mnemonic == "POW") return Opcode::POW_rA_rB_rC;

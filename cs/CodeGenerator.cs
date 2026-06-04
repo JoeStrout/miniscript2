@@ -487,7 +487,7 @@ public class CodeGenerator : IASTVisitor {
 			op = Opcode.SUB_rA_rB_rC;
 			opSymbol = "-";
 		} else if (node.Op == Op.TIMES) {
-			op = Opcode.MULT_rA_rB_rC;
+			op = Opcode.MUL_rA_rB_rC;
 			opSymbol = "*";
 		} else if (node.Op == Op.DIVIDE) {
 			op = Opcode.DIV_rA_rB_rC;
@@ -622,7 +622,7 @@ public class CodeGenerator : IASTVisitor {
 		for (Int32 i = 1; i < node.Operators.Count; i++) {
 			Int32 tempReg = AllocReg();
 			EmitComparison(node.Operators[i], tempReg, valueRegs[i], valueRegs[i + 1]);
-			_emitter.EmitABC(Opcode.MULT_rA_rB_rC, resultReg, resultReg, tempReg, "chain AND");
+			_emitter.EmitABC(Opcode.MUL_rA_rB_rC, resultReg, resultReg, tempReg, "chain AND");
 			FreeReg(tempReg);
 		}
 

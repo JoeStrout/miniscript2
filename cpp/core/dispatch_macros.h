@@ -45,7 +45,7 @@
 	X(NAME_rA_kBC) \
 	X(ADD_rA_rB_rC) \
 	X(SUB_rA_rB_rC) \
-	X(MULT_rA_rB_rC) \
+	X(MUL_rA_rB_rC) \
 	X(DIV_rA_rB_rC) \
 	X(MOD_rA_rB_rC) \
 	X(POW_rA_rB_rC) \

@@ -79,7 +79,7 @@ String BytecodeUtil::ToMnemonic(Opcode opcode) {
 		case Opcode::NAME_rA_kBC:    return "NAME_rA_kBC";
 		case Opcode::ADD_rA_rB_rC:   return "ADD_rA_rB_rC";
 		case Opcode::SUB_rA_rB_rC:   return "SUB_rA_rB_rC";
-		case Opcode::MULT_rA_rB_rC:  return "MULT_rA_rB_rC";
+		case Opcode::MUL_rA_rB_rC:   return "MUL_rA_rB_rC";
 		case Opcode::DIV_rA_rB_rC:   return "DIV_rA_rB_rC";
 		case Opcode::MOD_rA_rB_rC:   return "MOD_rA_rB_rC";
 		case Opcode::POW_rA_rB_rC:   return "POW_rA_rB_rC";
@@ -127,8 +127,8 @@ String BytecodeUtil::ToMnemonic(Opcode opcode) {
 		case Opcode::IFLE_iAB_rC:    return "IFLE_iAB_rC";
 		case Opcode::IFEQ_rA_rB:     return "IFEQ_rA_rB";
 		case Opcode::IFEQ_rA_iBC:    return "IFEQ_rA_iBC";
-		case Opcode::IFNE_rA_rB:     return "IFLT_rA_rB";
-		case Opcode::IFNE_rA_iBC:    return "IFLT_rA_iBC";
+		case Opcode::IFNE_rA_rB:     return "IFNE_rA_rB";
+		case Opcode::IFNE_rA_iBC:    return "IFNE_rA_iBC";
 		case Opcode::NEXT_rA_rB:     return "NEXT_rA_rB";
 		case Opcode::ARGBLK_iABC:  return "ARGBLK_iABC";
 		case Opcode::ARG_rA:         return "ARG_rA";
@@ -161,7 +161,7 @@ Opcode BytecodeUtil::FromMnemonic(String s) {
 	if (s == "NAME_rA_kBC")     return Opcode::NAME_rA_kBC;
 	if (s == "ADD_rA_rB_rC")    return Opcode::ADD_rA_rB_rC;
 	if (s == "SUB_rA_rB_rC")    return Opcode::SUB_rA_rB_rC;
-	if (s == "MULT_rA_rB_rC")   return Opcode::MULT_rA_rB_rC;
+	if (s == "MUL_rA_rB_rC")    return Opcode::MUL_rA_rB_rC;
 	if (s == "DIV_rA_rB_rC")    return Opcode::DIV_rA_rB_rC;
 	if (s == "MOD_rA_rB_rC")    return Opcode::MOD_rA_rB_rC;
 	if (s == "POW_rA_rB_rC")    return Opcode::POW_rA_rB_rC;

@@ -1,8 +1,9 @@
-Title: Semi-Immortal Interned Strings
+Title: **Semi-Immortal Interned Strings**
 
 Status: Accepted
 
-Context:
+## Context
+
 MiniScript currently represents strings in three ways:
 
 - Tiny strings, up to 5 bytes, are encoded directly in the `Value`.
@@ -13,7 +14,8 @@ The current weak-interning approach deduplicates live short strings, but interne
 
 In practice, most strings in MiniScript programs are expected to be small and repeated: identifiers, keywords, map keys, property names, function names, and other symbolic values. Strings are also immutable and contain no child `Value` references, making them safe candidates for special lifetime handling.
 
-Decision:
+## Decision
+
 Interned strings will become semi-immortal.
 
 Interned heap strings will bypass ordinary GC cycles. They will remain canonical and reusable across normal collections, and ordinary GC will not mark or sweep the interned string set.
@@ -29,13 +31,15 @@ This may be implemented as a separate `GCSet<GCString>` for interned strings, di
 
 The intern table remains the content-addressed lookup structure mapping string content to interned string slots. Its entries are valid for the lifetime of the corresponding semi-immortal string and are removed when that string is reclaimed during full collection.
 
-Alternatives Considered:
+## Alternatives Considered
+
 - Keep current weak interning: Simple and memory-safe, but provides only live-object deduplication and still requires interned strings to participate in normal GC.
 - Restore fully immortal interning: Maximizes canonicalization and GC performance, but permits unbounded permanent growth if user code generates many unique short strings.
 - Remove interning entirely: Simplifies GC and allocation, but loses deduplication, canonical identity, and fast equality for repeated short strings.
 - Keep one string set with an `Interned` flag and make normal sweep skip interned entries:  Avoids adding a new `Value` string-set kind, but may still require scanning over interned slots unless the set is internally partitioned.
 
-Consequences:
+## Consequences
+
 - Normal GC should become faster when many live objects are interned strings, because interned strings need not be marked or swept.
 - Repeated short strings retain canonical identity across ordinary GC cycles, improving equality checks and map-key behavior.
 - Deduplication becomes stronger than weak interning: a short string can be reused even if all ordinary references to it disappear between normal GC cycles.

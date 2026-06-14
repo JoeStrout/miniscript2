@@ -1,17 +1,21 @@
-Title: NaN-boxed values
+Title: **NaN-boxed values**
 Status: Accepted (*)
 
-Context:
+## Context
+
 MiniScript is a dynamically typed language, which means that any value (local variable/register entry, map key or value, list entry, etc.) can contain any valid MiniScript type.  In MS1, a Value was an abstract base class, with subclasses for number, string, list, funcRef, etc.  This made values regrettably "heavy" and had measuable performance impact.  A key reason for the clean rewrite in MS2 was to enable a more efficient value representation.
 
-Decision:
+## Decision
+
 Use "NaN boxing", where every value is stored as a Double (8-byte IEEE 754 value), but some NaN values are special in that they encode other types.  For heap-allocated objects, we will box a 48-bit pointer (C++) or index into a handle pool (C#) that points to the GC-managed data.  Strings are represented two ways: "tiny strings" (5 bytes or less) are stored right in the NaN box, while larger strings are on the heap.
 
-Alternatives Considered:
+## Alternatives Considered
+
 - Class hierarchy: what we did before; not performant.
 - Union struct: better, but still requires a separate "type" byte, which makes the overall struct an awkward size (9 bytes in order to hold a double value).
 
-Consequences:
+## Consequences
+
 - Uniform 8-byte value size, making for efficient value arrays, etc.
 
 In C++:

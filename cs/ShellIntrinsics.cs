@@ -31,6 +31,7 @@ using static MiniScript.ValueHelpers;
     #include <direct.h>
     #include <Fileapi.h>
     #include <io.h>
+    #include <sys/stat.h>
     #ifndef getcwd
         #define getcwd _getcwd
     #endif

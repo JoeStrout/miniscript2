@@ -13,6 +13,126 @@ echo "Project root: $(pwd)"
 TARGET="${1:-all}"
 GOTO_MODE="${2:-auto}"  # auto, on, off
 
+# ---------------------------------------------------------------------------
+# dist_build PLATFORM [GOTO_MODE]
+#
+# Build a distribution binary for PLATFORM using Zig as a cross-compiler.
+# PLATFORM is one of: mac-x86, mac-arm, win, linux
+# GOTO_MODE is on/off/auto (default: auto → platform-specific safe default)
+#
+# Output is placed in build/dist/.
+# ---------------------------------------------------------------------------
+dist_build() {
+    local PLATFORM="$1"
+    local GOTO_MODE="${2:-auto}"
+
+    # Per-platform settings
+    local ZIG_TARGET USE_EDITLINE DEFAULT_GOTO OUTPUT_NAME STRIP
+    case "$PLATFORM" in
+        mac-x86)
+            ZIG_TARGET="-target x86_64-macos"
+            USE_EDITLINE=1
+            DEFAULT_GOTO="on"
+            OUTPUT_NAME="miniscript2-mac-x86"
+            STRIP=0
+            ;;
+        mac-arm)
+            ZIG_TARGET="-target aarch64-macos"
+            USE_EDITLINE=1
+            DEFAULT_GOTO="on"
+            OUTPUT_NAME="miniscript2-mac-arm"
+            STRIP=0
+            ;;
+        win)
+            ZIG_TARGET="-target x86_64-windows-gnu"
+            USE_EDITLINE=0
+            DEFAULT_GOTO="off"   # computed-goto on windows-gnu is untested
+            OUTPUT_NAME="miniscript2-win.exe"
+            STRIP=1
+            ;;
+        linux)
+            ZIG_TARGET="-target x86_64-linux-musl"
+            USE_EDITLINE=1
+            DEFAULT_GOTO="on"
+            OUTPUT_NAME="miniscript2-linux"
+            STRIP=1
+            ;;
+        *)
+            echo "Unknown dist platform: $PLATFORM"
+            echo "Valid platforms: mac-x86, mac-arm, win, linux"
+            exit 1
+            ;;
+    esac
+
+    # Resolve goto mode: "auto" picks the platform default
+    [ "$GOTO_MODE" = "auto" ] && GOTO_MODE="$DEFAULT_GOTO"
+    local GOTO_FLAG
+    case "$GOTO_MODE" in
+        on)  GOTO_FLAG="-DVM_USE_COMPUTED_GOTO=1" ;;
+        off) GOTO_FLAG="-DVM_USE_COMPUTED_GOTO=0" ;;
+        *)   GOTO_FLAG="" ;;
+    esac
+
+    # Collect sources (exclude test/debug programs)
+    local CORE_CPP CORE_C GEN_CPP
+    CORE_CPP=$(find cpp/core -maxdepth 1 -name "*.cpp" \
+                ! -name "test_*" ! -name "debug_*" | sort)
+    CORE_C=$(find cpp/core -maxdepth 1 -name "*.c" \
+              ! -name "test_*" ! -name "debug_*" | sort)
+    GEN_CPP=$(find generated -maxdepth 1 -name "*.g.cpp" | sort)
+
+    if [ -z "$GEN_CPP" ]; then
+        echo "No generated .g.cpp files found. Run 'transpile' first."
+        exit 1
+    fi
+
+    local EDITLINE_C_SOURCES=""
+    local EDITLINE_C_FLAGS="-Icpp/editline"
+    local EDITLINE_DEFINE=""
+    if [ "$USE_EDITLINE" = "1" ]; then
+        EDITLINE_C_SOURCES="cpp/editline/editline.c cpp/editline/sysunix.c cpp/editline/complete.c"
+        EDITLINE_DEFINE="-DUSE_EDITLINE=1"
+    fi
+
+    local OUTPUT="build/dist/$OUTPUT_NAME"
+    local OBJDIR="build/dist/obj_$PLATFORM"
+    mkdir -p build/dist "$OBJDIR"
+
+    echo "  Platform : $PLATFORM  ($ZIG_TARGET)"
+    echo "  Goto     : $GOTO_MODE"
+    echo "  Editline : $USE_EDITLINE"
+    echo "  Output   : $OUTPUT"
+
+    local COMMON_FLAGS="$ZIG_TARGET -O3 -DNDEBUG -Icpp/core -Icpp -Igenerated $GOTO_FLAG $EDITLINE_DEFINE"
+    local OBJECTS=""
+
+    # Compile C files (core + editline)
+    for src in $CORE_C $EDITLINE_C_SOURCES; do
+        local obj="$OBJDIR/$(basename "${src%.*}").o"
+        # shellcheck disable=SC2086
+        zig cc $COMMON_FLAGS -std=gnu99 $EDITLINE_C_FLAGS -c "$src" -o "$obj"
+        OBJECTS="$OBJECTS $obj"
+    done
+
+    # Compile C++ files (core + generated)
+    for src in $CORE_CPP $GEN_CPP; do
+        local obj="$OBJDIR/$(basename "${src%.cpp}").o"
+        # .g.cpp files share a basename pattern; keep the full stem
+        obj="$OBJDIR/$(basename "$src" .cpp | tr '.' '_').o"
+        # shellcheck disable=SC2086
+        zig c++ $COMMON_FLAGS -std=gnu++11 -c "$src" -o "$obj"
+        OBJECTS="$OBJECTS $obj"
+    done
+
+    # Link
+    local STRIP_FLAG=""
+    [ "$STRIP" = "1" ] && STRIP_FLAG="-s"
+    # shellcheck disable=SC2086
+    zig c++ $ZIG_TARGET $STRIP_FLAG $OBJECTS -o "$OUTPUT"
+
+    echo "  Done: $OUTPUT"
+}
+
 case "$TARGET" in
     "setup")
         echo "Setting up development environment..."
@@ -139,7 +259,7 @@ case "$TARGET" in
     
     "clean")
         echo "Cleaning all build artifacts..."
-        rm -rf build/cs/* build/cpp/* build/temp/*
+        rm -rf build/cs/* build/cpp/* build/temp/* build/dist/*
         rm -rf generated/*.g.h generated/*.g.cpp
         cd cs && dotnet clean
         if [ -f cpp/Makefile ]; then
@@ -148,6 +268,43 @@ case "$TARGET" in
         echo "Clean complete."
         ;;
     
+    "dist")
+        # Distribution builds via Zig cross-compiler
+        # Usage: build.sh dist <platform|all> [on|off|auto]
+        #   Platforms: mac-x86  mac-arm  mac  win  linux  all
+        DIST_PLATFORM="${2:-}"
+        DIST_GOTO="${3:-auto}"
+
+        if [ -z "$DIST_PLATFORM" ]; then
+            echo "Usage: $0 dist <platform> [goto_mode]"
+            echo "Platforms: mac-x86  mac-arm  mac  win  linux  all"
+            exit 1
+        fi
+
+        if [ "$DIST_PLATFORM" = "mac" ]; then
+            echo "Building Mac fat (universal) binary..."
+            dist_build mac-x86 "$DIST_GOTO"
+            dist_build mac-arm "$DIST_GOTO"
+            lipo -create -output build/dist/miniscript2-mac \
+                build/dist/miniscript2-mac-x86 \
+                build/dist/miniscript2-mac-arm
+            echo "  Fat binary: build/dist/miniscript2-mac"
+        elif [ "$DIST_PLATFORM" = "all" ]; then
+            echo "Building all distribution targets..."
+            dist_build mac-x86 "$DIST_GOTO"
+            dist_build mac-arm "$DIST_GOTO"
+            lipo -create -output build/dist/miniscript2-mac \
+                build/dist/miniscript2-mac-x86 \
+                build/dist/miniscript2-mac-arm
+            echo "  Fat binary: build/dist/miniscript2-mac"
+            dist_build win   "$DIST_GOTO"
+            dist_build linux "$DIST_GOTO"
+            echo "All dist builds complete."
+        else
+            dist_build "$DIST_PLATFORM" "$DIST_GOTO"
+        fi
+        ;;
+
     "test")
         echo "Running quick smoke tests..."
         echo "Testing C# version:"
@@ -192,15 +349,24 @@ case "$TARGET" in
         ;;
 
     *)
-        echo "Usage: $0 {setup|cs|transpile|cpp|all|clean|test|test-*|xcode} [options]"
+        echo "Usage: $0 {setup|cs|transpile|cpp|dist|all|clean|test|test-*|xcode} [options]"
         echo ""
         echo "Build Commands:"
         echo "  setup       - Set up development environment"
         echo "  cs          - Build C# version only"
         echo "  transpile [file.cs] - Transpile C# to C++ (all files, or single file)"
         echo "  cpp [debug] [goto_mode] [file.cpp] - Build C++ version (or compile single file)"
-        echo "  all         - Build everything"
+        echo "  dist <platform> [goto_mode] - Cross-platform dist build via Zig"
+        echo "  all         - Build everything (cs + transpile + cpp)"
         echo "  clean       - Clean build artifacts"
+        echo ""
+        echo "Dist Platforms:"
+        echo "  mac-x86     - macOS Intel binary"
+        echo "  mac-arm     - macOS Apple Silicon binary"
+        echo "  mac         - macOS universal (fat) binary (builds both + lipo)"
+        echo "  win         - Windows x86-64 binary (.exe)"
+        echo "  linux       - Linux x86-64 static binary (musl)"
+        echo "  all         - All of the above"
         echo ""
         echo "Test Commands:"
         echo "  test        - Quick smoke test of built executables"
@@ -224,6 +390,10 @@ case "$TARGET" in
         echo "  $0 cpp debug on          # Debug build, computed-goto forced on"
         echo "  $0 cpp VM.g.cpp          # Compile only VM.g.cpp (no link)"
         echo "  $0 cpp debug value.cpp   # Compile only value.cpp in debug mode"
+        echo "  $0 dist mac              # Universal Mac binary (requires lipo)"
+        echo "  $0 dist linux            # Linux static binary"
+        echo "  $0 dist win off          # Windows binary, switch dispatch"
+        echo "  $0 dist all              # All platforms"
         exit 1
         ;;
 esac

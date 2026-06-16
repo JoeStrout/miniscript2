@@ -9,11 +9,11 @@ namespace MiniScript {
 
 //
 // Non-generic abstract base for all GC item pools.
-// Manages bookkeeping metadata (InUse, Marked, RetainCount, free-list)
-// and implements IGCSet.  Subclasses supply the typed item list and
-// the three abstract item operations.
+// Manages bookkeeping metadata (InUse, Marked, RetainCount, free-list).
+// Subclasses supply the typed item list and the three abstract item operations.
+// Satisfies the IGCSet conceptual interface (see GCInterfaces.cs).
 //
-public abstract class GCSetBase : IGCSet {
+public abstract class GCSetBase {
 	protected List<Boolean> _inUse = new List<Boolean>();
 	protected List<Boolean> _marked = new List<Boolean>();
 	protected List<Byte> _retainCounts = new List<Byte>();

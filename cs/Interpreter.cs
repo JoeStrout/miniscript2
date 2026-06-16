@@ -39,7 +39,7 @@ public class Interpreter {
 	// in REPL mode.  If you're not using the REPL() method, you can
 	// safely ignore this.
 	// 
-	public TextOutputMethod implicitOutput;
+	public TextOutputMethod implicitOutput = null;
 
 	// 
 	// errorOutput: receives error messages from the compiler or runtime.
@@ -55,7 +55,7 @@ public class Interpreter {
 	// so you can access it inside your custom intrinsic functions.  Use it
 	// for whatever you like (or don't, if you don't feel the need).
 	// 
-	public object hostData;
+	public object hostData = null;
 
 	// 
 	// done: returns true when we don't have a virtual machine, or we do have

@@ -20,9 +20,12 @@ enum class TextStyle : Int32 {
 
 class IOHelper {
 	private: static TextStyle currentStyle;
+	private: static bool ansiInitialized;
+
+	private: static void EnsureAnsiEnabled();
 
 	public: static String GetStyleTermCode(TextStyle style);
-		
+
 	public: static void SetStyle(TextStyle style);
 
 	public: static void NoteStyleSet(TextStyle style);

@@ -79,7 +79,7 @@ public class VM {
 	// Reference to the Interpreter that owns this VM (may be null if VM is used standalone).
 	// (Note that in C++, this is a raw pointer to the InterpreterStorage, due to annoying
 	// circular-header-dependency issues.)  The same Get/Set interface works on both C#/C++.
-	private Interpreter interpreter; // H: private: InterpreterStorage* interpreter;
+	private Interpreter interpreter = null; // H: private: InterpreterStorage* interpreter = nullptr;
 	public void SetInterpreter(Interpreter interp) { // NO_INLINE
 		interpreter = interp; // CPP: interpreter = interp.get_storage();
 	}
@@ -125,20 +125,20 @@ public class VM {
 	// Pending intrinsic continuation: when an intrinsic returns done=false,
 	// we store the state here so Run can re-invoke it on the next call.
 	// The partial result value is stored in stack[_pendingResultIndex].
-	private NativeCallbackDelegate _pendingCallback;
-	private Int32 _pendingCalleeBase;   // base index for reconstructing Context
-	private Int32 _pendingArgCount;     // arg count for reconstructing Context
-	private Int32 _pendingResultIndex;  // absolute stack index for result (and partial result)
+	private NativeCallbackDelegate _pendingCallback = null;
+	private Int32 _pendingCalleeBase = 0;   // base index for reconstructing Context
+	private Int32 _pendingArgCount = 0;     // arg count for reconstructing Context
+	private Int32 _pendingResultIndex = 0;  // absolute stack index for result (and partial result)
 
 	// Support for manually-pushed calls (used by the import intrinsic).
 	// When _hasPendingManualCall is true, Run() skips callback re-invocation
 	// and runs RunInner so the pushed function can execute first.
-	private Boolean _hasPendingManualCall;
-	private Int32 _pendingManualCallDepth;  // callStackTop value after the push
-	public Value ManualCallResult;          // return value of the manually-pushed call
+	private Boolean _hasPendingManualCall = false;
+	private Int32 _pendingManualCallDepth = 0;  // callStackTop value after the push
+	public Value ManualCallResult = val_null;    // return value of the manually-pushed call
 
 	// Set by the "yield" intrinsic; host app can check and clear this.
-	public bool yielding;
+	public bool yielding = false;
 
 	// Wall-clock start time, set in Reset(), used by the "time" intrinsic.
 	//*** BEGIN CS_ONLY ***

@@ -103,7 +103,7 @@ dist_build() {
     echo "  Editline : $USE_EDITLINE"
     echo "  Output   : $OUTPUT"
 
-    local COMMON_FLAGS="$ZIG_TARGET -O3 -DNDEBUG -Icpp/core -Icpp -Igenerated $GOTO_FLAG $EDITLINE_DEFINE"
+    local COMMON_FLAGS="$ZIG_TARGET -O3 -DNDEBUG -Wno-date-time -Icpp/core -Icpp -Igenerated $GOTO_FLAG $EDITLINE_DEFINE"
     local OBJECTS=""
 
     # Compile C files (core + editline)

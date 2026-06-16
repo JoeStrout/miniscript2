@@ -38,7 +38,7 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	public: Boolean DebugMode = false;
 	private: List<Value> stack;
 	private: List<Value> names; // Variable names parallel to stack (null if unnamed)
-	private: InterpreterStorage* interpreter;
+	private: InterpreterStorage* interpreter = nullptr;
 
 	// Reference to the Interpreter that owns this VM (may be null if VM is used standalone).
 	// (Note that in C++, this is a raw pointer to the InterpreterStorage, due to annoying
@@ -58,14 +58,14 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	private: Value pendingSelf;
 	private: Value pendingSuper;
 	private: bool hasPendingContext;
-	private: NativeCallbackDelegate _pendingCallback;
-	private: Int32 _pendingCalleeBase; // base index for reconstructing Context
-	private: Int32 _pendingArgCount; // arg count for reconstructing Context
-	private: Int32 _pendingResultIndex; // absolute stack index for result (and partial result)
-	private: Boolean _hasPendingManualCall;
-	private: Int32 _pendingManualCallDepth; // callStackTop value after the push
-	public: Value ManualCallResult; // return value of the manually-pushed call
-	public: bool yielding;
+	private: NativeCallbackDelegate _pendingCallback = null;
+	private: Int32 _pendingCalleeBase = 0; // base index for reconstructing Context
+	private: Int32 _pendingArgCount = 0; // arg count for reconstructing Context
+	private: Int32 _pendingResultIndex = 0; // absolute stack index for result (and partial result)
+	private: Boolean _hasPendingManualCall = false;
+	private: Int32 _pendingManualCallDepth = 0; // callStackTop value after the push
+	public: Value ManualCallResult = val_null; // return value of the manually-pushed call
+	public: bool yielding = false;
 	private: std::chrono::steady_clock::time_point _startTime;
 
 	// callStack is indexed by execution depth: callStack[0] is always @main's execution

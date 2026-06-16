@@ -11,6 +11,8 @@ using System.Collections.Generic;
 
 /*** BEGIN CPP_ONLY ***
 #ifdef _WIN32 // define POSIX getline if on Windows
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
 #include <cstdio>
 #include <cstdlib>
 
@@ -64,8 +66,33 @@ public enum TextStyle : Int32 {
 public static class IOHelper {
 
 	private static TextStyle currentStyle = TextStyle.Normal;
+	private static bool ansiInitialized = false;
+	private static bool ansiEnabled = true; // CPP: static bool ansiEnabled = false;
+
+	private static void EnsureAnsiEnabled() {
+		if (ansiInitialized) return;
+		ansiInitialized = true;
+		//*** BEGIN CS_ONLY ***
+		// Nothing needed; .NET enables ANSI on supported platforms automatically.
+		//*** END CS_ONLY ***
+		/*** BEGIN CPP_ONLY ***
+		#ifdef _WIN32
+		HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+		if (hOut != INVALID_HANDLE_VALUE) {
+		    DWORD mode = 0;
+		    if (GetConsoleMode(hOut, &mode)) {
+		        ansiEnabled = SetConsoleMode(hOut, mode | ENABLE_PROCESSED_OUTPUT | ENABLE_VIRTUAL_TERMINAL_PROCESSING) != 0;
+		    }
+		}
+		#else
+		ansiEnabled = true;
+		#endif
+		*** END CPP_ONLY ***/
+	}
 
 	public static String GetStyleTermCode(TextStyle style) {
+		EnsureAnsiEnabled();
+		if (!ansiEnabled) return "";
 		if (style == TextStyle.Normal) {
 			return "\x1b[0m";
 		} else if (style == TextStyle.Subdued) {
@@ -78,7 +105,7 @@ public static class IOHelper {
 			return "";
 		}
 	}
-		
+
 	public static void SetStyle(TextStyle style) {
 		if (style == currentStyle) return;
 		Console.Write(GetStyleTermCode(style)); // CPP: std::cout << GetStyleTermCode(style);

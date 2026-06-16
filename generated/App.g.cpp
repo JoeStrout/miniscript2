@@ -81,7 +81,7 @@ void App::MainProgram(List<String> args) {
 	#define VARIANT "(switch)"
 	#endif
 	IOHelper::Print(
-		"Build: C++ " VARIANT " version",
+		"Build: C++ " VARIANT " version, built " __DATE__ " " __TIME__,
 		TextStyle::Subdued
 	);
 	IOHelper::Print("Enter !help for REPL help.", TextStyle::Subdued);

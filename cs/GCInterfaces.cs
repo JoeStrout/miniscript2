@@ -18,24 +18,20 @@ public interface IGCItem {
 }
 
 
-// Non-generic interface so GCManager can dispatch over all five GCSets
-// without a switch statement.
+// IGCSet: conceptual interface for GC-managed item pools.
+// We deliberately do NOT declare this as a real C# interface (or C++ abstract class),
+// because doing so forces every GCSet wrapper type to carry a vtable pointer.
+// In C++, that vtable is written by a static constructor; on some platforms/kernels,
+// static constructors for global objects may not run, leaving the vtable pointer
+// zero in BSS, which causes a segfault when any virtual method is called.
+// Instead, GCManager dispatches GCSet methods via a switch statement (see
+// DispatchMark) or explicit per-set calls, which is also faster than virtual dispatch.
 //
-public interface IGCSet {
-	// Clear all mark bits before the Mark phase.
-	void PrepareForGC();
-
-	// Mark the item at idx and recurse into its children.
-	void Mark(Int32 idx);
-
-	// Mark all items with retain count > 0 (and their children).
-	void MarkRetained();
-
-	// Free every live, unmarked, unretained item.
-	void Sweep();
-
-	// Count of live slots (O(n); for diagnostics only).
-	Int32 LiveCount();
-}
+// Expected methods on every concrete GCSet subclass:
+//   void PrepareForGC()    - clear all mark bits before the Mark phase
+//   void Mark(Int32 idx)   - mark item at idx and recurse into its children
+//   void MarkRetained()    - mark all items with retain count > 0 (and children)
+//   void Sweep()           - free every live, unmarked, unretained item
+//   Int32 LiveCount()      - count of live slots (O(n); for diagnostics only)
 
 }

@@ -84,7 +84,7 @@ public struct App {
 		#endif
 		*** END CPP_ONLY ***/
 		IOHelper.Print(
-			"Build: C# version", // CPP: "Build: C++ " VARIANT " version",
+			"Build: C# version", // CPP: "Build: C++ " VARIANT " version, built " __DATE__ " " __TIME__,
 			TextStyle.Subdued
 		);
 		IOHelper.Print("Enter !help for REPL help.", TextStyle.Subdued);

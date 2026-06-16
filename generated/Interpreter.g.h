@@ -27,9 +27,9 @@ typedef void* object;
 class InterpreterStorage : public std::enable_shared_from_this<InterpreterStorage> {
 	friend struct Interpreter;
 	public: TextOutputMethod standardOutput;
-	public: TextOutputMethod implicitOutput;
+	public: TextOutputMethod implicitOutput = null;
 	public: TextOutputMethod errorOutput;
-	public: object hostData;
+	public: object hostData = null;
 	public: VM vm;
 	public: String SourceFile = "";
 	protected: String source;

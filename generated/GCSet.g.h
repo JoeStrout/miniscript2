@@ -12,10 +12,10 @@ namespace MiniScript {
 // DECLARATIONS
 
 // Non-generic abstract base for all GC item pools.
-// Manages bookkeeping metadata (InUse, Marked, RetainCount, free-list)
-// and implements IGCSet.  Subclasses supply the typed item list and
-// the three abstract item operations.
-struct GCSetBase : public IGCSet {
+// Manages bookkeeping metadata (InUse, Marked, RetainCount, free-list).
+// Subclasses supply the typed item list and the three abstract item operations.
+// Satisfies the IGCSet conceptual interface (see GCInterfaces.cs).
+struct GCSetBase {
 	friend class GCSetBaseStorage;
 	protected: std::shared_ptr<GCSetBaseStorage> storage;
   public:
@@ -24,6 +24,12 @@ struct GCSetBase : public IGCSet {
 	GCSetBase(std::nullptr_t) : storage(nullptr) {}
 	friend bool IsNull(const GCSetBase& inst) { return inst.storage == nullptr; }
 	private: GCSetBaseStorage* get() const;
+	template<typename WrapperType, typename StorageType>
+	friend WrapperType As(GCSetBase inst) {
+		auto stor = std::dynamic_pointer_cast<StorageType>(inst.storage);
+		if (stor == nullptr) return WrapperType(nullptr);
+		return WrapperType(stor); 
+	}
 
 	protected: List<Boolean> _inUse();
 	protected: void set__inUse(List<Boolean> _v);
@@ -72,8 +78,9 @@ struct GCSetBase : public IGCSet {
 
 template<typename WrapperType, typename StorageType> WrapperType As(GCSetBase inst);
 
-class GCSetBaseStorage : public std::enable_shared_from_this<GCSetBaseStorage>, public IGCSet {
+class GCSetBaseStorage : public std::enable_shared_from_this<GCSetBaseStorage> {
 	friend struct GCSetBase;
+	public: virtual ~GCSetBaseStorage() {}
 	protected: List<Boolean> _inUse = List<Boolean>::New();
 	protected: List<Boolean> _marked = List<Boolean>::New();
 	protected: List<Byte> _retainCounts = List<Byte>::New();

@@ -228,10 +228,6 @@ void CoreIntrinsics::Init() {
 	f.AddParam("ref");
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value arg = ctx.GetArg(0);
-		if (is_null(arg)) {
-			// ToDo: return an error
-			return IntrinsicResult::Null;
-		}
 		Value result = make_map(8);
 		Value parameters = val_null;
 		Value pinfo = val_null;

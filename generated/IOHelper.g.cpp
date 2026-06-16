@@ -8,6 +8,8 @@
 #include <string>
 #include <algorithm>
 #ifdef _WIN32 // define POSIX getline if on Windows
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
 #include <cstdio>
 #include <cstdlib>
 
@@ -51,7 +53,26 @@ int getline(char** lineptr, size_t* n, FILE* stream) {
 namespace MiniScript {
 
 TextStyle IOHelper::currentStyle = TextStyle::Normal;
+bool IOHelper::ansiInitialized = Boolean(false);
+	static bool ansiEnabled = false;
+void IOHelper::EnsureAnsiEnabled() {
+	if (ansiInitialized) return;
+	ansiInitialized = Boolean(true);
+	#ifdef _WIN32
+	HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+	if (hOut != INVALID_HANDLE_VALUE) {
+	    DWORD mode = 0;
+	    if (GetConsoleMode(hOut, &mode)) {
+	        ansiEnabled = SetConsoleMode(hOut, mode | ENABLE_PROCESSED_OUTPUT | ENABLE_VIRTUAL_TERMINAL_PROCESSING) != 0;
+	    }
+	}
+	#else
+	ansiEnabled = true;
+	#endif
+}
 String IOHelper::GetStyleTermCode(TextStyle style) {
+	EnsureAnsiEnabled();
+	if (!ansiEnabled) return "";
 	if (style == TextStyle::Normal) {
 		return "\x1b[0m";
 	} else if (style == TextStyle::Subdued) {

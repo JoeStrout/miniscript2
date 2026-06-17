@@ -607,8 +607,9 @@ StringStorage* ss_replaceByte(const StringStorage* storage, char oldChar, char n
     char* dest = result->data;
     const char* src = storage->data;
 
-    while (*src) { // We'll do it manually
-        *dest = *src == oldChar ? newChar : *src;
+    while (*src) {
+        *dest++ = *src == oldChar ? newChar : *src;
+        src++;
     }
 
     *dest = '\0';

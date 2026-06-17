@@ -9,6 +9,7 @@
 
 #include "value.h"
 #include "value_string.h"
+#include "value_map.h"
 #include "CS_String.h"
 
 #ifdef __cplusplus
@@ -17,6 +18,10 @@
 static inline Value make_string(String s) {
     return make_string(s.c_str());
 }
+
+// map_set overloads: accept String keys (and optionally String values) directly.
+static inline bool map_set(Value map_val, const String& key, Value value)         { return map_set(map_val, make_string(key), value); }
+static inline bool map_set(Value map_val, const String& key, const String& value) { return map_set(map_val, make_string(key), make_string(value)); }
 
 // Convert Value to CS_String (host string)
 static inline String to_String(Value v) {

@@ -14,6 +14,14 @@
 #include "CS_value_util.h"
 #include "Interpreter.g.h"
 #include <random>
+#if defined(__APPLE__)
+#include <sys/sysctl.h>
+#elif defined(_WIN32)
+#include <windows.h>
+#elif defined(__linux__)
+#include <fstream>
+#include <string>
+#endif
 
 namespace MiniScript {
 
@@ -24,10 +32,79 @@ double CoreIntrinsics::GetNextRandom(int seed) {
 	if (seed != 0) gen.seed(static_cast<unsigned int>(seed));
 	return dist(gen);
 }
+String CoreIntrinsics::BuildDate() {
+	String mmm_dd_yyyy(__DATE__);
+	String dd = mmm_dd_yyyy.Substring(4, 2).Replace(' ', '0');
+	String yyyy = mmm_dd_yyyy.Substring(7, 4);
+	String mmm = mmm_dd_yyyy.Substring(0, 3);
+	String mm;
+	if (mmm == "Jan") mm = "01";
+	else if (mmm == "Feb") mm = "02";
+	else if (mmm == "Mar") mm = "03";
+	else if (mmm == "Apr") mm = "04";
+	else if (mmm == "May") mm = "05";
+	else if (mmm == "Jun") mm = "06";
+	else if (mmm == "Jul") mm = "07";
+	else if (mmm == "Aug") mm = "08";
+	else if (mmm == "Sep") mm = "09";
+	else if (mmm == "Oct") mm = "10";
+	else if (mmm == "Nov") mm = "11";
+	else if (mmm == "Dec") mm = "12";
+	else mm = mmm;
+	return yyyy + "-" + mm + "-" + dd;
+}
+String CoreIntrinsics::PlatformName() {
+	#if defined(__APPLE__)
+	String platform = "macOS";
+	char osversion[32];
+	size_t osversion_len = sizeof(osversion);
+	if (sysctlbyname("kern.osproductversion", osversion, &osversion_len, NULL, 0) == 0) {
+		platform = String("macOS ") + osversion;
+	}
+	return platform;
+	#elif defined(_WIN32)
+	String platform = "Windows";
+	typedef LONG(WINAPI* RtlGetVersionPtr)(OSVERSIONINFOW*);
+	HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
+	if (ntdll) {
+		RtlGetVersionPtr fn = (RtlGetVersionPtr)GetProcAddress(ntdll, "RtlGetVersion");
+		if (fn) {
+			OSVERSIONINFOW osvi = {};
+			osvi.dwOSVersionInfoSize = sizeof(osvi);
+			if (fn(&osvi) == 0) {
+				platform = Interp("Windows {}.{}", (int)osvi.dwMajorVersion, (int)osvi.dwMinorVersion);
+			}
+		}
+	}
+	return platform;
+	#elif defined(__linux__)
+	String platform = "Linux";
+	{
+		std::ifstream osrelease("/etc/os-release");
+		std::string line;
+		while (std::getline(osrelease, line)) {
+			if (line.compare(0, 12, "PRETTY_NAME=") == 0) {
+				std::string val = line.substr(12);
+				if (val.size() >= 2 && val.front() == '"' && val.back() == '"') {
+					val = val.substr(1, val.size() - 2);
+				}
+				platform = String(val.c_str());
+				break;
+			}
+		}
+	}
+	return platform;
+	#else
+	return String("Unknown");
+	#endif
+}
+String CoreIntrinsics::hostName = "";
+String CoreIntrinsics::hostInfo = "";
+String CoreIntrinsics::hostVersion = "";
 void CoreIntrinsics::AddIntrinsicToMap(Value map,String methodName) {
 	Intrinsic intr = Intrinsic::GetByName(methodName);
 	if (!IsNull(intr)) {
-		map_set(map, make_string(methodName), intr.GetFunc());
+		map_set(map, methodName, intr.GetFunc());
 	} else {
 		IOHelper::Print(StringUtils::Format("Intrinsic not found: {0}", methodName));
 	}
@@ -116,7 +193,7 @@ Value CoreIntrinsics::ErrorType() {
 	if (is_null(_errorType)) {
 		_errorType = make_map(4);
 		if (!IsNull(_errorErrIntr)) {
-			map_set(_errorType, make_string("err"), _errorErrIntr.GetFunc());
+			map_set(_errorType, "err", _errorErrIntr.GetFunc());
 		}
 		Intrinsic::AddShortName(_errorType, "error");
 	}
@@ -135,6 +212,7 @@ void CoreIntrinsics::MarkRoots(object user_data) {
 	GCManager::Mark(_functionType);
 	GCManager::Mark(_errorType);
 	GCManager::Mark(_gcMap);
+	GCManager::Mark(_versionMap);
 	GCManager::Mark(replInList);
 	GCManager::Mark(replOutList);
 }
@@ -232,41 +310,41 @@ void CoreIntrinsics::Init() {
 		Value parameters = val_null;
 		Value pinfo = val_null;
 		if (is_funcref(arg)) {
-			map_set(result, make_string("type"), make_string("funcRef"));
+			map_set(result, "type", "funcRef");
 			FuncDef func = funcref_funcdef(arg);
-			map_set(result, make_string("name"), make_string(func.Name()));
-			map_set(result, make_string("note"), make_string(func.Note()));
+			map_set(result, "name", func.Name());
+			map_set(result, "note", func.Note());
 			parameters = make_list(func.ParamNames().Count());
 			for (int i=0; i < func.ParamNames().Count(); i++) {
 				pinfo = make_map(2);
-				map_set(pinfo, make_string("name"), func.ParamNames()[i]);
-				map_set(pinfo, make_string("default"), func.ParamDefaults()[i]);
+				map_set(pinfo, "name", func.ParamNames()[i]);
+				map_set(pinfo, "default", func.ParamDefaults()[i]);
 				list_push(parameters, pinfo);
 			}
-			map_set(result, make_string("params"), parameters);
+			map_set(result, "params", parameters);
 			if (is_null(funcref_outer_vars(arg))) {
-				map_set(result, make_string("closure"), val_zero);
+				map_set(result, "closure", val_zero);
 			} else {
-				map_set(result, make_string("closure"), val_one);
+				map_set(result, "closure", val_one);
 			}
 		} else if (is_string(arg)) {
-			map_set(result, make_string("type"), make_string("string"));
+			map_set(result, "type", "string");
 		} else if (is_number(arg)) {
-			map_set(result, make_string("type"), make_string("number"));
+			map_set(result, "type", "number");
 		} else if (is_list(arg)) {
-			map_set(result, make_string("type"), make_string("list"));
+			map_set(result, "type", "list");
 		} else if (is_map(arg)) {
-			map_set(result, make_string("type"), make_string("map"));
+			map_set(result, "type", "map");
 		} else if (is_error(arg)) {
-			map_set(result, make_string("type"), make_string("error"));
-			map_set(result, make_string("message"), error_message(arg));
-			map_set(result, make_string("inner"), error_inner(arg));
-			map_set(result, make_string("stack"), error_stack(arg));
-			map_set(result, make_string("isa"), error_isa(arg));
+			map_set(result, "type", "error");
+			map_set(result, "message", error_message(arg));
+			map_set(result, "inner", error_inner(arg));
+			map_set(result, "stack", error_stack(arg));
+			map_set(result, "isa", error_isa(arg));
 		} else if (is_null(arg)) {
-			map_set(result, make_string("type"), make_string("null"));
+			map_set(result, "type", "null");
 		} else {
-			map_set(result, make_string("type"), make_string("unknown"));
+			map_set(result, "type", "unknown");
 		}
 		freeze_value(result);
 		return IntrinsicResult(result);
@@ -1145,6 +1223,90 @@ void CoreIntrinsics::Init() {
 		return IntrinsicResult::Null;
 	});
 
+	// bitAnd(i=0, j=0)
+	f = Intrinsic::Create("bitAnd");
+	f.AddParam("i", val_zero);
+	f.AddParam("j", val_zero);
+	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
+		Double vi = numeric_val(ctx.GetArg(0));
+		Double vj = numeric_val(ctx.GetArg(1));
+		UInt64 ui = (UInt64)Math::Abs(vi);
+		UInt64 uj = (UInt64)Math::Abs(vj);
+		Int32 si = vi < 0 ? 1 : 0;
+		Int32 sj = vj < 0 ? 1 : 0;
+		Int32 sign = si & sj;
+		Double result = (Double)(ui & uj);
+		return IntrinsicResult(make_double(sign != 0 ? -result : result));
+	});
+
+	// bitOr(i=0, j=0)
+	f = Intrinsic::Create("bitOr");
+	f.AddParam("i", val_zero);
+	f.AddParam("j", val_zero);
+	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
+		Double vi = numeric_val(ctx.GetArg(0));
+		Double vj = numeric_val(ctx.GetArg(1));
+		UInt64 ui = (UInt64)Math::Abs(vi);
+		UInt64 uj = (UInt64)Math::Abs(vj);
+		Int32 si = vi < 0 ? 1 : 0;
+		Int32 sj = vj < 0 ? 1 : 0;
+		Int32 sign = si | sj;
+		Double result = (Double)(ui | uj);
+		return IntrinsicResult(make_double(sign != 0 ? -result : result));
+	});
+
+	// bitXor(i=0, j=0)
+	f = Intrinsic::Create("bitXor");
+	f.AddParam("i", val_zero);
+	f.AddParam("j", val_zero);
+	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
+		Double vi = numeric_val(ctx.GetArg(0));
+		Double vj = numeric_val(ctx.GetArg(1));
+		UInt64 ui = (UInt64)Math::Abs(vi);
+		UInt64 uj = (UInt64)Math::Abs(vj);
+		Int32 si = vi < 0 ? 1 : 0;
+		Int32 sj = vj < 0 ? 1 : 0;
+		Int32 sign = si ^ sj;
+		Double result = (Double)(ui ^ uj);
+		return IntrinsicResult(make_double(sign != 0 ? -result : result));
+	});
+
+	// hash(obj)
+	f = Intrinsic::Create("hash");
+	f.AddParam("obj");
+	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
+		Value v = ctx.GetArg(0);
+		return IntrinsicResult(make_int(value_hash(v)));
+	});
+
+	// refEquals(a, b)
+	f = Intrinsic::Create("refEquals");
+	f.AddParam("a");
+	f.AddParam("b");
+	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
+		Value a = ctx.GetArg(0);
+		Value b = ctx.GetArg(1);
+		return IntrinsicResult(make_int(value_identical(a, b) ? 1 : 0));
+	});
+
+	// version
+	f = Intrinsic::Create("version");
+	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
+		if (is_null(_versionMap)) {
+			_versionMap = make_map(6);
+			map_set(_versionMap, "miniscript", "2.0");
+			map_set(_versionMap, "buildDate", BuildDate());
+			map_set(_versionMap, "platform", PlatformName());
+			map_set(_versionMap, "host", hostVersion);
+			map_set(_versionMap, "hostName", hostName);
+			map_set(_versionMap, "hostInfo", hostInfo);
+			// ToDo: refactor these in such a way that they can be easily 
+			// overridden by whatever app is embedding MiniScript.
+			freeze_value(_versionMap);
+		}
+		return IntrinsicResult(_versionMap);
+	});
+
 	// gc.collect(full=false)  — underlying implementation for gc.collect
 	_gcCollectIntr = Intrinsic::Create("");
 	f = _gcCollectIntr;
@@ -1171,13 +1333,13 @@ void CoreIntrinsics::Init() {
 		int errors         = GCManager::Errors.LiveCount();
 		int functions      = GCManager::Functions.LiveCount();
 		int total = bigStrings + internedStrings + lists + maps + errors + functions;
-		map_set(result, make_string("bigStrings"),      make_int(bigStrings));
-		map_set(result, make_string("internedStrings"), make_int(internedStrings));
-		map_set(result, make_string("lists"),           make_int(lists));
-		map_set(result, make_string("maps"),            make_int(maps));
-		map_set(result, make_string("errors"),          make_int(errors));
-		map_set(result, make_string("functions"),       make_int(functions));
-		map_set(result, make_string("total"),           make_int(total));
+		map_set(result, "bigStrings",      make_int(bigStrings));
+		map_set(result, "internedStrings", make_int(internedStrings));
+		map_set(result, "lists",           make_int(lists));
+		map_set(result, "maps",            make_int(maps));
+		map_set(result, "errors",          make_int(errors));
+		map_set(result, "functions",       make_int(functions));
+		map_set(result, "total",           make_int(total));
 		freeze_value(result);
 		return IntrinsicResult(result);
 	});
@@ -1202,7 +1364,7 @@ Value CoreIntrinsics::IntrinsicsMap() {
 		for (Int32 i = 0; i < count; i++) {
 			Intrinsic intr = Intrinsic::GetByIndex(i);
 			if (IsNull(intr) || IsNull(intr.Name()) || intr.Name().Length() == 0) continue;
-			map_set(_intrinsicsMap, make_string(intr.Name()), intr.GetFunc());
+			map_set(_intrinsicsMap, intr.Name(), intr.GetFunc());
 		}
 		freeze_value(_intrinsicsMap);
 	}
@@ -1212,8 +1374,8 @@ Value CoreIntrinsics::_intrinsicsMap = val_null;
 Value CoreIntrinsics::GCMap() {
 	if (is_null(_gcMap)) {
 		_gcMap = make_map(2);
-		if (!IsNull(_gcCollectIntr)) map_set(_gcMap, make_string("collect"), _gcCollectIntr.GetFunc());
-		if (!IsNull(_gcStatsIntr)) map_set(_gcMap, make_string("stats"), _gcStatsIntr.GetFunc());
+		if (!IsNull(_gcCollectIntr)) map_set(_gcMap, "collect", _gcCollectIntr.GetFunc());
+		if (!IsNull(_gcStatsIntr)) map_set(_gcMap, "stats", _gcStatsIntr.GetFunc());
 		freeze_value(_gcMap);
 	}
 	return _gcMap;
@@ -1221,6 +1383,7 @@ Value CoreIntrinsics::GCMap() {
 Value CoreIntrinsics::_gcMap = val_null;
 Intrinsic CoreIntrinsics::_gcCollectIntr = nullptr;
 Intrinsic CoreIntrinsics::_gcStatsIntr = nullptr;
+Value CoreIntrinsics::_versionMap = val_null;
 List<VoidCallback> CoreIntrinsics::_invalidateCallbacks = nullptr;
 void CoreIntrinsics::RegisterInvalidateCallback(VoidCallback callback) {
 	if (IsNull(_invalidateCallbacks)) _invalidateCallbacks =  List<VoidCallback>::New();
@@ -1234,6 +1397,7 @@ void CoreIntrinsics::InvalidateTypeMaps() {
 	_functionType = val_null;
 	_errorType = val_null;
 	_gcMap = val_null;
+	_versionMap = val_null;
 	_intrinsicsMap = val_null;
 	if (!IsNull(_invalidateCallbacks)) {
 		for (Int32 i = 0; i < _invalidateCallbacks.Count(); i++) _invalidateCallbacks[i]();

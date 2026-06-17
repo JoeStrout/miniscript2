@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using static MiniScript.ValueHelpers;
+// CPP: #include "CS_value_util.h"
 // CPP: #include "IOHelper.g.h"
 // CPP: #include "StringUtils.g.h"
 // CPP: #include "Disassembler.g.h"
@@ -281,7 +282,7 @@ public static class UnitTests {
 
 		// Test string conversion (runtime C functions)
 		Value singleMap = make_empty_map();
-		map_set(singleMap, make_string("test"), make_int(42));
+		map_set(singleMap, "test", make_int(42));
 		Value singleStr = to_string(singleMap, null);
 		Boolean singleStrOk = Assert(is_string(singleStr), "Map toString should return string")
 			&& AssertEqual(as_cstring(singleStr), "{\"test\": 42}");

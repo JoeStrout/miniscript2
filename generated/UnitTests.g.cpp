@@ -2,6 +2,7 @@
 // Transpiled from: UnitTests.cs
 
 #include "UnitTests.g.h"
+#include "CS_value_util.h"
 #include "IOHelper.g.h"
 #include "StringUtils.g.h"
 #include "Disassembler.g.h"
@@ -269,7 +270,7 @@ Boolean UnitTests::TestValueMap() {
 
 	// Test string conversion (runtime C functions)
 	Value singleMap = make_empty_map();
-	map_set(singleMap, make_string("test"), make_int(42));
+	map_set(singleMap, "test", make_int(42));
 	Value singleStr = to_string(singleMap, nullptr);
 	Boolean singleStrOk = Assert(is_string(singleStr), "Map toString should return string")
 		&& AssertEqual(as_cstring(singleStr), "{\"test\": 42}");

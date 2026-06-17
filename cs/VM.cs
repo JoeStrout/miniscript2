@@ -331,7 +331,7 @@ public class VM {
 		} else {
 			targetMap = GetCurrentLocalVarMap(BaseIndex, CurrentFunction.MaxRegs);
 		}
-		map_set(targetMap, make_string(varName), value);
+		map_set(targetMap, varName, value);
 	}
 
 

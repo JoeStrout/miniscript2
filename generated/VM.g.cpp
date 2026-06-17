@@ -198,7 +198,7 @@ void VMStorage::SetVar(String varName,Value value) {
 	} else {
 		targetMap = GetCurrentLocalVarMap(BaseIndex, CurrentFunction.MaxRegs());
 	}
-	map_set(targetMap, make_string(varName), value);
+	map_set(targetMap, varName, value);
 }
 void VMStorage::Reset(List<FuncDef> allFunctions) {
 	Reset(allFunctions, val_null);

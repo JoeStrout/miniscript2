@@ -963,3 +963,39 @@ I'm tempted to go with MinGW/gcc just because it's easier; it avoids all the lit
 
 In either case, it's clear that I shouldn't rely on GitHub Actions for day-to-day development and testing of the code.  Really, I should run in an environment where Claude Code can directly attempt the build and fix issues; next best would be one where I do so manually.  That means I'll need to dust off a Windows VM (which I would need for testing the builds regardless).
 
+
+## Jun 17, 2026
+
+We have settled on Zig C++ as a cross-platform build system (see [ADR #6](adr/0006-zig-build-system.md)); this lets me build all desktop targets from my Mac.  I pushed (via a new tools/push_preview script) three preview builds yesterday, as testers helped me discover some intermittent crashes caused by uninitialized static data.  (For the future: it's important to remember that a static variable with undefined value gets the default value in C#, but random junk in C++.)
+
+So today I want to make a 4th preview including most of the missing intrinsics, plus a blog post that describes the new features of MS2 (and points out what is still missing).  Comparing MS2 intrinsics to MS1 intrinsics, I find this new stuff not in MS1:
+
+- `err`
+- `info`
+- `freeze`
+- `isFrozen`
+- `frozenCopy`
+- `error`
+- `_in`
+- `_out`
+- `_`
+- `reset`
+- `gc`
+- `FileHandle`
+
+And these MS1 APIs not yet implemented in MS2:
+
+- `_dateStr`
+- `_dateVal`
+- `bitAnd`
+- `bitOr`
+- `bitXor`
+- `hash`
+- `key`
+- `refEquals`
+- `version`
+
+I'm not sure that `_` should be an intrinsic; in MS1, it's just a global variable that is implicitly set by the REPL.  That allows it to be used for fleeting purposes (like `for _ in range(10)`), without losing the ability to later use it in the normal way to reference the last result.
+
+So I think I'll fix that, and add the bit, hash, refEquals, and version intrinsics.  I'll leave out the date methods, and the `key` module for now.
+

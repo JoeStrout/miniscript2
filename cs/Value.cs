@@ -529,6 +529,11 @@ public static class ValueHelpers {
 		return make_double(1.0 - AbsClamp01(ToFuzzyBool(a)));
 	}
 
+	// ── Hashing ───────────────────────────────────────────────────────────────
+	public static Int32 value_hash(Value v) {
+		return v.GetHashCode();
+	}
+
 	// ── Comparison ────────────────────────────────────────────────────────────
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool value_identical(Value a, Value b) => a._u == b._u;
@@ -786,6 +791,8 @@ public static class ValueHelpers {
 		m.Set(key, value);
 		return true;
 	}
+	public static bool map_set(Value map_val, string key, Value value) => map_set(map_val, make_string(key), value);
+	public static bool map_set(Value map_val, string key, string value) => map_set(map_val, make_string(key), make_string(value));
 
 	public static bool map_remove(Value map_val, Value key) {
 		if (!is_map(map_val)) return false;
@@ -813,8 +820,8 @@ public static class ValueHelpers {
 		for (int iter = m.NextEntry(-1); iter != -1; iter = m.NextEntry(iter)) {
 			if (count == n) {
 				Value result = make_map(4);
-				map_set(result, make_string("key"),   m.KeyAt(iter));
-				map_set(result, make_string("value"), m.ValueAt(iter));
+				map_set(result, "key",   m.KeyAt(iter));
+				map_set(result, "value", m.ValueAt(iter));
 				return result;
 			}
 			count++;
@@ -840,8 +847,8 @@ public static class ValueHelpers {
 		Value key = m.KeyAt(iter);
 		Value val = m.ValueAt(iter);
 		Value result = make_map(4);
-		map_set(result, make_string("key"),   key);
-		map_set(result, make_string("value"), val);
+		map_set(result, "key",   key);
+		map_set(result, "value", val);
 		return result;
 	}
 

@@ -172,9 +172,9 @@ IntrinsicResult ShellIntrinsics::FinishExec(Value handle) {
 	if (errors.EndsWith("\r\n")) errors = errors.Substring(0, errors.Length() - 2);
 	else if (errors.EndsWith("\n")) errors = errors.Substring(0, errors.Length() - 1);
 	Value result = make_map(3);
-	map_set(result, make_string("output"), make_string(output));
-	map_set(result, make_string("errors"), make_string(errors));
-	map_set(result, make_string("status"), make_double(status));
+	map_set(result, "output", output);
+	map_set(result, "errors", errors);
+	map_set(result, "status", make_double(status));
 	return IntrinsicResult(result, Boolean(true));
 }
 List<String> ShellIntrinsics::SplitOn(String s,String delim) {
@@ -273,13 +273,13 @@ void ShellIntrinsics::ResizeRawBuf(Value self,Int32 newSize) {
 			if (ob && ob->bytes && nb && nb->bytes) memcpy(nb->bytes, ob->bytes, copyLen);
 		}
 	}
-	map_set(self, make_string("_handle"), newHandle);
+	map_set(self, "_handle", newHandle);
 }
 Value ShellIntrinsics::NewRawDataInstance(Value handleVal) {
 	Value instance = make_map(4);
 	map_set(instance, val_isa_key, GetRawDataClassMap());
-	map_set(instance, make_string("_handle"), handleVal);
-	map_set(instance, make_string("littleEndian"), make_double(1.0));
+	map_set(instance, "_handle", handleVal);
+	map_set(instance, "littleEndian", make_double(1.0));
 	return instance;
 }
 Int32 ShellIntrinsics::RawGetByte(Value h,Int32 off) {
@@ -696,24 +696,24 @@ Value ShellIntrinsics::FsSaveRaw(String path,Value rawDataMap) {
 Value ShellIntrinsics::GetRawDataClassMap() {
 	if (!is_null(_rawDataClassMap)) return _rawDataClassMap;
 	_rawDataClassMap = make_map(24);
-	map_set(_rawDataClassMap, make_string("_handle"), val_null);
-	map_set(_rawDataClassMap, make_string("littleEndian"), make_double(1.0));
+	map_set(_rawDataClassMap, "_handle", val_null);
+	map_set(_rawDataClassMap, "littleEndian", make_double(1.0));
 	for (Int32 i = 0; i < (Int32)_rdKeys.Count(); i++)
-		map_set(_rawDataClassMap, make_string(_rdKeys[i]), Intrinsic::GetByIndex(_rdStart + i).GetFunc());
+		map_set(_rawDataClassMap, _rdKeys[i], Intrinsic::GetByIndex(_rdStart + i).GetFunc());
 	return _rawDataClassMap;
 }
 Value ShellIntrinsics::GetFileHandleClassMap() {
 	if (!is_null(_fileHandleClassMap)) return _fileHandleClassMap;
 	_fileHandleClassMap = make_map(12);
 	for (Int32 i = 0; i < (Int32)_fhKeys.Count(); i++)
-		map_set(_fileHandleClassMap, make_string(_fhKeys[i]), Intrinsic::GetByIndex(_fhStart + i).GetFunc());
+		map_set(_fileHandleClassMap, _fhKeys[i], Intrinsic::GetByIndex(_fhStart + i).GetFunc());
 	return _fileHandleClassMap;
 }
 Value ShellIntrinsics::GetFileModuleMap() {
 	if (!is_null(_fileModuleMap)) return _fileModuleMap;
 	_fileModuleMap = make_map(20);
 	for (Int32 i = 0; i < (Int32)_fmKeys.Count(); i++)
-		map_set(_fileModuleMap, make_string(_fmKeys[i]), Intrinsic::GetByIndex(_fmStart + i).GetFunc());
+		map_set(_fileModuleMap, _fmKeys[i], Intrinsic::GetByIndex(_fmStart + i).GetFunc());
 	return _fileModuleMap;
 }
 void ShellIntrinsics::InitFileIntrinsics() {
@@ -1016,7 +1016,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 		Value self = ctx.GetArg(0);
 		Value hv = val_null; map_try_get(self, make_string("_handle"), &hv);
 		CloseFileHandle(hv);
-		map_set(self, make_string("_handle"), val_null);
+		map_set(self, "_handle", val_null);
 		return IntrinsicResult::Null;
 	});
 	_fhKeys.Add("close");
@@ -1232,7 +1232,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 		if (is_null(hv)) return IntrinsicResult(ErrorType::FileError("open: could not open: " + path));
 		Value instance = make_map(4);
 		map_set(instance, val_isa_key, GetFileHandleClassMap());
-		map_set(instance, make_string("_handle"), hv);
+		map_set(instance, "_handle", hv);
 		return IntrinsicResult(instance);
 	});
 	_fmKeys.Add("open");

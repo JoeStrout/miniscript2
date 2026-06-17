@@ -23,6 +23,15 @@ class CoreIntrinsics {
 	// from the range [0, 1) with a uniform distribution.
 	private: static double GetNextRandom(int seed=0);
 
+	public: static String BuildDate();
+	
+	public: static String PlatformName();
+	public: static String hostName;
+	public: static String hostInfo;
+	public: static String hostVersion;
+
+	// Host app identity — set these before the first call to `version`.
+
 	private: static void AddIntrinsicToMap(Value map, String methodName);
 
 	// 
@@ -81,6 +90,7 @@ class CoreIntrinsics {
 	private: static Value _gcMap;
 	private: static Intrinsic _gcCollectIntr;
 	private: static Intrinsic _gcStatsIntr;
+	private: static Value _versionMap;
 	
 	private: static List<VoidCallback> _invalidateCallbacks;
 

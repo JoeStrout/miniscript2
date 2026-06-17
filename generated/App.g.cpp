@@ -48,6 +48,17 @@ bool App::debugMode = Boolean(false);
 bool App::visMode = Boolean(false);
 void App::MainProgram(List<String> args) {
 	value_init_constants();
+	CoreIntrinsics::hostVersion = "2.0 Preview";
+	CoreIntrinsics::hostName = "Command-Line";
+	#if _WIN32 || _WIN64
+		CoreIntrinsics::hostName = "Command-Line (Windows)";
+	#elif defined(__APPLE__) || defined(__FreeBSD__)
+		CoreIntrinsics::hostName = "Command-Line (Unix)";
+	#else
+		CoreIntrinsics::hostName = "Command-Line (Linux)";
+	#endif
+	CoreIntrinsics::hostInfo = "https://miniscript.org/cmdline/";
+	
 	GCManager::Init();
 	ErrorType::Init();
 	ShellIntrinsics::Init();

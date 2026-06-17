@@ -4472,6 +4472,92 @@ print fn(-7)
 --------------------------------
 FuncRef(abs)
 7
+==== bitAnd basic cases
+================================
+print bitAnd(12, 10)
+print bitAnd(255, 15)
+print bitAnd(0, 42)
+--------------------------------
+8
+15
+0
+================================
+==== bitOr basic cases
+================================
+print bitOr(12, 10)
+print bitOr(8, 4)
+print bitOr(0, 42)
+--------------------------------
+14
+12
+42
+================================
+==== bitXor basic cases
+================================
+print bitXor(12, 10)
+print bitXor(255, 15)
+print bitXor(42, 0)
+--------------------------------
+6
+240
+42
+================================
+==== hash returns consistent numeric results
+================================
+print hash(42) == hash(42)
+print hash("hello") == hash("hello")
+print hash(null) == hash(null)
+h = hash([1,2,3])
+print h isa number
+--------------------------------
+1
+1
+1
+1
+================================
+==== refEquals on lists
+================================
+a = [1, 2, 3]
+b = a
+c = [1, 2, 3]
+print refEquals(a, b)
+print refEquals(a, c)
+--------------------------------
+1
+0
+================================
+==== refEquals on numbers and null
+================================
+print refEquals(42, 42)
+print refEquals(42, 43)
+print refEquals(null, null)
+print refEquals(null, 0)
+--------------------------------
+1
+0
+1
+0
+================================
+==== version returns a map with expected keys
+================================
+v = version
+print v isa map
+print v.hasIndex("miniscript")
+print v.hasIndex("buildDate")
+print v.hasIndex("host")
+print v.hasIndex("hostName")
+print v.hasIndex("hostInfo")
+print v.hasIndex("platform")
+print isFrozen(v)
+--------------------------------
+1
+1
+1
+1
+1
+1
+1
+1
 ==== END OF TESTS
 ================================================================================
 

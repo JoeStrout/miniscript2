@@ -12,7 +12,7 @@ MiniScript 1.0 does not allow things like `4.foo` or `3.14.foo`, even when `foo`
 
 ## Frozen Maps and Lists
 
-See [LANGUAGE_CHANGES.md](LANGUAGE_CHANGES.md).
+See [FROZEN_VALUES.md](FROZEN_VALUES.md).
 
 ## Function Expressions
 

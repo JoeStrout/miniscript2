@@ -16,7 +16,7 @@ DIST="build/dist"
 
 # Verify the expected binaries are present
 MISSING=0
-for f in "$DIST/miniscript2-mac" "$DIST/miniscript2-linux" "$DIST/miniscript2-win.exe"; do
+for f in "$DIST/miniscript2-mac" "$DIST/miniscript2-linux" "$DIST/miniscript2-win.exe" "$DIST/miniscript2-csharp.zip"; do
     if [ ! -f "$f" ]; then
         echo "Missing: $f"
         MISSING=1
@@ -32,6 +32,7 @@ gh release create "$TAG" \
     "$DIST/miniscript2-mac" \
     "$DIST/miniscript2-linux" \
     "$DIST/miniscript2-win.exe" \
+    "$DIST/miniscript2-csharp.zip" \
     --title "MiniScript 2.0 Preview $1" \
     --prerelease \
     --notes "Preview build $1 of MiniScript 2.0."

@@ -999,3 +999,8 @@ I'm not sure that `_` should be an intrinsic; in MS1, it's just a global variabl
 
 So I think I'll fix that, and add the bit, hash, refEquals, and version intrinsics.  I'll leave out the date methods, and the `key` module for now.
 
+I also decided to add a C# portable .NET build, for people who can't use one of the prebuilt binaries.  This needs a little JSON config file to run, so I'm shipping it as a zip file containing the two required files plus a README.
+
+But note to self: I didn't actually fix `_` in this (Preview 4) release.  That should be high on the to-do list for the next work session.
+
+

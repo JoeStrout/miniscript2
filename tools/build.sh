@@ -133,6 +133,35 @@ dist_build() {
     echo "  Done: $OUTPUT"
 }
 
+# ---------------------------------------------------------------------------
+# dist_csharp
+#
+# Build a framework-dependent C# distribution package.
+# Output: build/dist/miniscript2-csharp.zip
+# ---------------------------------------------------------------------------
+dist_csharp() {
+    echo "Building C# distribution package..."
+    local PUBLISH="build/dist/cs-publish"
+    local ZIPDIR="build/dist/cs-zip"
+    rm -rf "$PUBLISH" "$ZIPDIR"
+    mkdir -p "$PUBLISH" "$ZIPDIR" build/dist
+
+    dotnet publish cs -c Release -o "$PUBLISH" --nologo -v quiet
+
+    cp "$PUBLISH/miniscript2.dll"                    "$ZIPDIR/miniscript2-csharp.dll"
+    cp "$PUBLISH/miniscript2.runtimeconfig.json"     "$ZIPDIR/miniscript2-csharp.runtimeconfig.json"
+    cp tools/csharp-dist-README.md                   "$ZIPDIR/README.md"
+
+    rm -rf "$PUBLISH"
+    (cd "$ZIPDIR" && zip -q "../miniscript2-csharp.zip" \
+        miniscript2-csharp.dll \
+        miniscript2-csharp.runtimeconfig.json \
+        README.md)
+    rm -rf "$ZIPDIR"
+
+    echo "  Done: build/dist/miniscript2-csharp.zip"
+}
+
 case "$TARGET" in
     "setup")
         echo "Setting up development environment..."
@@ -277,7 +306,7 @@ case "$TARGET" in
 
         if [ -z "$DIST_PLATFORM" ]; then
             echo "Usage: $0 dist <platform> [goto_mode]"
-            echo "Platforms: mac-x86  mac-arm  mac  win  linux  all"
+            echo "Platforms: mac-x86  mac-arm  mac  win  linux  csharp  all"
             exit 1
         fi
 
@@ -299,7 +328,10 @@ case "$TARGET" in
             echo "  Fat binary: build/dist/miniscript2-mac"
             dist_build win   "$DIST_GOTO"
             dist_build linux "$DIST_GOTO"
+            dist_csharp
             echo "All dist builds complete."
+        elif [ "$DIST_PLATFORM" = "csharp" ]; then
+            dist_csharp
         else
             dist_build "$DIST_PLATFORM" "$DIST_GOTO"
         fi
@@ -366,6 +398,7 @@ case "$TARGET" in
         echo "  mac         - macOS universal (fat) binary (builds both + lipo)"
         echo "  win         - Windows x86-64 binary (.exe)"
         echo "  linux       - Linux x86-64 static binary (musl)"
+        echo "  csharp      - C# fallback build (.zip with .dll + runtimeconfig + README)"
         echo "  all         - All of the above"
         echo ""
         echo "Test Commands:"

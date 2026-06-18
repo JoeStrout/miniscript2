@@ -1004,3 +1004,7 @@ I also decided to add a C# portable .NET build, for people who can't use one of 
 But note to self: I didn't actually fix `_` in this (Preview 4) release.  That should be high on the to-do list for the next work session.
 
 
+## Jun 18, 2026
+
+At the suggestion of MineRobber9000 in Issue #6, I've implemented a xoshiro256+ PRNG algorithm, as transpilable code in new file PRNG.cs.  This is used for both `rnd` and `shuffle`, and we have integration tests to verify that we always get the same results regardless of platform.  This means that MiniScript's rnd behavior is no longer undefined or platform-dependent.
+

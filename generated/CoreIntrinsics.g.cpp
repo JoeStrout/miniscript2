@@ -13,7 +13,7 @@
 #include "CS_Math.h"
 #include "CS_value_util.h"
 #include "Interpreter.g.h"
-#include <random>
+#include "PRNG.g.h"
 #if defined(__APPLE__)
 #include <sys/sysctl.h>
 #elif defined(_WIN32)
@@ -25,13 +25,6 @@
 
 namespace MiniScript {
 
-	
-double CoreIntrinsics::GetNextRandom(int seed) {
-	static std::mt19937 gen(std::random_device{}());
-	static std::uniform_real_distribution<double> dist(0.0, 1.0);
-	if (seed != 0) gen.seed(static_cast<unsigned int>(seed));
-	return dist(gen);
-}
 String CoreIntrinsics::BuildDate() {
 	String mmm_dd_yyyy(__DATE__);
 	String dd = mmm_dd_yyyy.Substring(4, 2).Replace(' ', '0');
@@ -591,8 +584,9 @@ void CoreIntrinsics::Init() {
 		Value v = ctx.GetArg(0);
 		if (is_error(v)) return ctx.vm.RaiseUncaughtError(v);
 		// ToDo: if v is neither null nor a number, return a parameter error
-		int seed = is_null(v) ? 0 : (int)numeric_val(v);
-		return IntrinsicResult(make_double(GetNextRandom(seed)));
+		// If a seed is supplied, reseed the generator before drawing.
+		if (!is_null(v)) PRNG::Seed((UInt64)(Int64)numeric_val(v));
+		return IntrinsicResult(make_double(PRNG::Next()));
 	});
 
 	// sign(x=0)
@@ -790,7 +784,7 @@ void CoreIntrinsics::Init() {
 			if (is_frozen(self)) { ctx.vm.RaiseRuntimeError("Attempt to modify a frozen list"); return IntrinsicResult(val_null); }
 			int count = list_count(self);
 			for (int i = count - 1; i > 0; i--) {
-				int j = (int)(GetNextRandom() * (i + 1));
+				int j = (int)(PRNG::Next() * (i + 1));
 				temp = list_get(self, i);
 				list_set(self, i, list_get(self, j));
 				list_set(self, j, temp);
@@ -808,7 +802,7 @@ void CoreIntrinsics::Init() {
 			}
 			// Fisher-Yates shuffle on values
 			for (int i = count - 1; i > 0; i--) {
-				int j = (int)(GetNextRandom() * (i + 1));
+				int j = (int)(PRNG::Next() * (i + 1));
 				temp = vals[i];
 				vals[i] = vals[j];
 				vals[j] = temp;

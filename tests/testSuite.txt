@@ -2661,6 +2661,33 @@ print (x >= 0 and x < 1)
 --------------------------------
 1
 ================================
+==== rnd: exact sequence after a given seed (must match on all platforms)
+================================
+rnd 42
+print round(rnd, 6)
+print round(rnd, 6)
+print round(rnd, 6)
+--------------------------------
+0.310411
+0.06257
+0.306461
+================================
+==== rnd: a seed of 0 is valid and reproducible
+================================
+rnd 0
+print round(rnd, 6)
+--------------------------------
+0.192728
+================================
+==== list.shuffle: deterministic permutation for a given seed
+================================
+rnd 42
+x = range(1, 9)
+x.shuffle
+print x
+--------------------------------
+[7, 5, 4, 6, 2, 8, 9, 1, 3]
+================================
 ==== sign
 ================================
 print sign(-42.6)

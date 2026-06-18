@@ -46,7 +46,7 @@ dist_build() {
         win)
             ZIG_TARGET="-target x86_64-windows-gnu"
             USE_EDITLINE=0
-            DEFAULT_GOTO="off"   # computed-goto on windows-gnu is untested
+            DEFAULT_GOTO="on"
             OUTPUT_NAME="miniscript2-win.exe"
             STRIP=1
             ;;

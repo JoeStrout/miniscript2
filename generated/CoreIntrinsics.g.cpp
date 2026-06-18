@@ -1300,8 +1300,6 @@ void CoreIntrinsics::Init() {
 			map_set(_versionMap, "host", hostVersion);
 			map_set(_versionMap, "hostName", hostName);
 			map_set(_versionMap, "hostInfo", hostInfo);
-			// ToDo: refactor these in such a way that they can be easily 
-			// overridden by whatever app is embedding MiniScript.
 			freeze_value(_versionMap);
 		}
 		return IntrinsicResult(_versionMap);

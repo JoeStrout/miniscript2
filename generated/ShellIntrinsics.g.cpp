@@ -22,7 +22,6 @@
 #ifdef _WIN32
     #include <windows.h>
     #include <direct.h>
-    #include <Fileapi.h>
     #include <io.h>
     #include <sys/stat.h>
     #ifndef getcwd

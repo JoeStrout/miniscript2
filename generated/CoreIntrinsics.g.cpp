@@ -1193,15 +1193,10 @@ void CoreIntrinsics::Init() {
 		return IntrinsicResult(replOutList);
 	});
 
-	// _
-	//    Always equals the most recent implicit REPL result, i.e. _out[-1].
-	//    Returns null if no implicit output has been produced yet.
-	f = Intrinsic::Create("_");
-	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
-		Int32 n = list_count(replOutList);
-		if (n == 0) return IntrinsicResult::Null;
-		return IntrinsicResult(list_get(replOutList, n - 1));
-	});
+	// Note: `_` is no longer an intrinsic.  Instead, the REPL loop assigns
+	// the global variable `_` to the most recent implicit result (see
+	// App.cs / Interpreter.SetGlobalValue).  In non-REPL contexts `_` is
+	// simply undefined unless the user assigns to it.
 
 	// reset
 	//    Clear all user-defined globals and reset the REPL history lists.

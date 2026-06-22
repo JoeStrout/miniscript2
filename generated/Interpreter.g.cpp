@@ -3,7 +3,7 @@
 
 #include "Interpreter.g.h"
 #include "StringUtils.g.h"
-#include "Intrinsic.g.h" // ToDo: remove this once we've refactored set_FunctionIndexOffset away
+#include "CS_value_util.h"
 #include "CoreIntrinsics.g.h"
 
 namespace MiniScript {
@@ -268,8 +268,12 @@ Value InterpreterStorage::GetGlobalValue(String varName) {
 	return val_null;
 }
 void InterpreterStorage::SetGlobalValue(String varName,Value value) {
-	// TODO: Implement when VM supports setting stack values by index.
-	// The current VM API only provides read access to the stack.
+	// In REPL mode the persistent globals live in _replGlobals, a VarMap.
+	// Setting a key here makes it visible to subsequent user code as a
+	// global variable.  If a global VarMap doesn't exist yet (e.g. no REPL
+	// entry has run), there is nothing to set.
+	if (is_null(_replGlobals)) return;
+	map_set(_replGlobals, varName, value);
 }
 void InterpreterStorage::ResetReplGlobals() {
 	_replGlobals = val_null;

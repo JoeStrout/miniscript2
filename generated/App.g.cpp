@@ -565,6 +565,9 @@ void App::RunREPL() {
 				implVal = interp.lastImplicitResult();
 				list_push(CoreIntrinsics::replInList, make_string(currentInput));
 				list_push(CoreIntrinsics::replOutList, implVal);
+				// Mirror MiniScript 1.x: the global `_` always holds the most
+				// recent implicit REPL result (i.e. _out[-1]).
+				interp.SetGlobalValue("_", implVal);
 				if (!is_null(implVal)) {
 					IOHelper::PrintNoCR(StringUtils::Format("_out[{0}]: ", idx), TextStyle::Subdued);
 					IOHelper::Print(StringUtils::Format("{0}", implVal), TextStyle::Strong);

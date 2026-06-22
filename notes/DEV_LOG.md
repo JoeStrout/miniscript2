@@ -1008,3 +1008,13 @@ But note to self: I didn't actually fix `_` in this (Preview 4) release.  That s
 
 At the suggestion of MineRobber9000 in Issue #6, I've implemented a xoshiro256+ PRNG algorithm, as transpilable code in new file PRNG.cs.  This is used for both `rnd` and `shuffle`, and we have integration tests to verify that we always get the same results regardless of platform.  This means that MiniScript's rnd behavior is no longer undefined or platform-dependent.
 
+
+## Jun 22, 2026
+
+Today I'm taking care of some small rough edges and missing bits.
+
+First, I ported dateTimeUtils from MS1 to MS2.  The MS2 version is transpilable, with the helper methods just calling through to the .NET framework; this allows us to use the same helpers in both C# and C++.  With that I added the missing _dateStr and _dateVal intrinsics, which now allow our full dateTimeUtil.ms module to pass its unit tests.
+
+Then I changed how `_` works to match MS1 (it's now just a global assigned the last REPL result, rather than an intrinsic).
+
+

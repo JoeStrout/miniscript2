@@ -21,6 +21,7 @@ using static MiniScript.ValueHelpers;
 // CPP: #include "StringUtils.g.h"
 // CPP: #include "CS_value_util.h"
 // CPP: #include "CoreIntrinsics.g.h"
+// CPP: #include "DateTimeUtils.g.h"
 // CPP: #include <cstdlib>
 // CPP: #include <cstring>
 // CPP: #include <cstdio>
@@ -1862,6 +1863,42 @@ public static class ShellIntrinsics {
 		};
 	}
 
+	// ── Date/time helpers ─────────────────────────────────────────────────────
+
+	// Offset (in Unix-epoch seconds) of MiniScript's date-value epoch, which is
+	// 2000-01-01 00:00:00 local time.  A MiniScript numeric date value plus this
+	// offset gives seconds since the Unix epoch (the form FormatDate expects).
+	private static Double _dateTimeEpoch = 0;
+	private static Double DateTimeEpoch() {
+		if (_dateTimeEpoch == 0) {
+			//*** BEGIN CS_ONLY ***
+			DateTime baseDate = new DateTime(2000, 1, 1, 0, 0, 0, DateTimeKind.Local);
+			_dateTimeEpoch = (baseDate.ToUniversalTime() - DateTime.UnixEpoch).TotalSeconds;
+			//*** END CS_ONLY ***
+			/*** BEGIN CPP_ONLY ***
+			tm baseDate;
+			memset(&baseDate, 0, sizeof(tm));
+			baseDate.tm_year = 2000 - 1900;	// (because tm_year is years since 1900!)
+			baseDate.tm_mon = 0;
+			baseDate.tm_mday = 1;
+			_dateTimeEpoch = (double)mktime(&baseDate);
+			*** END CPP_ONLY ***/
+		}
+		return _dateTimeEpoch;
+	}
+
+	// Current time as seconds since the Unix epoch.
+	private static Double NowSeconds() {
+		//*** BEGIN CS_ONLY ***
+		return (DateTime.UtcNow - DateTime.UnixEpoch).TotalSeconds;
+		//*** END CS_ONLY ***
+		/*** BEGIN CPP_ONLY ***
+		time_t t;
+		time(&t);
+		return (double)t;
+		*** END CPP_ONLY ***/
+	}
+
 	// Register all shell intrinsics.  Must be called before any Interpreter is Reset.
 	public static void Init() {
 		GCManager.RegisterMarkCallback(MarkRoots, null); // CPP: GCManager::RegisterMarkCallback(ShellIntrinsics::MarkRoots, nullptr);
@@ -1913,6 +1950,48 @@ public static class ShellIntrinsics {
 			}
 			Value handle = BeginExec(cmd);
 			return FinishExec(handle);
+		};
+
+		// _dateVal(dateStr) — convert to a numeric MiniScript date value (seconds
+		// since 2000-01-01 00:00:00 local time).  `dateStr` may be null (meaning
+		// now), a number (returned unchanged, already a date value), or a string
+		// (parsed via DateTimeUtils.ParseDate).
+		f = Intrinsic.Create("_dateVal");
+		f.AddParam("dateStr");
+		f.Code = (Context ctx, IntrinsicResult partialResult) => {
+			Value date = ctx.GetArg(0);
+			Double t;
+			if (is_null(date)) {
+				t = NowSeconds();
+			} else if (is_number(date)) {
+				return new IntrinsicResult(date);
+			} else {
+				t = DateTimeUtils.ParseDate(to_String(date));
+			}
+			return new IntrinsicResult(make_double(t - DateTimeEpoch()));
+		};
+
+		// _dateStr(date, format) — format a date as a string.  `date` may be null
+		// (meaning now), a number (a date value: seconds since 2000-01-01 local),
+		// or a string (parsed as a date).  `format` is a .NET-style format string.
+		f = Intrinsic.Create("_dateStr");
+		f.AddParam("date");
+		f.AddParam("format", make_string("yyyy-MM-dd HH:mm:ss"));
+		f.Code = (Context ctx, IntrinsicResult partialResult) => {
+			Value date = ctx.GetArg(0);
+			Value format = ctx.GetArg(1);
+			String formatStr;
+			if (is_null(format)) formatStr = "yyyy-MM-dd HH:mm:ss";
+			else formatStr = to_String(format);
+			Double d;
+			if (is_null(date)) {
+				d = NowSeconds();
+			} else if (is_number(date)) {
+				d = as_double(date) + DateTimeEpoch();
+			} else {
+				d = DateTimeUtils.ParseDate(to_String(date));
+			}
+			return new IntrinsicResult(make_string(DateTimeUtils.FormatDate(d, formatStr)));
 		};
 
 		// import(libname) — load and run a MiniScript module, then store its locals

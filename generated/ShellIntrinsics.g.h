@@ -191,6 +191,17 @@ class ShellIntrinsics {
 	// Register file/FileHandle/RawData intrinsics with internal names.
 	// Maps are built lazily via Get*Map() on first access after RegisterAll().
 	private: static void InitFileIntrinsics();
+	private: static Double _dateTimeEpoch;
+
+	// ── Date/time helpers ─────────────────────────────────────────────────────
+
+	// Offset (in Unix-epoch seconds) of MiniScript's date-value epoch, which is
+	// 2000-01-01 00:00:00 local time.  A MiniScript numeric date value plus this
+	// offset gives seconds since the Unix epoch (the form FormatDate expects).
+	private: static Double DateTimeEpoch();
+
+	// Current time as seconds since the Unix epoch.
+	private: static Double NowSeconds();
 
 	// Register all shell intrinsics.  Must be called before any Interpreter is Reset.
 	public: static void Init();

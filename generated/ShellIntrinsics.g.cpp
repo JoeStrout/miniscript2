@@ -16,6 +16,7 @@
 #include "StringUtils.g.h"
 #include "CS_value_util.h"
 #include "CoreIntrinsics.g.h"
+#include "DateTimeUtils.g.h"
 #include <cstdlib>
 #include <cstring>
 #include <cstdio>
@@ -1253,6 +1254,23 @@ void ShellIntrinsics::InitFileIntrinsics() {
 		return IntrinsicResult(GetRawDataClassMap());
 	});
 }
+Double ShellIntrinsics::_dateTimeEpoch = 0;
+Double ShellIntrinsics::DateTimeEpoch() {
+	if (_dateTimeEpoch == 0) {
+		tm baseDate;
+		memset(&baseDate, 0, sizeof(tm));
+		baseDate.tm_year = 2000 - 1900;	// (because tm_year is years since 1900!)
+		baseDate.tm_mon = 0;
+		baseDate.tm_mday = 1;
+		_dateTimeEpoch = (double)mktime(&baseDate);
+	}
+	return _dateTimeEpoch;
+}
+Double ShellIntrinsics::NowSeconds() {
+	time_t t;
+	time(&t);
+	return (double)t;
+}
 void ShellIntrinsics::Init() {
 	GCManager::RegisterMarkCallback(ShellIntrinsics::MarkRoots, nullptr);
 	CoreIntrinsics::RegisterInvalidateCallback(ShellIntrinsics::InvalidateCaches);
@@ -1303,6 +1321,48 @@ void ShellIntrinsics::Init() {
 		}
 		Value handle = BeginExec(cmd);
 		return FinishExec(handle);
+	});
+
+	// _dateVal(dateStr) — convert to a numeric MiniScript date value (seconds
+	// since 2000-01-01 00:00:00 local time).  `dateStr` may be null (meaning
+	// now), a number (returned unchanged, already a date value), or a string
+	// (parsed via DateTimeUtils.ParseDate).
+	f = Intrinsic::Create("_dateVal");
+	f.AddParam("dateStr");
+	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
+		Value date = ctx.GetArg(0);
+		Double t;
+		if (is_null(date)) {
+			t = NowSeconds();
+		} else if (is_number(date)) {
+			return IntrinsicResult(date);
+		} else {
+			t = DateTimeUtils::ParseDate(to_String(date));
+		}
+		return IntrinsicResult(make_double(t - DateTimeEpoch()));
+	});
+
+	// _dateStr(date, format) — format a date as a string.  `date` may be null
+	// (meaning now), a number (a date value: seconds since 2000-01-01 local),
+	// or a string (parsed as a date).  `format` is a .NET-style format string.
+	f = Intrinsic::Create("_dateStr");
+	f.AddParam("date");
+	f.AddParam("format", make_string("yyyy-MM-dd HH:mm:ss"));
+	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
+		Value date = ctx.GetArg(0);
+		Value format = ctx.GetArg(1);
+		String formatStr;
+		if (is_null(format)) formatStr = "yyyy-MM-dd HH:mm:ss";
+		else formatStr = to_String(format);
+		Double d;
+		if (is_null(date)) {
+			d = NowSeconds();
+		} else if (is_number(date)) {
+			d = as_double(date) + DateTimeEpoch();
+		} else {
+			d = DateTimeUtils::ParseDate(to_String(date));
+		}
+		return IntrinsicResult(make_string(DateTimeUtils::FormatDate(d, formatStr)));
 	});
 
 	// import(libname) — load and run a MiniScript module, then store its locals

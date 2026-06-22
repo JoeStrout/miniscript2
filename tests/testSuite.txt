@@ -4585,6 +4585,62 @@ print isFrozen(v)
 1
 1
 1
+================================================================================
+==== SECTION: DATE/TIME INTRINSICS
+================================================================================
+==== Note: only locale- and timezone-independent behavior is asserted here.
+==== Name-based specifiers (MMMM, dddd, tt) and the empty format string are
+==== locale-dependent in the C++ path, so they are deliberately not tested.
+================================================================================
+==== _dateStr(0) is the date-value epoch: 2000-01-01 00:00:00 local time,
+==== and _dateVal of that same string round-trips back to 0.
+print _dateStr(0)
+print _dateVal("2000-01-01 00:00:00")
+--------------------------------
+2000-01-01 00:00:00
+0
+================================
+==== Parsing a string and formatting it back round-trips exactly (local time
+==== is used consistently on both sides, so any zone offset cancels out).
+print _dateStr(_dateVal("2023-02-01 12:34:56"))
+print _dateStr(_dateVal("2000-06-15 08:30:00"))
+--------------------------------
+2023-02-01 12:34:56
+2000-06-15 08:30:00
+================================
+==== Numeric format specifiers applied to a date value.
+print _dateStr(0, "yyyy-MM-dd")
+print _dateStr(3661, "HH:mm:ss")
+print _dateStr(3661, "H:mm")
+print _dateStr(0, "yyyy/MM/dd HH:mm")
+--------------------------------
+2000-01-01
+01:01:01
+1:01
+2000/01/01 00:00
+================================
+==== Date values are seconds from the epoch: one day apart is 86400, one hour
+==== after the epoch is 3600, and a number argument is returned unchanged.
+print _dateVal("2000-01-02 00:00:00") - _dateVal("2000-01-01 00:00:00")
+print _dateVal("2000-01-01 01:00:00")
+print _dateVal(42)
+--------------------------------
+86400
+3600
+42
+================================
+==== A value obtained from _dateVal formats consistently across specifiers.
+d = _dateVal("2010-12-25 18:45:30")
+print _dateStr(d)
+print _dateStr(d, "yyyy")
+print _dateStr(d, "MM-dd")
+print _dateStr(d, "HH:mm:ss")
+--------------------------------
+2010-12-25 18:45:30
+2010
+12-25
+18:45:30
+================================
 ==== END OF TESTS
 ================================================================================
 

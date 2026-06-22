@@ -13,6 +13,7 @@ using static MiniScript.ValueHelpers;
 // H: #include <sstream>
 // CPP: #include <cctype>
 // CPP: #include <cmath>
+// CPP: #include <cstdlib>
 // CPP: #include "IOHelper.g.h"
 
 namespace MiniScript {
@@ -46,6 +47,28 @@ public static class StringUtils {
 	[MethodImpl(AggressiveInlining)]
 	public static Double ParseDouble(String str) {
 		return Double.Parse(str);	// CPP: return std::stod(str.c_str());
+	}
+
+	// Try to parse a string as a double.  Returns true and sets `result` on
+	// success; returns false (result = 0) if the whole string (ignoring leading
+	// and trailing whitespace) is not a valid number.
+	public static Boolean TryParseDouble(String str, out Double result) {
+		//*** BEGIN CS_ONLY ***
+		return Double.TryParse(str, System.Globalization.NumberStyles.Float,
+			System.Globalization.CultureInfo.InvariantCulture, out result);
+		//*** END CS_ONLY ***
+		/*** BEGIN CPP_ONLY ***
+		const char* s = str.c_str();
+		while (*s == ' ' || *s == '\t') s++;
+		if (*s == '\0') { *result = 0.0; return false; }
+		char* end = nullptr;
+		double v = std::strtod(s, &end);
+		if (end == s) { *result = 0.0; return false; }
+		while (*end == ' ' || *end == '\t') end++;
+		if (*end != '\0') { *result = 0.0; return false; }
+		*result = v;
+		return true;
+		*** END CPP_ONLY ***/
 	}
 
 	[MethodImpl(AggressiveInlining)]

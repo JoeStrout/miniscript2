@@ -60,7 +60,7 @@ void App::MainProgram(List<String> args) {
 	CoreIntrinsics::hostInfo = "https://miniscript.org/cmdline/";
 	
 	GCManager::Init();
-	ErrorType::Init();
+	ErrorTypes::Init();
 	ShellIntrinsics::Init();
 
 	// Parse command-line switches

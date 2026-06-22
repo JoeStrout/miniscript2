@@ -278,7 +278,7 @@ void VMStorage::Stop() {
 	IsRunning = Boolean(false);
 }
 void VMStorage::RaiseRuntimeError(String message) {
-	Error = ErrorType::RuntimeError(message);
+	Error = ErrorTypes::RuntimeError(message);
 	_errorStackPending = Boolean(true);
 	IsRunning = Boolean(false);
 }

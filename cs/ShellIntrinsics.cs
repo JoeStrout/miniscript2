@@ -209,7 +209,10 @@ public static class ShellIntrinsics {
 		psi.RedirectStandardError = true;
 		psi.UseShellExecute = false;
 		psi.CreateNoWindow = true;
-		System.Diagnostics.Process proc = System.Diagnostics.Process.Start(psi);
+		System.Diagnostics.Process proc;
+		try { proc = System.Diagnostics.Process.Start(psi); }
+		catch (Exception) { return val_null; }
+		if (proc == null) return val_null;
 		Int32 idx = _csExecProcs.Count;
 		_csExecProcs.Add(proc);
 		_csExecOutputs.Add("");
@@ -240,6 +243,7 @@ public static class ShellIntrinsics {
 				fcntl(fileno(_cppExecPipes[idx]), F_SETFL, O_NONBLOCK);
 			}
 		#endif
+		if (!_cppExecPipes[idx]) return val_null;
 		return make_double(idx);
 		*** END CPP_ONLY ***/
 	}
@@ -954,7 +958,7 @@ public static class ShellIntrinsics {
 			foreach (String entry in entries)
 				list_push(result, make_string(System.IO.Path.GetFileName(entry)));
 			return result;
-		} catch (Exception ex) { return ErrorType.FileError("children: " + ex.Message); }
+		} catch (Exception ex) { return ErrorTypes.FileError("children: " + ex.Message); }
 		//*** END CS_ONLY ***
 		/*** BEGIN CPP_ONLY ***
 		Value result = make_list(16);
@@ -962,22 +966,24 @@ public static class ShellIntrinsics {
 			String searchPath = path + "\\*";
 			WIN32_FIND_DATA data;
 			HANDLE hFind = FindFirstFile(searchPath.c_str(), &data);
-			if (hFind != INVALID_HANDLE_VALUE) {
-				do {
-					String name(data.cFileName);
-					if (name != "." && name != "..") list_push(result, make_string(name));
-				} while (FindNextFile(hFind, &data) != 0);
-				FindClose(hFind);
+			if (hFind == INVALID_HANDLE_VALUE) {
+				return ErrorTypes::FileError("children: cannot read directory: " + path);
 			}
+			do {
+				String name(data.cFileName);
+				if (name != "." && name != "..") list_push(result, make_string(name));
+			} while (FindNextFile(hFind, &data) != 0);
+			FindClose(hFind);
 		#else
 			DIR* dir = opendir(path.c_str());
-			if (dir) {
-				while (struct dirent* entry = readdir(dir)) {
-					String name(entry->d_name);
-					if (name != "." && name != "..") list_push(result, make_string(name));
-				}
-				closedir(dir);
+			if (!dir) {
+				return ErrorTypes::FileError("children: cannot read directory: " + path);
 			}
+			while (struct dirent* entry = readdir(dir)) {
+				String name(entry->d_name);
+				if (name != "." && name != "..") list_push(result, make_string(name));
+			}
+			closedir(dir);
 		#endif
 		return result;
 		*** END CPP_ONLY ***/
@@ -1178,11 +1184,11 @@ public static class ShellIntrinsics {
 			Value result = make_list(lines.Length);
 			foreach (String line in lines) list_push(result, make_string(line));
 			return result;
-		} catch (Exception ex) { return ErrorType.FileError("readLines: " + ex.Message); }
+		} catch (Exception ex) { return ErrorTypes.FileError("readLines: " + ex.Message); }
 		//*** END CS_ONLY ***
 		/*** BEGIN CPP_ONLY ***
 		FILE* f = fopen(path.c_str(), "r");
-		if (!f) return ErrorType::FileError("readLines: cannot open: " + path);
+		if (!f) return ErrorTypes::FileError("readLines: cannot open: " + path);
 		Value result = make_list(16);
 		char buf[4096];
 		String partial;
@@ -1219,11 +1225,11 @@ public static class ShellIntrinsics {
 			}
 			System.IO.File.WriteAllLines(path, lineList, System.Text.Encoding.UTF8);
 			return make_double((Double)lineList.Count);
-		} catch (Exception ex) { return ErrorType.FileError("writeLines: " + ex.Message); }
+		} catch (Exception ex) { return ErrorTypes.FileError("writeLines: " + ex.Message); }
 		//*** END CS_ONLY ***
 		/*** BEGIN CPP_ONLY ***
 		FILE* f = fopen(path.c_str(), "w");
-		if (!f) return ErrorType::FileError("writeLines: cannot open: " + path);
+		if (!f) return ErrorTypes::FileError("writeLines: cannot open: " + path);
 		Int32 count = 0;
 		if (is_list(lines)) {
 			Int32 n = list_count(lines);
@@ -1248,11 +1254,11 @@ public static class ShellIntrinsics {
 			buf.Bytes = data;
 			Value handleVal = GCManager.NewHandle(buf, RawBufFinalizer);
 			return NewRawDataInstance(handleVal);
-		} catch (Exception ex) { return ErrorType.FileError("loadRaw: " + ex.Message); }
+		} catch (Exception ex) { return ErrorTypes.FileError("loadRaw: " + ex.Message); }
 		//*** END CS_ONLY ***
 		/*** BEGIN CPP_ONLY ***
 		FILE* f = fopen(path.c_str(), "rb");
-		if (!f) return ErrorType::FileError("loadRaw: cannot open: " + path);
+		if (!f) return ErrorTypes::FileError("loadRaw: cannot open: " + path);
 		fseek(f, 0, SEEK_END);
 		int size = (int)ftell(f);
 		fseek(f, 0, SEEK_SET);
@@ -1269,23 +1275,23 @@ public static class ShellIntrinsics {
 	private static Value FsSaveRaw(String path, Value rawDataMap) {
 		Value handleVal = val_null;
 		map_try_get(rawDataMap, make_string("_handle"), out handleVal);
-		if (!is_handle(handleVal)) return ErrorType.FileError("saveRaw: data is not a RawData object"); // CPP: if (!is_handle(handleVal)) return ErrorType::FileError("saveRaw: data is not a RawData object");
+		if (!is_handle(handleVal)) return ErrorTypes.FileError("saveRaw: data is not a RawData object"); // CPP: if (!is_handle(handleVal)) return ErrorTypes::FileError("saveRaw: data is not a RawData object");
 		//*** BEGIN CS_ONLY ***
 		CsRawBuf buf = GetCsRawBuf(handleVal);
-		if (buf == null || buf.Bytes == null) return ErrorType.FileError("saveRaw: RawData has no buffer");
+		if (buf == null || buf.Bytes == null) return ErrorTypes.FileError("saveRaw: RawData has no buffer");
 		try {
 			System.IO.File.WriteAllBytes(path, buf.Bytes);
 			return val_null;
-		} catch (Exception ex) { return ErrorType.FileError("saveRaw: " + ex.Message); }
+		} catch (Exception ex) { return ErrorTypes.FileError("saveRaw: " + ex.Message); }
 		//*** END CS_ONLY ***
 		/*** BEGIN CPP_ONLY ***
 		CppRawBuf* buf = (CppRawBuf*)GCManager::GetHandle(handleVal).UserData;
-		if (!buf || !buf->bytes) return ErrorType::FileError("saveRaw: RawData has no buffer");
+		if (!buf || !buf->bytes) return ErrorTypes::FileError("saveRaw: RawData has no buffer");
 		FILE* f = fopen(path.c_str(), "wb");
-		if (!f) return ErrorType::FileError("saveRaw: cannot open for writing: " + path);
+		if (!f) return ErrorTypes::FileError("saveRaw: cannot open for writing: " + path);
 		size_t written = fwrite(buf->bytes, 1, buf->length, f);
 		fclose(f);
-		if ((int)written != buf->length) return ErrorType::FileError("saveRaw: write error");
+		if ((int)written != buf->length) return ErrorTypes::FileError("saveRaw: write error");
 		return val_null;
 		*** END CPP_ONLY ***/
 	}
@@ -1365,9 +1371,9 @@ public static class ShellIntrinsics {
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value self = ctx.GetArg(0);
 			Value hv = val_null; map_try_get(self, make_string("_handle"), out hv);
-			Int32 len = GetRawBufLen(hv); if (len < 0) return new IntrinsicResult(ErrorType.FileError("RawData has no buffer"));
+			Int32 len = GetRawBufLen(hv); if (len < 0) return new IntrinsicResult(ErrorTypes.FileError("RawData has no buffer"));
 			Int32 off = (Int32)as_double(ctx.GetArg(1)); if (off < 0) off += len;
-			if (off < 0 || off >= len) return new IntrinsicResult(ErrorType.FileError("index out of bounds"));
+			if (off < 0 || off >= len) return new IntrinsicResult(ErrorTypes.FileError("index out of bounds"));
 			return new IntrinsicResult(make_double((Double)RawGetByte(hv, off)));
 		};
 		_rdKeys.Add("byte");
@@ -1377,9 +1383,9 @@ public static class ShellIntrinsics {
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value self = ctx.GetArg(0);
 			Value hv = val_null; map_try_get(self, make_string("_handle"), out hv);
-			Int32 len = GetRawBufLen(hv); if (len < 0) return new IntrinsicResult(ErrorType.FileError("RawData has no buffer"));
+			Int32 len = GetRawBufLen(hv); if (len < 0) return new IntrinsicResult(ErrorTypes.FileError("RawData has no buffer"));
 			Int32 off = (Int32)as_double(ctx.GetArg(1)); if (off < 0) off += len;
-			if (off < 0 || off >= len) return new IntrinsicResult(ErrorType.FileError("index out of bounds"));
+			if (off < 0 || off >= len) return new IntrinsicResult(ErrorTypes.FileError("index out of bounds"));
 			RawSetByte(hv, off, (Int32)as_double(ctx.GetArg(2)));
 			return IntrinsicResult.Null;
 		};
@@ -1391,9 +1397,9 @@ public static class ShellIntrinsics {
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value self = ctx.GetArg(0);
 			Value hv = val_null; map_try_get(self, make_string("_handle"), out hv);
-			Int32 len = GetRawBufLen(hv); if (len < 0) return new IntrinsicResult(ErrorType.FileError("RawData has no buffer"));
+			Int32 len = GetRawBufLen(hv); if (len < 0) return new IntrinsicResult(ErrorTypes.FileError("RawData has no buffer"));
 			Int32 off = (Int32)as_double(ctx.GetArg(1)); if (off < 0) off += len;
-			if (off < 0 || off >= len) return new IntrinsicResult(ErrorType.FileError("index out of bounds"));
+			if (off < 0 || off >= len) return new IntrinsicResult(ErrorTypes.FileError("index out of bounds"));
 			return new IntrinsicResult(make_double((Double)RawGetSByte(hv, off)));
 		};
 		_rdKeys.Add("sbyte");
@@ -1403,9 +1409,9 @@ public static class ShellIntrinsics {
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value self = ctx.GetArg(0);
 			Value hv = val_null; map_try_get(self, make_string("_handle"), out hv);
-			Int32 len = GetRawBufLen(hv); if (len < 0) return new IntrinsicResult(ErrorType.FileError("RawData has no buffer"));
+			Int32 len = GetRawBufLen(hv); if (len < 0) return new IntrinsicResult(ErrorTypes.FileError("RawData has no buffer"));
 			Int32 off = (Int32)as_double(ctx.GetArg(1)); if (off < 0) off += len;
-			if (off < 0 || off >= len) return new IntrinsicResult(ErrorType.FileError("index out of bounds"));
+			if (off < 0 || off >= len) return new IntrinsicResult(ErrorTypes.FileError("index out of bounds"));
 			RawSetSByte(hv, off, (Int32)as_double(ctx.GetArg(2)));
 			return IntrinsicResult.Null;
 		};
@@ -1417,9 +1423,9 @@ public static class ShellIntrinsics {
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value self = ctx.GetArg(0);
 			Value hv = val_null; map_try_get(self, make_string("_handle"), out hv);
-			Int32 len = GetRawBufLen(hv); if (len < 0) return new IntrinsicResult(ErrorType.FileError("RawData has no buffer"));
+			Int32 len = GetRawBufLen(hv); if (len < 0) return new IntrinsicResult(ErrorTypes.FileError("RawData has no buffer"));
 			Int32 off = (Int32)as_double(ctx.GetArg(1)); if (off < 0) off += len;
-			if (off < 0 || off + 2 > len) return new IntrinsicResult(ErrorType.FileError("index out of bounds"));
+			if (off < 0 || off + 2 > len) return new IntrinsicResult(ErrorTypes.FileError("index out of bounds"));
 			Value leVal = val_null; map_try_get(self, make_string("littleEndian"), out leVal);
 			Boolean le = is_null(leVal) || as_double(leVal) != 0.0;
 			return new IntrinsicResult(make_double((Double)RawGetU16(hv, off, le)));
@@ -1431,9 +1437,9 @@ public static class ShellIntrinsics {
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value self = ctx.GetArg(0);
 			Value hv = val_null; map_try_get(self, make_string("_handle"), out hv);
-			Int32 len = GetRawBufLen(hv); if (len < 0) return new IntrinsicResult(ErrorType.FileError("RawData has no buffer"));
+			Int32 len = GetRawBufLen(hv); if (len < 0) return new IntrinsicResult(ErrorTypes.FileError("RawData has no buffer"));
 			Int32 off = (Int32)as_double(ctx.GetArg(1)); if (off < 0) off += len;
-			if (off < 0 || off + 2 > len) return new IntrinsicResult(ErrorType.FileError("index out of bounds"));
+			if (off < 0 || off + 2 > len) return new IntrinsicResult(ErrorTypes.FileError("index out of bounds"));
 			Value leVal = val_null; map_try_get(self, make_string("littleEndian"), out leVal);
 			Boolean le = is_null(leVal) || as_double(leVal) != 0.0;
 			RawSetU16(hv, off, (Int32)as_double(ctx.GetArg(2)), le);
@@ -1446,9 +1452,9 @@ public static class ShellIntrinsics {
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value self = ctx.GetArg(0);
 			Value hv = val_null; map_try_get(self, make_string("_handle"), out hv);
-			Int32 len = GetRawBufLen(hv); if (len < 0) return new IntrinsicResult(ErrorType.FileError("RawData has no buffer"));
+			Int32 len = GetRawBufLen(hv); if (len < 0) return new IntrinsicResult(ErrorTypes.FileError("RawData has no buffer"));
 			Int32 off = (Int32)as_double(ctx.GetArg(1)); if (off < 0) off += len;
-			if (off < 0 || off + 2 > len) return new IntrinsicResult(ErrorType.FileError("index out of bounds"));
+			if (off < 0 || off + 2 > len) return new IntrinsicResult(ErrorTypes.FileError("index out of bounds"));
 			Value leVal = val_null; map_try_get(self, make_string("littleEndian"), out leVal);
 			Boolean le = is_null(leVal) || as_double(leVal) != 0.0;
 			return new IntrinsicResult(make_double((Double)RawGetI16(hv, off, le)));
@@ -1460,9 +1466,9 @@ public static class ShellIntrinsics {
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value self = ctx.GetArg(0);
 			Value hv = val_null; map_try_get(self, make_string("_handle"), out hv);
-			Int32 len = GetRawBufLen(hv); if (len < 0) return new IntrinsicResult(ErrorType.FileError("RawData has no buffer"));
+			Int32 len = GetRawBufLen(hv); if (len < 0) return new IntrinsicResult(ErrorTypes.FileError("RawData has no buffer"));
 			Int32 off = (Int32)as_double(ctx.GetArg(1)); if (off < 0) off += len;
-			if (off < 0 || off + 2 > len) return new IntrinsicResult(ErrorType.FileError("index out of bounds"));
+			if (off < 0 || off + 2 > len) return new IntrinsicResult(ErrorTypes.FileError("index out of bounds"));
 			Value leVal = val_null; map_try_get(self, make_string("littleEndian"), out leVal);
 			Boolean le = is_null(leVal) || as_double(leVal) != 0.0;
 			RawSetI16(hv, off, (Int32)as_double(ctx.GetArg(2)), le);
@@ -1476,9 +1482,9 @@ public static class ShellIntrinsics {
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value self = ctx.GetArg(0);
 			Value hv = val_null; map_try_get(self, make_string("_handle"), out hv);
-			Int32 len = GetRawBufLen(hv); if (len < 0) return new IntrinsicResult(ErrorType.FileError("RawData has no buffer"));
+			Int32 len = GetRawBufLen(hv); if (len < 0) return new IntrinsicResult(ErrorTypes.FileError("RawData has no buffer"));
 			Int32 off = (Int32)as_double(ctx.GetArg(1)); if (off < 0) off += len;
-			if (off < 0 || off + 4 > len) return new IntrinsicResult(ErrorType.FileError("index out of bounds"));
+			if (off < 0 || off + 4 > len) return new IntrinsicResult(ErrorTypes.FileError("index out of bounds"));
 			Value leVal = val_null; map_try_get(self, make_string("littleEndian"), out leVal);
 			Boolean le = is_null(leVal) || as_double(leVal) != 0.0;
 			return new IntrinsicResult(make_double(RawGetU32(hv, off, le)));
@@ -1490,9 +1496,9 @@ public static class ShellIntrinsics {
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value self = ctx.GetArg(0);
 			Value hv = val_null; map_try_get(self, make_string("_handle"), out hv);
-			Int32 len = GetRawBufLen(hv); if (len < 0) return new IntrinsicResult(ErrorType.FileError("RawData has no buffer"));
+			Int32 len = GetRawBufLen(hv); if (len < 0) return new IntrinsicResult(ErrorTypes.FileError("RawData has no buffer"));
 			Int32 off = (Int32)as_double(ctx.GetArg(1)); if (off < 0) off += len;
-			if (off < 0 || off + 4 > len) return new IntrinsicResult(ErrorType.FileError("index out of bounds"));
+			if (off < 0 || off + 4 > len) return new IntrinsicResult(ErrorTypes.FileError("index out of bounds"));
 			Value leVal = val_null; map_try_get(self, make_string("littleEndian"), out leVal);
 			Boolean le = is_null(leVal) || as_double(leVal) != 0.0;
 			RawSetU32(hv, off, as_double(ctx.GetArg(2)), le);
@@ -1505,9 +1511,9 @@ public static class ShellIntrinsics {
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value self = ctx.GetArg(0);
 			Value hv = val_null; map_try_get(self, make_string("_handle"), out hv);
-			Int32 len = GetRawBufLen(hv); if (len < 0) return new IntrinsicResult(ErrorType.FileError("RawData has no buffer"));
+			Int32 len = GetRawBufLen(hv); if (len < 0) return new IntrinsicResult(ErrorTypes.FileError("RawData has no buffer"));
 			Int32 off = (Int32)as_double(ctx.GetArg(1)); if (off < 0) off += len;
-			if (off < 0 || off + 4 > len) return new IntrinsicResult(ErrorType.FileError("index out of bounds"));
+			if (off < 0 || off + 4 > len) return new IntrinsicResult(ErrorTypes.FileError("index out of bounds"));
 			Value leVal = val_null; map_try_get(self, make_string("littleEndian"), out leVal);
 			Boolean le = is_null(leVal) || as_double(leVal) != 0.0;
 			return new IntrinsicResult(make_double((Double)RawGetI32(hv, off, le)));
@@ -1519,9 +1525,9 @@ public static class ShellIntrinsics {
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value self = ctx.GetArg(0);
 			Value hv = val_null; map_try_get(self, make_string("_handle"), out hv);
-			Int32 len = GetRawBufLen(hv); if (len < 0) return new IntrinsicResult(ErrorType.FileError("RawData has no buffer"));
+			Int32 len = GetRawBufLen(hv); if (len < 0) return new IntrinsicResult(ErrorTypes.FileError("RawData has no buffer"));
 			Int32 off = (Int32)as_double(ctx.GetArg(1)); if (off < 0) off += len;
-			if (off < 0 || off + 4 > len) return new IntrinsicResult(ErrorType.FileError("index out of bounds"));
+			if (off < 0 || off + 4 > len) return new IntrinsicResult(ErrorTypes.FileError("index out of bounds"));
 			Value leVal = val_null; map_try_get(self, make_string("littleEndian"), out leVal);
 			Boolean le = is_null(leVal) || as_double(leVal) != 0.0;
 			RawSetI32(hv, off, (Int32)as_double(ctx.GetArg(2)), le);
@@ -1535,9 +1541,9 @@ public static class ShellIntrinsics {
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value self = ctx.GetArg(0);
 			Value hv = val_null; map_try_get(self, make_string("_handle"), out hv);
-			Int32 len = GetRawBufLen(hv); if (len < 0) return new IntrinsicResult(ErrorType.FileError("RawData has no buffer"));
+			Int32 len = GetRawBufLen(hv); if (len < 0) return new IntrinsicResult(ErrorTypes.FileError("RawData has no buffer"));
 			Int32 off = (Int32)as_double(ctx.GetArg(1)); if (off < 0) off += len;
-			if (off < 0 || off + 4 > len) return new IntrinsicResult(ErrorType.FileError("index out of bounds"));
+			if (off < 0 || off + 4 > len) return new IntrinsicResult(ErrorTypes.FileError("index out of bounds"));
 			Value leVal = val_null; map_try_get(self, make_string("littleEndian"), out leVal);
 			Boolean le = is_null(leVal) || as_double(leVal) != 0.0;
 			return new IntrinsicResult(make_double(RawGetF32(hv, off, le)));
@@ -1549,9 +1555,9 @@ public static class ShellIntrinsics {
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value self = ctx.GetArg(0);
 			Value hv = val_null; map_try_get(self, make_string("_handle"), out hv);
-			Int32 len = GetRawBufLen(hv); if (len < 0) return new IntrinsicResult(ErrorType.FileError("RawData has no buffer"));
+			Int32 len = GetRawBufLen(hv); if (len < 0) return new IntrinsicResult(ErrorTypes.FileError("RawData has no buffer"));
 			Int32 off = (Int32)as_double(ctx.GetArg(1)); if (off < 0) off += len;
-			if (off < 0 || off + 4 > len) return new IntrinsicResult(ErrorType.FileError("index out of bounds"));
+			if (off < 0 || off + 4 > len) return new IntrinsicResult(ErrorTypes.FileError("index out of bounds"));
 			Value leVal = val_null; map_try_get(self, make_string("littleEndian"), out leVal);
 			Boolean le = is_null(leVal) || as_double(leVal) != 0.0;
 			RawSetF32(hv, off, as_double(ctx.GetArg(2)), le);
@@ -1564,9 +1570,9 @@ public static class ShellIntrinsics {
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value self = ctx.GetArg(0);
 			Value hv = val_null; map_try_get(self, make_string("_handle"), out hv);
-			Int32 len = GetRawBufLen(hv); if (len < 0) return new IntrinsicResult(ErrorType.FileError("RawData has no buffer"));
+			Int32 len = GetRawBufLen(hv); if (len < 0) return new IntrinsicResult(ErrorTypes.FileError("RawData has no buffer"));
 			Int32 off = (Int32)as_double(ctx.GetArg(1)); if (off < 0) off += len;
-			if (off < 0 || off + 8 > len) return new IntrinsicResult(ErrorType.FileError("index out of bounds"));
+			if (off < 0 || off + 8 > len) return new IntrinsicResult(ErrorTypes.FileError("index out of bounds"));
 			Value leVal = val_null; map_try_get(self, make_string("littleEndian"), out leVal);
 			Boolean le = is_null(leVal) || as_double(leVal) != 0.0;
 			return new IntrinsicResult(make_double(RawGetF64(hv, off, le)));
@@ -1578,9 +1584,9 @@ public static class ShellIntrinsics {
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value self = ctx.GetArg(0);
 			Value hv = val_null; map_try_get(self, make_string("_handle"), out hv);
-			Int32 len = GetRawBufLen(hv); if (len < 0) return new IntrinsicResult(ErrorType.FileError("RawData has no buffer"));
+			Int32 len = GetRawBufLen(hv); if (len < 0) return new IntrinsicResult(ErrorTypes.FileError("RawData has no buffer"));
 			Int32 off = (Int32)as_double(ctx.GetArg(1)); if (off < 0) off += len;
-			if (off < 0 || off + 8 > len) return new IntrinsicResult(ErrorType.FileError("index out of bounds"));
+			if (off < 0 || off + 8 > len) return new IntrinsicResult(ErrorTypes.FileError("index out of bounds"));
 			Value leVal = val_null; map_try_get(self, make_string("littleEndian"), out leVal);
 			Boolean le = is_null(leVal) || as_double(leVal) != 0.0;
 			RawSetF64(hv, off, as_double(ctx.GetArg(2)), le);
@@ -1594,9 +1600,9 @@ public static class ShellIntrinsics {
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value self = ctx.GetArg(0);
 			Value hv = val_null; map_try_get(self, make_string("_handle"), out hv);
-			Int32 len = GetRawBufLen(hv); if (len < 0) return new IntrinsicResult(ErrorType.FileError("RawData has no buffer"));
+			Int32 len = GetRawBufLen(hv); if (len < 0) return new IntrinsicResult(ErrorTypes.FileError("RawData has no buffer"));
 			Int32 off = (Int32)as_double(ctx.GetArg(1)); if (off < 0) off += len;
-			if (off < 0 || off > len) return new IntrinsicResult(ErrorType.FileError("index out of bounds"));
+			if (off < 0 || off > len) return new IntrinsicResult(ErrorTypes.FileError("index out of bounds"));
 			Int32 byteCount = (Int32)as_double(ctx.GetArg(2));
 			return new IntrinsicResult(make_string(RawGetUTF8(hv, off, byteCount)));
 		};
@@ -1607,9 +1613,9 @@ public static class ShellIntrinsics {
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value self = ctx.GetArg(0);
 			Value hv = val_null; map_try_get(self, make_string("_handle"), out hv);
-			Int32 len = GetRawBufLen(hv); if (len < 0) return new IntrinsicResult(ErrorType.FileError("RawData has no buffer"));
+			Int32 len = GetRawBufLen(hv); if (len < 0) return new IntrinsicResult(ErrorTypes.FileError("RawData has no buffer"));
 			Int32 off = (Int32)as_double(ctx.GetArg(1)); if (off < 0) off += len;
-			if (off < 0 || off > len) return new IntrinsicResult(ErrorType.FileError("index out of bounds"));
+			if (off < 0 || off > len) return new IntrinsicResult(ErrorTypes.FileError("index out of bounds"));
 			Int32 written = RawSetUTF8(hv, off, to_String(ctx.GetArg(2)));
 			return new IntrinsicResult(make_double((Double)written));
 		};
@@ -1643,7 +1649,7 @@ public static class ShellIntrinsics {
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value self = ctx.GetArg(0);
 			Value hv = val_null; map_try_get(self, make_string("_handle"), out hv);
-			if (!IsFileHandleOpen(hv)) return new IntrinsicResult(ErrorType.FileError("file is not open"));
+			if (!IsFileHandleOpen(hv)) return new IntrinsicResult(ErrorTypes.FileError("file is not open"));
 			Int32 n = WriteToFile(hv, to_String(ctx.GetArg(1)));
 			return new IntrinsicResult(make_double((Double)n));
 		};
@@ -1654,7 +1660,7 @@ public static class ShellIntrinsics {
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value self = ctx.GetArg(0);
 			Value hv = val_null; map_try_get(self, make_string("_handle"), out hv);
-			if (!IsFileHandleOpen(hv)) return new IntrinsicResult(ErrorType.FileError("file is not open"));
+			if (!IsFileHandleOpen(hv)) return new IntrinsicResult(ErrorTypes.FileError("file is not open"));
 			Int32 n = WriteToFile(hv, to_String(ctx.GetArg(1)) + "\n");
 			return new IntrinsicResult(make_double((Double)n));
 		};
@@ -1665,7 +1671,7 @@ public static class ShellIntrinsics {
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value self = ctx.GetArg(0);
 			Value hv = val_null; map_try_get(self, make_string("_handle"), out hv);
-			if (!IsFileHandleOpen(hv)) return new IntrinsicResult(ErrorType.FileError("file is not open"));
+			if (!IsFileHandleOpen(hv)) return new IntrinsicResult(ErrorTypes.FileError("file is not open"));
 			return new IntrinsicResult(make_string(ReadFromFile(hv, (Int32)as_double(ctx.GetArg(1)))));
 		};
 		_fhKeys.Add("read");
@@ -1675,7 +1681,7 @@ public static class ShellIntrinsics {
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value self = ctx.GetArg(0);
 			Value hv = val_null; map_try_get(self, make_string("_handle"), out hv);
-			if (!IsFileHandleOpen(hv)) return new IntrinsicResult(ErrorType.FileError("file is not open"));
+			if (!IsFileHandleOpen(hv)) return new IntrinsicResult(ErrorTypes.FileError("file is not open"));
 			return new IntrinsicResult(ReadLineFromFile(hv));
 		};
 		_fhKeys.Add("readLine");
@@ -1685,7 +1691,7 @@ public static class ShellIntrinsics {
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value self = ctx.GetArg(0);
 			Value hv = val_null; map_try_get(self, make_string("_handle"), out hv);
-			if (!IsFileHandleOpen(hv)) return new IntrinsicResult(ErrorType.FileError("file is not open"));
+			if (!IsFileHandleOpen(hv)) return new IntrinsicResult(ErrorTypes.FileError("file is not open"));
 			return new IntrinsicResult(make_double((Double)GetFilePosition(hv)));
 		};
 		_fhKeys.Add("position");
@@ -1695,7 +1701,7 @@ public static class ShellIntrinsics {
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value self = ctx.GetArg(0);
 			Value hv = val_null; map_try_get(self, make_string("_handle"), out hv);
-			if (!IsFileHandleOpen(hv)) return new IntrinsicResult(ErrorType.FileError("file is not open"));
+			if (!IsFileHandleOpen(hv)) return new IntrinsicResult(ErrorTypes.FileError("file is not open"));
 			SeekFilePosition(hv, (Int32)as_double(ctx.GetArg(1)));
 			return IntrinsicResult.Null;
 		};
@@ -1706,7 +1712,7 @@ public static class ShellIntrinsics {
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value self = ctx.GetArg(0);
 			Value hv = val_null; map_try_get(self, make_string("_handle"), out hv);
-			if (!IsFileHandleOpen(hv)) return new IntrinsicResult(ErrorType.FileError("file is not open"));
+			if (!IsFileHandleOpen(hv)) return new IntrinsicResult(ErrorTypes.FileError("file is not open"));
 			return new IntrinsicResult(make_double(IsFileAtEnd(hv) ? 1.0 : 0.0));
 		};
 		_fhKeys.Add("atEnd");
@@ -1723,8 +1729,9 @@ public static class ShellIntrinsics {
 		f = Intrinsic.Create("");
 		f.AddParam("path", make_string(""));
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
-			Boolean ok = FsSetDir(to_String(ctx.GetArg(0)));
-			return new IntrinsicResult(make_double(ok ? 1.0 : 0.0));	// ToDo: make_boolean
+			String path = to_String(ctx.GetArg(0));
+			if (!FsSetDir(path)) return new IntrinsicResult(ErrorTypes.FileError("setdir: could not change directory to: " + path));
+			return IntrinsicResult.Null;
 		};
 		_fmKeys.Add("setdir");
 
@@ -1774,28 +1781,38 @@ public static class ShellIntrinsics {
 		f = Intrinsic.Create("");
 		f.AddParam("path", make_string(""));
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
-			return new IntrinsicResult(make_double(FsMakeDir(to_String(ctx.GetArg(0))) ? 1.0 : 0.0));
+			String path = to_String(ctx.GetArg(0));
+			if (!FsMakeDir(path)) return new IntrinsicResult(ErrorTypes.FileError("makedir: could not create directory: " + path));
+			return IntrinsicResult.Null;
 		};
 		_fmKeys.Add("makedir");
 
 		f = Intrinsic.Create("");
 		f.AddParam("oldPath", make_string("")); f.AddParam("newPath", make_string(""));
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
-			return new IntrinsicResult(make_double(FsMove(to_String(ctx.GetArg(0)), to_String(ctx.GetArg(1))) ? 1.0 : 0.0));
+			String oldPath = to_String(ctx.GetArg(0));
+			String newPath = to_String(ctx.GetArg(1));
+			if (!FsMove(oldPath, newPath)) return new IntrinsicResult(ErrorTypes.FileError("move: could not move " + oldPath + " to " + newPath));
+			return IntrinsicResult.Null;
 		};
 		_fmKeys.Add("move");
 
 		f = Intrinsic.Create("");
 		f.AddParam("oldPath", make_string("")); f.AddParam("newPath", make_string(""));
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
-			return new IntrinsicResult(make_double(FsCopy(to_String(ctx.GetArg(0)), to_String(ctx.GetArg(1))) ? 1.0 : 0.0));
+			String oldPath = to_String(ctx.GetArg(0));
+			String newPath = to_String(ctx.GetArg(1));
+			if (!FsCopy(oldPath, newPath)) return new IntrinsicResult(ErrorTypes.FileError("copy: could not copy " + oldPath + " to " + newPath));
+			return IntrinsicResult.Null;
 		};
 		_fmKeys.Add("copy");
 
 		f = Intrinsic.Create("");
 		f.AddParam("path", make_string(""));
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
-			return new IntrinsicResult(make_double(FsDelete(to_String(ctx.GetArg(0))) ? 1.0 : 0.0));
+			String path = to_String(ctx.GetArg(0));
+			if (!FsDelete(path)) return new IntrinsicResult(ErrorTypes.FileError("delete: could not delete: " + path));
+			return IntrinsicResult.Null;
 		};
 		_fmKeys.Add("delete");
 
@@ -1837,7 +1854,7 @@ public static class ShellIntrinsics {
 			String path = to_String(ctx.GetArg(0));
 			String mode = to_String(ctx.GetArg(1));
 			Value hv = MakeFileHandle(path, mode);
-			if (is_null(hv)) return new IntrinsicResult(ErrorType.FileError("open: could not open: " + path));
+			if (is_null(hv)) return new IntrinsicResult(ErrorTypes.FileError("open: could not open: " + path));
 			Value instance = make_map(4);
 			map_set(instance, val_isa_key, GetFileHandleClassMap());
 			map_set(instance, "_handle", hv);
@@ -1944,11 +1961,16 @@ public static class ShellIntrinsics {
 			if (!partialResult.done) {
 				return FinishExec(partialResult.result);
 			}
-			String cmd = to_String(ctx.GetArg(0));
+			Value cmdArg = ctx.GetArg(0);
+			if (is_error(cmdArg)) return new IntrinsicResult(cmdArg);
+			String cmd = to_String(cmdArg);
 			if (!is_null(_envMap)) {
 				SyncEnvMap();
 			}
 			Value handle = BeginExec(cmd);
+			if (is_null(handle)) {
+				return new IntrinsicResult(ErrorTypes.RuntimeError(StringUtils.Format("exec: failed to start command: {0}", cmd)));
+			}
 			return FinishExec(handle);
 		};
 
@@ -1960,13 +1982,16 @@ public static class ShellIntrinsics {
 		f.AddParam("dateStr");
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value date = ctx.GetArg(0);
+			if (is_error(date)) return new IntrinsicResult(date);
 			Double t;
 			if (is_null(date)) {
 				t = NowSeconds();
 			} else if (is_number(date)) {
 				return new IntrinsicResult(date);
 			} else {
-				t = DateTimeUtils.ParseDate(to_String(date));
+				if (!DateTimeUtils.TryParseDate(to_String(date), out t)) {
+					return new IntrinsicResult(ErrorTypes.FormatError(StringUtils.Format("'{0}' is not a valid date", to_String(date))));
+				}
 			}
 			return new IntrinsicResult(make_double(t - DateTimeEpoch()));
 		};
@@ -1979,7 +2004,9 @@ public static class ShellIntrinsics {
 		f.AddParam("format", make_string("yyyy-MM-dd HH:mm:ss"));
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value date = ctx.GetArg(0);
+			if (is_error(date)) return new IntrinsicResult(date);
 			Value format = ctx.GetArg(1);
+			if (is_error(format)) return new IntrinsicResult(format);
 			String formatStr;
 			if (is_null(format)) formatStr = "yyyy-MM-dd HH:mm:ss";
 			else formatStr = to_String(format);
@@ -1989,9 +2016,15 @@ public static class ShellIntrinsics {
 			} else if (is_number(date)) {
 				d = as_double(date) + DateTimeEpoch();
 			} else {
-				d = DateTimeUtils.ParseDate(to_String(date));
+				if (!DateTimeUtils.TryParseDate(to_String(date), out d)) {
+					return new IntrinsicResult(ErrorTypes.FormatError(StringUtils.Format("'{0}' is not a valid date", to_String(date))));
+				}
 			}
-			return new IntrinsicResult(make_string(DateTimeUtils.FormatDate(d, formatStr)));
+			String formatted;
+			if (!DateTimeUtils.TryFormatDate(d, formatStr, out formatted)) {
+				return new IntrinsicResult(ErrorTypes.FormatError(StringUtils.Format("'{0}' is not a valid date format", formatStr)));
+			}
+			return new IntrinsicResult(make_string(formatted));
 		};
 
 		// import(libname) — load and run a MiniScript module, then store its locals
@@ -2012,10 +2045,11 @@ public static class ShellIntrinsics {
 				return new IntrinsicResult(importedValues, true);
 			}
 			// Phase 1: find, parse, compile, and push the module.
-			String libname = to_String(ctx.GetArg(0));
+			Value libnameArg = ctx.GetArg(0);
+			if (is_error(libnameArg)) return new IntrinsicResult(libnameArg);
+			String libname = to_String(libnameArg);
 			if (libname.Length == 0) {
-				ctx.vm.RaiseRuntimeError("import: libname required");
-				return IntrinsicResult.Null;
+				return new IntrinsicResult(ErrorTypes.FileError("import: no library name given"));
 			}
 			// Determine the search path.
 			Value pathVal;
@@ -2041,16 +2075,14 @@ public static class ShellIntrinsics {
 				break;
 			}
 			if (!found) {
-				ctx.vm.RaiseRuntimeError(StringUtils.Format("import: library not found: {0}", libname));
-				return IntrinsicResult.Null;
+				return new IntrinsicResult(ErrorTypes.FileError(StringUtils.Format("import: library not found: {0}", libname)));
 			}
 			// Parse the module source.
 			Parser p = new Parser();
 			p.Init(source);
 			List<ASTNode> stmts = p.ParseProgram();
 			if (p.HadError()) {
-				ctx.vm.RaiseRuntimeError(StringUtils.Format("import: parse error in {0}.ms", libname));
-				return IntrinsicResult.Null;
+				return new IntrinsicResult(ErrorTypes.CompilerError(StringUtils.Format("import: parse error in {0}.ms", libname)));
 			}
 			// Simplify AST (constant folding, etc.).
 			for (Int32 i = 0; i < stmts.Count; i++) {
@@ -2062,8 +2094,7 @@ public static class ShellIntrinsics {
 			gen.FileName = libname + ".ms";
 			List<FuncDef> fns = gen.CompileImport(stmts, libname + ".ms");
 			if (!is_null(gen.Error)) {
-				ctx.vm.RaiseRuntimeError(StringUtils.Format("import: compile error in {0}.ms", libname));
-				return IntrinsicResult.Null;
+				return new IntrinsicResult(gen.Error);
 			}
 			// Push the module call; we will be re-invoked when it finishes.
 			// fns[0] is the module's @main; nested functions are reachable

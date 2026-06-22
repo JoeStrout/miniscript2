@@ -31,4 +31,18 @@ static inline String to_String(Value v) {
     return String(as_cstring(to_string(v, NULL)));
 }
 
+// Hand-written twin of ValueHelpers.value_type_name (Value.cs is CS_ONLY, so it
+// is not transpiled).  Keep in sync with the C# version.
+static inline String value_type_name(Value v) {
+    if (is_number(v)) return String("number");
+    if (is_string(v)) return String("string");
+    if (is_list(v)) return String("list");
+    if (is_map(v)) return String("map");
+    if (is_funcref(v)) return String("funcRef");
+    if (is_error(v)) return String("error");
+    if (is_handle(v)) return String("handle");
+    if (is_null(v)) return String("null");
+    return String("unknown");
+}
+
 #endif // __cplusplus

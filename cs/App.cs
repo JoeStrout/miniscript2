@@ -63,7 +63,7 @@ public struct App {
 		CoreIntrinsics.hostInfo = "https://miniscript.org/cmdline/";
 		
 		GCManager.Init();
-		ErrorType.Init();
+		ErrorTypes.Init();
 		ShellIntrinsics.Init();
 
 		// Parse command-line switches

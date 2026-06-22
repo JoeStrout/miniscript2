@@ -5,8 +5,8 @@
 // into the lower 35 bits, dispatched by GCManager (see GCManager.h).
 //
 // Bit layout (matches cs/Value.cs and cs/GCManager.cs):
-//   valid double  : top 13 bits not all 1s (standard IEEE 754)
-//   null          : 0xFFF1_0000_0000_0000
+//   valid double  : top 16 bits < 0xFFF9 (includes ±inf and ±NaN)
+//   null          : 0xFFF9_0000_0000_0000
 //   GC object     : 0xFFFE_0000_000G_IIII_IIII
 //                     bits 34-32 = GCSet index (0-5)
 //                     bits 31-0  = item index within that GCSet
@@ -36,7 +36,11 @@ typedef uint64_t Value;
 
 // ── Tag bits ────────────────────────────────────────────────────────────
 #define NANISH_MASK       0xFFFF000000000000ULL
-#define NULL_VALUE        0xFFF1000000000000ULL
+// NULL_VALUE doubles as the is_double threshold (top 16 bits below it == double).
+// It sits at 0xFFF9 so the negative infinity (0xFFF0) and negative quiet NaN
+// (0xFFF8) bit patterns still classify as doubles; only 0xFFF9-0xFFFF is
+// reserved for tags.  This lets make_double stay a branch-free bit copy.
+#define NULL_VALUE        0xFFF9000000000000ULL
 #define GC_TAG            0xFFFE000000000000ULL
 #define TINY_STRING_TAG   0xFFFF000000000000ULL
 // Mask covering top-16 tag bits plus the 3-bit GCSet field (bits 34-32).

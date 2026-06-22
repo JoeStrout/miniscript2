@@ -420,7 +420,7 @@ public class VM {
 	// attached later (see FinalizeErrorStackTrace), once VM state has been
 	// saved and accurately reflects the failing instruction.
 	public void RaiseRuntimeError(String message) {
-		Error = ErrorType.RuntimeError(message);
+		Error = ErrorTypes.RuntimeError(message);
 		_errorStackPending = true;
 		IsRunning = false;
 	}

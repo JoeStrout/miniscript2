@@ -36,7 +36,19 @@ class DateTimeUtils {
 	// So basically this will parse a date in the format returned by default from
 	// FormatDate (which is also the same as a SQL date), or simple variations thereof.
 	// Returns seconds since the Unix epoch (local time).
+	// Parse a date/time string to seconds since the Unix epoch.  Returns 0 if
+	// the string cannot be parsed (note: 0 is also a valid time, so use
+	// TryParseDate when you need to distinguish failure).
 	public: static Double ParseDate(String dateStr);
+
+	// Parse a date/time string to seconds since the Unix epoch.  Returns true
+	// and sets `result` on success; returns false (result = 0) if the string
+	// holds no recognizable date or time.
+	public: static Boolean TryParseDate(String dateStr, Double* result);
+
+	// Format a date as a string.  Returns true and sets `result` on success;
+	// returns false (result = "") if the format specifier is invalid.
+	public: static Boolean TryFormatDate(Double dateTime, String formatSpec, String* result);
 
 }; // end of struct DateTimeUtils
 

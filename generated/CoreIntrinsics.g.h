@@ -26,6 +26,14 @@ class CoreIntrinsics {
 
 	// Host app identity — set these before the first call to `version`.
 
+	// Coerce a numeric argument per the language's number/string policy.
+	// Returns val_null on success (with `result` set); otherwise returns an
+	// error Value to be returned from the intrinsic: a TypeError when the value
+	// is the wrong type (not a number or string), or a FormatError when it is a
+	// string that does not parse as a number.  Callers should check/propagate
+	// is_error(v) before calling this.
+	private: static Value RequireNumber(Value v, double* result);
+
 	private: static void AddIntrinsicToMap(Value map, String methodName);
 
 	// 

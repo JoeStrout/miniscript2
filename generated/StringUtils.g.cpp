@@ -4,6 +4,7 @@
 #include "StringUtils.g.h"
 #include <cctype>
 #include <cmath>
+#include <cstdlib>
 #include "IOHelper.g.h"
 
 namespace MiniScript {
@@ -24,6 +25,18 @@ String StringUtils::ToHex(Byte value) {
 		value >>= 4;
 	}
 	return  String::New(hexChars);
+}
+Boolean StringUtils::TryParseDouble(String str,Double* result) {
+	const char* s = str.c_str();
+	while (*s == ' ' || *s == '\t') s++;
+	if (*s == '\0') { *result = 0.0; return false; }
+	char* end = nullptr;
+	double v = std::strtod(s, &end);
+	if (end == s) { *result = 0.0; return false; }
+	while (*end == ' ' || *end == '\t') end++;
+	if (*end != '\0') { *result = 0.0; return false; }
+	*result = v;
+	return true;
 }
 String StringUtils::ZeroPad(Int32 value,Int32 digits ) {
 	// set width and fill

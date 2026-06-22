@@ -1,6 +1,6 @@
 // ErrorTypes.cs - Static error type values and factory methods for MiniScript errors.
 //
-// ErrorType.compiler and ErrorType.runtime are prototype error values.
+// ErrorTypes.compiler and ErrorTypes.runtime are prototype error values.
 // Errors created via the factory methods have their __isa set to one of these,
 // allowing host code to categorize errors by type.
 
@@ -8,10 +8,11 @@ using System;
 using static MiniScript.ValueHelpers;
 // H: #include "value.h"
 // H: #include "GCManager.g.h"
+// CPP: #include "CS_value_util.h"
 
 namespace MiniScript {
 
-public static class ErrorType {
+public static class ErrorTypes {
 	public static Value compiler = val_null;
 	public static Value runtime = val_null;
 
@@ -22,7 +23,7 @@ public static class ErrorType {
 	// Must be called after gc_init() in C++; in C# this is called lazily.
 	public static void Init() {
 		if (!_markRootsRegistered) {
-			GCManager.RegisterMarkCallback(MarkRoots, null); // CPP: GCManager::RegisterMarkCallback(ErrorType::MarkRoots, nullptr);
+			GCManager.RegisterMarkCallback(MarkRoots, null); // CPP: GCManager::RegisterMarkCallback(ErrorTypes::MarkRoots, nullptr);
 			_markRootsRegistered = true;
 		}
 		if (is_null(compiler)) {
@@ -60,9 +61,22 @@ public static class ErrorType {
 		return RuntimeError("File error: " + msg);
 	}
 
-	// ToDo: provide a factory for parameter errors, and another specifically for
-	// "number required, but got <some other type>" errors, and then use this in
-	// various numeric intrinsics (sin, cos, round, etc.) and anywhere else appropriate.
+	// Create a format error value with the given message.  Used when input text
+	// cannot be parsed as expected (e.g. an unparseable date or number) or when
+	// a format specifier is invalid.  Funnels through RuntimeError for now, but
+	// can later get a dedicated __isa prototype.
+	public static Value FormatError(String msg) {
+		return RuntimeError("Format error: " + msg);
+	}
+
+	// Create a parameter type error: an argument was of the wrong type.
+	// `expectedType` names the required type or types (e.g. "number" or
+	// "list or map"); `actualValue` is the offending argument.  Funnels through
+	// RuntimeError for now, but can later get a dedicated __isa prototype.
+	public static Value TypeError(String expectedType, Value actualValue) {
+		return RuntimeError("Type error: " + expectedType + " required, but got "
+			+ value_type_name(actualValue));
+	}
 
 	// GC mark callback to protect our static error prototypes from collection.
 	public static void MarkRoots(object user_data) {

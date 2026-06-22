@@ -703,7 +703,7 @@ String ParserStorage::GotExpected(String expected) {
 	return StringUtils::Format("got {0} where {1} is required", TokenDescription(_current), expected);
 }
 void ParserStorage::ReportError(String message) {
-	if (is_null(Error)) Error = ErrorType::CompilerError(StringUtils::Format("{0} [line {1}]", message, _current.Line));
+	if (is_null(Error)) Error = ErrorTypes::CompilerError(StringUtils::Format("{0} [line {1}]", message, _current.Line));
 }
 Boolean ParserStorage::HadError() {
 	return !is_null(Error);

@@ -277,7 +277,7 @@ Token Lexer::NextToken() {
 	return singleTok;
 }
 void Lexer::ReportError(String message) {
-	if (is_null(Error)) Error = ErrorType::CompilerError(StringUtils::Format("{0} [line {1}]", message, _line));
+	if (is_null(Error)) Error = ErrorTypes::CompilerError(StringUtils::Format("{0} [line {1}]", message, _line));
 }
 Boolean Lexer::HadError() {
 	return !is_null(Error);

@@ -125,6 +125,23 @@ public static class CoreIntrinsics {
 	public static String hostInfo = "";
 	public static String hostVersion = "";
 
+	// Coerce a numeric argument per the language's number/string policy.
+	// Returns val_null on success (with `result` set); otherwise returns an
+	// error Value to be returned from the intrinsic: a TypeError when the value
+	// is the wrong type (not a number or string), or a FormatError when it is a
+	// string that does not parse as a number.  Callers should check/propagate
+	// is_error(v) before calling this.
+	private static Value RequireNumber(Value v, out double result) {
+		if (is_number(v)) { result = numeric_val(v); return val_null; }
+		if (is_string(v)) {
+			if (StringUtils.TryParseDouble(as_cstring(v), out result)) return val_null;
+			result = 0.0;
+			return ErrorTypes.FormatError(StringUtils.Format("'{0}' is not a valid number", as_cstring(v)));
+		}
+		result = 0.0;
+		return ErrorTypes.TypeError("number", v);
+	}
+
 	private static void AddIntrinsicToMap(Value map, String methodName) {
 		Intrinsic intr = Intrinsic.GetByName(methodName);
 		if (intr != null) {
@@ -367,8 +384,8 @@ public static class CoreIntrinsics {
 			Value result = make_map(8);
 			Value parameters = val_null;
 			Value pinfo = val_null;
+			map_set(result, "type", value_type_name(arg));
 			if (is_funcref(arg)) {
-				map_set(result, "type", "funcRef");
 				FuncDef func = funcref_funcdef(arg);
 				map_set(result, "name", func.Name);
 				map_set(result, "note", func.Note);
@@ -385,24 +402,11 @@ public static class CoreIntrinsics {
 				} else {
 					map_set(result, "closure", val_one);
 				}
-			} else if (is_string(arg)) {
-				map_set(result, "type", "string");
-			} else if (is_number(arg)) {
-				map_set(result, "type", "number");
-			} else if (is_list(arg)) {
-				map_set(result, "type", "list");
-			} else if (is_map(arg)) {
-				map_set(result, "type", "map");
 			} else if (is_error(arg)) {
-				map_set(result, "type", "error");
 				map_set(result, "message", error_message(arg));
 				map_set(result, "inner", error_inner(arg));
 				map_set(result, "stack", error_stack(arg));
 				map_set(result, "isa", error_isa(arg));
-			} else if (is_null(arg)) {
-				map_set(result, "type", "null");
-			} else {
-				map_set(result, "type", "unknown");
 			}
 			freeze_value(result);
 			return new IntrinsicResult(result);
@@ -453,8 +457,9 @@ public static class CoreIntrinsics {
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value v = ctx.GetArg(0);
 			if (is_error(v)) return new IntrinsicResult(v);
-			int codePoint = (int)numeric_val(v);
-			return new IntrinsicResult(string_from_code_point(codePoint));
+			double cp;
+			{ Value e = RequireNumber(v, out cp); if (!is_null(e)) return new IntrinsicResult(e); }
+			return new IntrinsicResult(string_from_code_point((int)cp));
 		};
 
 		// code(self)
@@ -463,6 +468,7 @@ public static class CoreIntrinsics {
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value v = ctx.GetArg(0);
 			if (is_error(v)) return new IntrinsicResult(v);
+			if (!is_string(v)) return new IntrinsicResult(ErrorTypes.TypeError("string", v));
 			return new IntrinsicResult(make_int(string_code_point(v)));
 		};
 
@@ -496,7 +502,7 @@ public static class CoreIntrinsics {
 			} else if (is_map(container)) {
 				result = map_remove(container, ctx.GetArg(1)) ? 1 : 0;
 			} else {
-				IOHelper.Print("ERROR: `remove` must be called on list or map");
+				return new IntrinsicResult(ErrorTypes.TypeError("list or map", container));
 			}
 			return new IntrinsicResult(make_int(result));
 		};
@@ -535,7 +541,9 @@ public static class CoreIntrinsics {
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value v = ctx.GetArg(0);
 			if (is_error(v)) return new IntrinsicResult(v);
-			return new IntrinsicResult(make_double(Math.Abs(numeric_val(v))));
+			double x;
+			{ Value e = RequireNumber(v, out x); if (!is_null(e)) return new IntrinsicResult(e); }
+			return new IntrinsicResult(make_double(Math.Abs(x)));
 		};
 
 		// acos(x=0)
@@ -544,7 +552,9 @@ public static class CoreIntrinsics {
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value v = ctx.GetArg(0);
 			if (is_error(v)) return new IntrinsicResult(v);
-			return new IntrinsicResult(make_double(Math.Acos(numeric_val(v))));
+			double x;
+			{ Value e = RequireNumber(v, out x); if (!is_null(e)) return new IntrinsicResult(e); }
+			return new IntrinsicResult(make_double(Math.Acos(x)));
 		};
 
 		// asin(x=0)
@@ -553,7 +563,9 @@ public static class CoreIntrinsics {
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value v = ctx.GetArg(0);
 			if (is_error(v)) return new IntrinsicResult(v);
-			return new IntrinsicResult(make_double(Math.Asin(numeric_val(v))));
+			double x;
+			{ Value e = RequireNumber(v, out x); if (!is_null(e)) return new IntrinsicResult(e); }
+			return new IntrinsicResult(make_double(Math.Asin(x)));
 		};
 
 		// atan(y=0, x=1)
@@ -565,8 +577,9 @@ public static class CoreIntrinsics {
 			if (is_error(vy)) return new IntrinsicResult(vy);
 			Value vx = ctx.GetArg(1);
 			if (is_error(vx)) return new IntrinsicResult(vx);
-			double y = numeric_val(vy);
-			double x = numeric_val(vx);
+			double y, x;
+			{ Value e = RequireNumber(vy, out y); if (!is_null(e)) return new IntrinsicResult(e); }
+			{ Value e = RequireNumber(vx, out x); if (!is_null(e)) return new IntrinsicResult(e); }
 			if (x == 1.0) return new IntrinsicResult(make_double(Math.Atan(y)));
 			return new IntrinsicResult(make_double(Math.Atan2(y, x)));
 		};
@@ -577,7 +590,9 @@ public static class CoreIntrinsics {
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value v = ctx.GetArg(0);
 			if (is_error(v)) return new IntrinsicResult(v);
-			return new IntrinsicResult(make_double(Math.Ceiling(numeric_val(v))));
+			double x;
+			{ Value e = RequireNumber(v, out x); if (!is_null(e)) return new IntrinsicResult(e); }
+			return new IntrinsicResult(make_double(Math.Ceiling(x)));
 		};
 
 		// cos(radians=0)
@@ -586,7 +601,9 @@ public static class CoreIntrinsics {
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value v = ctx.GetArg(0);
 			if (is_error(v)) return new IntrinsicResult(v);
-			return new IntrinsicResult(make_double(Math.Cos(numeric_val(v))));
+			double x;
+			{ Value e = RequireNumber(v, out x); if (!is_null(e)) return new IntrinsicResult(e); }
+			return new IntrinsicResult(make_double(Math.Cos(x)));
 		};
 
 		// floor(x=0)
@@ -595,7 +612,9 @@ public static class CoreIntrinsics {
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value v = ctx.GetArg(0);
 			if (is_error(v)) return new IntrinsicResult(v);
-			return new IntrinsicResult(make_double(Math.Floor(numeric_val(v))));
+			double x;
+			{ Value e = RequireNumber(v, out x); if (!is_null(e)) return new IntrinsicResult(e); }
+			return new IntrinsicResult(make_double(Math.Floor(x)));
 		};
 
 		// log(x=0, base=10)
@@ -607,8 +626,9 @@ public static class CoreIntrinsics {
 			if (is_error(vx)) return new IntrinsicResult(vx);
 			Value vb = ctx.GetArg(1);
 			if (is_error(vb)) return new IntrinsicResult(vb);
-			double x = numeric_val(vx);
-			double b = numeric_val(vb);
+			double x, b;
+			{ Value e = RequireNumber(vx, out x); if (!is_null(e)) return new IntrinsicResult(e); }
+			{ Value e = RequireNumber(vb, out b); if (!is_null(e)) return new IntrinsicResult(e); }
 			double result;
 			if (Math.Abs(b - 2.718282) < 0.000001) result = Math.Log(x);
 			else result = Math.Log(x) / Math.Log(b);
@@ -628,8 +648,12 @@ public static class CoreIntrinsics {
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value vx = ctx.GetArg(0);
 			if (is_error(vx)) return new IntrinsicResult(vx);
-			double num = numeric_val(vx);
-			int decimalPlaces = (int)numeric_val(ctx.GetArg(1));
+			Value vd = ctx.GetArg(1);
+			if (is_error(vd)) return new IntrinsicResult(vd);
+			double num, decimals;
+			{ Value e = RequireNumber(vx, out num); if (!is_null(e)) return new IntrinsicResult(e); }
+			{ Value e = RequireNumber(vd, out decimals); if (!is_null(e)) return new IntrinsicResult(e); }
+			int decimalPlaces = (int)decimals;
 			if (decimalPlaces >= 0) {
 				if (decimalPlaces > 15) decimalPlaces = 15;
 				num = Math.Round(num, decimalPlaces, MidpointRounding.AwayFromZero); // CPP: num = Math::Round(num, decimalPlaces);
@@ -648,9 +672,14 @@ public static class CoreIntrinsics {
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value v = ctx.GetArg(0);
 			if (is_error(v)) return ctx.vm.RaiseUncaughtError(v);
-			// ToDo: if v is neither null nor a number, return a parameter error
-			// If a seed is supplied, reseed the generator before drawing.
-			if (!is_null(v)) PRNG.Seed((UInt64)(Int64)numeric_val(v));
+			// If a seed is supplied, reseed the generator before drawing.  null
+			// means "no seed"; a number (or numeric string) reseeds; any other
+			// type is a parameter error.
+			if (!is_null(v)) {
+				double seed;
+				{ Value e = RequireNumber(v, out seed); if (!is_null(e)) return new IntrinsicResult(e); }
+				PRNG.Seed((UInt64)(Int64)seed);
+			}
 			return new IntrinsicResult(make_double(PRNG.Next()));
 		};
 
@@ -660,9 +689,9 @@ public static class CoreIntrinsics {
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value v = ctx.GetArg(0);
 			if (is_error(v)) return new IntrinsicResult(v);
-			// ToDo: if v is neither null nor a number, return a parameter error
-			// (and similar for other numeric functions)
-			return new IntrinsicResult(make_int(Math.Sign(numeric_val(v))));
+			double x;
+			{ Value e = RequireNumber(v, out x); if (!is_null(e)) return new IntrinsicResult(e); }
+			return new IntrinsicResult(make_int(Math.Sign(x)));
 		};
 
 		// sin(radians=0)
@@ -671,7 +700,9 @@ public static class CoreIntrinsics {
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value v = ctx.GetArg(0);
 			if (is_error(v)) return new IntrinsicResult(v);
-			return new IntrinsicResult(make_double(Math.Sin(numeric_val(v))));
+			double x;
+			{ Value e = RequireNumber(v, out x); if (!is_null(e)) return new IntrinsicResult(e); }
+			return new IntrinsicResult(make_double(Math.Sin(x)));
 		};
 
 		// sqrt(x=0)
@@ -680,7 +711,9 @@ public static class CoreIntrinsics {
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value v = ctx.GetArg(0);
 			if (is_error(v)) return new IntrinsicResult(v);
-			return new IntrinsicResult(make_double(Math.Sqrt(numeric_val(v))));
+			double x;
+			{ Value e = RequireNumber(v, out x); if (!is_null(e)) return new IntrinsicResult(e); }
+			return new IntrinsicResult(make_double(Math.Sqrt(x)));
 		};
 
 		// tan(radians=0)
@@ -689,7 +722,9 @@ public static class CoreIntrinsics {
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value v = ctx.GetArg(0);
 			if (is_error(v)) return new IntrinsicResult(v);
-			return new IntrinsicResult(make_double(Math.Tan(numeric_val(v))));
+			double x;
+			{ Value e = RequireNumber(v, out x); if (!is_null(e)) return new IntrinsicResult(e); }
+			return new IntrinsicResult(make_double(Math.Tan(x)));
 		};
 		// push(self, value)
 		f = Intrinsic.Create("push");
@@ -706,7 +741,7 @@ public static class CoreIntrinsics {
 				map_set(self, value, val_one);
 				return new IntrinsicResult(self);
 			}
-			return new IntrinsicResult(val_null);
+			return new IntrinsicResult(ErrorTypes.TypeError("list or map", self));
 		};
 
 		// pop(self)
@@ -725,6 +760,8 @@ public static class CoreIntrinsics {
 					result = iter.Key;             // CPP: // remove key that was found
 					map_remove(self, result);
 				}
+			} else {
+				return new IntrinsicResult(ErrorTypes.TypeError("list or map", self));
 			}
 			return new IntrinsicResult(result);
 		};
@@ -745,6 +782,8 @@ public static class CoreIntrinsics {
 					result = iter.Key;             // CPP: // remove key that was found
 					map_remove(self, result);
 				}
+			} else {
+				return new IntrinsicResult(ErrorTypes.TypeError("list or map", self));
 			}
 			return new IntrinsicResult(result);
 		};
@@ -765,7 +804,7 @@ public static class CoreIntrinsics {
 			} else if (is_string(self)) {
 				return new IntrinsicResult(string_insert(self, index, value, ctx.vm));
 			}
-			return new IntrinsicResult(val_null);
+			return new IntrinsicResult(ErrorTypes.TypeError("list or string", self));
 		};
 
 		// indexOf(self, value, after=null)
@@ -813,6 +852,8 @@ public static class CoreIntrinsics {
 						break;
 					}
 				}
+			} else {
+				return new IntrinsicResult(ErrorTypes.TypeError("list, string, or map", self));
 			}
 			return new IntrinsicResult(result);
 		};
@@ -827,7 +868,7 @@ public static class CoreIntrinsics {
 			if (is_error(self)) return ctx.vm.RaiseUncaughtError(self);
 			Value byKey = ctx.GetArg(1);
 			bool ascending = is_truthy(ctx.GetArg(2));
-			if (!is_list(self)) return new IntrinsicResult(self);
+			if (!is_list(self)) return new IntrinsicResult(ErrorTypes.TypeError("list", self));
 			if (list_count(self) < 2) return new IntrinsicResult(self);
 			if (is_null(byKey)) {
 				list_sort(self, ascending);
@@ -875,6 +916,8 @@ public static class CoreIntrinsics {
 				for (int i = 0; i < count; i++) {
 					map_set(self, keys[i], vals[i]);
 				}
+			} else {
+				return new IntrinsicResult(ErrorTypes.TypeError("list or map", self));
 			}
 			return new IntrinsicResult(val_null);
 		};
@@ -886,7 +929,7 @@ public static class CoreIntrinsics {
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value self = ctx.GetArg(0);
 			if (is_error(self)) return new IntrinsicResult(self);
-			if (!is_list(self)) return new IntrinsicResult(self);
+			if (!is_list(self)) return new IntrinsicResult(ErrorTypes.TypeError("list", self));
 			Value delim = ctx.GetArg(1);
 			String delimStr = is_null(delim) ? " " : to_String(delim);
 			int count = list_count(self);
@@ -905,7 +948,7 @@ public static class CoreIntrinsics {
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value self = ctx.GetArg(0);
 			if (is_error(self)) return new IntrinsicResult(self);
-			if (!is_string(self)) return new IntrinsicResult(val_null);
+			if (!is_string(self)) return new IntrinsicResult(ErrorTypes.TypeError("string", self));
 			Value delim = ctx.GetArg(1);
 			int maxCount = (int)numeric_val(ctx.GetArg(2));
 			return new IntrinsicResult(string_split_max(self, delim, maxCount));
@@ -953,7 +996,7 @@ public static class CoreIntrinsics {
 			} else if (is_string(self)) {
 				return new IntrinsicResult(string_replace_max(self, oldVal, newVal, maxCount));
 			}
-			return new IntrinsicResult(val_null);
+			return new IntrinsicResult(ErrorTypes.TypeError("list, map, or string", self));
 		};
 
 		// sum(self)
@@ -1001,7 +1044,7 @@ public static class CoreIntrinsics {
 				int toIdx = is_null(ctx.GetArg(2)) ? slen : (int)numeric_val(ctx.GetArg(2));
 				return new IntrinsicResult(string_slice(seq, fromIdx, toIdx));
 			}
-			return new IntrinsicResult(val_null);
+			return new IntrinsicResult(ErrorTypes.TypeError("list or string", seq));
 		};
 
 		// indexes(self)
@@ -1032,6 +1075,8 @@ public static class CoreIntrinsics {
 				while (map_iterator_next(ref iter)) { // CPP: while (map_iterator_next(&iter, &iterKey, nullptr)) {
 					list_push(result, iter.Key);  // CPP: list_push(result, iterKey);
 				}
+			} else {
+				return new IntrinsicResult(ErrorTypes.TypeError("list, string, or map", self));
 			}
 			return new IntrinsicResult(result);
 		};
@@ -1057,7 +1102,7 @@ public static class CoreIntrinsics {
 			} else if (is_map(self)) {
 				return new IntrinsicResult(make_int(map_has_key(self, index) ? 1 : 0));
 			}
-			return new IntrinsicResult(val_null);
+			return new IntrinsicResult(ErrorTypes.TypeError("list, string, or map", self));
 		};
 
 		// values(self)
@@ -1080,6 +1125,10 @@ public static class CoreIntrinsics {
 				for (int i = 0; i < slen; i++) {
 					list_push(result, string_substring(self, i, 1));
 				}
+			} else if (!is_list(self)) {
+				// A list returns itself (its values are its elements); any other
+				// non-container type is an error.
+				return new IntrinsicResult(ErrorTypes.TypeError("list, string, or map", self));
 			}
 			return new IntrinsicResult(result);
 		};
@@ -1096,17 +1145,18 @@ public static class CoreIntrinsics {
 			if (is_error(vTo)) return new IntrinsicResult(vTo);
 			Value vStep = ctx.GetArg(2);
 			if (is_error(vStep)) return new IntrinsicResult(vStep);
-			double fromVal = numeric_val(vFrom);
-			double toVal = numeric_val(vTo);
+			double fromVal, toVal;
+			{ Value e = RequireNumber(vFrom, out fromVal); if (!is_null(e)) return new IntrinsicResult(e); }
+			{ Value e = RequireNumber(vTo, out toVal); if (!is_null(e)) return new IntrinsicResult(e); }
 			double step;
-			if (is_null(vStep) || !is_number(vStep)) {
+			if (is_null(vStep)) {
 				step = (toVal >= fromVal) ? 1 : -1;
 			} else {
-				step = numeric_val(vStep);
+				Value e = RequireNumber(vStep, out step);
+				if (!is_null(e)) return new IntrinsicResult(e);
 			}
 			if (step == 0) {
-				IOHelper.Print("ERROR: range() step must not be 0");
-				return new IntrinsicResult(val_null);
+				return new IntrinsicResult(ErrorTypes.RuntimeError("range() step may not be zero"));
 			}
 			int count = (int)((toVal - fromVal) / step) + 1;
 			if (count < 0) count = 0;
@@ -1282,8 +1332,13 @@ public static class CoreIntrinsics {
 		f.AddParam("i", val_zero);
 		f.AddParam("j", val_zero);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
-			Double vi = numeric_val(ctx.GetArg(0));
-			Double vj = numeric_val(ctx.GetArg(1));
+			Value ai = ctx.GetArg(0);
+			if (is_error(ai)) return new IntrinsicResult(ai);
+			Value aj = ctx.GetArg(1);
+			if (is_error(aj)) return new IntrinsicResult(aj);
+			Double vi, vj;
+			{ Value e = RequireNumber(ai, out vi); if (!is_null(e)) return new IntrinsicResult(e); }
+			{ Value e = RequireNumber(aj, out vj); if (!is_null(e)) return new IntrinsicResult(e); }
 			UInt64 ui = (UInt64)Math.Abs(vi);
 			UInt64 uj = (UInt64)Math.Abs(vj);
 			Int32 si = vi < 0 ? 1 : 0;
@@ -1298,8 +1353,13 @@ public static class CoreIntrinsics {
 		f.AddParam("i", val_zero);
 		f.AddParam("j", val_zero);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
-			Double vi = numeric_val(ctx.GetArg(0));
-			Double vj = numeric_val(ctx.GetArg(1));
+			Value ai = ctx.GetArg(0);
+			if (is_error(ai)) return new IntrinsicResult(ai);
+			Value aj = ctx.GetArg(1);
+			if (is_error(aj)) return new IntrinsicResult(aj);
+			Double vi, vj;
+			{ Value e = RequireNumber(ai, out vi); if (!is_null(e)) return new IntrinsicResult(e); }
+			{ Value e = RequireNumber(aj, out vj); if (!is_null(e)) return new IntrinsicResult(e); }
 			UInt64 ui = (UInt64)Math.Abs(vi);
 			UInt64 uj = (UInt64)Math.Abs(vj);
 			Int32 si = vi < 0 ? 1 : 0;
@@ -1314,8 +1374,13 @@ public static class CoreIntrinsics {
 		f.AddParam("i", val_zero);
 		f.AddParam("j", val_zero);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
-			Double vi = numeric_val(ctx.GetArg(0));
-			Double vj = numeric_val(ctx.GetArg(1));
+			Value ai = ctx.GetArg(0);
+			if (is_error(ai)) return new IntrinsicResult(ai);
+			Value aj = ctx.GetArg(1);
+			if (is_error(aj)) return new IntrinsicResult(aj);
+			Double vi, vj;
+			{ Value e = RequireNumber(ai, out vi); if (!is_null(e)) return new IntrinsicResult(e); }
+			{ Value e = RequireNumber(aj, out vj); if (!is_null(e)) return new IntrinsicResult(e); }
 			UInt64 ui = (UInt64)Math.Abs(vi);
 			UInt64 uj = (UInt64)Math.Abs(vj);
 			Int32 si = vi < 0 ? 1 : 0;

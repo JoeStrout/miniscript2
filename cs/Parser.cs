@@ -817,7 +817,7 @@ public class Parser : IParser {
 
 	// Report an error.  Only the first error is kept.
 	public void ReportError(String message) {
-		if (is_null(Error)) Error = ErrorType.CompilerError(StringUtils.Format("{0} [line {1}]", message, _current.Line));
+		if (is_null(Error)) Error = ErrorTypes.CompilerError(StringUtils.Format("{0} [line {1}]", message, _current.Line));
 	}
 
 	// Check if any errors occurred

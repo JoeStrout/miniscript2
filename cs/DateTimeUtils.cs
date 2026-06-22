@@ -320,7 +320,19 @@ public static class DateTimeUtils {
 	// So basically this will parse a date in the format returned by default from
 	// FormatDate (which is also the same as a SQL date), or simple variations thereof.
 	// Returns seconds since the Unix epoch (local time).
+	// Parse a date/time string to seconds since the Unix epoch.  Returns 0 if
+	// the string cannot be parsed (note: 0 is also a valid time, so use
+	// TryParseDate when you need to distinguish failure).
 	public static Double ParseDate(String dateStr) {
+		Double result;
+		TryParseDate(dateStr, out result);
+		return result;
+	}
+
+	// Parse a date/time string to seconds since the Unix epoch.  Returns true
+	// and sets `result` on success; returns false (result = 0) if the string
+	// holds no recognizable date or time.
+	public static Boolean TryParseDate(String dateStr, out Double result) {
 		//*** BEGIN CS_ONLY ***
 		DateTime dt;
 		// .NET's parser handles "yyyy-MM-dd HH:mm:ss" and its sub-forms (date
@@ -329,12 +341,15 @@ public static class DateTimeUtils {
 		// an unspecified-kind result be treated as local time, like mktime.
 		if (!DateTime.TryParse(dateStr, CultureInfo.InvariantCulture,
 				DateTimeStyles.AssumeLocal, out dt)) {
-			return 0;
+			result = 0;
+			return false;
 		}
-		return (dt.ToUniversalTime() - DateTime.UnixEpoch).TotalSeconds;
+		result = (dt.ToUniversalTime() - DateTime.UnixEpoch).TotalSeconds;
+		return true;
 		//*** END CS_ONLY ***
 		/*** BEGIN CPP_ONLY ***
 		bool gotDate = false;
+		bool gotTime = false;
 		bool pmTime = false;
 		tm dateTime;
 		memset(&dateTime, 0, sizeof(tm));
@@ -356,10 +371,20 @@ public static class DateTimeUtils {
 				dateTime.tm_hour = atoi(fields[0].c_str());
 				if (fields.size() > 1) dateTime.tm_min = atoi(fields[1].c_str());
 				if (fields.size() > 2) dateTime.tm_sec = (int)atof(fields[2].c_str());
+				gotTime = true;
 			} else {
+				// An AM/PM marker only modifies a time; it is not, on its own,
+				// enough to count the string as a recognizable date or time
+				// (otherwise a stray word like the "a" in "not a date" would
+				// look like an AM marker).
 				part = part.ToUpper();
 				if (part == "P" || part == "PM") pmTime = true;
 			}
+		}
+		if (!gotDate && !gotTime) {
+			// Nothing recognizable was found in the string.
+			*result = 0;
+			return false;
 		}
 		if (pmTime && dateTime.tm_hour < 12) dateTime.tm_hour += 12;
 		if (!gotDate) {
@@ -373,7 +398,28 @@ public static class DateTimeUtils {
 			dateTime.tm_mday = now.tm_mday;
 		}
 		dateTime.tm_isdst = -1;
-		return (double)mktime(&dateTime);
+		*result = (double)mktime(&dateTime);
+		return true;
+		*** END CPP_ONLY ***/
+	}
+
+	// Format a date as a string.  Returns true and sets `result` on success;
+	// returns false (result = "") if the format specifier is invalid.
+	public static Boolean TryFormatDate(Double dateTime, String formatSpec, out String result) {
+		//*** BEGIN CS_ONLY ***
+		try {
+			result = FormatDate(dateTime, formatSpec);
+			return true;
+		} catch (FormatException) {
+			result = "";
+			return false;
+		}
+		//*** END CS_ONLY ***
+		/*** BEGIN CPP_ONLY ***
+		// strftime is lenient: an unrecognized specifier yields odd output but
+		// never fails, so on this side formatting always "succeeds".
+		*result = FormatDate(dateTime, formatSpec);
+		return true;
 		*** END CPP_ONLY ***/
 	}
 

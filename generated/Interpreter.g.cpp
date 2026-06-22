@@ -281,7 +281,7 @@ void InterpreterStorage::ResetReplGlobals() {
 }
 void InterpreterStorage::ReportError(Value error) {
 	String msg = StringUtils::Format("{0}", error_message(error));
-	String prefix = error_isa_contains(error, ErrorType::compiler) ? "Compiler Error: " : "Runtime Error: ";
+	String prefix = error_isa_contains(error, ErrorTypes::compiler) ? "Compiler Error: " : "Runtime Error: ";
 	ReportError(prefix + msg);
 }
 void InterpreterStorage::ReportError(String message) {

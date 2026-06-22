@@ -1017,4 +1017,17 @@ First, I ported dateTimeUtils from MS1 to MS2.  The MS2 version is transpilable,
 
 Then I changed how `_` works to match MS1 (it's now just a global assigned the last REPL result, rather than an intrinsic).
 
+I'm also auditing the core and shell intrinsics, looking for places we should be returning error values.  Changed a bunch of places, including:
+
+- Numeric methods like `abs`, `sin`, etc. accept a number or string argument, but if the string can't be parsed, it returns a format error; and any other argument type returns a type error.
+- `import` and `exec` now return a runtime error upon failure.
+- `file.children` returns `[]` for an empty directory, but a file error for any other problem (bad path, nonexistent directory, etc.)
+- Other file routines (`file.copy`, etc.) return `null` on success and a file error on failure.
+- `_dateStr` and `_dateVal` can now return format errors.
+- `code` now requires a string argument (implicit conversion from number is very confusing here).
+
+Note that many of these are technically breaking changes -- though they would only break code that was probably erroneous before.
+
+I also noticed that we were not printing some NaN values properly (they were appearing as "<value>") -- this was because of a bit of overlap in how we were using the NaN bits in a Value.  Changed NULL_VALUE from 0xFFF1 to 0xFFF9, and so now we can recognize any double including 0xFFF0 (inf) and 0xFFF8 (NaN).  Also note that we now render NaN as "NaN" instead of "nan" (matching C# but not C++ behavior of MS1); and infinity as "-Inf" and "Inf" (not quite matching either version of MS1).
+
 

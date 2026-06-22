@@ -36,7 +36,12 @@ public readonly struct Value {
 
 	// ==== TAGS & MASKS =======================================================
 	internal const ulong NANISH_MASK     = 0xFFFF_0000_0000_0000UL;
-	internal const ulong NULL_VALUE      = 0xFFF1_0000_0000_0000UL;
+	// NULL_VALUE doubles as the is_double threshold: any value whose top 16 bits
+	// are below it is a double.  It sits at 0xFFF9 (rather than hugging the
+	// double range) so that the negative infinity (0xFFF0) and negative quiet
+	// NaN (0xFFF8) bit patterns still classify as doubles; only 0xFFF9-0xFFFF is
+	// reserved for tags.  This lets make_double stay a branch-free bit copy.
+	internal const ulong NULL_VALUE      = 0xFFF9_0000_0000_0000UL;
 	public  const ulong GC_TAG          = 0xFFFE_0000_0000_0000UL;
 	internal const ulong TINY_STRING_TAG = 0xFFFF_0000_0000_0000UL;
 	internal const ulong GC_TYPE_MASK    = NANISH_MASK | 0x0000_0007_0000_0000UL;
@@ -272,6 +277,21 @@ public static class ValueHelpers {
 		return 0.0;
 	}
 
+	// Return a human-readable name for the type of v, matching the names used
+	// by the `info` intrinsic and the core type maps (number, string, list,
+	// map, funcRef, error, null; "handle" for host handles).
+	public static String value_type_name(Value v) {
+		if (is_number(v)) return "number";
+		if (is_string(v)) return "string";
+		if (is_list(v)) return "list";
+		if (is_map(v)) return "map";
+		if (is_funcref(v)) return "funcRef";
+		if (is_error(v)) return "error";
+		if (is_handle(v)) return "handle";
+		if (is_null(v)) return "null";
+		return "unknown";
+	}
+
 	// ── String accessors ─────────────────────────────────────────────────────
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static String as_cstring(Value v) {
@@ -321,6 +341,9 @@ public static class ValueHelpers {
 		if (is_null(v)) return "null";
 		if (is_double(v)) {
 			double value = as_double(v);
+			if (double.IsNaN(value)) return "NaN";
+			if (double.IsPositiveInfinity(value)) return "Inf";
+			if (double.IsNegativeInfinity(value)) return "-Inf";
 			if (value % 1.0 == 0.0) {
 				string result = value.ToString("0", CultureInfo.InvariantCulture);
 				if (result == "-0") result = "0";

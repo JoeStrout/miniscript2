@@ -2570,6 +2570,28 @@ print round(asin(1), 6)
 --------------------------------
 1.570796
 ================================
+==== asin out of domain prints NaN
+================================
+print asin(100)
+--------------------------------
+NaN
+================================
+==== division by zero prints Inf / -Inf
+================================
+print 1/0
+print -1/0
+--------------------------------
+Inf
+-Inf
+================================
+==== NaN and Inf are still numbers
+================================
+print asin(100) isa number
+print (1/0) isa number
+--------------------------------
+1
+1
+================================
 ==== atan
 ================================
 print atan(0)
@@ -2871,11 +2893,11 @@ print code("hello")
 --------------------------------
 104
 ================================
-==== code: non-string returns 0
+==== code: non-string argument is a type error
 ================================
 print code(42)
 --------------------------------
-0
+error: Type error: string required, but got number
 ================================
 ================================================================================
 ==== SECTION 23: UNICODE STRINGS
@@ -4298,6 +4320,96 @@ lst = [1, 2, 3, 4, 5]
 lst[2:e]
 ---------------------------------
 Runtime Error: Uncaught DOH
+================================
+==== error: numeric function with wrong arg type
+================================
+print sin([1, 2])
+--------------------------------
+error: Type error: number required, but got list
+================================
+==== error: numeric function with null arg
+================================
+print abs(null)
+--------------------------------
+error: Type error: number required, but got null
+================================
+==== error: numeric function coerces numeric string
+================================
+print sin("0")
+--------------------------------
+0
+================================
+==== error: numeric function propagates error arg
+================================
+print sin(err("x"))
+--------------------------------
+error: x
+================================
+==== error: push on non-container
+================================
+print push(5, 6)
+--------------------------------
+error: Type error: list or map required, but got number
+================================
+==== error: split on non-string
+================================
+print split(5, " ")
+--------------------------------
+error: Type error: string required, but got number
+================================
+==== error: indexOf on non-sequence
+================================
+print indexOf(5, 1)
+--------------------------------
+error: Type error: list, string, or map required, but got number
+================================
+==== error: indexOf still returns null when not found
+================================
+print indexOf([1, 2, 3], 9)
+--------------------------------
+null
+================================
+==== error: range with zero step
+================================
+print range(1, 5, 0)
+--------------------------------
+error: range() step may not be zero
+================================
+==== error: file.delete on missing path returns error
+================================
+print file.delete("/no/such/path/zzz123") isa error
+--------------------------------
+1
+================================
+==== error: numeric function with unparseable string is a format error
+================================
+print sin("hello")
+--------------------------------
+error: Format error: 'hello' is not a valid number
+================================
+==== error: _dateVal with unparseable date is a format error
+================================
+print _dateVal("not a date")
+--------------------------------
+error: Format error: 'not a date' is not a valid date
+================================
+==== error: import of missing library returns an error
+================================
+print import("no_such_lib_xyz") isa error
+--------------------------------
+1
+================================
+==== error: file.children on missing path returns an error
+================================
+print file.children("/no/such/path/zzz123") isa error
+--------------------------------
+1
+================================
+==== val: unparseable string stays lenient (returns 0)
+================================
+print val("hello")
+--------------------------------
+0
 ================================
 ==== display: __isa pointing to built-in type map shows short name
 ================================

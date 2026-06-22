@@ -208,6 +208,16 @@ Value find_short_name(void* vm, Value v) {
 }
 
 void format_double(double value, char* buf) {
+    if (std::isnan(value)) {
+        // Match the C# formatter, which renders these as "NaN"/"Inf"/"-Inf"
+        // (printf would give "nan"/"inf"/"-inf").
+        std::strcpy(buf, "NaN");
+        return;
+    }
+    if (std::isinf(value)) {
+        std::strcpy(buf, value < 0 ? "-Inf" : "Inf");
+        return;
+    }
     if (std::fmod(value, 1.0) == 0.0) {
         std::snprintf(buf, 32, "%.0f", value);
         if (std::strcmp(buf, "-0") == 0) { buf[0] = '0'; buf[1] = '\0'; }

@@ -28,6 +28,11 @@ class StringUtils {
 
 	public: static Double ParseDouble(String str);
 
+	// Try to parse a string as a double.  Returns true and sets `result` on
+	// success; returns false (result = 0) if the whole string (ignoring leading
+	// and trailing whitespace) is not a valid number.
+	public: static Boolean TryParseDouble(String str, Double* result);
+
 	public: static Boolean IsNaN(Double x);
 
 	public: static Boolean IsInfinity(Double x);

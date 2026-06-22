@@ -5,7 +5,7 @@
 #include "core_includes.h"
 #include "forward_decs.g.h"
 // ErrorTypes.cs - Static error type values and factory methods for MiniScript errors.
-// ErrorType.compiler and ErrorType.runtime are prototype error values.
+// ErrorTypes.compiler and ErrorTypes.runtime are prototype error values.
 // Errors created via the factory methods have their __isa set to one of these,
 // allowing host code to categorize errors by type.
 
@@ -16,7 +16,7 @@ namespace MiniScript {
 
 // DECLARATIONS
 
-class ErrorType {
+class ErrorTypes {
 	public: static Value compiler;
 	public: static Value runtime;
 	private: static bool _markRootsRegistered;
@@ -40,14 +40,22 @@ class ErrorType {
 	// refined later (e.g., give it a dedicated "file.Error" __isa prototype).
 	public: static Value FileError(String msg);
 
-	// ToDo: provide a factory for parameter errors, and another specifically for
-	// "number required, but got <some other type>" errors, and then use this in
-	// various numeric intrinsics (sin, cos, round, etc.) and anywhere else appropriate.
+	// Create a format error value with the given message.  Used when input text
+	// cannot be parsed as expected (e.g. an unparseable date or number) or when
+	// a format specifier is invalid.  Funnels through RuntimeError for now, but
+	// can later get a dedicated __isa prototype.
+	public: static Value FormatError(String msg);
+
+	// Create a parameter type error: an argument was of the wrong type.
+	// `expectedType` names the required type or types (e.g. "number" or
+	// "list or map"); `actualValue` is the offending argument.  Funnels through
+	// RuntimeError for now, but can later get a dedicated __isa prototype.
+	public: static Value TypeError(String expectedType, Value actualValue);
 
 	// GC mark callback to protect our static error prototypes from collection.
 	public: static void MarkRoots(object user_data);
 
-}; // end of struct ErrorType
+}; // end of struct ErrorTypes
 
 // INLINE METHODS
 

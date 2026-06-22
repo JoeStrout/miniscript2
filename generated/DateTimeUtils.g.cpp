@@ -280,7 +280,13 @@ String DateTimeUtils::FormatDate(Double dateTime,String formatSpec ) {
 	return String::Join(String(""), result);
 }
 Double DateTimeUtils::ParseDate(String dateStr) {
+	Double result;
+	TryParseDate(dateStr, &result);
+	return result;
+}
+Boolean DateTimeUtils::TryParseDate(String dateStr,Double* result) {
 	bool gotDate = false;
+	bool gotTime = false;
 	bool pmTime = false;
 	tm dateTime;
 	memset(&dateTime, 0, sizeof(tm));
@@ -302,10 +308,20 @@ Double DateTimeUtils::ParseDate(String dateStr) {
 			dateTime.tm_hour = atoi(fields[0].c_str());
 			if (fields.size() > 1) dateTime.tm_min = atoi(fields[1].c_str());
 			if (fields.size() > 2) dateTime.tm_sec = (int)atof(fields[2].c_str());
+			gotTime = true;
 		} else {
+			// An AM/PM marker only modifies a time; it is not, on its own,
+			// enough to count the string as a recognizable date or time
+			// (otherwise a stray word like the "a" in "not a date" would
+			// look like an AM marker).
 			part = part.ToUpper();
 			if (part == "P" || part == "PM") pmTime = true;
 		}
+	}
+	if (!gotDate && !gotTime) {
+		// Nothing recognizable was found in the string.
+		*result = 0;
+		return false;
 	}
 	if (pmTime && dateTime.tm_hour < 12) dateTime.tm_hour += 12;
 	if (!gotDate) {
@@ -319,7 +335,14 @@ Double DateTimeUtils::ParseDate(String dateStr) {
 		dateTime.tm_mday = now.tm_mday;
 	}
 	dateTime.tm_isdst = -1;
-	return (double)mktime(&dateTime);
+	*result = (double)mktime(&dateTime);
+	return true;
+}
+Boolean DateTimeUtils::TryFormatDate(Double dateTime,String formatSpec,String* result) {
+	// strftime is lenient: an unrecognized specifier yields odd output but
+	// never fails, so on this side formatting always "succeeds".
+	*result = FormatDate(dateTime, formatSpec);
+	return true;
 }
 
 } // end of namespace MiniScript

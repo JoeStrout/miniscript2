@@ -348,7 +348,7 @@ public class CodeGenerator : IASTVisitor {
 
 	public Int32 Visit(AssignmentNode node) {
 		if (_targetReg > 0) {
-			if (is_null(Error)) Error = ErrorType.CompilerError(StringUtils.Format("unexpected target register {0} in assignment", _targetReg));
+			if (is_null(Error)) Error = ErrorTypes.CompilerError(StringUtils.Format("unexpected target register {0} in assignment", _targetReg));
 		}
 		
 		// Get or allocate register for this variable
@@ -458,7 +458,7 @@ public class CodeGenerator : IASTVisitor {
 		}
 
 		// Unknown unary operator - move operand to result if needed
-		if (is_null(Error)) Error = ErrorType.CompilerError("unknown unary operator");
+		if (is_null(Error)) Error = ErrorTypes.CompilerError("unknown unary operator");
 		if (operandReg != resultReg) {
 			_emitter.EmitABC(Opcode.LOAD_rA_rB, resultReg, operandReg, 0, "move to target");
 			FreeReg(operandReg);
@@ -1100,7 +1100,7 @@ public class CodeGenerator : IASTVisitor {
 	public Int32 Visit(BreakNode node) {
 		// Break jumps to the innermost loop's exit label
 		if (_loopExitLabels.Count == 0) {
-			if (is_null(Error)) Error = ErrorType.CompilerError("'break' without open loop block");
+			if (is_null(Error)) Error = ErrorTypes.CompilerError("'break' without open loop block");
 			_emitter.Emit(Opcode.NOOP, "break outside loop (error)");
 		} else {
 			Int32 exitLabel = _loopExitLabels[_loopExitLabels.Count - 1];
@@ -1112,7 +1112,7 @@ public class CodeGenerator : IASTVisitor {
 	public Int32 Visit(ContinueNode node) {
 		// Continue jumps to the innermost loop's continue label (loop start)
 		if (_loopContinueLabels.Count == 0) {
-			if (is_null(Error)) Error = ErrorType.CompilerError("'continue' without open loop block");
+			if (is_null(Error)) Error = ErrorTypes.CompilerError("'continue' without open loop block");
 			_emitter.Emit(Opcode.NOOP, "continue outside loop (error)");
 		} else {
 			Int32 continueLabel = _loopContinueLabels[_loopContinueLabels.Count - 1];
@@ -1250,7 +1250,7 @@ public class CodeGenerator : IASTVisitor {
 				if (TryEvaluateConstant(defaultNode, out defaultVal)) {
 					funcDef.ParamDefaults.Add(defaultVal);
 				} else {
-					if (is_null(Error)) Error = ErrorType.CompilerError(StringUtils.Format("Default value for parameter '{0}' must be a constant", node.ParamNames[i]));
+					if (is_null(Error)) Error = ErrorTypes.CompilerError(StringUtils.Format("Default value for parameter '{0}' must be a constant", node.ParamNames[i]));
 					funcDef.ParamDefaults.Add(val_null);
 				}
 			} else {

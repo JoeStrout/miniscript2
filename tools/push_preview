@@ -1,17 +1,25 @@
 #!/bin/bash
 # Push a numbered preview release to GitHub.
-# Usage: tools/push_preview <number>
+# Usage: tools/push_preview [number]
+# With no argument, finds the highest existing v2.0-preview-N release and
+# increments it. Pass a number to override.
 # Example: tools/push_preview 3  →  tag v2.0-preview-3
 
 set -e
 
-if [ -z "$1" ]; then
-    echo "Usage: $0 <preview-number>"
-    echo "Example: $0 1   (creates tag v2.0-preview-1)"
-    exit 1
+NUM="$1"
+if [ -z "$NUM" ]; then
+    # Find the highest existing preview number and add one.
+    LAST=$(gh release list --limit 100 \
+        | grep -oE 'v2\.0-preview-[0-9]+' \
+        | grep -oE '[0-9]+$' \
+        | sort -n \
+        | tail -1)
+    NUM=$(( ${LAST:-0} + 1 ))
+    echo "Latest preview is ${LAST:-none}; creating preview $NUM."
 fi
 
-TAG="v2.0-preview-$1"
+TAG="v2.0-preview-$NUM"
 DIST="build/dist"
 
 # Verify the expected binaries are present
@@ -33,8 +41,8 @@ gh release create "$TAG" \
     "$DIST/miniscript2-linux" \
     "$DIST/miniscript2-win.exe" \
     "$DIST/miniscript2-csharp.zip" \
-    --title "MiniScript 2.0 Preview $1" \
+    --title "MiniScript 2.0 Preview $NUM" \
     --prerelease \
-    --notes "Preview build $1 of MiniScript 2.0."
+    --notes "Preview build $NUM of MiniScript 2.0."
 
 echo "Done: https://github.com/$(gh repo view --json nameWithOwner -q .nameWithOwner)/releases/tag/$TAG"

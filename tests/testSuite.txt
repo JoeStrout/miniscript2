@@ -257,7 +257,7 @@ print 0-0.0
 // Very small numbers use exponential format
 print 1/10000000
 --------------------------------
-1.000000E-07
+1E-07
 ================================
 // Numbers with exactly 6 decimal places
 print 123.456789
@@ -269,9 +269,30 @@ print 1E-12
 print 1e6
 print round(42 - 1E-12, 5)
 --------------------------------
-1.000000E-12
+1E-12
 1000000
 42
+================================
+// Large whole numbers beyond 2^53 use shortest round-trip scientific form
+print 1701411834604692317316873037158
+print 1e30
+--------------------------------
+1.7014118346046924E+30
+1E+30
+================================
+// Integers up to 2^53 still print exactly in plain form
+print 1234567890123456
+print 9007199254740992
+--------------------------------
+1234567890123456
+9007199254740992
+================================
+// Large-magnitude fractional values use shortest scientific form
+print 123456789012.345
+print 6.022e23
+--------------------------------
+1.23456789012345E+11
+6.022E+23
 ================================
 ================================================================================
 ==== SECTION 2: STRING OPERATIONS

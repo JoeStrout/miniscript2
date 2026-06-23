@@ -336,6 +336,32 @@ public static class ValueHelpers {
 
 	public static Value value_repr(Value v, VM vm = null) => make_string(code_form(v, vm));
 
+	// Format a double as the shortest decimal string in scientific notation that
+	// round-trips back to the same value, with the exponent normalized to at
+	// least two digits (e.g. "1.7014118346046924E+30", "1.234567E-07").  Used for
+	// very large / very small magnitudes, and for whole numbers too large to be
+	// represented exactly.  The C++ runtime mirrors this in format_shortest_sci.
+	static string ShortestSci(double value) {
+		string s = value.ToString("E16", CultureInfo.InvariantCulture);
+		for (int sig = 1; sig <= 17; sig++) {
+			string candidate = value.ToString("E" + (sig - 1).ToString(), CultureInfo.InvariantCulture);
+			if (double.Parse(candidate, CultureInfo.InvariantCulture) == value) {
+				s = candidate;
+				break;
+			}
+		}
+		// Normalize exponent to at least 2 digits (e.g. E+030 → E+30, E-8 → E-08).
+		int eIdx = s.IndexOf('E');
+		if (eIdx >= 0) {
+			string mantissa = s.Substring(0, eIdx + 2); // includes E and sign
+			string expDigits = s.Substring(eIdx + 2).TrimStart('0');
+			if (expDigits.Length == 0) expDigits = "0";
+			while (expDigits.Length < 2) expDigits = "0" + expDigits;
+			s = mantissa + expDigits;
+		}
+		return s;
+	}
+
 	// Returns the printable/code representation of v as a C# string.
 	public static string code_form(Value v, VM vm = null, int recursionLimit = -1) {
 		if (is_null(v)) return "null";
@@ -345,21 +371,17 @@ public static class ValueHelpers {
 			if (double.IsPositiveInfinity(value)) return "Inf";
 			if (double.IsNegativeInfinity(value)) return "-Inf";
 			if (value % 1.0 == 0.0) {
-				string result = value.ToString("0", CultureInfo.InvariantCulture);
-				if (result == "-0") result = "0";
-				return result;
-			} else if (value > 1E10 || value < -1E10 || (value < 1E-6 && value > -1E-6)) {
-				string s = value.ToString("E6", CultureInfo.InvariantCulture);
-				// Normalize exponent to exactly 2 digits (e.g. E-012 → E-12, E+006 → E+06)
-				int eIdx = s.IndexOf('E');
-				if (eIdx >= 0) {
-					string mantissa = s.Substring(0, eIdx + 2); // includes E and sign
-					string expDigits = s.Substring(eIdx + 2).TrimStart('0');
-					if (expDigits.Length == 0) expDigits = "0";
-					while (expDigits.Length < 2) expDigits = "0" + expDigits;
-					s = mantissa + expDigits;
+				// Integers up to 2^53 are represented exactly, so print them in
+				// plain form.  Cast to long (exact here, since 2^53 < 2^63) rather
+				// than ToString("0"), which would round to 15 significant digits.
+				// Larger whole values have lost precision, so fall through to the
+				// shortest round-trip scientific form.
+				if (value <= 9007199254740992.0 && value >= -9007199254740992.0) {
+					return ((long)value).ToString(CultureInfo.InvariantCulture);
 				}
-				return s;
+				return ShortestSci(value);
+			} else if (value > 1E10 || value < -1E10 || (value < 1E-6 && value > -1E-6)) {
+				return ShortestSci(value);
 			} else {
 				string result = value.ToString("0.0#####", CultureInfo.InvariantCulture);
 				if (result == "-0") result = "0";

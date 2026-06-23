@@ -207,6 +207,34 @@ Value find_short_name(void* vm, Value v) {
     return g_short_name_lookup(vm, v);
 }
 
+// Format a double as the shortest decimal string in scientific notation that
+// round-trips back to the same value, with the exponent normalized to at least
+// two digits (e.g. "1.7014118346046924E+30", "1.234567E-07").  This mirrors the
+// C# ShortestSci helper so both runtimes produce byte-identical output.
+void format_shortest_sci(double value, char* buf) {
+    char tmp[40];
+    std::snprintf(tmp, sizeof tmp, "%.16E", value);
+    for (int sig = 1; sig <= 17; sig++) {
+        char cand[40];
+        std::snprintf(cand, sizeof cand, "%.*E", sig - 1, value);
+        if (std::strtod(cand, nullptr) == value) { std::strcpy(tmp, cand); break; }
+    }
+    // Normalize exponent to at least 2 digits (e.g. E+030 → E+30, E-8 → E-08).
+    char* e = std::strchr(tmp, 'E');
+    if (e) {
+        size_t mlen = (size_t)(e - tmp) + 2;  // mantissa + 'E' + sign
+        const char* digits = e + 2;
+        while (*digits == '0' && *(digits + 1) != '\0') digits++;
+        char expbuf[8];
+        if (std::strlen(digits) < 2) std::snprintf(expbuf, sizeof expbuf, "0%s", digits);
+        else                         std::snprintf(expbuf, sizeof expbuf, "%s", digits);
+        std::memcpy(buf, tmp, mlen);
+        std::strcpy(buf + mlen, expbuf);
+    } else {
+        std::strcpy(buf, tmp);
+    }
+}
+
 void format_double(double value, char* buf) {
     if (std::isnan(value)) {
         // Match the C# formatter, which renders these as "NaN"/"Inf"/"-Inf"
@@ -219,13 +247,17 @@ void format_double(double value, char* buf) {
         return;
     }
     if (std::fmod(value, 1.0) == 0.0) {
-        std::snprintf(buf, 32, "%.0f", value);
-        if (std::strcmp(buf, "-0") == 0) { buf[0] = '0'; buf[1] = '\0'; }
+        // Integers up to 2^53 are represented exactly, so print them in plain
+        // form.  Larger whole values have lost precision, so fall through to the
+        // shortest round-trip scientific form.
+        if (value <= 9007199254740992.0 && value >= -9007199254740992.0) {
+            std::snprintf(buf, 32, "%.0f", value);
+            if (std::strcmp(buf, "-0") == 0) { buf[0] = '0'; buf[1] = '\0'; }
+        } else {
+            format_shortest_sci(value, buf);
+        }
     } else if (value > 1E10 || value < -1E10 || (value < 1E-6 && value > -1E-6)) {
-        std::snprintf(buf, 32, "%.6E", value);
-        char* e = std::strchr(buf, 'E');
-        if (e && (e[1] == '+' || e[1] == '-') && e[2] == '0' && e[3] == '0' && e[4] != '\0')
-            std::memmove(e + 3, e + 4, std::strlen(e + 4) + 1);
+        format_shortest_sci(value, buf);
     } else {
         std::snprintf(buf, 32, "%.6f", value);
         size_t i = std::strlen(buf) - 1;

@@ -121,7 +121,7 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 
 	public: String FindShortName(Value v);
 
-	public: VMStorage(Int32 stackSlots=1024, Int32 callSlots=256);
+	public: VMStorage(Int32 stackSlots=10240, Int32 callSlots=256);
 
 	private: void InitVM(Int32 stackSlots, Int32 callSlots);
 
@@ -236,7 +236,12 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 
 	private: Value RunInner(UInt32 maxCycles);
 
-	private: void EnsureFrame(Int32 baseIndex, UInt16 neededRegs);
+	// Verify that the callee frame [baseIndex, baseIndex + neededRegs) fits within
+	// the register stack.  Returns true if OK; on overflow, raises a runtime error
+	// and returns false.  Callers MUST bail out (without writing into the frame)
+	// when this returns false, since RaiseRuntimeError does not stop the current
+	// opcode handler on its own.
+	private: bool EnsureFrame(Int32 baseIndex, UInt16 neededRegs);
 	void SwitchFrame(const FuncDef& currentFunc, Int32 baseIndex, FuncDefStorage* &curFuncRaw, Int32 &codeCount, UInt32* &curCode, Value* &curConstants, Value* &localStack, Value* stackPtr);
 
 	// Switch all frame-local execution state to the given function.
@@ -384,7 +389,7 @@ struct VM {
 
 	public: inline String FindShortName(Value v);
 
-	public: static VM New(Int32 stackSlots=1024, Int32 callSlots=256) {
+	public: static VM New(Int32 stackSlots=10240, Int32 callSlots=256) {
 		return VM(std::make_shared<VMStorage>(stackSlots, callSlots));
 	}
 
@@ -497,7 +502,12 @@ struct VM {
 
 	private: inline Value RunInner(UInt32 maxCycles);
 
-	private: inline void EnsureFrame(Int32 baseIndex, UInt16 neededRegs);
+	// Verify that the callee frame [baseIndex, baseIndex + neededRegs) fits within
+	// the register stack.  Returns true if OK; on overflow, raises a runtime error
+	// and returns false.  Callers MUST bail out (without writing into the frame)
+	// when this returns false, since RaiseRuntimeError does not stop the current
+	// opcode handler on its own.
+	private: inline bool EnsureFrame(Int32 baseIndex, UInt16 neededRegs);
 
 	// Switch all frame-local execution state to the given function.
 
@@ -608,11 +618,13 @@ inline Value VM::Execute(FuncDef entry) { return get()->Execute(entry); }
 inline Value VM::Execute(FuncDef entry,UInt32 maxCycles) { return get()->Execute(entry, maxCycles); }
 inline Value VM::Run(UInt32 maxCycles) { return get()->Run(maxCycles); }
 inline Value VM::RunInner(UInt32 maxCycles) { return get()->RunInner(maxCycles); }
-inline void VM::EnsureFrame(Int32 baseIndex,UInt16 neededRegs) { return get()->EnsureFrame(baseIndex, neededRegs); }
-inline void VMStorage::EnsureFrame(Int32 baseIndex,UInt16 neededRegs) {
+inline bool VM::EnsureFrame(Int32 baseIndex,UInt16 neededRegs) { return get()->EnsureFrame(baseIndex, neededRegs); }
+inline bool VMStorage::EnsureFrame(Int32 baseIndex,UInt16 neededRegs) {
 	if (baseIndex + neededRegs > stack.Count()) {
 		RaiseRuntimeError("Stack Overflow");
+		return Boolean(false);
 	}
+	return Boolean(true);
 }
 inline Value VM::GetGlobalsVarMap() { return get()->GetGlobalsVarMap(); }
 inline Value VM::GetCurrentLocalVarMap(Int32 baseIndex,UInt16 maxRegs) { return get()->GetCurrentLocalVarMap(baseIndex, maxRegs); }

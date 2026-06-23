@@ -173,7 +173,7 @@ void VMStorage::MarkFuncConstants(FuncDef func) {
 void VMStorage::ManuallyPushCall(Int32 intrinsicCalleeBase,FuncDef importMain) {
 	// Module frame sits just above the import intrinsic's 2-register frame (r0 + libname).
 	Int32 calleeBase = intrinsicCalleeBase + 2;
-	EnsureFrame(calleeBase, importMain.MaxRegs());
+	if (!EnsureFrame(calleeBase, importMain.MaxRegs())) return;
 	for (Int32 i = 0; i < importMain.MaxRegs(); i++) {
 		stack[calleeBase + i] = val_null;
 		names[calleeBase + i] = val_null;
@@ -452,9 +452,12 @@ Int32 VMStorage::AutoInvokeFuncRef(Value funcRefVal,Int32 resultReg,Int32 return
 
 	Int32 selfParam = SelfParamOffset(callee);
 
+	// Bounds-check the callee frame BEFORE writing into it (covers both the
+	// native and user-function paths below).
+	if (!EnsureFrame(calleeBase, callee.MaxRegs())) return -1;
+
 	// Native intrinsic: invoke callback directly, no frame push
 	if (!IsNull(callee.NativeCallback())) {
-		EnsureFrame(calleeBase, callee.MaxRegs());
 		SetupCallFrame(0, selfParam, calleeBase, callee);
 		if (selfParam > 0) {
 			stack[calleeBase + 1] = pendingSelf;
@@ -483,7 +486,6 @@ Int32 VMStorage::AutoInvokeFuncRef(Value funcRefVal,Int32 resultReg,Int32 return
 	}
 	SetupCallFrame(0, selfParam, calleeBase, callee);
 	ApplyPendingContext(calleeBase, callee);
-	EnsureFrame(calleeBase, callee.MaxRegs());
 	*calleeOut = callee;
 	return 0;
 }
@@ -1447,7 +1449,10 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				// Check for self-injection: if pending context and first param is "self",
 				// inject pendingSelf as the first argument
 				Int32 selfParam = SelfParamOffset(callee);
-				Int32 nextPC = ProcessArguments(argCount, selfParam, pc, baseIndex, calleeBase, callee, 
+				// Bounds-check the callee frame BEFORE writing any arguments or
+				// defaults into it (otherwise deep recursion writes out of range).
+				if (!EnsureFrame(calleeBase, callee.MaxRegs())) return val_null;
+				Int32 nextPC = ProcessArguments(argCount, selfParam, pc, baseIndex, calleeBase, callee,
 				  curFuncRaw->Code);
 				if (nextPC < 0) return val_null; // Error already raised
 				if (selfParam > 0) {
@@ -1458,7 +1463,6 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				// Set up call frame using helper
 				SetupCallFrame(argCount, selfParam, calleeBase, callee);
 				ApplyPendingContext(calleeBase, callee);
-				EnsureFrame(calleeBase, callee.MaxRegs());
 
 				// Native intrinsic: invoke callback directly, no frame push
 				if (!IsNull(callee.NativeCallback())) {
@@ -1494,7 +1498,6 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				currentFunc = callee; // Switch to callee function
 				pc = 0; // Start at beginning of callee code
 				SwitchFrame(currentFunc, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack, stackPtr);
-				EnsureFrame(baseIndex, callee.MaxRegs());
 				VM_NEXT();
 			}
 
@@ -1541,6 +1544,8 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				currentFunc = callee; // Switch to callee function
 				SwitchFrame(currentFunc, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack, stackPtr);
 
+				// No frame writes happen before the next opcode, so just verify
+				// (it raises and halts on overflow) and fall through to break.
 				EnsureFrame(baseIndex, callee.MaxRegs());
 				VM_NEXT();
 			}
@@ -1572,13 +1577,14 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				// For naked CALL (without ARGBLK): set up parameters with defaults
 				Int32 calleeBase = baseIndex + b;
 				Int32 selfParam = SelfParamOffset(callee);
+				// Bounds-check the callee frame BEFORE writing into it.
+				if (!EnsureFrame(calleeBase, callee.MaxRegs())) break;
 				SetupCallFrame(0, selfParam, calleeBase, callee);
 				if (selfParam > 0) {
 					stack[calleeBase + 1] = pendingSelf;
 					names[calleeBase + 1] = val_self;
 				}
 				ApplyPendingContext(calleeBase, callee);
-				EnsureFrame(calleeBase, callee.MaxRegs());
 
 				// Native intrinsic: invoke callback directly, no frame push
 				if (!IsNull(callee.NativeCallback())) {
@@ -1608,7 +1614,6 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				pc = 0; // Start at beginning of callee code
 				currentFunc = callee; // Switch to callee function
 				SwitchFrame(currentFunc, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack, stackPtr);
-				EnsureFrame(baseIndex, callee.MaxRegs());
 				VM_NEXT();
 			}
 

@@ -203,7 +203,7 @@ public class VM {
 		return Intrinsic.GetShortName(v);
 	}
 
-	public VM(Int32 stackSlots=1024, Int32 callSlots=256) {
+	public VM(Int32 stackSlots=10240, Int32 callSlots=256) {
 		InitVM(stackSlots, callSlots);
 	}
 
@@ -299,7 +299,7 @@ public class VM {
 	public void ManuallyPushCall(Int32 intrinsicCalleeBase, FuncDef importMain) {
 		// Module frame sits just above the import intrinsic's 2-register frame (r0 + libname).
 		Int32 calleeBase = intrinsicCalleeBase + 2;
-		EnsureFrame(calleeBase, importMain.MaxRegs);
+		if (!EnsureFrame(calleeBase, importMain.MaxRegs)) return;
 		for (Int32 i = 0; i < importMain.MaxRegs; i++) {
 			stack[calleeBase + i] = val_null;
 			names[calleeBase + i] = val_null;
@@ -639,9 +639,12 @@ public class VM {
 
 		Int32 selfParam = SelfParamOffset(callee);
 
+		// Bounds-check the callee frame BEFORE writing into it (covers both the
+		// native and user-function paths below).
+		if (!EnsureFrame(calleeBase, callee.MaxRegs)) return -1;
+
 		// Native intrinsic: invoke callback directly, no frame push
 		if (callee.NativeCallback != null) {
-			EnsureFrame(calleeBase, callee.MaxRegs);
 			SetupCallFrame(0, selfParam, calleeBase, callee);
 			if (selfParam > 0) {
 				stack[calleeBase + 1] = pendingSelf;
@@ -670,7 +673,6 @@ public class VM {
 		}
 		SetupCallFrame(0, selfParam, calleeBase, callee);
 		ApplyPendingContext(calleeBase, callee);
-		EnsureFrame(calleeBase, callee.MaxRegs);
 		calleeOut = callee;
 		return 0;
 	}
@@ -1644,7 +1646,10 @@ public class VM {
 					// Check for self-injection: if pending context and first param is "self",
 					// inject pendingSelf as the first argument
 					Int32 selfParam = SelfParamOffset(callee);
-					Int32 nextPC = ProcessArguments(argCount, selfParam, pc, baseIndex, calleeBase, callee, 
+					// Bounds-check the callee frame BEFORE writing any arguments or
+					// defaults into it (otherwise deep recursion writes out of range).
+					if (!EnsureFrame(calleeBase, callee.MaxRegs)) return val_null;
+					Int32 nextPC = ProcessArguments(argCount, selfParam, pc, baseIndex, calleeBase, callee,
 					  curFunc.Code); // CPP: curFuncRaw->Code);
 					if (nextPC < 0) return val_null; // Error already raised
 					if (selfParam > 0) {
@@ -1655,7 +1660,6 @@ public class VM {
 					// Set up call frame using helper
 					SetupCallFrame(argCount, selfParam, calleeBase, callee);
 					ApplyPendingContext(calleeBase, callee);
-					EnsureFrame(calleeBase, callee.MaxRegs);
 
 					// Native intrinsic: invoke callback directly, no frame push
 					if (callee.NativeCallback != null) {
@@ -1693,7 +1697,6 @@ public class VM {
 					pc = 0; // Start at beginning of callee code
 					SwitchFrame(currentFunc, baseIndex, ref curFunc, ref codeCount, ref curCode, ref curConstants, ref localStack); // CPP:
 					// CPP: SwitchFrame(currentFunc, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack, stackPtr);
-					EnsureFrame(baseIndex, callee.MaxRegs);
 					break;
 				}
 
@@ -1741,6 +1744,8 @@ public class VM {
 					SwitchFrame(currentFunc, baseIndex, ref curFunc, ref codeCount, ref curCode, ref curConstants, ref localStack); // CPP:
 					// CPP: SwitchFrame(currentFunc, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack, stackPtr);
 
+					// No frame writes happen before the next opcode, so just verify
+					// (it raises and halts on overflow) and fall through to break.
 					EnsureFrame(baseIndex, callee.MaxRegs);
 					break;
 				}
@@ -1772,13 +1777,14 @@ public class VM {
 					// For naked CALL (without ARGBLK): set up parameters with defaults
 					Int32 calleeBase = baseIndex + b;
 					Int32 selfParam = SelfParamOffset(callee);
+					// Bounds-check the callee frame BEFORE writing into it.
+					if (!EnsureFrame(calleeBase, callee.MaxRegs)) break;
 					SetupCallFrame(0, selfParam, calleeBase, callee);
 					if (selfParam > 0) {
 						stack[calleeBase + 1] = pendingSelf;
 						names[calleeBase + 1] = val_self;
 					}
 					ApplyPendingContext(calleeBase, callee);
-					EnsureFrame(calleeBase, callee.MaxRegs);
 
 					// Native intrinsic: invoke callback directly, no frame push
 					if (callee.NativeCallback != null) {
@@ -1810,7 +1816,6 @@ public class VM {
 					currentFunc = callee; // Switch to callee function
 					SwitchFrame(currentFunc, baseIndex, ref curFunc, ref codeCount, ref curCode, ref curConstants, ref localStack); // CPP:
 					// CPP: SwitchFrame(currentFunc, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack, stackPtr);
-					EnsureFrame(baseIndex, callee.MaxRegs);
 					break;
 				}
 
@@ -2138,11 +2143,18 @@ public class VM {
 		return val_null;
 	}
 
+	// Verify that the callee frame [baseIndex, baseIndex + neededRegs) fits within
+	// the register stack.  Returns true if OK; on overflow, raises a runtime error
+	// and returns false.  Callers MUST bail out (without writing into the frame)
+	// when this returns false, since RaiseRuntimeError does not stop the current
+	// opcode handler on its own.
 	[MethodImpl(AggressiveInlining)]
-	private void EnsureFrame(Int32 baseIndex, UInt16 neededRegs) {
+	private bool EnsureFrame(Int32 baseIndex, UInt16 neededRegs) {
 		if (baseIndex + neededRegs > stack.Count) {
 			RaiseRuntimeError("Stack Overflow");
+			return false;
 		}
+		return true;
 	}
 
 	// Switch all frame-local execution state to the given function.

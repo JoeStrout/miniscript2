@@ -17,10 +17,13 @@ class UnitTests {
 	
 	public: static Boolean AssertEqual(String actual, String expected);
 		
-	public: static Boolean AssertEqual(UInt32 actual, UInt32 expected);
-		
-	public: static Boolean AssertEqual(Int32 actual, Int32 expected);
-		
+	public: static Boolean AssertEqual(Double actual, Double expected);
+
+	// Compare two UInt32 values, reporting any mismatch in hex (useful for
+	// bytecode instructions).  Named distinctly from AssertEqual to avoid an
+	// ambiguous overload with the Double version when given integer literals.
+	public: static Boolean AssertEqualU(UInt32 actual, UInt32 expected);
+
 	public: static Boolean AssertEqual(List<String> actual, List<String> expected);
 		
 	public: static Boolean TestStringUtils();

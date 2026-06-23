@@ -46,7 +46,8 @@ namespace MiniScript {
 public struct App {
 	public static bool debugMode = false;
 	public static bool visMode = false;
-	
+	public static bool quietMode = false;
+
 	public static void MainProgram(List<String> args) {
 		// CPP: value_init_constants();
 		CoreIntrinsics.hostVersion = "2.0 Preview";
@@ -74,6 +75,8 @@ public struct App {
 				debugMode = true;
 			} else if (args[i] == "-vis") {
 				visMode = true;
+			} else if (args[i] == "-q") {
+				quietMode = true;
 			} else if (args[i] == "-c" && i + 1 < args.Count) {
 				// Inline code follows -c
 				i = i + 1;
@@ -88,7 +91,6 @@ public struct App {
 		Int32 shellArgsStart = (fileArgIndex >= 0) ? fileArgIndex + 1 : args.Count;
 		ShellIntrinsics.SetShellArgs(args, shellArgsStart);
 
-		IOHelper.Print("MiniScript 2.0", TextStyle.Strong);
 		/*** BEGIN CPP_ONLY ***
 		#if VM_USE_COMPUTED_GOTO
 		#define VARIANT "(goto)"
@@ -96,11 +98,14 @@ public struct App {
 		#define VARIANT "(switch)"
 		#endif
 		*** END CPP_ONLY ***/
-		IOHelper.Print(
-			"Build: C# version", // CPP: "Build: C++ " VARIANT " version, built " __DATE__ " " __TIME__,
-			TextStyle.Subdued
-		);
-		IOHelper.Print("Enter !help for REPL help.", TextStyle.Subdued);
+		if (!quietMode) {
+			IOHelper.Print("MiniScript 2.0", TextStyle.Strong);
+			IOHelper.Print(
+				"Build: C# version", // CPP: "Build: C++ " VARIANT " version, built " __DATE__ " " __TIME__,
+				TextStyle.Subdued
+			);
+			IOHelper.Print("Enter !help for REPL help.", TextStyle.Subdued);
+		}
 
 		if (debugMode) {
 			IOHelper.Print("Running unit tests...");
@@ -205,7 +210,7 @@ public struct App {
 			RunREPL();
 		}
 
-		IOHelper.Print("All done!");
+		if (!quietMode) IOHelper.Print("All done!");
 	}
 
 	// Exit the process with the code set by the `exit` intrinsic.
@@ -448,8 +453,10 @@ public struct App {
 		}
 
 		if (is_null(vm.Error)) {
-			IOHelper.Print("\nVM execution complete. Result in r0:");
-			IOHelper.Print(StringUtils.Format("\x1b[1;93m{0}\x1b[0m", result)); // (bold bright yellow)
+			if (!quietMode) {
+				IOHelper.Print("\nVM execution complete. Result in r0:");
+				IOHelper.Print(StringUtils.Format("\x1b[1;93m{0}\x1b[0m", result)); // (bold bright yellow)
+			}
 		} else {
 			vm.ReportRuntimeError();
 		}

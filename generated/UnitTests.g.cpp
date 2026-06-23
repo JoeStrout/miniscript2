@@ -27,16 +27,16 @@ Boolean UnitTests::AssertEqual(String actual,String expected) {
 	  + expected + "\" but got \"" + actual + "\"");
 	return Boolean(false);
 }
-Boolean UnitTests::AssertEqual(UInt32 actual,UInt32 expected) {
-	if (actual == expected) return Boolean(true);
-	Assert(Boolean(false),  String::New("Unit test failure: expected 0x")
-	  + StringUtils::ToHex(expected) + "\" but got 0x" + StringUtils::ToHex(actual));
-	return Boolean(false);
-}
-Boolean UnitTests::AssertEqual(Int32 actual,Int32 expected) {
+Boolean UnitTests::AssertEqual(Double actual,Double expected) {
 	if (actual == expected) return Boolean(true);
 	Assert(Boolean(false), StringUtils::Format("Unit test failure: expected {0} but got {1}",
 			expected, actual));
+	return Boolean(false);
+}
+Boolean UnitTests::AssertEqualU(UInt32 actual,UInt32 expected) {
+	if (actual == expected) return Boolean(true);
+	Assert(Boolean(false),  String::New("Unit test failure: expected 0x")
+	  + StringUtils::ToHex(expected) + "\" but got 0x" + StringUtils::ToHex(actual));
 	return Boolean(false);
 }
 Boolean UnitTests::AssertEqual(List<String> actual,List<String> expected) {
@@ -85,30 +85,30 @@ Boolean UnitTests::TestAssembler() {
 		BytecodeUtil::INS(Opcode::NOOP));
 	
 	// Test LOAD variants
-	asmOk = asmOk && AssertEqual(assem.AddLine("LOAD r5, r3"), 
+	asmOk = asmOk && AssertEqualU(assem.AddLine("LOAD r5, r3"),
 		BytecodeUtil::INS_ABC(Opcode::LOAD_rA_rB, 5, 3, 0));
-	
-	asmOk = asmOk && AssertEqual(assem.AddLine("LOAD r2, 42"), 
+
+	asmOk = asmOk && AssertEqualU(assem.AddLine("LOAD r2, 42"),
 		BytecodeUtil::INS_AB(Opcode::LOAD_rA_iBC, 2, 42));
-	
-	asmOk = asmOk && AssertEqual(assem.AddLine("LOAD r7, k15"), 
+
+	asmOk = asmOk && AssertEqualU(assem.AddLine("LOAD r7, k15"),
 		BytecodeUtil::INS_AB(Opcode::LOAD_rA_kBC, 7, 15));
-	
+
 	// Test arithmetic
-	asmOk = asmOk && AssertEqual(assem.AddLine("ADD r1, r2, r3"), 
+	asmOk = asmOk && AssertEqualU(assem.AddLine("ADD r1, r2, r3"),
 		BytecodeUtil::INS_ABC(Opcode::ADD_rA_rB_rC, 1, 2, 3));
-	
-	asmOk = asmOk && AssertEqual(assem.AddLine("SUB r4, r5, r6"), 
+
+	asmOk = asmOk && AssertEqualU(assem.AddLine("SUB r4, r5, r6"),
 		BytecodeUtil::INS_ABC(Opcode::SUB_rA_rB_rC, 4, 5, 6));
-	
+
 	// Test control flow
-	asmOk = asmOk && AssertEqual(assem.AddLine("JUMP 10"), 
+	asmOk = asmOk && AssertEqualU(assem.AddLine("JUMP 10"),
 		BytecodeUtil::INS(Opcode::JUMP_iABC) | (UInt32)(10 & 0xFFFFFF));
-	
-	asmOk = asmOk && AssertEqual(assem.AddLine("IFLT r8, r9"), 
+
+	asmOk = asmOk && AssertEqualU(assem.AddLine("IFLT r8, r9"),
 		BytecodeUtil::INS_ABC(Opcode::IFLT_rA_rB, 8, 9, 0));
-	
-	asmOk = asmOk && AssertEqual(assem.AddLine("RETURN"), 
+
+	asmOk = asmOk && AssertEqualU(assem.AddLine("RETURN"),
 		BytecodeUtil::INS(Opcode::RETURN));
 	
 	// Test label assembly with two-pass approach
@@ -136,7 +136,7 @@ Boolean UnitTests::TestAssembler() {
 	// loop is at instruction 1, JUMP is at instruction 5, so offset should be 1-5 = -4
 	UInt32 jumpInstruction = mainFunc.Code()[4]; // 5th instruction (0-indexed)
 	UInt32 expectedJump = BytecodeUtil::INS(Opcode::JUMP_iABC) | (UInt32)((-4) & 0xFFFFFF);
-	asmOk = asmOk && AssertEqual(jumpInstruction, expectedJump);
+	asmOk = asmOk && AssertEqualU(jumpInstruction, expectedJump);
 	
 	// Test constant support
 	List<String> constantTest =  List<String>::New({
@@ -152,11 +152,11 @@ Boolean UnitTests::TestAssembler() {
 	asmOk = asmOk && Assert(constFunc, "@main function not found in constant test");
 	
 	// Verify the assembled instructions use correct constant indices
-	asmOk = asmOk && AssertEqual(constFunc.Code()[0], 
+	asmOk = asmOk && AssertEqualU(constFunc.Code()[0],
 		BytecodeUtil::INS_AB(Opcode::LOAD_rA_kBC, 0, 0)); // Should use constant index 0
-	asmOk = asmOk && AssertEqual(constFunc.Code()[1],
+	asmOk = asmOk && AssertEqualU(constFunc.Code()[1],
 		BytecodeUtil::INS_AB(Opcode::LOAD_rA_kBC, 1, 1)); // Should use constant index 1
-	asmOk = asmOk && AssertEqual(constFunc.Code()[2],
+	asmOk = asmOk && AssertEqualU(constFunc.Code()[2],
 		BytecodeUtil::INS_AB(Opcode::LOAD_rA_kBC, 2, 2)); // Should use constant index 2
 	
 	// Verify we have 3 constants
@@ -171,7 +171,7 @@ Boolean UnitTests::TestAssembler() {
 	FuncDef immediateFunc = immediateAssem.FindFunction("@main");
 	asmOk = asmOk && Assert(immediateFunc, "@main function not found in immediate test");
 	
-	asmOk = asmOk && AssertEqual(immediateFunc.Code()[0],
+	asmOk = asmOk && AssertEqualU(immediateFunc.Code()[0],
 		BytecodeUtil::INS_AB(Opcode::LOAD_rA_iBC, 3, 42)); // Should use immediate
 	asmOk = asmOk && AssertEqual(immediateFunc.Constants().Count(), 0); // No constants added
 	
@@ -198,19 +198,19 @@ Boolean UnitTests::TestAssembler() {
 	// Check specific instructions
 	if (multiFunc.Code().Count() >= 4) {
 		// First instruction: LOAD r1, k0 (where k0 = "Hello")
-		asmOk = asmOk && AssertEqual(multiFunc.Code()[0],
+		asmOk = asmOk && AssertEqualU(multiFunc.Code()[0],
 			BytecodeUtil::INS_AB(Opcode::LOAD_rA_kBC, 1, 0));
-		
+
 		// Second instruction: LOAD r2, k1 (where k1 = "World")
-		asmOk = asmOk && AssertEqual(multiFunc.Code()[1],
+		asmOk = asmOk && AssertEqualU(multiFunc.Code()[1],
 			BytecodeUtil::INS_AB(Opcode::LOAD_rA_kBC, 2, 1));
-		
+
 		// Third instruction: ADD r0, r1, r2
-		asmOk = asmOk && AssertEqual(multiFunc.Code()[2],
+		asmOk = asmOk && AssertEqualU(multiFunc.Code()[2],
 			BytecodeUtil::INS_ABC(Opcode::ADD_rA_rB_rC, 0, 1, 2));
-		
+
 		// Fourth instruction: RETURN
-		asmOk = asmOk && AssertEqual(multiFunc.Code()[3],
+		asmOk = asmOk && AssertEqualU(multiFunc.Code()[3],
 			BytecodeUtil::INS(Opcode::RETURN));
 	}
 	
@@ -638,7 +638,7 @@ Boolean UnitTests::TestLexer() {
 	tok = lexer.NextToken();
 	ok = ok && Assert(tok.Type == TokenType::NUMBER, "Expected NUMBER token");
 	ok = ok && AssertEqual(tok.Text, "42");
-	ok = ok && AssertEqual(tok.IntValue, 42);
+	ok = ok && AssertEqual(tok.DoubleValue, 42);
 
 	// Test float
 	lexer = Lexer("3.14");

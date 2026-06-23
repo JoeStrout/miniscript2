@@ -127,7 +127,10 @@ inline Int32 StringUtils::ParseInt32(String str) {
 	return std::stoi(str.c_str());
 }
 inline Double StringUtils::ParseDouble(String str) {
-	return std::stod(str.c_str());
+	// Use strtod (not stod) on the C++ side so out-of-range magnitudes
+	// saturate to +/-infinity rather than throwing, matching C#'s
+	// Double.Parse behavior of returning Infinity for such input.
+	return std::strtod(str.c_str(), nullptr);
 }
 inline Boolean StringUtils::IsNaN(Double x) {
 	return std::isnan(x);

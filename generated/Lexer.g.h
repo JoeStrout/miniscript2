@@ -18,7 +18,6 @@ namespace MiniScript {
 struct Token {
 	public: TokenType Type;
 	public: String Text;
-	public: Int32 IntValue;
 	public: Double DoubleValue;
 	public: Int32 Line;
 	public: Int32 Column;

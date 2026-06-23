@@ -46,6 +46,7 @@ namespace MiniScript {
 
 bool App::debugMode = Boolean(false);
 bool App::visMode = Boolean(false);
+bool App::quietMode = Boolean(false);
 void App::MainProgram(List<String> args) {
 	value_init_constants();
 	CoreIntrinsics::hostVersion = "2.0 Preview";
@@ -71,6 +72,8 @@ void App::MainProgram(List<String> args) {
 			debugMode = Boolean(true);
 		} else if (args[i] == "-vis") {
 			visMode = Boolean(true);
+		} else if (args[i] == "-q") {
+			quietMode = Boolean(true);
 		} else if (args[i] == "-c" && i + 1 < args.Count()) {
 			// Inline code follows -c
 			i = i + 1;
@@ -85,17 +88,19 @@ void App::MainProgram(List<String> args) {
 	Int32 shellArgsStart = (fileArgIndex >= 0) ? fileArgIndex + 1 : args.Count();
 	ShellIntrinsics::SetShellArgs(args, shellArgsStart);
 
-	IOHelper::Print("MiniScript 2.0", TextStyle::Strong);
 	#if VM_USE_COMPUTED_GOTO
 	#define VARIANT "(goto)"
 	#else
 	#define VARIANT "(switch)"
 	#endif
-	IOHelper::Print(
-		"Build: C++ " VARIANT " version, built " __DATE__ " " __TIME__,
-		TextStyle::Subdued
-	);
-	IOHelper::Print("Enter !help for REPL help.", TextStyle::Subdued);
+	if (!quietMode) {
+		IOHelper::Print("MiniScript 2.0", TextStyle::Strong);
+		IOHelper::Print(
+			"Build: C++ " VARIANT " version, built " __DATE__ " " __TIME__,
+			TextStyle::Subdued
+		);
+		IOHelper::Print("Enter !help for REPL help.", TextStyle::Subdued);
+	}
 
 	if (debugMode) {
 		IOHelper::Print("Running unit tests...");
@@ -180,7 +185,7 @@ void App::MainProgram(List<String> args) {
 		RunREPL();
 	}
 
-	IOHelper::Print("All done!");
+	if (!quietMode) IOHelper::Print("All done!");
 }
 void App::DoExit() {
 	exit(ShellIntrinsics::ExitCode);
@@ -400,8 +405,10 @@ void App::RunInterpreter(Interpreter interp) {
 	}
 
 	if (is_null(vm.Error())) {
-		IOHelper::Print("\nVM execution complete. Result in r0:");
-		IOHelper::Print(StringUtils::Format("\x1b[1;93m{0}\x1b[0m", result)); // (bold bright yellow)
+		if (!quietMode) {
+			IOHelper::Print("\nVM execution complete. Result in r0:");
+			IOHelper::Print(StringUtils::Format("\x1b[1;93m{0}\x1b[0m", result)); // (bold bright yellow)
+		}
 	} else {
 		vm.ReportRuntimeError();
 	}

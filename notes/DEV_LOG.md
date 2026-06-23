@@ -1031,3 +1031,10 @@ Note that many of these are technically breaking changes -- though they would on
 I also noticed that we were not printing some NaN values properly (they were appearing as "<value>") -- this was because of a bit of overlap in how we were using the NaN bits in a Value.  Changed NULL_VALUE from 0xFFF1 to 0xFFF9, and so now we can recognize any double including 0xFFF0 (inf) and 0xFFF8 (NaN).  Also note that we now render NaN as "NaN" instead of "nan" (matching C# but not C++ behavior of MS1); and infinity as "-Inf" and "Inf" (not quite matching either version of MS1).
 
 
+## Jun 23, 2026
+
+Today I'm using a differential fuzz tester (something I developed for MiniScript 1 as part of my CS514 course at CSU).  It uses radamsa to randomly fuzz a set of sample programs, and then compares the output of the C++ and C# builds.
+
+To make this work, I had to add the `-q` (quiet) switch, which MiniScript 1 had but MS2 was missing.  And then right away it discovered that our new lexer failed (in different ways) on very large integers.
+
+

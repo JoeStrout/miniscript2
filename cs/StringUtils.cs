@@ -46,7 +46,10 @@ public static class StringUtils {
 
 	[MethodImpl(AggressiveInlining)]
 	public static Double ParseDouble(String str) {
-		return Double.Parse(str);	// CPP: return std::stod(str.c_str());
+		// Use strtod (not stod) on the C++ side so out-of-range magnitudes
+		// saturate to +/-infinity rather than throwing, matching C#'s
+		// Double.Parse behavior of returning Infinity for such input.
+		return Double.Parse(str);	// CPP: return std::strtod(str.c_str(), nullptr);
 	}
 
 	// Try to parse a string as a double.  Returns true and sets `result` on

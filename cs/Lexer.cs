@@ -17,7 +17,6 @@ namespace MiniScript {
 public struct Token {
 	public TokenType Type;
 	public String Text;
-	public Int32 IntValue;
 	public Double DoubleValue;
 	public Int32 Line;
 	public Int32 Column;
@@ -27,7 +26,6 @@ public struct Token {
 	public Token(TokenType type, String text, Int32 line, Int32 column) {
 		Type = type;
 		Text = text;
-		IntValue = 0;
 		DoubleValue = 0;
 		Line = line;
 		Column = column;
@@ -136,7 +134,6 @@ public struct Lexer {
 				}
 			}
 			// Check for exponent (e.g. 1E-12, 2.5e6)
-			bool hasExponent = false;
 			if (_position < _input.Length && (_input[_position] == 'E' || _input[_position] == 'e')) {
 				Int32 savedPos = _position;
 				Advance(); // consume 'E'/'e'
@@ -147,7 +144,6 @@ public struct Lexer {
 					while (_position < _input.Length && IsDigit(_input[_position])) {
 						Advance();
 					}
-					hasExponent = true;
 				} else {
 					_position = savedPos; // not a valid exponent; backtrack
 				}
@@ -155,12 +151,10 @@ public struct Lexer {
 			String numStr = _input.Substring(start, _position - start);
 			Token tok = new Token(TokenType.NUMBER, numStr, startLine, startColumn);
 			tok.AfterSpace = hadWhitespace;
-			if (numStr.Contains(".") || hasExponent) {
-				tok.DoubleValue = StringUtils.ParseDouble(numStr);
-			} else {
-				tok.IntValue = StringUtils.ParseInt32(numStr);
-				tok.DoubleValue = tok.IntValue;
-			}
+			// Always derive the value as a double; this stores our best
+			// approximation for magnitudes too large to represent exactly,
+			// just as we do for fractional literals like 2.5.
+			tok.DoubleValue = StringUtils.ParseDouble(numStr);
 			return tok;
 		}
 

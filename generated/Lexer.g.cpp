@@ -10,7 +10,6 @@ namespace MiniScript {
 Token::Token(TokenType type,String text,Int32 line,Int32 column) {
 	Type = type;
 	Text = text;
-	IntValue = 0;
 	DoubleValue = 0;
 	Line = line;
 	Column = column;
@@ -68,7 +67,6 @@ Token Lexer::NextToken() {
 			}
 		}
 		// Check for exponent (e.g. 1E-12, 2.5e6)
-		bool hasExponent = Boolean(false);
 		if (_position < _input.Length() && (_input[_position] == 'E' || _input[_position] == 'e')) {
 			Int32 savedPos = _position;
 			Advance(); // consume 'E'/'e'
@@ -79,7 +77,6 @@ Token Lexer::NextToken() {
 				while (_position < _input.Length() && IsDigit(_input[_position])) {
 					Advance();
 				}
-				hasExponent = Boolean(true);
 			} else {
 				_position = savedPos; // not a valid exponent; backtrack
 			}
@@ -87,12 +84,10 @@ Token Lexer::NextToken() {
 		String numStr = _input.Substring(start, _position - start);
 		Token tok = Token(TokenType::NUMBER, numStr, startLine, startColumn);
 		tok.AfterSpace = hadWhitespace;
-		if (numStr.Contains(".") || hasExponent) {
-			tok.DoubleValue = StringUtils::ParseDouble(numStr);
-		} else {
-			tok.IntValue = StringUtils::ParseInt32(numStr);
-			tok.DoubleValue = tok.IntValue;
-		}
+		// Always derive the value as a double; this stores our best
+		// approximation for magnitudes too large to represent exactly,
+		// just as we do for fractional literals like 2.5.
+		tok.DoubleValue = StringUtils::ParseDouble(numStr);
 		return tok;
 	}
 

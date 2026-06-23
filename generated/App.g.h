@@ -12,7 +12,8 @@ namespace MiniScript {
 struct App {
 	public: static bool debugMode;
 	public: static bool visMode;
-	
+	public: static bool quietMode;
+
 	public: static void MainProgram(List<String> args);
 
 	// Exit the process with the code set by the `exit` intrinsic.

@@ -48,10 +48,14 @@ public static class ErrorTypes {
 		return make_error(make_string(msg), val_null, stack, runtime);
 	}
 
-	// Create a runtime error value with the given message (no stack trace).
+	// Create a runtime error value with the given message.  Attaches the active
+	// VM's current stack trace (via value_current_stack_trace), so every runtime
+	// error value -- whether returned by an intrinsic, a core value operation, or
+	// the VM itself -- carries an accurate trace.  Returns val_null stack if no
+	// VM is running (e.g. errors built during setup, before execution).
 	public static Value RuntimeError(String msg) {
 		if (is_null(runtime)) Init();
-		return make_error(make_string(msg), val_null, val_null, runtime);
+		return make_error(make_string(msg), val_null, value_current_stack_trace(), runtime);
 	}
 	
 	// Create a file error value with the given message.

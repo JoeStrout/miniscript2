@@ -453,15 +453,53 @@ public static class ValueHelpers {
 		if (is_double(a) && is_double(b)) return make_double(as_double(a) + as_double(b));
 		if (is_string(a)) {
 			if (is_null(b)) return a;
-			if (is_string(b)) return string_concat(a, b);
-			return string_concat(a, make_string(to_String(b, vm)));
+			Value bStr = is_string(b) ? b : make_string(to_String(b, vm));
+			// Overflow-safe check that the concatenation won't exceed the limit.
+			if (string_length(a) > MAX_COLLECTION_SIZE - string_length(bStr)) {
+				return value_make_runtime_error("string too large (exceeds maximum size)");
+			}
+			return string_concat(a, bStr);
 		} else if (is_string(b)) {
 			if (is_null(a)) return b;
-			return string_concat(make_string(to_String(a, vm)), b);
+			Value aStr = make_string(to_String(a, vm));
+			if (string_length(aStr) > MAX_COLLECTION_SIZE - string_length(b)) {
+				return value_make_runtime_error("string too large (exceeds maximum size)");
+			}
+			return string_concat(aStr, b);
 		}
-		if (is_list(a) && is_list(b)) return list_concat(a, b);
+		if (is_list(a) && is_list(b)) {
+			if (list_count(a) > MAX_COLLECTION_SIZE - list_count(b)) {
+				return value_make_runtime_error("list too large (exceeds maximum size)");
+			}
+			return list_concat(a, b);
+		}
 		if (is_map(a)  && is_map(b))  return map_concat(a, b);
 		return val_null;
+	}
+
+	// Maximum number of elements a list (or characters a string) may hold.
+	// Operations whose result would exceed this raise a runtime error rather
+	// than attempting a hopeless allocation that would exhaust memory.
+	public const int MAX_COLLECTION_SIZE = Int32.MaxValue;
+
+	// Construct a complete runtime error value (runtime __isa + stack trace) from
+	// core value code, which cannot see the VM layer directly.  In C++ this routes
+	// through a hook registered by the VM (value_make_runtime_error in value.cpp);
+	// in C# we can reach the active VM directly.  Falls back to a bare error if no
+	// VM is active (e.g. unit tests exercising value ops in isolation).
+	public static Value value_make_runtime_error(String message) { // CPP: // (defined in value.cpp)
+		VM vm = VM.ActiveVM();
+		if (vm == null) return make_error(make_string(message), val_null, val_null, val_null);
+		return vm.MakeRuntimeError(message);
+	}
+
+	// Return the active VM's current call stack as a Value (frozen list of
+	// strings), or val_null if no VM is running.  Lets ErrorTypes (and other
+	// code below the VM layer) attach an accurate stack trace to error values.
+	public static Value value_current_stack_trace() { // CPP: // (defined in value.cpp)
+		VM vm = VM.ActiveVM();
+		if (vm == null) return val_null;
+		return vm.CurrentStackTrace();
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -473,6 +511,9 @@ public static class ValueHelpers {
 			double factor = as_double(b);
 			if (double.IsNaN(factor) || double.IsInfinity(factor)) return val_null;
 			if (factor <= 0) return val_empty_string;
+			if (string_length(a) * factor > MAX_COLLECTION_SIZE) {
+				return value_make_runtime_error("string too large (exceeds maximum size)");
+			}
 			int repeats = (int)factor;
 			Value result = val_empty_string;
 			for (int i = 0; i < repeats; i++) result = string_concat(result, a);
@@ -485,6 +526,9 @@ public static class ValueHelpers {
 			if (double.IsNaN(factor) || double.IsInfinity(factor)) return val_null;
 			int len = list_count(a);
 			if (factor <= 0 || len == 0) return make_list(0);
+			if (len * factor > MAX_COLLECTION_SIZE) {
+				return value_make_runtime_error("list too large (exceeds maximum size)");
+			}
 			int fullCopies = (int)factor;
 			int extraItems = (int)(len * (factor - fullCopies));
 			Value result = make_list(fullCopies * len + extraItems);

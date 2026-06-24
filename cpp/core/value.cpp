@@ -110,6 +110,9 @@ Value value_mult_nonnumeric(Value a, Value b) {
         int factorClass = std::fpclassify(factor);
         if (factorClass == FP_NAN || factorClass == FP_INFINITE) return val_null;
         if (factor <= 0) return val_empty_string;
+        if (string_length(a) * factor > MAX_COLLECTION_SIZE) {
+            return value_make_runtime_error("string too large (exceeds maximum size)");
+        }
         int repeats = (int)factor;
         Value result = val_empty_string;
         for (int i = 0; i < repeats; i++) result = string_concat(result, a);
@@ -123,6 +126,9 @@ Value value_mult_nonnumeric(Value a, Value b) {
         if (factorClass == FP_NAN || factorClass == FP_INFINITE) return val_null;
         int len = list_count(a);
         if (factor <= 0 || len == 0) return make_list(0);
+        if (len * factor > MAX_COLLECTION_SIZE) {
+            return value_make_runtime_error("list too large (exceeds maximum size)");
+        }
         int fullCopies = (int)factor;
         int extraItems = (int)(len * (factor - fullCopies));
         Value result = make_list(fullCopies * len + extraItems);
@@ -201,6 +207,8 @@ Value value_shl(Value v, int shift) {
 namespace {
 
 ShortNameLookupFn g_short_name_lookup = nullptr;
+RuntimeErrorMakerFn g_runtime_error_maker = nullptr;
+StackTraceFn g_stack_trace_hook = nullptr;
 
 Value find_short_name(void* vm, Value v) {
     if (!vm || !g_short_name_lookup) return val_null;
@@ -455,6 +463,24 @@ Value frozen_copy(Value v) {
 
 void set_short_name_lookup(ShortNameLookupFn fn) {
     g_short_name_lookup = fn;
+}
+
+void set_runtime_error_maker(RuntimeErrorMakerFn fn) {
+    g_runtime_error_maker = fn;
+}
+
+Value value_make_runtime_error(const char* message) {
+    if (g_runtime_error_maker) return g_runtime_error_maker(message);
+    return make_error(make_string(message), val_null, val_null, val_null);
+}
+
+void set_stack_trace_hook(StackTraceFn fn) {
+    g_stack_trace_hook = fn;
+}
+
+Value value_current_stack_trace() {
+    if (g_stack_trace_hook) return g_stack_trace_hook();
+    return val_null;
 }
 
 } // extern "C"

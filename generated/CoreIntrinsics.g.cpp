@@ -1086,9 +1086,13 @@ void CoreIntrinsics::Init() {
 		if (step == 0) {
 			return IntrinsicResult(ErrorTypes::RuntimeError("range() step may not be zero"));
 		}
+		double rawCount = (toVal - fromVal) / step + 1.0;
+		if (StringUtils::IsNaN(rawCount) || rawCount > MAX_COLLECTION_SIZE) {
+			return IntrinsicResult(ErrorTypes::RuntimeError(
+				"range() result too large (exceeds maximum list size)"));
+		}
 		int count = (int)((toVal - fromVal) / step) + 1;
 		if (count < 0) count = 0;
-		if (count > 1000000) count = 1000000;  // safety limit
 		Value result = make_list(count);
 		double v = fromVal;
 		if (step > 0) {

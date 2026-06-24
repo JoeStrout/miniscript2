@@ -244,6 +244,25 @@ public class VM {
 			if (s.Length() == 0) return val_null;
 			return make_string(s.c_str());
 		});
+
+		// Wire value.cpp's runtime-error constructor hook (layer 2A) to the
+		// active VM's MakeRuntimeError, so errors created from value_mult and
+		// friends carry the runtime __isa *and* an accurate stack trace, matching
+		// the C# side.  Falls back to a bare error if there is no active VM.
+		set_runtime_error_maker([](const char* msg) -> Value {
+			VM vm = VMStorage::ActiveVM();
+			if (IsNull(vm)) return make_error(make_string(msg), val_null, val_null, val_null);
+			return vm.MakeRuntimeError(String(msg));
+		});
+
+		// Wire value.cpp's stack-trace hook (layer 2A) to the active VM, so
+		// ErrorTypes.RuntimeError can attach an accurate stack trace to every
+		// runtime error value it creates.
+		set_stack_trace_hook([]() -> Value {
+			VM vm = VMStorage::ActiveVM();
+			if (IsNull(vm)) return val_null;
+			return vm.CurrentStackTrace();
+		});
 		*** END CPP_ONLY ***/
 	}
 
@@ -440,6 +459,24 @@ public class VM {
 	public void RaiseRuntimeError(Value error) {
 		Error = error;
 		IsRunning = false;
+	}
+
+	// Return the current call stack as a Value (frozen list of strings), or
+	// val_null if there is no active function.  Guarded wrapper around
+	// BuildStackTrace used by the stack-trace hook and value_current_stack_trace.
+	public Value CurrentStackTrace() {
+		if (!CurrentFunction) return val_null;
+		return BuildStackTrace();
+	}
+
+	// Build a complete runtime error *value* (runtime __isa + an accurate stack
+	// trace) without stopping the VM.  This is the non-halting counterpart to
+	// RaiseRuntimeError: core value operations (e.g. value_mult) use it to return
+	// an error as a value that propagates normally and only terminates the program
+	// if the caller misuses it.  The stack trace is attached by ErrorTypes.RuntimeError
+	// itself (via value_current_stack_trace), so this just delegates.
+	public Value MakeRuntimeError(String message) {
+		return ErrorTypes.RuntimeError(message);
 	}
 
 	// Called when user code silently ignored an error value and then tried
@@ -792,6 +829,13 @@ public class VM {
 			}
 
 			UInt32 instruction = curCode[pc++];
+
+			// Keep the PC field current (one store per instruction) so that any
+			// code which builds a stack trace mid-instruction -- e.g. value_mult
+			// calling MakeRuntimeError -- sees an accurate location.  pc is already
+			// post-incremented here, matching BuildStackTrace's `PC - 1` convention.
+			// CurrentFunction and BaseIndex are kept current in SwitchFrame.
+			PC = pc;
 
 			if (DebugMode) {
 				IOHelper.Print(StringUtils.Format("{0} {1}: {2}     r0:{3}, r1:{4}, r2:{5}",
@@ -2164,6 +2208,10 @@ public class VM {
 			ref FuncDef curFunc, ref Int32 codeCount,
 			ref List<UInt32> curCode, ref List<Value> curConstants,
 			ref Span<Value> localStack) {
+		// Keep the frame-identifying fields current at every frame switch, so
+		// BuildStackTrace is accurate at any point (paired with PC = pc in the loop).
+		CurrentFunction = currentFunc;
+		BaseIndex = baseIndex;
 		curFunc = currentFunc;
 		codeCount = curFunc.Code.Count;
 		curCode = curFunc.Code;
@@ -2177,6 +2225,10 @@ public class VM {
 			FuncDefStorage* &curFuncRaw, Int32 &codeCount,
 			UInt32* &curCode, Value* &curConstants,
 			Value* &localStack, Value* stackPtr) {
+		// Keep the frame-identifying fields current at every frame switch, so
+		// BuildStackTrace is accurate at any point (paired with PC = pc in the loop).
+		CurrentFunction = currentFunc;
+		BaseIndex = baseIndex;
 		curFuncRaw = currentFunc.get_storage();
 		codeCount = curFuncRaw->Code.Count();
 		curCode = &curFuncRaw->Code[0];

@@ -48,6 +48,12 @@ typedef uint64_t Value;
 
 #define TINY_STRING_MAX_LEN 5
 
+// Maximum number of elements a list (or characters a string) may hold.
+// Mirrors ValueHelpers.MAX_COLLECTION_SIZE in cs/Value.cs.  Operations whose
+// result would exceed this raise a runtime error instead of attempting a
+// hopeless allocation.
+#define MAX_COLLECTION_SIZE 0x7FFFFFFF
+
 // ── GCSet indices (IMPORTANT: must match cs/GCManager.cs constants) ────────────
 #define STRING_SET   0
 #define LIST_SET     1
@@ -217,6 +223,24 @@ Value to_number(Value v);
 typedef Value (*ShortNameLookupFn)(void* vm, Value v);
 void set_short_name_lookup(ShortNameLookupFn fn);
 
+// Runtime-error constructor hook: builds a properly-typed runtime error Value
+// (with the ErrorTypes.runtime __isa) from a message.  Registered by the VM at
+// init so value.cpp (layer 2A) can produce the same error values as the higher
+// ErrorTypes layer without depending on it.  If unset, value_make_runtime_error
+// falls back to a plain make_error.
+typedef Value (*RuntimeErrorMakerFn)(const char* message);
+void set_runtime_error_maker(RuntimeErrorMakerFn fn);
+Value value_make_runtime_error(const char* message);
+
+// Stack-trace hook: returns the active VM's current call stack as a Value (a
+// frozen list of strings), or val_null if there is no running VM.  Registered
+// by the VM at init so layers below it (ErrorTypes, value ops) can attach an
+// accurate stack trace to error values they create, without a hard dependency
+// on the VM layer.
+typedef Value (*StackTraceFn)();
+void set_stack_trace_hook(StackTraceFn fn);
+Value value_current_stack_trace();
+
 // ── Arithmetic ──────────────────────────────────────────────────────────
 static inline Value value_add(Value a, Value b, void* vm) {
     if (is_error(a)) return a;
@@ -226,13 +250,26 @@ static inline Value value_add(Value a, Value b, void* vm) {
     }
     if (is_string(a)) {
         if (is_null(b)) return a;
-        if (is_string(b)) return string_concat(a, b);
-        return string_concat(a, to_string(b, vm));
+        Value bStr = is_string(b) ? b : to_string(b, vm);
+        // Overflow-safe check that the concatenation won't exceed the limit.
+        if (string_length(a) > MAX_COLLECTION_SIZE - string_length(bStr)) {
+            return value_make_runtime_error("string too large (exceeds maximum size)");
+        }
+        return string_concat(a, bStr);
     } else if (is_string(b)) {
         if (is_null(a)) return b;
-        return string_concat(to_string(a, vm), b);
+        Value aStr = to_string(a, vm);
+        if (string_length(aStr) > MAX_COLLECTION_SIZE - string_length(b)) {
+            return value_make_runtime_error("string too large (exceeds maximum size)");
+        }
+        return string_concat(aStr, b);
     }
-    if (is_list(a) && is_list(b)) return list_concat(a, b);
+    if (is_list(a) && is_list(b)) {
+        if (list_count(a) > MAX_COLLECTION_SIZE - list_count(b)) {
+            return value_make_runtime_error("list too large (exceeds maximum size)");
+        }
+        return list_concat(a, b);
+    }
     if (is_map(a)  && is_map(b))  return map_concat(a, b);
     return val_null;
 }

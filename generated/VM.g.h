@@ -173,6 +173,19 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	// Stop the VM with a pre-built error value (e.g. an uncaught user error).
 	public: void RaiseRuntimeError(Value error);
 
+	// Return the current call stack as a Value (frozen list of strings), or
+	// val_null if there is no active function.  Guarded wrapper around
+	// BuildStackTrace used by the stack-trace hook and value_current_stack_trace.
+	public: Value CurrentStackTrace();
+
+	// Build a complete runtime error *value* (runtime __isa + an accurate stack
+	// trace) without stopping the VM.  This is the non-halting counterpart to
+	// RaiseRuntimeError: core value operations (e.g. value_mult) use it to return
+	// an error as a value that propagates normally and only terminates the program
+	// if the caller misuses it.  The stack trace is attached by ErrorTypes.RuntimeError
+	// itself (via value_current_stack_trace), so this just delegates.
+	public: Value MakeRuntimeError(String message);
+
 	// Called when user code silently ignored an error value and then tried
 	// to use it in an operation that doesn't tolerate errors.
 	// Returns IntrinsicResult.Null for convenience.
@@ -439,6 +452,19 @@ struct VM {
 	// Stop the VM with a pre-built error value (e.g. an uncaught user error).
 	public: inline void RaiseRuntimeError(Value error);
 
+	// Return the current call stack as a Value (frozen list of strings), or
+	// val_null if there is no active function.  Guarded wrapper around
+	// BuildStackTrace used by the stack-trace hook and value_current_stack_trace.
+	public: inline Value CurrentStackTrace();
+
+	// Build a complete runtime error *value* (runtime __isa + an accurate stack
+	// trace) without stopping the VM.  This is the non-halting counterpart to
+	// RaiseRuntimeError: core value operations (e.g. value_mult) use it to return
+	// an error as a value that propagates normally and only terminates the program
+	// if the caller misuses it.  The stack trace is attached by ErrorTypes.RuntimeError
+	// itself (via value_current_stack_trace), so this just delegates.
+	public: inline Value MakeRuntimeError(String message);
+
 	// Called when user code silently ignored an error value and then tried
 	// to use it in an operation that doesn't tolerate errors.
 	// Returns IntrinsicResult.Null for convenience.
@@ -604,6 +630,8 @@ inline void VM::Stop() { return get()->Stop(); }
 inline void VM::RaiseRuntimeError(String message) { return get()->RaiseRuntimeError(message); }
 inline void VM::FinalizeErrorStackTrace() { return get()->FinalizeErrorStackTrace(); }
 inline void VM::RaiseRuntimeError(Value error) { return get()->RaiseRuntimeError(error); }
+inline Value VM::CurrentStackTrace() { return get()->CurrentStackTrace(); }
+inline Value VM::MakeRuntimeError(String message) { return get()->MakeRuntimeError(message); }
 inline IntrinsicResult VM::RaiseUncaughtError(Value error) { return get()->RaiseUncaughtError(error); }
 inline bool VM::ReportRuntimeError() { return get()->ReportRuntimeError(); }
 inline Value VM::BuildStackTrace() { return get()->BuildStackTrace(); }

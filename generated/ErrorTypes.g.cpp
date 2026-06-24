@@ -33,7 +33,7 @@ Value ErrorTypes::RuntimeError(String msg,Value stack) {
 }
 Value ErrorTypes::RuntimeError(String msg) {
 	if (is_null(runtime)) Init();
-	return make_error(make_string(msg), val_null, val_null, runtime);
+	return make_error(make_string(msg), val_null, value_current_stack_trace(), runtime);
 }
 Value ErrorTypes::FileError(String msg) {
 	return RuntimeError("File error: " + msg);

@@ -2058,6 +2058,36 @@ remove m, "a"
 --------------------------------
 Runtime Error: Attempt to modify a frozen map
 ================================
+==== list * huge count yields an error value (not an OOM)
+================================
+print [0] * 1e30
+print "still running"
+--------------------------------
+error: list too large (exceeds maximum size)
+still running
+================================
+==== string * huge count yields an error value
+================================
+print "x" * 1e30
+--------------------------------
+error: string too large (exceeds maximum size)
+================================
+==== range with huge count yields an error value
+================================
+print range(1701411834604692317316873037158, 0)
+--------------------------------
+error: range() result too large (exceeds maximum list size)
+================================
+==== a runtime error value carries a stack trace
+================================
+inner = function
+  return [0] * 1e30
+end function
+e = inner
+print e.stack.len > 0
+--------------------------------
+1
+================================
 ==== freeze is recursive
 ================================
 inner = [10, 20]

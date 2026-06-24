@@ -316,6 +316,11 @@ public class BinaryOpNode : ASTNode {
 		if (leftStr != null && rightNum != null && Op == MiniScript.Op.TIMES) {
 			double factor = rightNum.Value;
 			if (StringUtils.IsNaN(factor) || StringUtils.IsInfinity(factor) || factor <= 0) return new StringNode("");
+			// If the result would exceed the maximum size, don't fold; leave it as
+			// a runtime op so value_mult raises the "string too large" error.
+			if (leftStr.Value.Length * factor > MAX_COLLECTION_SIZE) {
+				return new BinaryOpNode(Op, simplifiedLeft, simplifiedRight);
+			}
 			int repeats = (int)factor;
 			int extraChars = (int)(leftStr.Value.Length * (factor - repeats));
 			String result = "";

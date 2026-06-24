@@ -1037,4 +1037,6 @@ Today I'm using a differential fuzz tester (something I developed for MiniScript
 
 To make this work, I had to add the `-q` (quiet) switch, which MiniScript 1 had but MS2 was missing.  And then right away it discovered that our new lexer failed (in different ways) on very large integers.
 
+Fuzz testing also showed that MiniScript would cheerfully attempt to allocate zettabytes of memory if you told it to (via `range` or `*` in a list, with a ludicrously large size).  So, lists and strings are now capped at 2^31-1 elements (in the code as MAX_COLLECTION_SIZE), and will return an error if you try to create one bigger than that.
+
 

@@ -16,7 +16,7 @@
             IFLT r2, 2
             JUMP done_inner
             SUB r2, r2, r1
-            MULT r0, r0, r2
+            MUL r0, r0, r2
             JUMP check    
 
         ret1:

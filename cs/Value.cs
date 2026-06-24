@@ -400,8 +400,9 @@ public static class ValueHelpers {
 				if (shortName != null) return shortName;
 			}
 			GCList list = GCManager.Lists.Get(value_item_index(v));
-			var strs = new string[list.Items.Count];
-			for (int i = 0; i < list.Items.Count; i++) {
+			int listCount = list.Count();
+			var strs = new string[listCount];
+			for (int i = 0; i < listCount; i++) {
 				Value val_i = list.Get(i);
 				strs[i] = is_null(val_i) ? "null" : code_form(val_i, vm, recursionLimit - 1);
 			}
@@ -531,6 +532,14 @@ public static class ValueHelpers {
 			}
 			int fullCopies = (int)factor;
 			int extraItems = (int)(len * (factor - fullCopies));
+			// Fast path: a single immutable element repeated a whole number of
+			// times becomes a computed list (null increment => repeat the base).
+			if (len == 1 && extraItems == 0) {
+				Value elem = list_get(a, 0);
+				if (is_number(elem) || is_string(elem) || is_null(elem) || is_frozen(elem)) {
+					return GCManager.NewComputedList(elem, val_null, fullCopies);
+				}
+			}
 			Value result = make_list(fullCopies * len + extraItems);
 			for (int c = 0; c < fullCopies; c++)
 				for (int i = 0; i < len; i++) list_push(result, list_get(a, i));
@@ -677,7 +686,7 @@ public static class ValueHelpers {
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static int list_count(Value list_val) {
 		if (!is_list(list_val)) return 0;
-		return GCManager.Lists.Get(value_item_index(list_val)).Items.Count;
+		return GCManager.Lists.Get(value_item_index(list_val)).Count();
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -689,46 +698,67 @@ public static class ValueHelpers {
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static void list_set(Value list_val, int index, Value item) {
 		if (!is_list(list_val)) return;
-		GCList list = GCManager.Lists.Get(value_item_index(list_val));
+		int idx = value_item_index(list_val);
+		GCList list = GCManager.Lists.Get(idx);
 		if (list.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return; }
+		bool wasComputed = list.Computed;
 		list.Set(index, item);
+		if (wasComputed) GCManager.Lists.Set(idx, list);  // write back materialization
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static void list_push(Value list_val, Value item) {
 		if (!is_list(list_val)) return;
-		GCList list = GCManager.Lists.Get(value_item_index(list_val));
+		int idx = value_item_index(list_val);
+		GCList list = GCManager.Lists.Get(idx);
 		if (list.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return; }
+		bool wasComputed = list.Computed;
 		list.Push(item);
+		if (wasComputed) GCManager.Lists.Set(idx, list);  // write back materialization
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool list_remove(Value list_val, int index) {
 		if (!is_list(list_val)) return false;
-		GCList list = GCManager.Lists.Get(value_item_index(list_val));
+		int idx = value_item_index(list_val);
+		GCList list = GCManager.Lists.Get(idx);
 		if (list.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return false; }
-		return list.Remove(index);
+		bool wasComputed = list.Computed;
+		bool result = list.Remove(index);
+		if (wasComputed) GCManager.Lists.Set(idx, list);  // write back materialization
+		return result;
 	}
 
 	public static void list_insert(Value list_val, int index, Value item) {
 		if (!is_list(list_val)) return;
-		GCList list = GCManager.Lists.Get(value_item_index(list_val));
+		int idx = value_item_index(list_val);
+		GCList list = GCManager.Lists.Get(idx);
 		if (list.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return; }
+		bool wasComputed = list.Computed;
 		list.Insert(index, item);
+		if (wasComputed) GCManager.Lists.Set(idx, list);  // write back materialization
 	}
 
 	public static Value list_pop(Value list_val) {
 		if (!is_list(list_val)) return val_null;
-		GCList list = GCManager.Lists.Get(value_item_index(list_val));
+		int idx = value_item_index(list_val);
+		GCList list = GCManager.Lists.Get(idx);
 		if (list.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return val_null; }
-		return list.Pop();
+		bool wasComputed = list.Computed;
+		Value result = list.Pop();
+		if (wasComputed) GCManager.Lists.Set(idx, list);  // write back length/materialization
+		return result;
 	}
 
 	public static Value list_pull(Value list_val) {
 		if (!is_list(list_val)) return val_null;
-		GCList list = GCManager.Lists.Get(value_item_index(list_val));
+		int idx = value_item_index(list_val);
+		GCList list = GCManager.Lists.Get(idx);
 		if (list.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return val_null; }
-		return list.Pull();
+		bool wasComputed = list.Computed;
+		Value result = list.Pull();
+		if (wasComputed) GCManager.Lists.Set(idx, list);  // write back materialization
+		return result;
 	}
 
 	public static int list_indexOf(Value list_val, Value item, int afterIdx) {
@@ -738,16 +768,24 @@ public static class ValueHelpers {
 
 	public static void list_sort(Value list_val, bool ascending) {
 		if (!is_list(list_val)) return;
-		GCList list = GCManager.Lists.Get(value_item_index(list_val));
+		int idx = value_item_index(list_val);
+		GCList list = GCManager.Lists.Get(idx);
 		if (list.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return; }
+		bool wasComputed = list.Computed;
+		list.Materialize();
 		SortList(list, ascending);
+		if (wasComputed) GCManager.Lists.Set(idx, list);  // write back materialization
 	}
 
 	public static void list_sort_by_key(Value list_val, Value byKey, bool ascending) {
 		if (!is_list(list_val)) return;
-		GCList list = GCManager.Lists.Get(value_item_index(list_val));
+		int idx = value_item_index(list_val);
+		GCList list = GCManager.Lists.Get(idx);
 		if (list.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return; }
+		bool wasComputed = list.Computed;
+		list.Materialize();
 		SortListByKey(list, byKey, ascending);
+		if (wasComputed) GCManager.Lists.Set(idx, list);  // write back materialization
 	}
 
 	public static Value list_slice(Value list_val, int start, int end) {
@@ -772,8 +810,12 @@ public static class ValueHelpers {
 	}
 
 	private static void SortList(GCList list, bool ascending) {
-		if (list.Items == null || list.Items.Count < 2) return;
-		list.Items.Sort(Comparer<Value>.Create((a, b) => {
+		// Caller must have materialized the list first.
+		int n = list.Count();
+		if (n < 2) return;
+		Value[] tmp = new Value[n];
+		for (int i = 0; i < n; i++) tmp[i] = list.Get(i);
+		Array.Sort(tmp, (a, b) => {
 			int cmp;
 			if (is_number(a) && is_number(b)) {
 				cmp = numeric_val(a).CompareTo(numeric_val(b));
@@ -785,11 +827,13 @@ public static class ValueHelpers {
 				cmp = ta.CompareTo(tb);
 			}
 			return ascending ? cmp : -cmp;
-		}));
+		});
+		for (int i = 0; i < n; i++) list.Set(i, tmp[i]);
 	}
 
 	private static void SortListByKey(GCList list, Value byKey, bool ascending) {
-		int count = list.Items.Count;
+		// Caller must have materialized the list first.
+		int count = list.Count();
 		if (count < 2) return;
 		Value[] keys = new Value[count];
 		for (int i = 0; i < count; i++) {
@@ -1013,7 +1057,14 @@ public static class ValueHelpers {
 			GCList list = GCManager.Lists.Get(idx);
 			if (list.Frozen) return;
 			GCManager.Lists.SetFrozen(idx, true);
-			for (int i = 0; i < list.Items.Count; i++) freeze_value(list.Get(i));
+			if (list.Computed) {
+				// Computed-list elements derive from an immutable base; freezing
+				// the base covers them all without materializing the list.
+				freeze_value(list.Get(0));
+			} else {
+				int n = list.Count();
+				for (int i = 0; i < n; i++) freeze_value(list.Get(i));
+			}
 		} else if (is_map(v)) {
 			Int32 idx = value_item_index(v);
 			GCMap map = GCManager.Maps.Get(idx);
@@ -1030,11 +1081,12 @@ public static class ValueHelpers {
 		if (is_list(v)) {
 			GCList src = GCManager.Lists.Get(value_item_index(v));
 			if (src.Frozen) return v;
-			Value newList = make_list(src.Items.Count);
+			int srcCount = src.Count();
+			Value newList = make_list(srcCount);
 			Int32 dstIdx = value_item_index(newList);
 			GCList dst = GCManager.Lists.Get(dstIdx);
 			GCManager.Lists.SetFrozen(dstIdx, true);
-			for (int i = 0; i < src.Items.Count; i++) dst.Push(frozen_copy(src.Get(i)));
+			for (int i = 0; i < srcCount; i++) dst.Push(frozen_copy(src.Get(i)));
 			return newList;
 		}
 		if (is_map(v)) {

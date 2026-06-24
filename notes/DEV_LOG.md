@@ -1040,3 +1040,29 @@ To make this work, I had to add the `-q` (quiet) switch, which MiniScript 1 had 
 Fuzz testing also showed that MiniScript would cheerfully attempt to allocate zettabytes of memory if you told it to (via `range` or `*` in a list, with a ludicrously large size).  So, lists and strings are now capped at 2^31-1 elements (in the code as MAX_COLLECTION_SIZE), and will return an error if you try to create one bigger than that.
 
 
+## Jun 24, 2026
+
+Today I'm implementing "computed" lists -- an internal optimization where a list stores a base, step, and count rather than actual values.  
+
+Benchmark results (C#)
+
+┌────────────────────────┬────────┬──────────┬─────────────┐
+│              Benchmark             │   Before   │     After     │       Change      │
+├────────────────────────┼────────┼──────────┼─────────────┤
+│ Case 1 — repeated range/* creation │ 1.94–1.98 s│ 0.025–0.030 s │ ~70× faster       │
+├────────────────────────┼────────┼──────────┼─────────────┤
+│ Case 2 — push/pop/pull/remove/index│ 1.94–2.24 s│ 2.00–2.11 s   │ flat (within noise)│
+└────────────────────────┴────────┴──────────┴─────────────┘
+
+ And in the C++ build:
+ 
+
+┌────────────────────────┬─────┬──────────┬─────────────┐
+│              Benchmark             │ Before │     After     │       Change      │
+├────────────────────────┼─────┼──────────┼─────────────┤
+│ Case 1 — repeated range/* creation │ 1.177 s│ 0.009–0.011 s │ ~120× faster      │
+├────────────────────────┼─────┼──────────┼─────────────┤
+│ Case 2 — push/pop/pull/remove/index│ 0.851 s│ 0.726–0.747 s │flat (within noise)│
+└────────────────────────┴─────┴──────────┴─────────────┘
+ 
+I also updated `info` to now report whether a list is computed (and whether a list or map is frozen).  This lets me prove to myself that indexing, slicing, and popping does not materialize the list, but other forms of mutations do, and this all happens seamlessly.  It's strictly more powerful than Python's iterators (because you can index into it arbitrarily), and yet completely transparent unless you go digging via `info`.  I'm really happy with how this has turned out.

@@ -152,6 +152,11 @@ class GCListSetStorage : public GCSetBaseStorage {
 	public: void Init(Int32 idx, Int32 capacity);
 
 	public: void SetFrozen(Int32 idx, Boolean frozen);
+
+	// Write back a (possibly mutated/materialized) GCList value.  Mutating
+	// operations must call this so a materialized list's new Items reference and
+	// cleared Computed flag are not lost to struct-copy semantics.
+	public: void Set(Int32 idx, GCList item);
 }; // end of class GCListSetStorage
 
 class GCMapSetStorage : public GCSetBaseStorage {
@@ -268,6 +273,11 @@ struct GCListSet : public GCSetBase {
 	public: inline void Init(Int32 idx, Int32 capacity);
 
 	public: inline void SetFrozen(Int32 idx, Boolean frozen);
+
+	// Write back a (possibly mutated/materialized) GCList value.  Mutating
+	// operations must call this so a materialized list's new Items reference and
+	// cleared Computed flag are not lost to struct-copy semantics.
+	public: inline void Set(Int32 idx, GCList item);
 }; // end of struct GCListSet
 
 // ── GCMapSet ──────────────────────────────────────────────────────────────────
@@ -426,6 +436,10 @@ inline void GCListSet::SetFrozen(Int32 idx,Boolean frozen) { return get()->SetFr
 inline void GCListSetStorage::SetFrozen(Int32 idx,Boolean frozen) {
 	GCList item = _items[idx];
 	item.Frozen = frozen;
+	_items[idx] = item;
+}
+inline void GCListSet::Set(Int32 idx,GCList item) { return get()->Set(idx, item); }
+inline void GCListSetStorage::Set(Int32 idx,GCList item) {
 	_items[idx] = item;
 }
 

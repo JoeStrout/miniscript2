@@ -176,6 +176,14 @@ public class GCListSet : GCSetBase {
 		item.Frozen = frozen;
 		_items[idx] = item;
 	}
+
+	// Write back a (possibly mutated/materialized) GCList value.  Mutating
+	// operations must call this so a materialized list's new Items reference and
+	// cleared Computed flag are not lost to struct-copy semantics.
+	[MethodImpl(AggressiveInlining)]
+	public void Set(Int32 idx, GCList item) {
+		_items[idx] = item;
+	}
 }
 
 // ── GCMapSet ──────────────────────────────────────────────────────────────────

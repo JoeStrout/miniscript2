@@ -385,7 +385,13 @@ public static class CoreIntrinsics {
 			Value parameters = val_null;
 			Value pinfo = val_null;
 			map_set(result, "type", value_type_name(arg));
-			if (is_funcref(arg)) {
+			if (is_list(arg)) {
+				Boolean computed = GCManager.Lists.Get(value_item_index(arg)).Computed;
+				map_set(result, "computed", make_int(computed));
+				map_set(result, "frozen", make_int(is_frozen(arg)));
+			} else if (is_map(arg)) {
+				map_set(result, "frozen", make_int(is_frozen(arg)));
+			} else if (is_funcref(arg)) {
 				FuncDef func = funcref_funcdef(arg);
 				map_set(result, "name", func.Name);
 				map_set(result, "note", func.Note);
@@ -1165,21 +1171,9 @@ public static class CoreIntrinsics {
 			}
 			int count = (int)((toVal - fromVal) / step) + 1;
 			if (count < 0) count = 0;
-			Value result = make_list(count);
-			double v = fromVal;
-			if (step > 0) {
-				while (v <= toVal) {
-					if (v == (int)v) list_push(result, make_int((int)v));
-					else list_push(result, make_double(v));
-					v += step;
-				}
-			} else {
-				while (v >= toVal) {
-					if (v == (int)v) list_push(result, make_int((int)v));
-					else list_push(result, make_double(v));
-					v += step;
-				}
-			}
+			// Build a computed list: element i is fromVal + step*i.  This is O(1)
+			// to construct and materializes lazily only if the list is mutated.
+			Value result = GCManager.NewComputedList(make_double(fromVal), make_double(step), count);
 			return new IntrinsicResult(result);
 		};
 

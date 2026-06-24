@@ -131,6 +131,14 @@ Value value_mult_nonnumeric(Value a, Value b) {
         }
         int fullCopies = (int)factor;
         int extraItems = (int)(len * (factor - fullCopies));
+        // Fast path: a single immutable element repeated a whole number of
+        // times becomes a computed list (null increment => repeat the base).
+        if (len == 1 && extraItems == 0) {
+            Value elem = list_get(a, 0);
+            if (is_number(elem) || is_string(elem) || is_null(elem) || is_frozen(elem)) {
+                return GCManager::NewComputedList(elem, val_null, fullCopies);
+            }
+        }
         Value result = make_list(fullCopies * len + extraItems);
         for (int c = 0; c < fullCopies; c++)
             for (int i = 0; i < len; i++) list_push(result, list_get(a, i));
@@ -310,10 +318,11 @@ Value code_form(Value v, void* vm, int recursion_limit) {
             if (!is_null(sn)) return sn;
         }
         GCList list = GCManager::Lists.Get(value_item_index(v));
+        int listCount = list.Count();
         Value result = make_string("[");
-        for (int i = 0; i < (int)list.Items.Count(); i++) {
+        for (int i = 0; i < listCount; i++) {
             if (i > 0) result = string_concat(result, make_string(", "));
-            Value item = list.Items[i];
+            Value item = list.Get(i);
             Value item_str = is_null(item) ? make_string("null")
                                            : code_form(item, vm, recursion_limit - 1);
             result = string_concat(result, item_str);
@@ -422,7 +431,14 @@ void freeze_value(Value v) {
         GCList l = GCManager::Lists.Get(idx);
         if (l.Frozen) return;
         GCManager::Lists.SetFrozen(idx, true);
-        for (int i = 0; i < l.Items.Count(); i++) freeze_value(l.Items[i]);
+        if (l.Computed) {
+            // Computed-list elements derive from an immutable base; freezing
+            // the base covers them all without materializing the list.
+            freeze_value(l.Get(0));
+        } else {
+            int n = l.Count();
+            for (int i = 0; i < n; i++) freeze_value(l.Get(i));
+        }
     } else if (is_map(v)) {
         int32_t idx = value_item_index(v);
         GCMap m = GCManager::Maps.Get(idx);
@@ -439,12 +455,13 @@ Value frozen_copy(Value v) {
     if (is_list(v)) {
         GCList src = GCManager::Lists.Get(value_item_index(v));
         if (src.Frozen) return v;
-        Value newList = make_list((int)src.Items.Count());
+        int srcCount = src.Count();
+        Value newList = make_list(srcCount);
         int32_t dstIdx = value_item_index(newList);
         GCList dst = GCManager::Lists.Get(dstIdx);
         GCManager::Lists.SetFrozen(dstIdx, true);
-        for (int i = 0; i < src.Items.Count(); i++)
-            dst.Push(frozen_copy(src.Items[i]));
+        for (int i = 0; i < srcCount; i++)
+            dst.Push(frozen_copy(src.Get(i)));
         return newList;
     }
     if (is_map(v)) {

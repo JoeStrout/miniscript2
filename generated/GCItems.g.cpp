@@ -13,7 +13,24 @@ void GCString::OnSweep() {
 	Data = nullptr;
 }
 
+void GCList::InitComputed(Value baseVal,Value increment,Int32 length) {
+	Items =  List<Value>::New(3);
+	Items.Add(baseVal);
+	Items.Add(increment);
+	Items.Add(make_int(length));
+	Frozen   = Boolean(false);
+	Computed = Boolean(true);
+}
+void GCList::Materialize() {
+	if (!Computed) return;
+	Int32 len = (Int32)numeric_val(Items[2]);
+	List<Value> real =  List<Value>::New(Math::Max(len, 4));
+	for (Int32 i = 0; i < len; i++) real.Add(Get(i));  // Get still reads meta
+	Items    = real;
+	Computed = Boolean(false);
+}
 void GCList::Insert(Int32 index,Value v) {
+	if (Computed) Materialize();
 	if (IsNull(Items)) Init();
 	if (index < 0) index += Items.Count() + 1;
 	if (index < 0) index = 0;  // ToDo: this should raise a runtime error
@@ -21,25 +38,36 @@ void GCList::Insert(Int32 index,Value v) {
 	Items.Insert(index, v);
 }
 Value GCList::Pop() {
+	if (Computed) {
+		Int32 len = (Int32)numeric_val(Items[2]);
+		if (len == 0) return val_null;
+		Value last = Get(len - 1);
+		Items[2] = make_int(len - 1);
+		return last;
+	}
 	if (IsNull(Items) || Items.Count() == 0) return val_null; // ToDo: error
 	Value result = Items[Items.Count() - 1];
 	Items.RemoveAt(Items.Count() - 1);
 	return result;
 }
 Value GCList::Pull() {
+	if (Computed) Materialize();
 	if (IsNull(Items) || Items.Count() == 0) return val_null; // ToDo: error
 	Value result = Items[0];
 	Items.RemoveAt(0);
 	return result;
 }
 Int32 GCList::IndexOf(Value item,Int32 afterIdx) {
-	if (IsNull(Items)) return -1;
-	for (Int32 i = afterIdx + 1; i < Items.Count(); i++) {
-		if (value_equal(Items[i], item)) return i;
+	Int32 n = Count();
+	for (Int32 i = afterIdx + 1; i < n; i++) {
+		if (value_equal(Get(i), item)) return i;
 	}
 	return -1;
 }
 void GCList::MarkChildren() {
+	// For a computed list this marks [base, increment, length]; the base may
+	// be a heap value (e.g. `[someList] * n`) and must be kept alive, while
+	// the numeric increment/length mark as no-ops.
 	if (IsNull(Items)) return;
 	for (Int32 i = 0; i < Items.Count(); i++) GCManager::Mark(Items[i]);
 }

@@ -68,6 +68,10 @@ class GCManager {
 
 	public: static Value NewList(Int32 capacity = 8);
 
+	// Create a computed list: element i is baseVal + increment * i, for `length`
+	// elements.  Pass increment = val_null to repeat baseVal (for `[x] * n`).
+	public: static Value NewComputedList(Value baseVal, Value increment, Int32 length);
+
 	public: static Value NewMap(Int32 capacity = 8);
 
 	public: static Value NewError(Value message, Value inner, Value stack, Value isa);

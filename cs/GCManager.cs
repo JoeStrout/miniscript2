@@ -102,6 +102,16 @@ public static class GCManager {
 		return make_gc(ListSet, idx);
 	}
 
+	// Create a computed list: element i is baseVal + increment * i, for `length`
+	// elements.  Pass increment = val_null to repeat baseVal (for `[x] * n`).
+	public static Value NewComputedList(Value baseVal, Value increment, Int32 length) {
+		Int32 idx = Lists.AllocItem();
+		GCList item = Lists.Get(idx);
+		item.InitComputed(baseVal, increment, length);
+		Lists.Set(idx, item);
+		return make_gc(ListSet, idx);
+	}
+
 	public static Value NewMap(Int32 capacity = 8) {
 		Int32 idx = Maps.AllocItem();
 		Maps.Init(idx, capacity);

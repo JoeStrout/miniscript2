@@ -27,12 +27,30 @@ struct GCString {
 // ── GCList ───────────────────────────────────────────────────────────────────
 
 struct GCList {
-	public: List<Value> Items;
+	private: List<Value> Items;
 	public: Boolean Frozen;
-	// ToDo: add Computed flag, and support for computed lists
-	// (making Items private so we can hide the details)
+	public: Boolean Computed;
+	// Items is private: a list may be either "materialized" (Computed == false,
+	// Items holds the actual elements) or "computed" (Computed == true, Items
+	// holds exactly three meta-values: [0]=base, [1]=increment, [2]=length).
+	// All access goes through the methods below so callers never see the
+	// difference.  A computed list with a null increment repeats the base value
+	// (used for `[x] * n`); otherwise element i is base + increment * i.
+	// IMPORTANT: a mutation may materialize a computed list, which replaces the
+	// Items reference and clears the Computed flag.  Since GCList is a struct,
+	// callers MUST write the value back (GCManager.Lists.Set / SetFrozen style)
+	// after any operation that can mutate, or the change is lost.
 
 	public: void Init(Int32 capacity = 8);
+
+	// Construct a computed list.  increment may be val_null to repeat baseVal.
+	public: void InitComputed(Value baseVal, Value increment, Int32 length);
+
+	// Replace a computed list with the equivalent materialized list.  No-op for
+	// an already-materialized list.  Mutates this struct; caller must write back.
+	public: void Materialize();
+
+	public: Int32 Count();
 
 	public: void Push(Value v);
 
@@ -139,22 +157,39 @@ struct GCHandle {
 // INLINE METHODS
 
 inline void GCList::Init(Int32 capacity ) {
-	Items  =  List<Value>::New(Math::Max(capacity, 4));
-	Frozen = Boolean(false);
+	Items    =  List<Value>::New(Math::Max(capacity, 4));
+	Frozen   = Boolean(false);
+	Computed = Boolean(false);
+}
+inline Int32 GCList::Count() {
+	if (Computed) return (Int32)numeric_val(Items[2]);
+	return (IsNull(Items)) ? 0 : Items.Count();
 }
 inline void GCList::Push(Value v) {
+	if (Computed) Materialize();
 	if (IsNull(Items)) Init();
 	Items.Add(v);
 }
 inline Value GCList::Get(Int32 i) {
+	if (Computed) {
+		Int32 len = (Int32)numeric_val(Items[2]);
+		if (i < 0) i += len;
+		if ((UInt32)i >= (UInt32)len) return val_null;
+		Value incr = Items[1];
+		if (is_null(incr)) return Items[0];
+		Double d = numeric_val(Items[0]) + numeric_val(incr) * i;
+		return (d == (Int32)d) ? make_int((Int32)d) : make_double(d);
+	}
 	if (i < 0) i += Items.Count();
 	return (UInt32)i < (UInt32)Items.Count() ? Items[i] : val_null;
 }
 inline void GCList::Set(Int32 i,Value v) {
+	if (Computed) Materialize();
 	if (i < 0) i += Items.Count();
 	if ((UInt32)i < (UInt32)Items.Count()) Items[i] = v;
 }
 inline Boolean GCList::Remove(Int32 index) {
+	if (Computed) Materialize();
 	if (IsNull(Items)) Init();
 	if (index < 0) index += Items.Count();
 	if (index < 0 || index >= Items.Count()) return Boolean(false);
@@ -162,8 +197,9 @@ inline Boolean GCList::Remove(Int32 index) {
 	return Boolean(true);
 }
 inline void GCList::OnSweep() {
-	Items = nullptr;
-	Frozen = Boolean(false);
+	Items    = nullptr;
+	Frozen   = Boolean(false);
+	Computed = Boolean(false);
 }
 
 inline Boolean GCMap::HasKey(Value key) {

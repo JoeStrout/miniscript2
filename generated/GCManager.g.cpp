@@ -60,6 +60,13 @@ Value GCManager::NewList(Int32 capacity ) {
 	Lists.Init(idx, capacity);
 	return make_gc(ListSet, idx);
 }
+Value GCManager::NewComputedList(Value baseVal,Value increment,Int32 length) {
+	Int32 idx = Lists.AllocItem();
+	GCList item = Lists.Get(idx);
+	item.InitComputed(baseVal, increment, length);
+	Lists.Set(idx, item);
+	return make_gc(ListSet, idx);
+}
 Value GCManager::NewMap(Int32 capacity ) {
 	Int32 idx = Maps.AllocItem();
 	Maps.Init(idx, capacity);

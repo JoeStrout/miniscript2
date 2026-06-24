@@ -29,37 +29,87 @@ public struct GCString : IGCItem {
 // ── GCList ───────────────────────────────────────────────────────────────────
 
 public struct GCList : IGCItem {
-	public List<Value> Items;
+	// Items is private: a list may be either "materialized" (Computed == false,
+	// Items holds the actual elements) or "computed" (Computed == true, Items
+	// holds exactly three meta-values: [0]=base, [1]=increment, [2]=length).
+	// All access goes through the methods below so callers never see the
+	// difference.  A computed list with a null increment repeats the base value
+	// (used for `[x] * n`); otherwise element i is base + increment * i.
+	//
+	// IMPORTANT: a mutation may materialize a computed list, which replaces the
+	// Items reference and clears the Computed flag.  Since GCList is a struct,
+	// callers MUST write the value back (GCManager.Lists.Set / SetFrozen style)
+	// after any operation that can mutate, or the change is lost.
+	private List<Value> Items;
 	public Boolean Frozen;
-	// ToDo: add Computed flag, and support for computed lists
-	// (making Items private so we can hide the details)
+	public Boolean Computed;
 
 	[MethodImpl(AggressiveInlining)]
 	public void Init(Int32 capacity = 8) {
-		Items  = new List<Value>(Math.Max(capacity, 4));
-		Frozen = false;
+		Items    = new List<Value>(Math.Max(capacity, 4));
+		Frozen   = false;
+		Computed = false;
+	}
+
+	// Construct a computed list.  increment may be val_null to repeat baseVal.
+	public void InitComputed(Value baseVal, Value increment, Int32 length) {
+		Items = new List<Value>(3);
+		Items.Add(baseVal);
+		Items.Add(increment);
+		Items.Add(make_int(length));
+		Frozen   = false;
+		Computed = true;
+	}
+
+	// Replace a computed list with the equivalent materialized list.  No-op for
+	// an already-materialized list.  Mutates this struct; caller must write back.
+	public void Materialize() {
+		if (!Computed) return;
+		Int32 len = (Int32)numeric_val(Items[2]);
+		List<Value> real = new List<Value>(Math.Max(len, 4));
+		for (Int32 i = 0; i < len; i++) real.Add(Get(i));  // Get still reads meta
+		Items    = real;
+		Computed = false;
+	}
+
+	[MethodImpl(AggressiveInlining)]
+	public Int32 Count() {
+		if (Computed) return (Int32)numeric_val(Items[2]);
+		return (Items == null) ? 0 : Items.Count;
 	}
 
 	[MethodImpl(AggressiveInlining)]
 	public void Push(Value v) {
+		if (Computed) Materialize();
 		if (Items == null) Init();
 		Items.Add(v);
 	}
 
 	[MethodImpl(AggressiveInlining)]
 	public Value Get(Int32 i) {
+		if (Computed) {
+			Int32 len = (Int32)numeric_val(Items[2]);
+			if (i < 0) i += len;
+			if ((UInt32)i >= (UInt32)len) return val_null;
+			Value incr = Items[1];
+			if (is_null(incr)) return Items[0];
+			Double d = numeric_val(Items[0]) + numeric_val(incr) * i;
+			return (d == (Int32)d) ? make_int((Int32)d) : make_double(d);
+		}
 		if (i < 0) i += Items.Count;
 		return (UInt32)i < (UInt32)Items.Count ? Items[i] : val_null;
 	}
 
 	[MethodImpl(AggressiveInlining)]
 	public void Set(Int32 i, Value v) {
+		if (Computed) Materialize();
 		if (i < 0) i += Items.Count;
 		if ((UInt32)i < (UInt32)Items.Count) Items[i] = v;
 	}
 
 	[MethodImpl(AggressiveInlining)]
 	public Boolean Remove(Int32 index) {
+		if (Computed) Materialize();
 		if (Items == null) Init();
 		if (index < 0) index += Items.Count;
 		if (index < 0 || index >= Items.Count) return false;
@@ -68,6 +118,7 @@ public struct GCList : IGCItem {
 	}
 
 	public void Insert(Int32 index, Value v) {
+		if (Computed) Materialize();
 		if (Items == null) Init();
 		if (index < 0) index += Items.Count + 1;
 		if (index < 0) index = 0;  // ToDo: this should raise a runtime error
@@ -76,6 +127,13 @@ public struct GCList : IGCItem {
 	}
 
 	public Value Pop() {
+		if (Computed) {
+			Int32 len = (Int32)numeric_val(Items[2]);
+			if (len == 0) return val_null;
+			Value last = Get(len - 1);
+			Items[2] = make_int(len - 1);
+			return last;
+		}
 		if (Items == null || Items.Count == 0) return val_null; // ToDo: error
 		Value result = Items[Items.Count - 1];
 		Items.RemoveAt(Items.Count - 1);
@@ -83,6 +141,7 @@ public struct GCList : IGCItem {
 	}
 
 	public Value Pull() {
+		if (Computed) Materialize();
 		if (Items == null || Items.Count == 0) return val_null; // ToDo: error
 		Value result = Items[0];
 		Items.RemoveAt(0);
@@ -90,22 +149,26 @@ public struct GCList : IGCItem {
 	}
 
 	public Int32 IndexOf(Value item, Int32 afterIdx) {
-		if (Items == null) return -1;
-		for (Int32 i = afterIdx + 1; i < Items.Count; i++) {
-			if (value_equal(Items[i], item)) return i;
+		Int32 n = Count();
+		for (Int32 i = afterIdx + 1; i < n; i++) {
+			if (value_equal(Get(i), item)) return i;
 		}
 		return -1;
 	}
 
 	public void MarkChildren() {
+		// For a computed list this marks [base, increment, length]; the base may
+		// be a heap value (e.g. `[someList] * n`) and must be kept alive, while
+		// the numeric increment/length mark as no-ops.
 		if (Items == null) return;
 		for (Int32 i = 0; i < Items.Count; i++) GCManager.Mark(Items[i]);
 	}
 
 	[MethodImpl(AggressiveInlining)]
 	public void OnSweep() {
-		Items = null;
-		Frozen = false;
+		Items    = null;
+		Frozen   = false;
+		Computed = false;
 	}
 }
 

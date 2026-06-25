@@ -7,6 +7,7 @@
 #include <fstream>
 #include <string>
 #include <algorithm>
+#include "keyboard.h"
 #ifdef _WIN32 // define POSIX getline if on Windows
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -107,9 +108,14 @@ String IOHelper::Input(String prompt,TextStyle promptStyle,TextStyle inputStyle)
 
 	std::cout << prompt.c_str();
 	SetStyle(inputStyle);
+	// If the `key` module has put the terminal in raw (cbreak) mode, drop
+	// back to cooked mode so the user gets echo and line editing here. We
+	// leave it cooked afterward (last-writer-wins); the next key.get/
+	// key.available re-enters raw mode.
+	Keyboard::EnterCookedMode();
 	char *line = NULL;
 	size_t len = 0;
-	
+
 	String result;
 	int bytes = getline(&line, &len, stdin);
 	if (bytes != -1) {

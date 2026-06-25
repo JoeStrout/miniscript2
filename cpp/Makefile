@@ -69,6 +69,7 @@ TEST_SIMPLE = $(BUILDDIR)/test_simple
 TEST_DEBUG_BASIC = $(BUILDDIR)/test_debug_basic
 TEST_TRIVIAL = $(BUILDDIR)/test_trivial
 DEBUG_TRIVIAL = $(BUILDDIR)/debug_trivial
+TEST_KEYBOARD = $(BUILDDIR)/test_keyboard
 
 # ASAN objects (separate directory)
 ASAN_OBJDIR = $(BUILDDIR)/obj_asan
@@ -86,7 +87,7 @@ endif
 ASAN_OBJECTS = $(ASAN_CORE_OBJECTS) $(ASAN_GEN_OBJECTS) $(ASAN_EDITLINE_OBJECTS)
 ASAN_TARGET = $(BUILDDIR)/miniscript2_asan
 
-.PHONY: all clean test_string_pool test_simple test_debug_basic test_trivial debug_trivial asan
+.PHONY: all clean test_string_pool test_simple test_debug_basic test_trivial debug_trivial test_keyboard asan
 
 all: $(TARGET)
 
@@ -97,6 +98,7 @@ test_simple: $(TEST_SIMPLE)
 test_debug_basic: $(TEST_DEBUG_BASIC)
 test_trivial: $(TEST_TRIVIAL)
 debug_trivial: $(DEBUG_TRIVIAL)
+test_keyboard: $(TEST_KEYBOARD)
 
 $(TARGET): $(OBJECTS) | $(BUILDDIR)
 	$(CXX) $(OBJECTS) -o $@
@@ -120,6 +122,10 @@ $(TEST_TRIVIAL): $(CORE_OBJECTS) $(OBJDIR)/core_test_trivial.o | $(BUILDDIR)
 # Debug trivial test program
 $(DEBUG_TRIVIAL): $(CORE_OBJECTS) $(OBJDIR)/core_debug_trivial.o | $(BUILDDIR)
 	$(CXX) $(CORE_OBJECTS) $(OBJDIR)/core_debug_trivial.o -o $@
+
+# Keyboard test program - self-contained, only needs the keyboard module
+$(TEST_KEYBOARD): $(OBJDIR)/core_keyboard.o $(OBJDIR)/core_test_keyboard.o | $(BUILDDIR)
+	$(CXX) $(OBJDIR)/core_keyboard.o $(OBJDIR)/core_test_keyboard.o -o $@
 
 # Core C++ object files
 $(OBJDIR)/core_%.o: $(COREDIR)/%.cpp | $(OBJDIR)

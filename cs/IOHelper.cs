@@ -8,6 +8,7 @@ using System.Collections.Generic;
 // CPP: #include <fstream>
 // CPP: #include <string>
 // CPP: #include <algorithm>
+// CPP: #include "keyboard.h"
 
 /*** BEGIN CPP_ONLY ***
 #ifdef _WIN32 // define POSIX getline if on Windows
@@ -139,9 +140,14 @@ public static class IOHelper {
 		/*** BEGIN CPP_ONLY ***
 		std::cout << prompt.c_str();
 		SetStyle(inputStyle);
+		// If the `key` module has put the terminal in raw (cbreak) mode, drop
+		// back to cooked mode so the user gets echo and line editing here. We
+		// leave it cooked afterward (last-writer-wins); the next key.get/
+		// key.available re-enters raw mode.
+		Keyboard::EnterCookedMode();
 		char *line = NULL;
 		size_t len = 0;
-		
+
 		String result;
 		int bytes = getline(&line, &len, stdin);
 		if (bytes != -1) {

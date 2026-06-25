@@ -17,6 +17,7 @@
 #include "CS_value_util.h"
 #include "CoreIntrinsics.g.h"
 #include "DateTimeUtils.g.h"
+#include "keyboard.h"
 #include <cstdlib>
 #include <cstring>
 #include <cstdio>
@@ -72,6 +73,9 @@ Int32 ShellIntrinsics::_rdStart = -1, _fhStart = -1, _fmStart = -1;
 List<String> ShellIntrinsics::_rdKeys = nullptr;
 List<String> ShellIntrinsics::_fhKeys = nullptr;
 List<String> ShellIntrinsics::_fmKeys = nullptr;
+Value ShellIntrinsics::_keyModuleMap = val_null;
+Int32 ShellIntrinsics::_keyStart = -1;
+List<String> ShellIntrinsics::_keyKeys = nullptr;
 struct CppFileHandle { FILE* f; };
 struct CppRawBuf    { uint8_t* bytes; int length; };
 void ShellIntrinsics::SetShellArgs(List<String> args,Int32 startIdx) {
@@ -101,6 +105,7 @@ void ShellIntrinsics::MarkRoots(object userData) {
 	GCManager::Mark(_fileModuleMap);
 	GCManager::Mark(_fileHandleClassMap);
 	GCManager::Mark(_rawDataClassMap);
+	GCManager::Mark(_keyModuleMap);
 }
 void ShellIntrinsics::InvalidateCaches() {
 	_shellArgs = val_null;
@@ -108,6 +113,7 @@ void ShellIntrinsics::InvalidateCaches() {
 	_fileModuleMap = val_null;
 	_fileHandleClassMap = val_null;
 	_rawDataClassMap = val_null;
+	_keyModuleMap = val_null;
 }
 void ShellIntrinsics::SyncEnvMap() {
 	MapIterator iter = map_iterator(_envMap);
@@ -127,6 +133,11 @@ Value ShellIntrinsics::BeginExec(String cmd) {
 	_cppExecOutputs[idx] = "";
 	_cppExecStatus[idx] = 0;
 	_cppExecDone[idx] = false;
+	// If the `key` module has the terminal in raw mode, drop to cooked first
+	// so the child process (which inherits this terminal on stdin/stderr)
+	// gets normal echo and line editing. Left cooked afterward; the next
+	// key operation re-enters raw mode.
+	Keyboard::EnterCookedMode();
 	#ifdef _WIN32
 		_cppExecPipes[idx] = _popen(cmd.c_str(), "r");
 	#else
@@ -280,7 +291,7 @@ Value ShellIntrinsics::NewRawDataInstance(Value handleVal) {
 	Value instance = make_map(4);
 	map_set(instance, val_isa_key, GetRawDataClassMap());
 	map_set(instance, "_handle", handleVal);
-	map_set(instance, "littleEndian", make_double(1.0));
+	map_set(instance, "littleEndian", val_one);
 	return instance;
 }
 Int32 ShellIntrinsics::RawGetByte(Value h,Int32 off) {
@@ -700,7 +711,7 @@ Value ShellIntrinsics::GetRawDataClassMap() {
 	if (!is_null(_rawDataClassMap)) return _rawDataClassMap;
 	_rawDataClassMap = make_map(24);
 	map_set(_rawDataClassMap, "_handle", val_null);
-	map_set(_rawDataClassMap, "littleEndian", make_double(1.0));
+	map_set(_rawDataClassMap, "littleEndian", val_one);
 	for (Int32 i = 0; i < (Int32)_rdKeys.Count(); i++)
 		map_set(_rawDataClassMap, _rdKeys[i], Intrinsic::GetByIndex(_rdStart + i).GetFunc());
 	return _rawDataClassMap;
@@ -735,7 +746,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 		Value hv = val_null;
 		map_try_get(self, make_string("_handle"), &hv);
 		Int32 len = GetRawBufLen(hv);
-		if (len < 0) return IntrinsicResult(make_double(0.0));
+		if (len < 0) return IntrinsicResult(val_zero);
 		return IntrinsicResult(make_double((Double)len));
 	});
 	_rdKeys.Add("len");
@@ -756,7 +767,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	// Typed getter/setter factory lambdas.
 	// byte / setByte
 	f = Intrinsic::Create("");
-	f.AddParam("self", val_null); f.AddParam("offset", make_double(0.0));
+	f.AddParam("self", val_null); f.AddParam("offset", val_zero);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value self = ctx.GetArg(0);
 		Value hv = val_null; map_try_get(self, make_string("_handle"), &hv);
@@ -768,7 +779,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	_rdKeys.Add("byte");
 
 	f = Intrinsic::Create("");
-	f.AddParam("self", val_null); f.AddParam("offset", make_double(0.0)); f.AddParam("value", make_double(0.0));
+	f.AddParam("self", val_null); f.AddParam("offset", val_zero); f.AddParam("value", val_zero);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value self = ctx.GetArg(0);
 		Value hv = val_null; map_try_get(self, make_string("_handle"), &hv);
@@ -782,7 +793,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 
 	// sbyte / setSbyte
 	f = Intrinsic::Create("");
-	f.AddParam("self", val_null); f.AddParam("offset", make_double(0.0));
+	f.AddParam("self", val_null); f.AddParam("offset", val_zero);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value self = ctx.GetArg(0);
 		Value hv = val_null; map_try_get(self, make_string("_handle"), &hv);
@@ -794,7 +805,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	_rdKeys.Add("sbyte");
 
 	f = Intrinsic::Create("");
-	f.AddParam("self", val_null); f.AddParam("offset", make_double(0.0)); f.AddParam("value", make_double(0.0));
+	f.AddParam("self", val_null); f.AddParam("offset", val_zero); f.AddParam("value", val_zero);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value self = ctx.GetArg(0);
 		Value hv = val_null; map_try_get(self, make_string("_handle"), &hv);
@@ -808,7 +819,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 
 	// ushort / setUshort / short / setShort
 	f = Intrinsic::Create("");
-	f.AddParam("self", val_null); f.AddParam("offset", make_double(0.0));
+	f.AddParam("self", val_null); f.AddParam("offset", val_zero);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value self = ctx.GetArg(0);
 		Value hv = val_null; map_try_get(self, make_string("_handle"), &hv);
@@ -822,7 +833,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	_rdKeys.Add("ushort");
 
 	f = Intrinsic::Create("");
-	f.AddParam("self", val_null); f.AddParam("offset", make_double(0.0)); f.AddParam("value", make_double(0.0));
+	f.AddParam("self", val_null); f.AddParam("offset", val_zero); f.AddParam("value", val_zero);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value self = ctx.GetArg(0);
 		Value hv = val_null; map_try_get(self, make_string("_handle"), &hv);
@@ -837,7 +848,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	_rdKeys.Add("setUshort");
 
 	f = Intrinsic::Create("");
-	f.AddParam("self", val_null); f.AddParam("offset", make_double(0.0));
+	f.AddParam("self", val_null); f.AddParam("offset", val_zero);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value self = ctx.GetArg(0);
 		Value hv = val_null; map_try_get(self, make_string("_handle"), &hv);
@@ -851,7 +862,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	_rdKeys.Add("short");
 
 	f = Intrinsic::Create("");
-	f.AddParam("self", val_null); f.AddParam("offset", make_double(0.0)); f.AddParam("value", make_double(0.0));
+	f.AddParam("self", val_null); f.AddParam("offset", val_zero); f.AddParam("value", val_zero);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value self = ctx.GetArg(0);
 		Value hv = val_null; map_try_get(self, make_string("_handle"), &hv);
@@ -867,7 +878,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 
 	// uint / setUint / int / setInt
 	f = Intrinsic::Create("");
-	f.AddParam("self", val_null); f.AddParam("offset", make_double(0.0));
+	f.AddParam("self", val_null); f.AddParam("offset", val_zero);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value self = ctx.GetArg(0);
 		Value hv = val_null; map_try_get(self, make_string("_handle"), &hv);
@@ -881,7 +892,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	_rdKeys.Add("uint");
 
 	f = Intrinsic::Create("");
-	f.AddParam("self", val_null); f.AddParam("offset", make_double(0.0)); f.AddParam("value", make_double(0.0));
+	f.AddParam("self", val_null); f.AddParam("offset", val_zero); f.AddParam("value", val_zero);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value self = ctx.GetArg(0);
 		Value hv = val_null; map_try_get(self, make_string("_handle"), &hv);
@@ -896,7 +907,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	_rdKeys.Add("setUint");
 
 	f = Intrinsic::Create("");
-	f.AddParam("self", val_null); f.AddParam("offset", make_double(0.0));
+	f.AddParam("self", val_null); f.AddParam("offset", val_zero);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value self = ctx.GetArg(0);
 		Value hv = val_null; map_try_get(self, make_string("_handle"), &hv);
@@ -910,7 +921,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	_rdKeys.Add("int");
 
 	f = Intrinsic::Create("");
-	f.AddParam("self", val_null); f.AddParam("offset", make_double(0.0)); f.AddParam("value", make_double(0.0));
+	f.AddParam("self", val_null); f.AddParam("offset", val_zero); f.AddParam("value", val_zero);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value self = ctx.GetArg(0);
 		Value hv = val_null; map_try_get(self, make_string("_handle"), &hv);
@@ -926,7 +937,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 
 	// float / setFloat / double / setDouble
 	f = Intrinsic::Create("");
-	f.AddParam("self", val_null); f.AddParam("offset", make_double(0.0));
+	f.AddParam("self", val_null); f.AddParam("offset", val_zero);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value self = ctx.GetArg(0);
 		Value hv = val_null; map_try_get(self, make_string("_handle"), &hv);
@@ -940,7 +951,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	_rdKeys.Add("float");
 
 	f = Intrinsic::Create("");
-	f.AddParam("self", val_null); f.AddParam("offset", make_double(0.0)); f.AddParam("value", make_double(0.0));
+	f.AddParam("self", val_null); f.AddParam("offset", val_zero); f.AddParam("value", val_zero);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value self = ctx.GetArg(0);
 		Value hv = val_null; map_try_get(self, make_string("_handle"), &hv);
@@ -955,7 +966,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	_rdKeys.Add("setFloat");
 
 	f = Intrinsic::Create("");
-	f.AddParam("self", val_null); f.AddParam("offset", make_double(0.0));
+	f.AddParam("self", val_null); f.AddParam("offset", val_zero);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value self = ctx.GetArg(0);
 		Value hv = val_null; map_try_get(self, make_string("_handle"), &hv);
@@ -969,7 +980,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	_rdKeys.Add("double");
 
 	f = Intrinsic::Create("");
-	f.AddParam("self", val_null); f.AddParam("offset", make_double(0.0)); f.AddParam("value", make_double(0.0));
+	f.AddParam("self", val_null); f.AddParam("offset", val_zero); f.AddParam("value", val_zero);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value self = ctx.GetArg(0);
 		Value hv = val_null; map_try_get(self, make_string("_handle"), &hv);
@@ -985,7 +996,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 
 	// utf8 / setUtf8
 	f = Intrinsic::Create("");
-	f.AddParam("self", val_null); f.AddParam("offset", make_double(0.0)); f.AddParam("bytes", make_double(-1.0));
+	f.AddParam("self", val_null); f.AddParam("offset", val_zero); f.AddParam("bytes", make_double(-1.0));
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value self = ctx.GetArg(0);
 		Value hv = val_null; map_try_get(self, make_string("_handle"), &hv);
@@ -998,7 +1009,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	_rdKeys.Add("utf8");
 
 	f = Intrinsic::Create("");
-	f.AddParam("self", val_null); f.AddParam("offset", make_double(0.0)); f.AddParam("value", make_string(""));
+	f.AddParam("self", val_null); f.AddParam("offset", val_zero); f.AddParam("value", val_empty_string);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value self = ctx.GetArg(0);
 		Value hv = val_null; map_try_get(self, make_string("_handle"), &hv);
@@ -1034,7 +1045,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	_fhKeys.Add("isOpen");
 
 	f = Intrinsic::Create("");
-	f.AddParam("self", val_null); f.AddParam("data", make_string(""));
+	f.AddParam("self", val_null); f.AddParam("data", val_empty_string);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value self = ctx.GetArg(0);
 		Value hv = val_null; map_try_get(self, make_string("_handle"), &hv);
@@ -1045,7 +1056,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	_fhKeys.Add("write");
 
 	f = Intrinsic::Create("");
-	f.AddParam("self", val_null); f.AddParam("data", make_string(""));
+	f.AddParam("self", val_null); f.AddParam("data", val_empty_string);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value self = ctx.GetArg(0);
 		Value hv = val_null; map_try_get(self, make_string("_handle"), &hv);
@@ -1086,7 +1097,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	_fhKeys.Add("position");
 
 	f = Intrinsic::Create("");
-	f.AddParam("self", val_null); f.AddParam("pos", make_double(0.0));
+	f.AddParam("self", val_null); f.AddParam("pos", val_zero);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value self = ctx.GetArg(0);
 		Value hv = val_null; map_try_get(self, make_string("_handle"), &hv);
@@ -1116,7 +1127,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	_fmKeys.Add("curdir");
 
 	f = Intrinsic::Create("");
-	f.AddParam("path", make_string(""));
+	f.AddParam("path", val_empty_string);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		String path = to_String(ctx.GetArg(0));
 		if (!FsSetDir(path)) return IntrinsicResult(ErrorTypes::FileError("setdir: could not change directory to: " + path));
@@ -1125,42 +1136,42 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	_fmKeys.Add("setdir");
 
 	f = Intrinsic::Create("");
-	f.AddParam("path", make_string(""));
+	f.AddParam("path", val_empty_string);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		return IntrinsicResult(FsChildren(to_String(ctx.GetArg(0))));
 	});
 	_fmKeys.Add("children");
 
 	f = Intrinsic::Create("");
-	f.AddParam("path", make_string(""));
+	f.AddParam("path", val_empty_string);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		return IntrinsicResult(make_string(FsBasename(to_String(ctx.GetArg(0)))));
 	});
 	_fmKeys.Add("name");
 
 	f = Intrinsic::Create("");
-	f.AddParam("path", make_string(""));
+	f.AddParam("path", val_empty_string);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		return IntrinsicResult(make_string(FsDirname(to_String(ctx.GetArg(0)))));
 	});
 	_fmKeys.Add("parent");
 
 	f = Intrinsic::Create("");
-	f.AddParam("parentPath", make_string("")); f.AddParam("childName", make_string(""));
+	f.AddParam("parentPath", val_empty_string); f.AddParam("childName", val_empty_string);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		return IntrinsicResult(make_string(FsChild(to_String(ctx.GetArg(0)), to_String(ctx.GetArg(1)))));
 	});
 	_fmKeys.Add("child");
 
 	f = Intrinsic::Create("");
-	f.AddParam("path", make_string(""));
+	f.AddParam("path", val_empty_string);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		return IntrinsicResult(make_double(FsExists(to_String(ctx.GetArg(0))) ? 1.0 : 0.0));
 	});
 	_fmKeys.Add("exists");
 
 	f = Intrinsic::Create("");
-	f.AddParam("path", make_string(""));
+	f.AddParam("path", val_empty_string);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value info = FsInfo(to_String(ctx.GetArg(0)));
 		return IntrinsicResult(is_null(info) ? val_null : info);
@@ -1168,7 +1179,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	_fmKeys.Add("info");
 
 	f = Intrinsic::Create("");
-	f.AddParam("path", make_string(""));
+	f.AddParam("path", val_empty_string);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		String path = to_String(ctx.GetArg(0));
 		if (!FsMakeDir(path)) return IntrinsicResult(ErrorTypes::FileError("makedir: could not create directory: " + path));
@@ -1177,7 +1188,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	_fmKeys.Add("makedir");
 
 	f = Intrinsic::Create("");
-	f.AddParam("oldPath", make_string("")); f.AddParam("newPath", make_string(""));
+	f.AddParam("oldPath", val_empty_string); f.AddParam("newPath", val_empty_string);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		String oldPath = to_String(ctx.GetArg(0));
 		String newPath = to_String(ctx.GetArg(1));
@@ -1187,7 +1198,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	_fmKeys.Add("move");
 
 	f = Intrinsic::Create("");
-	f.AddParam("oldPath", make_string("")); f.AddParam("newPath", make_string(""));
+	f.AddParam("oldPath", val_empty_string); f.AddParam("newPath", val_empty_string);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		String oldPath = to_String(ctx.GetArg(0));
 		String newPath = to_String(ctx.GetArg(1));
@@ -1197,7 +1208,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	_fmKeys.Add("copy");
 
 	f = Intrinsic::Create("");
-	f.AddParam("path", make_string(""));
+	f.AddParam("path", val_empty_string);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		String path = to_String(ctx.GetArg(0));
 		if (!FsDelete(path)) return IntrinsicResult(ErrorTypes::FileError("delete: could not delete: " + path));
@@ -1206,7 +1217,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	_fmKeys.Add("delete");
 
 	f = Intrinsic::Create("");
-	f.AddParam("path", make_string(""));
+	f.AddParam("path", val_empty_string);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value v = FsReadLines(to_String(ctx.GetArg(0)));
 		return IntrinsicResult(v);
@@ -1214,7 +1225,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	_fmKeys.Add("readLines");
 
 	f = Intrinsic::Create("");
-	f.AddParam("path", make_string("")); f.AddParam("lines", val_null);
+	f.AddParam("path", val_empty_string); f.AddParam("lines", val_null);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value v = FsWriteLines(to_String(ctx.GetArg(0)), ctx.GetArg(1));
 		return IntrinsicResult(v);
@@ -1222,14 +1233,14 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	_fmKeys.Add("writeLines");
 
 	f = Intrinsic::Create("");
-	f.AddParam("path", make_string(""));
+	f.AddParam("path", val_empty_string);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		return IntrinsicResult(FsLoadRaw(to_String(ctx.GetArg(0))));
 	});
 	_fmKeys.Add("loadRaw");
 
 	f = Intrinsic::Create("");
-	f.AddParam("path", make_string("")); f.AddParam("data", val_null);
+	f.AddParam("path", val_empty_string); f.AddParam("data", val_null);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value r = FsSaveRaw(to_String(ctx.GetArg(0)), ctx.GetArg(1));
 		return IntrinsicResult(r);
@@ -1238,7 +1249,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 
 	// open(path, mode) — return a FileHandle instance or an error
 	f = Intrinsic::Create("");
-	f.AddParam("path", make_string("")); f.AddParam("mode", make_string("r+"));
+	f.AddParam("path", val_empty_string); f.AddParam("mode", make_string("r+"));
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		String path = to_String(ctx.GetArg(0));
 		String mode = to_String(ctx.GetArg(1));
@@ -1268,6 +1279,56 @@ void ShellIntrinsics::InitFileIntrinsics() {
 		return IntrinsicResult(GetRawDataClassMap());
 	});
 }
+void ShellIntrinsics::AssertRawMode() {
+	Keyboard::EnterRawMode();
+}
+Boolean ShellIntrinsics::KeyAvailableImpl() {
+	AssertRawMode();
+	return Keyboard::KeyAvailable();
+}
+Int32 ShellIntrinsics::KeyGetImpl(Boolean raw) {
+	AssertRawMode();
+	Int32 code;
+	code = raw ? Keyboard::ReadKey() : Keyboard::ReadKeyTranslated();
+	return code;
+}
+Value ShellIntrinsics::GetKeyModuleMap() {
+	if (!is_null(_keyModuleMap)) return _keyModuleMap;
+	_keyModuleMap = make_map(8);
+	for (Int32 i = 0; i < (Int32)_keyKeys.Count(); i++)
+		map_set(_keyModuleMap, _keyKeys[i], Intrinsic::GetByIndex(_keyStart + i).GetFunc());
+	map_set(_keyModuleMap, "raw", val_zero);
+	return _keyModuleMap;
+}
+void ShellIntrinsics::InitKeyIntrinsics() {
+	Intrinsic f;
+	_keyKeys =  List<String>::New();
+	_keyStart = Intrinsic::Count();
+
+	// available — true if a keystroke is waiting.
+	f = Intrinsic::Create("");
+	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
+		return IntrinsicResult(make_int(KeyAvailableImpl()));
+	});
+	_keyKeys.Add("available");
+
+	// get — block for the next keystroke, return it as a one-char string.
+	f = Intrinsic::Create("");
+	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
+		Value modMap = GetKeyModuleMap();
+		Value rawVal = val_null;  map_try_get(modMap, make_string("raw"), &rawVal);
+		Int32 code = KeyGetImpl(is_truthy(rawVal));
+		if (code <= 0) return IntrinsicResult(val_empty_string);
+		return IntrinsicResult(string_from_code_point(code));
+	});
+	_keyKeys.Add("get");
+
+	// global `key` intrinsic — return the module map.
+	f = Intrinsic::Create("key");
+	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
+		return IntrinsicResult(GetKeyModuleMap());
+	});
+}
 Double ShellIntrinsics::_dateTimeEpoch = 0;
 Double ShellIntrinsics::DateTimeEpoch() {
 	if (_dateTimeEpoch == 0) {
@@ -1289,6 +1350,7 @@ void ShellIntrinsics::Init() {
 	GCManager::RegisterMarkCallback(ShellIntrinsics::MarkRoots, nullptr);
 	CoreIntrinsics::RegisterInvalidateCallback(ShellIntrinsics::InvalidateCaches);
 	InitFileIntrinsics();
+	InitKeyIntrinsics();
 
 	Intrinsic f;
 
@@ -1324,7 +1386,7 @@ void ShellIntrinsics::Init() {
 	//   "status"  — exit code as a number
 	// Uses the partialResult mechanism so the VM is not blocked while waiting.
 	f = Intrinsic::Create("exec");
-	f.AddParam("cmd", make_string(""));
+	f.AddParam("cmd", val_empty_string);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		if (!partialResult.done) {
 			return FinishExec(partialResult.result);
@@ -1401,7 +1463,7 @@ void ShellIntrinsics::Init() {
 	// Search path comes from the MS_IMPORT_PATH env var (colon-separated);
 	// defaults to "$MS_SCRIPT_DIR:$MS_SCRIPT_DIR/lib:$MS_EXE_DIR/lib".
 	f = Intrinsic::Create("import");
-	f.AddParam("libname", make_string(""));
+	f.AddParam("libname", val_empty_string);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		if (!partialResult.done) {
 			// Phase 2: the module finished running.  Store its locals map

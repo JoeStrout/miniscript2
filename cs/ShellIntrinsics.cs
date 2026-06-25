@@ -22,6 +22,7 @@ using static MiniScript.ValueHelpers;
 // CPP: #include "CS_value_util.h"
 // CPP: #include "CoreIntrinsics.g.h"
 // CPP: #include "DateTimeUtils.g.h"
+// CPP: #include "keyboard.h"
 // CPP: #include <cstdlib>
 // CPP: #include <cstring>
 // CPP: #include <cstdio>
@@ -95,6 +96,11 @@ public static class ShellIntrinsics {
 	private static List<String> _fhKeys = null;
 	private static List<String> _fmKeys = null;
 
+	// ── Key module static fields ──────────────────────────────────────────────
+	private static Value _keyModuleMap = val_null;
+	private static Int32 _keyStart = -1;
+	private static List<String> _keyKeys = null;
+
 	// Platform-specific wrapper types for FileHandle and RawData.
 	//*** BEGIN CS_ONLY ***
 	private class CsFileHandle { public System.IO.FileStream Stream; }
@@ -154,6 +160,7 @@ public static class ShellIntrinsics {
 		GCManager.Mark(_fileModuleMap);
 		GCManager.Mark(_fileHandleClassMap);
 		GCManager.Mark(_rawDataClassMap);
+		GCManager.Mark(_keyModuleMap);
 	}
 
 	// Drop cached values so they are rebuilt on next use.
@@ -164,6 +171,7 @@ public static class ShellIntrinsics {
 		_fileModuleMap = val_null;
 		_fileHandleClassMap = val_null;
 		_rawDataClassMap = val_null;
+		_keyModuleMap = val_null;
 	}
 
 	// Push all entries in _envMap to the real process environment.
@@ -235,6 +243,11 @@ public static class ShellIntrinsics {
 		_cppExecOutputs[idx] = "";
 		_cppExecStatus[idx] = 0;
 		_cppExecDone[idx] = false;
+		// If the `key` module has the terminal in raw mode, drop to cooked first
+		// so the child process (which inherits this terminal on stdin/stderr)
+		// gets normal echo and line editing. Left cooked afterward; the next
+		// key operation re-enters raw mode.
+		Keyboard::EnterCookedMode();
 		#ifdef _WIN32
 			_cppExecPipes[idx] = _popen(cmd.c_str(), "r");
 		#else
@@ -479,7 +492,7 @@ public static class ShellIntrinsics {
 		Value instance = make_map(4);
 		map_set(instance, val_isa_key, GetRawDataClassMap());
 		map_set(instance, "_handle", handleVal);
-		map_set(instance, "littleEndian", make_double(1.0));
+		map_set(instance, "littleEndian", val_one);
 		return instance;
 	}
 
@@ -1304,7 +1317,7 @@ public static class ShellIntrinsics {
 		if (!is_null(_rawDataClassMap)) return _rawDataClassMap;
 		_rawDataClassMap = make_map(24);
 		map_set(_rawDataClassMap, "_handle", val_null);
-		map_set(_rawDataClassMap, "littleEndian", make_double(1.0));
+		map_set(_rawDataClassMap, "littleEndian", val_one);
 		for (Int32 i = 0; i < _rdKeys.Count; i++) // CPP: for (Int32 i = 0; i < (Int32)_rdKeys.Count(); i++)
 			map_set(_rawDataClassMap, _rdKeys[i], Intrinsic.GetByIndex(_rdStart + i).GetFunc());
 		return _rawDataClassMap;
@@ -1346,7 +1359,7 @@ public static class ShellIntrinsics {
 			Value hv = val_null;
 			map_try_get(self, make_string("_handle"), out hv);
 			Int32 len = GetRawBufLen(hv);
-			if (len < 0) return new IntrinsicResult(make_double(0.0));
+			if (len < 0) return new IntrinsicResult(val_zero);
 			return new IntrinsicResult(make_double((Double)len));
 		};
 		_rdKeys.Add("len");
@@ -1367,7 +1380,7 @@ public static class ShellIntrinsics {
 		// Typed getter/setter factory lambdas.
 		// byte / setByte
 		f = Intrinsic.Create("");
-		f.AddParam("self", val_null); f.AddParam("offset", make_double(0.0));
+		f.AddParam("self", val_null); f.AddParam("offset", val_zero);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value self = ctx.GetArg(0);
 			Value hv = val_null; map_try_get(self, make_string("_handle"), out hv);
@@ -1379,7 +1392,7 @@ public static class ShellIntrinsics {
 		_rdKeys.Add("byte");
 
 		f = Intrinsic.Create("");
-		f.AddParam("self", val_null); f.AddParam("offset", make_double(0.0)); f.AddParam("value", make_double(0.0));
+		f.AddParam("self", val_null); f.AddParam("offset", val_zero); f.AddParam("value", val_zero);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value self = ctx.GetArg(0);
 			Value hv = val_null; map_try_get(self, make_string("_handle"), out hv);
@@ -1393,7 +1406,7 @@ public static class ShellIntrinsics {
 
 		// sbyte / setSbyte
 		f = Intrinsic.Create("");
-		f.AddParam("self", val_null); f.AddParam("offset", make_double(0.0));
+		f.AddParam("self", val_null); f.AddParam("offset", val_zero);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value self = ctx.GetArg(0);
 			Value hv = val_null; map_try_get(self, make_string("_handle"), out hv);
@@ -1405,7 +1418,7 @@ public static class ShellIntrinsics {
 		_rdKeys.Add("sbyte");
 
 		f = Intrinsic.Create("");
-		f.AddParam("self", val_null); f.AddParam("offset", make_double(0.0)); f.AddParam("value", make_double(0.0));
+		f.AddParam("self", val_null); f.AddParam("offset", val_zero); f.AddParam("value", val_zero);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value self = ctx.GetArg(0);
 			Value hv = val_null; map_try_get(self, make_string("_handle"), out hv);
@@ -1419,7 +1432,7 @@ public static class ShellIntrinsics {
 
 		// ushort / setUshort / short / setShort
 		f = Intrinsic.Create("");
-		f.AddParam("self", val_null); f.AddParam("offset", make_double(0.0));
+		f.AddParam("self", val_null); f.AddParam("offset", val_zero);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value self = ctx.GetArg(0);
 			Value hv = val_null; map_try_get(self, make_string("_handle"), out hv);
@@ -1433,7 +1446,7 @@ public static class ShellIntrinsics {
 		_rdKeys.Add("ushort");
 
 		f = Intrinsic.Create("");
-		f.AddParam("self", val_null); f.AddParam("offset", make_double(0.0)); f.AddParam("value", make_double(0.0));
+		f.AddParam("self", val_null); f.AddParam("offset", val_zero); f.AddParam("value", val_zero);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value self = ctx.GetArg(0);
 			Value hv = val_null; map_try_get(self, make_string("_handle"), out hv);
@@ -1448,7 +1461,7 @@ public static class ShellIntrinsics {
 		_rdKeys.Add("setUshort");
 
 		f = Intrinsic.Create("");
-		f.AddParam("self", val_null); f.AddParam("offset", make_double(0.0));
+		f.AddParam("self", val_null); f.AddParam("offset", val_zero);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value self = ctx.GetArg(0);
 			Value hv = val_null; map_try_get(self, make_string("_handle"), out hv);
@@ -1462,7 +1475,7 @@ public static class ShellIntrinsics {
 		_rdKeys.Add("short");
 
 		f = Intrinsic.Create("");
-		f.AddParam("self", val_null); f.AddParam("offset", make_double(0.0)); f.AddParam("value", make_double(0.0));
+		f.AddParam("self", val_null); f.AddParam("offset", val_zero); f.AddParam("value", val_zero);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value self = ctx.GetArg(0);
 			Value hv = val_null; map_try_get(self, make_string("_handle"), out hv);
@@ -1478,7 +1491,7 @@ public static class ShellIntrinsics {
 
 		// uint / setUint / int / setInt
 		f = Intrinsic.Create("");
-		f.AddParam("self", val_null); f.AddParam("offset", make_double(0.0));
+		f.AddParam("self", val_null); f.AddParam("offset", val_zero);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value self = ctx.GetArg(0);
 			Value hv = val_null; map_try_get(self, make_string("_handle"), out hv);
@@ -1492,7 +1505,7 @@ public static class ShellIntrinsics {
 		_rdKeys.Add("uint");
 
 		f = Intrinsic.Create("");
-		f.AddParam("self", val_null); f.AddParam("offset", make_double(0.0)); f.AddParam("value", make_double(0.0));
+		f.AddParam("self", val_null); f.AddParam("offset", val_zero); f.AddParam("value", val_zero);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value self = ctx.GetArg(0);
 			Value hv = val_null; map_try_get(self, make_string("_handle"), out hv);
@@ -1507,7 +1520,7 @@ public static class ShellIntrinsics {
 		_rdKeys.Add("setUint");
 
 		f = Intrinsic.Create("");
-		f.AddParam("self", val_null); f.AddParam("offset", make_double(0.0));
+		f.AddParam("self", val_null); f.AddParam("offset", val_zero);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value self = ctx.GetArg(0);
 			Value hv = val_null; map_try_get(self, make_string("_handle"), out hv);
@@ -1521,7 +1534,7 @@ public static class ShellIntrinsics {
 		_rdKeys.Add("int");
 
 		f = Intrinsic.Create("");
-		f.AddParam("self", val_null); f.AddParam("offset", make_double(0.0)); f.AddParam("value", make_double(0.0));
+		f.AddParam("self", val_null); f.AddParam("offset", val_zero); f.AddParam("value", val_zero);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value self = ctx.GetArg(0);
 			Value hv = val_null; map_try_get(self, make_string("_handle"), out hv);
@@ -1537,7 +1550,7 @@ public static class ShellIntrinsics {
 
 		// float / setFloat / double / setDouble
 		f = Intrinsic.Create("");
-		f.AddParam("self", val_null); f.AddParam("offset", make_double(0.0));
+		f.AddParam("self", val_null); f.AddParam("offset", val_zero);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value self = ctx.GetArg(0);
 			Value hv = val_null; map_try_get(self, make_string("_handle"), out hv);
@@ -1551,7 +1564,7 @@ public static class ShellIntrinsics {
 		_rdKeys.Add("float");
 
 		f = Intrinsic.Create("");
-		f.AddParam("self", val_null); f.AddParam("offset", make_double(0.0)); f.AddParam("value", make_double(0.0));
+		f.AddParam("self", val_null); f.AddParam("offset", val_zero); f.AddParam("value", val_zero);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value self = ctx.GetArg(0);
 			Value hv = val_null; map_try_get(self, make_string("_handle"), out hv);
@@ -1566,7 +1579,7 @@ public static class ShellIntrinsics {
 		_rdKeys.Add("setFloat");
 
 		f = Intrinsic.Create("");
-		f.AddParam("self", val_null); f.AddParam("offset", make_double(0.0));
+		f.AddParam("self", val_null); f.AddParam("offset", val_zero);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value self = ctx.GetArg(0);
 			Value hv = val_null; map_try_get(self, make_string("_handle"), out hv);
@@ -1580,7 +1593,7 @@ public static class ShellIntrinsics {
 		_rdKeys.Add("double");
 
 		f = Intrinsic.Create("");
-		f.AddParam("self", val_null); f.AddParam("offset", make_double(0.0)); f.AddParam("value", make_double(0.0));
+		f.AddParam("self", val_null); f.AddParam("offset", val_zero); f.AddParam("value", val_zero);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value self = ctx.GetArg(0);
 			Value hv = val_null; map_try_get(self, make_string("_handle"), out hv);
@@ -1596,7 +1609,7 @@ public static class ShellIntrinsics {
 
 		// utf8 / setUtf8
 		f = Intrinsic.Create("");
-		f.AddParam("self", val_null); f.AddParam("offset", make_double(0.0)); f.AddParam("bytes", make_double(-1.0));
+		f.AddParam("self", val_null); f.AddParam("offset", val_zero); f.AddParam("bytes", make_double(-1.0));
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value self = ctx.GetArg(0);
 			Value hv = val_null; map_try_get(self, make_string("_handle"), out hv);
@@ -1609,7 +1622,7 @@ public static class ShellIntrinsics {
 		_rdKeys.Add("utf8");
 
 		f = Intrinsic.Create("");
-		f.AddParam("self", val_null); f.AddParam("offset", make_double(0.0)); f.AddParam("value", make_string(""));
+		f.AddParam("self", val_null); f.AddParam("offset", val_zero); f.AddParam("value", val_empty_string);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value self = ctx.GetArg(0);
 			Value hv = val_null; map_try_get(self, make_string("_handle"), out hv);
@@ -1645,7 +1658,7 @@ public static class ShellIntrinsics {
 		_fhKeys.Add("isOpen");
 
 		f = Intrinsic.Create("");
-		f.AddParam("self", val_null); f.AddParam("data", make_string(""));
+		f.AddParam("self", val_null); f.AddParam("data", val_empty_string);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value self = ctx.GetArg(0);
 			Value hv = val_null; map_try_get(self, make_string("_handle"), out hv);
@@ -1656,7 +1669,7 @@ public static class ShellIntrinsics {
 		_fhKeys.Add("write");
 
 		f = Intrinsic.Create("");
-		f.AddParam("self", val_null); f.AddParam("data", make_string(""));
+		f.AddParam("self", val_null); f.AddParam("data", val_empty_string);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value self = ctx.GetArg(0);
 			Value hv = val_null; map_try_get(self, make_string("_handle"), out hv);
@@ -1697,7 +1710,7 @@ public static class ShellIntrinsics {
 		_fhKeys.Add("position");
 
 		f = Intrinsic.Create("");
-		f.AddParam("self", val_null); f.AddParam("pos", make_double(0.0));
+		f.AddParam("self", val_null); f.AddParam("pos", val_zero);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value self = ctx.GetArg(0);
 			Value hv = val_null; map_try_get(self, make_string("_handle"), out hv);
@@ -1727,7 +1740,7 @@ public static class ShellIntrinsics {
 		_fmKeys.Add("curdir");
 
 		f = Intrinsic.Create("");
-		f.AddParam("path", make_string(""));
+		f.AddParam("path", val_empty_string);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			String path = to_String(ctx.GetArg(0));
 			if (!FsSetDir(path)) return new IntrinsicResult(ErrorTypes.FileError("setdir: could not change directory to: " + path));
@@ -1736,42 +1749,42 @@ public static class ShellIntrinsics {
 		_fmKeys.Add("setdir");
 
 		f = Intrinsic.Create("");
-		f.AddParam("path", make_string(""));
+		f.AddParam("path", val_empty_string);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			return new IntrinsicResult(FsChildren(to_String(ctx.GetArg(0))));
 		};
 		_fmKeys.Add("children");
 
 		f = Intrinsic.Create("");
-		f.AddParam("path", make_string(""));
+		f.AddParam("path", val_empty_string);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			return new IntrinsicResult(make_string(FsBasename(to_String(ctx.GetArg(0)))));
 		};
 		_fmKeys.Add("name");
 
 		f = Intrinsic.Create("");
-		f.AddParam("path", make_string(""));
+		f.AddParam("path", val_empty_string);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			return new IntrinsicResult(make_string(FsDirname(to_String(ctx.GetArg(0)))));
 		};
 		_fmKeys.Add("parent");
 
 		f = Intrinsic.Create("");
-		f.AddParam("parentPath", make_string("")); f.AddParam("childName", make_string(""));
+		f.AddParam("parentPath", val_empty_string); f.AddParam("childName", val_empty_string);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			return new IntrinsicResult(make_string(FsChild(to_String(ctx.GetArg(0)), to_String(ctx.GetArg(1)))));
 		};
 		_fmKeys.Add("child");
 
 		f = Intrinsic.Create("");
-		f.AddParam("path", make_string(""));
+		f.AddParam("path", val_empty_string);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			return new IntrinsicResult(make_double(FsExists(to_String(ctx.GetArg(0))) ? 1.0 : 0.0));
 		};
 		_fmKeys.Add("exists");
 
 		f = Intrinsic.Create("");
-		f.AddParam("path", make_string(""));
+		f.AddParam("path", val_empty_string);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value info = FsInfo(to_String(ctx.GetArg(0)));
 			return new IntrinsicResult(is_null(info) ? val_null : info);
@@ -1779,7 +1792,7 @@ public static class ShellIntrinsics {
 		_fmKeys.Add("info");
 
 		f = Intrinsic.Create("");
-		f.AddParam("path", make_string(""));
+		f.AddParam("path", val_empty_string);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			String path = to_String(ctx.GetArg(0));
 			if (!FsMakeDir(path)) return new IntrinsicResult(ErrorTypes.FileError("makedir: could not create directory: " + path));
@@ -1788,7 +1801,7 @@ public static class ShellIntrinsics {
 		_fmKeys.Add("makedir");
 
 		f = Intrinsic.Create("");
-		f.AddParam("oldPath", make_string("")); f.AddParam("newPath", make_string(""));
+		f.AddParam("oldPath", val_empty_string); f.AddParam("newPath", val_empty_string);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			String oldPath = to_String(ctx.GetArg(0));
 			String newPath = to_String(ctx.GetArg(1));
@@ -1798,7 +1811,7 @@ public static class ShellIntrinsics {
 		_fmKeys.Add("move");
 
 		f = Intrinsic.Create("");
-		f.AddParam("oldPath", make_string("")); f.AddParam("newPath", make_string(""));
+		f.AddParam("oldPath", val_empty_string); f.AddParam("newPath", val_empty_string);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			String oldPath = to_String(ctx.GetArg(0));
 			String newPath = to_String(ctx.GetArg(1));
@@ -1808,7 +1821,7 @@ public static class ShellIntrinsics {
 		_fmKeys.Add("copy");
 
 		f = Intrinsic.Create("");
-		f.AddParam("path", make_string(""));
+		f.AddParam("path", val_empty_string);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			String path = to_String(ctx.GetArg(0));
 			if (!FsDelete(path)) return new IntrinsicResult(ErrorTypes.FileError("delete: could not delete: " + path));
@@ -1817,7 +1830,7 @@ public static class ShellIntrinsics {
 		_fmKeys.Add("delete");
 
 		f = Intrinsic.Create("");
-		f.AddParam("path", make_string(""));
+		f.AddParam("path", val_empty_string);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value v = FsReadLines(to_String(ctx.GetArg(0)));
 			return new IntrinsicResult(v);
@@ -1825,7 +1838,7 @@ public static class ShellIntrinsics {
 		_fmKeys.Add("readLines");
 
 		f = Intrinsic.Create("");
-		f.AddParam("path", make_string("")); f.AddParam("lines", val_null);
+		f.AddParam("path", val_empty_string); f.AddParam("lines", val_null);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value v = FsWriteLines(to_String(ctx.GetArg(0)), ctx.GetArg(1));
 			return new IntrinsicResult(v);
@@ -1833,14 +1846,14 @@ public static class ShellIntrinsics {
 		_fmKeys.Add("writeLines");
 
 		f = Intrinsic.Create("");
-		f.AddParam("path", make_string(""));
+		f.AddParam("path", val_empty_string);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			return new IntrinsicResult(FsLoadRaw(to_String(ctx.GetArg(0))));
 		};
 		_fmKeys.Add("loadRaw");
 
 		f = Intrinsic.Create("");
-		f.AddParam("path", make_string("")); f.AddParam("data", val_null);
+		f.AddParam("path", val_empty_string); f.AddParam("data", val_null);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value r = FsSaveRaw(to_String(ctx.GetArg(0)), ctx.GetArg(1));
 			return new IntrinsicResult(r);
@@ -1849,7 +1862,7 @@ public static class ShellIntrinsics {
 
 		// open(path, mode) — return a FileHandle instance or an error
 		f = Intrinsic.Create("");
-		f.AddParam("path", make_string("")); f.AddParam("mode", make_string("r+"));
+		f.AddParam("path", val_empty_string); f.AddParam("mode", make_string("r+"));
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			String path = to_String(ctx.GetArg(0));
 			String mode = to_String(ctx.GetArg(1));
@@ -1877,6 +1890,113 @@ public static class ShellIntrinsics {
 		f = Intrinsic.Create("RawData");
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			return new IntrinsicResult(GetRawDataClassMap());
+		};
+	}
+
+	// ── Key module ────────────────────────────────────────────────────────────
+	// `key` exposes single-keystroke console input:
+	//   key.available   — true if a keystroke is waiting (non-blocking)
+	//   key.get         — read the next keystroke, blocking until one arrives;
+	//                     returns a one-character string (special keys come back
+	//                     as char(code), using the cross-platform UnifiedKey codes)
+	//   key.raw         — flag (default 0): when false, multi-byte editing keys are
+	//                     translated to portable codes; when true, raw platform
+	//                     bytes are returned and the script decodes them itself
+	// Keys read via key.get are never echoed automatically (the terminal's echo
+	// is off while the module is active); a script prints what it wants itself.
+
+	// Assert that the terminal is in per-key (raw/cbreak) mode. Called at the
+	// start of every key operation, so after an `input` or `exec` has dropped
+	// the terminal back to cooked mode it is re-entered here (last-writer-wins).
+	// On C++ this is an idempotent cbreak switch; on C# the .NET console needs
+	// no special setup.
+	private static void AssertRawMode() {
+		/*** BEGIN CPP_ONLY ***
+		Keyboard::EnterRawMode();
+		*** END CPP_ONLY ***/
+	}
+
+	// Return true if a keystroke is waiting, without blocking.
+	private static Boolean KeyAvailableImpl() {
+		AssertRawMode();
+		//*** BEGIN CS_ONLY ***
+		try { return Console.KeyAvailable; }
+		catch (Exception) { return false; }  // input not from an interactive console
+		//*** END CS_ONLY ***
+		/*** BEGIN CPP_ONLY ***
+		return Keyboard::KeyAvailable();
+		*** END CPP_ONLY ***/
+	}
+
+	// Block until a keystroke is available, then return its code. With raw=false,
+	// editing keys are translated to portable UnifiedKey codes; with raw=true,
+	// the platform-native byte/code is returned. Returns 0 for a consumed but
+	// unrecognized sequence and -1 on end-of-input. The key is never echoed.
+	private static Int32 KeyGetImpl(Boolean raw) {
+		AssertRawMode();
+		Int32 code;
+		//*** BEGIN CS_ONLY ***
+		ConsoleKeyInfo info = Console.ReadKey(true);  // intercept: never auto-echo
+		code = (Int32)info.KeyChar;
+		if (!raw) {
+			switch (info.Key) {
+				case ConsoleKey.LeftArrow:  code = 17; break;
+				case ConsoleKey.RightArrow: code = 18; break;
+				case ConsoleKey.UpArrow:    code = 19; break;
+				case ConsoleKey.DownArrow:  code = 20; break;
+				case ConsoleKey.Home:       code = 1;  break;
+				case ConsoleKey.End:        code = 5;  break;
+				case ConsoleKey.PageUp:     code = 21; break;
+				case ConsoleKey.PageDown:   code = 22; break;
+				case ConsoleKey.Backspace:  code = 8;  break;
+				case ConsoleKey.Delete:     code = 127; break;
+				case ConsoleKey.Enter:      code = 10; break;
+				default: break;
+			}
+		}
+		//*** END CS_ONLY ***
+		/*** BEGIN CPP_ONLY ***
+		code = raw ? Keyboard::ReadKey() : Keyboard::ReadKeyTranslated();
+		*** END CPP_ONLY ***/
+		return code;
+	}
+
+	private static Value GetKeyModuleMap() {
+		if (!is_null(_keyModuleMap)) return _keyModuleMap;
+		_keyModuleMap = make_map(8);
+		for (Int32 i = 0; i < _keyKeys.Count; i++) // CPP: for (Int32 i = 0; i < (Int32)_keyKeys.Count(); i++)
+			map_set(_keyModuleMap, _keyKeys[i], Intrinsic.GetByIndex(_keyStart + i).GetFunc());
+		map_set(_keyModuleMap, "raw", val_zero);
+		return _keyModuleMap;
+	}
+
+	private static void InitKeyIntrinsics() {
+		Intrinsic f;
+		_keyKeys = new List<String>();
+		_keyStart = Intrinsic.Count();
+
+		// available — true if a keystroke is waiting.
+		f = Intrinsic.Create("");
+		f.Code = (Context ctx, IntrinsicResult partialResult) => {
+			return new IntrinsicResult(make_int(KeyAvailableImpl()));
+		};
+		_keyKeys.Add("available");
+
+		// get — block for the next keystroke, return it as a one-char string.
+		f = Intrinsic.Create("");
+		f.Code = (Context ctx, IntrinsicResult partialResult) => {
+			Value modMap = GetKeyModuleMap();
+			Value rawVal = val_null;  map_try_get(modMap, make_string("raw"), out rawVal);
+			Int32 code = KeyGetImpl(is_truthy(rawVal));
+			if (code <= 0) return new IntrinsicResult(val_empty_string);
+			return new IntrinsicResult(string_from_code_point(code));
+		};
+		_keyKeys.Add("get");
+
+		// global `key` intrinsic — return the module map.
+		f = Intrinsic.Create("key");
+		f.Code = (Context ctx, IntrinsicResult partialResult) => {
+			return new IntrinsicResult(GetKeyModuleMap());
 		};
 	}
 
@@ -1921,6 +2041,7 @@ public static class ShellIntrinsics {
 		GCManager.RegisterMarkCallback(MarkRoots, null); // CPP: GCManager::RegisterMarkCallback(ShellIntrinsics::MarkRoots, nullptr);
 		CoreIntrinsics.RegisterInvalidateCallback(InvalidateCaches); // CPP: CoreIntrinsics::RegisterInvalidateCallback(ShellIntrinsics::InvalidateCaches);
 		InitFileIntrinsics();
+		InitKeyIntrinsics();
 
 		Intrinsic f;
 
@@ -1956,7 +2077,7 @@ public static class ShellIntrinsics {
 		//   "status"  — exit code as a number
 		// Uses the partialResult mechanism so the VM is not blocked while waiting.
 		f = Intrinsic.Create("exec");
-		f.AddParam("cmd", make_string(""));
+		f.AddParam("cmd", val_empty_string);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			if (!partialResult.done) {
 				return FinishExec(partialResult.result);
@@ -2033,7 +2154,7 @@ public static class ShellIntrinsics {
 		// Search path comes from the MS_IMPORT_PATH env var (colon-separated);
 		// defaults to "$MS_SCRIPT_DIR:$MS_SCRIPT_DIR/lib:$MS_EXE_DIR/lib".
 		f = Intrinsic.Create("import");
-		f.AddParam("libname", make_string(""));
+		f.AddParam("libname", val_empty_string);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			if (!partialResult.done) {
 				// Phase 2: the module finished running.  Store its locals map

@@ -1066,3 +1066,13 @@ Benchmark results (C#)
 └────────────────────────┴─────┴──────────┴─────────────┘
  
 I also updated `info` to now report whether a list is computed (and whether a list or map is frozen).  This lets me prove to myself that indexing, slicing, and popping does not materialize the list, but other forms of mutations do, and this all happens seamlessly.  It's strictly more powerful than Python's iterators (because you can index into it arbitrarily), and yet completely transparent unless you go digging via `info`.  I'm really happy with how this has turned out.
+
+
+## Jun 26, 2026
+
+I've decided to add a minimal `key` module that will allow users of command-line MiniScript to make more sophisticated apps.  Custom editors, games, etc., all require direct key input rather than line input.  They also require arbitrary drawing on the screen, but that's mostly handled by the vt module already.  (We might also need to add something somewhere to report the current screen rows/columns, but we'll come back to that later.)
+
+The new keyboard.h/.cpp file is going into cpp/core, for expediency, but sometime soon I need to revisit the organization of my C++ files and sort out the ones that are truly core from ones that are command-line MiniScript add-ons (like this one).  Of course we have to deal with terminal mode, resulting in a call from IOHelper to our Keyboard module -- this too will have to get sorted out.
+
+
+

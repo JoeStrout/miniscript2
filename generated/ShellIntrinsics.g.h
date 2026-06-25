@@ -27,8 +27,13 @@ class ShellIntrinsics {
 	private: static List<String> _rdKeys;
 	private: static List<String> _fhKeys;
 	private: static List<String> _fmKeys;
+	private: static Value _keyModuleMap;
+	private: static Int32 _keyStart;
+	private: static List<String> _keyKeys;
 
 	// ── File module static fields ─────────────────────────────────────────────
+
+	// ── Key module static fields ──────────────────────────────────────────────
 
 	// Platform-specific wrapper types for FileHandle and RawData.
 
@@ -191,6 +196,38 @@ class ShellIntrinsics {
 	// Register file/FileHandle/RawData intrinsics with internal names.
 	// Maps are built lazily via Get*Map() on first access after RegisterAll().
 	private: static void InitFileIntrinsics();
+
+	// ── Key module ────────────────────────────────────────────────────────────
+	// `key` exposes single-keystroke console input:
+	//   key.available   — true if a keystroke is waiting (non-blocking)
+	//   key.get         — read the next keystroke, blocking until one arrives;
+	//                     returns a one-character string (special keys come back
+	//                     as char(code), using the cross-platform UnifiedKey codes)
+	//   key.raw         — flag (default 0): when false, multi-byte editing keys are
+	//                     translated to portable codes; when true, raw platform
+	//                     bytes are returned and the script decodes them itself
+	// Keys read via key.get are never echoed automatically (the terminal's echo
+	// is off while the module is active); a script prints what it wants itself.
+
+	// Assert that the terminal is in per-key (raw/cbreak) mode. Called at the
+	// start of every key operation, so after an `input` or `exec` has dropped
+	// the terminal back to cooked mode it is re-entered here (last-writer-wins).
+	// On C++ this is an idempotent cbreak switch; on C# the .NET console needs
+	// no special setup.
+	private: static void AssertRawMode();
+
+	// Return true if a keystroke is waiting, without blocking.
+	private: static Boolean KeyAvailableImpl();
+
+	// Block until a keystroke is available, then return its code. With raw=false,
+	// editing keys are translated to portable UnifiedKey codes; with raw=true,
+	// the platform-native byte/code is returned. Returns 0 for a consumed but
+	// unrecognized sequence and -1 on end-of-input. The key is never echoed.
+	private: static Int32 KeyGetImpl(Boolean raw);
+
+	private: static Value GetKeyModuleMap();
+
+	private: static void InitKeyIntrinsics();
 	private: static Double _dateTimeEpoch;
 
 	// ── Date/time helpers ─────────────────────────────────────────────────────

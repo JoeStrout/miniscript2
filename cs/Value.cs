@@ -8,8 +8,6 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 
-using static MiniScript.ValueHelpers;
-
 namespace MiniScript {
 
 // NOTE: Align the TAG MASK constants below with your C value.h.
@@ -34,6 +32,10 @@ public readonly struct Value {
 
 	internal Value(ulong u) { _d = 0; _u = u; }
 
+	// MiniScript 1.x-compatible public constructors.
+	public Value(double d) { _u = 0; _d = d; }
+	public Value(string s) { var tmp = make_string(s); _d = 0; _u = tmp._u; }
+
 	// ==== TAGS & MASKS =======================================================
 	internal const ulong NANISH_MASK     = 0xFFFF_0000_0000_0000UL;
 	// NULL_VALUE doubles as the is_double threshold: any value whose top 16 bits
@@ -46,41 +48,53 @@ public readonly struct Value {
 	internal const ulong TINY_STRING_TAG = 0xFFFF_0000_0000_0000UL;
 	internal const ulong GC_TYPE_MASK    = NANISH_MASK | 0x0000_0007_0000_0000UL;
 
-	[Obsolete("Use to_String(v, vm) instead")]
-	public override string ToString() => ValueHelpers.to_String(this);
+	// ==== LIMITS =============================================================
+	// Maximum number of elements a list (or characters a string) may hold.
+	// Operations whose result would exceed this raise a runtime error.
+	public const int MAX_COLLECTION_SIZE = Int32.MaxValue;
+	public const int MAP_ITER_DONE       = Int32.MinValue;
 
-	// Equals/GetHashCode embody the same semantics as MiniScript ==, so that
-	// Dictionary<Value, Value> hashes/compares keys correctly. In particular,
-	// strings compare by content (not pointer/index).
-	public override bool Equals(object obj) {
-		if (obj is Value v) return ValueHelpers.value_equal(this, v);
-		return false;
-	}
+	// ==== SHARED CONSTANTS ===================================================
+	// PascalCase: MiniScript 1.x-style public API.
+	public static readonly Value Null           = new Value(NULL_VALUE);
+	public static readonly Value Zero           = new Value(0x0000_0000_0000_0000UL);
+	public static readonly Value One            = new Value(0x3FF0_0000_0000_0000UL);
+	public static readonly Value EmptyString    = new Value(TINY_STRING_TAG);
+	public static readonly Value MagicIsA       = make_string("__isa");
+	public static readonly Value KeyString      = make_string("key");
+	public static readonly Value ValueString    = make_string("value");
+	public static readonly Value ImplicitResult = make_string("_");
+	// snake_case aliases for call sites that use `using static MiniScript.Value`.
+	public static readonly Value val_null         = Null;
+	public static readonly Value val_zero         = Zero;
+	public static readonly Value val_one          = One;
+	public static readonly Value val_empty_string = EmptyString;
+	public static readonly Value val_isa_key      = make_string("__isa");
+	public static readonly Value val_self         = make_string("self");
+	public static readonly Value val_super        = make_string("super");
 
-	public override int GetHashCode() {
-		if (ValueHelpers.is_string(this)) {
-			string s = GCManager.GetStringContent(this);
-			return s.GetHashCode(System.StringComparison.Ordinal);
-		}
-		return (int)(_u ^ (_u >> 32));
-	}
-}
+	// ==== MS1 INSTANCE PREDICATES ============================================
+	[MethodImpl(MethodImplOptions.AggressiveInlining)] public bool IsNull()    => _u == NULL_VALUE;
+	[MethodImpl(MethodImplOptions.AggressiveInlining)] public bool IsNumber()  => (_u & NANISH_MASK) < NULL_VALUE;
+	[MethodImpl(MethodImplOptions.AggressiveInlining)] public bool IsString()  => is_string(this);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)] public bool IsList()    => (_u & GC_TYPE_MASK) == (GC_TAG | ((ulong)GCManager.ListSet     << 32));
+	[MethodImpl(MethodImplOptions.AggressiveInlining)] public bool IsMap()     => (_u & GC_TYPE_MASK) == (GC_TAG | ((ulong)GCManager.MapSet      << 32));
+	[MethodImpl(MethodImplOptions.AggressiveInlining)] public bool IsError()   => (_u & GC_TYPE_MASK) == (GC_TAG | ((ulong)GCManager.ErrorSet    << 32));
+	[MethodImpl(MethodImplOptions.AggressiveInlining)] public bool IsFuncRef() => (_u & GC_TYPE_MASK) == (GC_TAG | ((ulong)GCManager.FunctionSet << 32));
+	[MethodImpl(MethodImplOptions.AggressiveInlining)] public bool IsHandle()  => (_u & GC_TYPE_MASK) == (GC_TAG | ((ulong)GCManager.HandleSet   << 32));
 
-// =============================================================================
-// Global helper functions matching the C++ value.h interface
-// =============================================================================
-public static class ValueHelpers {
+	// ==== MS1 INSTANCE ACCESSORS =============================================
+	[MethodImpl(MethodImplOptions.AggressiveInlining)] public double DoubleValue() => (_u & NANISH_MASK) < NULL_VALUE ? _d : 0.0;
+	[MethodImpl(MethodImplOptions.AggressiveInlining)] public float  FloatValue()  => (float)DoubleValue();
+	[MethodImpl(MethodImplOptions.AggressiveInlining)] public int    IntValue()    => (int)DoubleValue();
+	[MethodImpl(MethodImplOptions.AggressiveInlining)] public uint   UIntValue()   => (uint)DoubleValue();
+	[MethodImpl(MethodImplOptions.AggressiveInlining)] public bool   BoolValue()   => is_truthy(this);
 
-	// Common constant values
-	public static Value val_null         = make_null();
-	public static Value val_zero         = make_double(0.0);
-	public static Value val_one          = make_double(1.0);
-	public static Value val_empty_string = make_string("");
-	public static Value val_isa_key      = make_string("__isa");
-	public static Value val_self         = make_string("self");
-	public static Value val_super        = make_string("super");
+	// ==== MS1 TRUTH FACTORIES ================================================
+	public static Value Truth(bool b)   => b ? One : Zero;
+	public static Value Truth(double d) => new Value(d);
 
-	// ── Raw bit access ───────────────────────────────────────────────────────
+	// ==== RAW BIT ACCESS =====================================================
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static ulong value_bits(Value v) => v._u;
 
@@ -99,9 +113,9 @@ public static class ValueHelpers {
 		for (int i = 0; i < len; i++) dst[i] = (byte)((v._u >> (8 * (i + 1))) & 0xFF);
 	}
 
-	// ── Core value creation ──────────────────────────────────────────────────
+	// ==== VALUE CREATION =====================================================
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value make_null() => new Value(Value.NULL_VALUE);
+	public static Value make_null() => Null;
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value make_double(double d) {
@@ -117,9 +131,8 @@ public static class ValueHelpers {
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value make_gc(int gcSet, int itemIdx) =>
-		new Value(Value.GC_TAG | ((ulong)gcSet << 32) | (uint)itemIdx);
+		new Value(GC_TAG | ((ulong)gcSet << 32) | (uint)itemIdx);
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value make_string(string str) {
 		if (str.Length <= 5) {
 			// str.Length <= 5 guarantees UTF-8 bytes <= 20, so a 20-byte buffer suffices.
@@ -133,7 +146,7 @@ public static class ValueHelpers {
 
 	private static Value make_tiny_utf8(ReadOnlySpan<byte> utf8) {
 		int len = utf8.Length;
-		ulong u = Value.TINY_STRING_TAG | (ulong)((uint)len & 0xFFU);
+		ulong u = TINY_STRING_TAG | (ulong)((uint)len & 0xFFU);
 		for (int i = 0; i < len; i++) u |= (ulong)utf8[i] << (8 * (i + 1));
 		return new Value(u);
 	}
@@ -165,7 +178,7 @@ public static class ValueHelpers {
 		return GCManager.Functions.Get(value_item_index(v)).OuterVars;
 	}
 
-	// ── Error operations ─────────────────────────────────────────────────────
+	// ==== ERROR OPERATIONS ===================================================
 
 	public static Value make_error(Value message, Value inner, Value stack, Value isa) {
 		if (is_null(stack)) {
@@ -211,43 +224,56 @@ public static class ValueHelpers {
 		return false;
 	}
 
-	// ── Type predicates ──────────────────────────────────────────────────────
+	// ==== TYPE PREDICATES ====================================================
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool is_null(Value v) => v._u == Value.NULL_VALUE;
+	public static bool is_null(Value v) => v._u == NULL_VALUE;
+
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool is_int(Value v) => false;
+
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool is_double(Value v) => (v._u & Value.NANISH_MASK) < Value.NULL_VALUE;
+	public static bool is_double(Value v) => (v._u & NANISH_MASK) < NULL_VALUE;
+
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool is_tiny_string(Value v) => (v._u & Value.NANISH_MASK) == Value.TINY_STRING_TAG;
+	public static bool is_tiny_string(Value v) => (v._u & NANISH_MASK) == TINY_STRING_TAG;
+
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool is_gc_object(Value v) => (v._u & Value.NANISH_MASK) == Value.GC_TAG;
+	public static bool is_gc_object(Value v) => (v._u & NANISH_MASK) == GC_TAG;
+
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool is_heap_string(Value v) {
-		ulong masked = v._u & Value.GC_TYPE_MASK;
-		return masked == (Value.GC_TAG | ((ulong)GCManager.BigStringSet      << 32))
-		    || masked == (Value.GC_TAG | ((ulong)GCManager.InternedStringSet << 32));
+		ulong masked = v._u & GC_TYPE_MASK;
+		return masked == (GC_TAG | ((ulong)GCManager.BigStringSet      << 32))
+		    || masked == (GC_TAG | ((ulong)GCManager.InternedStringSet << 32));
 	}
+
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool is_interned_string(Value v) =>
-		(v._u & Value.GC_TYPE_MASK) == (Value.GC_TAG | ((ulong)GCManager.InternedStringSet << 32));
+		(v._u & GC_TYPE_MASK) == (GC_TAG | ((ulong)GCManager.InternedStringSet << 32));
+
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool is_string(Value v) => is_tiny_string(v) || is_heap_string(v);
+
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool is_list(Value v) =>
-		(v._u & Value.GC_TYPE_MASK) == (Value.GC_TAG | ((ulong)GCManager.ListSet    << 32));
+		(v._u & GC_TYPE_MASK) == (GC_TAG | ((ulong)GCManager.ListSet    << 32));
+
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool is_map(Value v) =>
-		(v._u & Value.GC_TYPE_MASK) == (Value.GC_TAG | ((ulong)GCManager.MapSet     << 32));
+		(v._u & GC_TYPE_MASK) == (GC_TAG | ((ulong)GCManager.MapSet     << 32));
+
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool is_error(Value v) =>
-		(v._u & Value.GC_TYPE_MASK) == (Value.GC_TAG | ((ulong)GCManager.ErrorSet   << 32));
+		(v._u & GC_TYPE_MASK) == (GC_TAG | ((ulong)GCManager.ErrorSet   << 32));
+
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool is_funcref(Value v) =>
-		(v._u & Value.GC_TYPE_MASK) == (Value.GC_TAG | ((ulong)GCManager.FunctionSet << 32));
+		(v._u & GC_TYPE_MASK) == (GC_TAG | ((ulong)GCManager.FunctionSet << 32));
+
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool is_handle(Value v) =>
-		(v._u & Value.GC_TYPE_MASK) == (Value.GC_TAG | ((ulong)GCManager.HandleSet << 32));
+		(v._u & GC_TYPE_MASK) == (GC_TAG | ((ulong)GCManager.HandleSet << 32));
+
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool is_number(Value v) => is_double(v);
 
@@ -263,7 +289,7 @@ public static class ValueHelpers {
 		return true;
 	}
 
-	// ── Numeric accessors ────────────────────────────────────────────────────
+	// ==== NUMERIC ACCESSORS ==================================================
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static int as_int(Value v) => (int)as_double(v);
 
@@ -278,8 +304,7 @@ public static class ValueHelpers {
 	}
 
 	// Return a human-readable name for the type of v, matching the names used
-	// by the `info` intrinsic and the core type maps (number, string, list,
-	// map, funcRef, error, null; "handle" for host handles).
+	// by the `info` intrinsic and the core type maps.
 	public static String value_type_name(Value v) {
 		if (is_number(v)) return "number";
 		if (is_string(v)) return "string";
@@ -292,7 +317,7 @@ public static class ValueHelpers {
 		return "unknown";
 	}
 
-	// ── String accessors ─────────────────────────────────────────────────────
+	// ==== STRING ACCESSORS ===================================================
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static String as_cstring(Value v) {
 		if (!is_string(v)) return "";
@@ -316,7 +341,7 @@ public static class ValueHelpers {
 		return "";
 	}
 
-	// ── Conversion ────────────────────────────────────────────────────────────
+	// ==== CONVERSION =========================================================
 
 	// Returns the string representation of v as a C# string.
 	// For a Value that is already a string this returns its content.
@@ -341,7 +366,7 @@ public static class ValueHelpers {
 	// least two digits (e.g. "1.7014118346046924E+30", "1.234567E-07").  Used for
 	// very large / very small magnitudes, and for whole numbers too large to be
 	// represented exactly.  The C++ runtime mirrors this in format_shortest_sci.
-	static string ShortestSci(double value) {
+	private static string ShortestSci(double value) {
 		string s = value.ToString("E16", CultureInfo.InvariantCulture);
 		for (int sig = 1; sig <= 17; sig++) {
 			string candidate = value.ToString("E" + (sig - 1).ToString(), CultureInfo.InvariantCulture);
@@ -446,7 +471,28 @@ public static class ValueHelpers {
 		catch { return val_zero; }
 	}
 
-	// ── Arithmetic operations ─────────────────────────────────────────────────
+	// ==== RUNTIME ERROR / STACK TRACE ========================================
+
+	// Construct a complete runtime error value (runtime __isa + stack trace) from
+	// core value code, which cannot see the VM layer directly.  In C++ this routes
+	// through a hook registered by the VM (value_make_runtime_error in value.cpp);
+	// in C# we can reach the active VM directly.  Falls back to a bare error if no
+	// VM is active (e.g. unit tests exercising value ops in isolation).
+	public static Value value_make_runtime_error(String message) { // CPP: // (defined in value.cpp)
+		VM vm = VM.ActiveVM();
+		if (vm == null) return make_error(make_string(message), val_null, val_null, val_null);
+		return vm.MakeRuntimeError(message);
+	}
+
+	// Return the active VM's current call stack as a Value (frozen list of
+	// strings), or val_null if no VM is running.
+	public static Value value_current_stack_trace() { // CPP: // (defined in value.cpp)
+		VM vm = VM.ActiveVM();
+		if (vm == null) return val_null;
+		return vm.CurrentStackTrace();
+	}
+
+	// ==== ARITHMETIC =========================================================
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value value_add(Value a, Value b, VM vm = null) {
 		if (is_error(a)) return a;
@@ -476,31 +522,6 @@ public static class ValueHelpers {
 		}
 		if (is_map(a)  && is_map(b))  return map_concat(a, b);
 		return val_null;
-	}
-
-	// Maximum number of elements a list (or characters a string) may hold.
-	// Operations whose result would exceed this raise a runtime error rather
-	// than attempting a hopeless allocation that would exhaust memory.
-	public const int MAX_COLLECTION_SIZE = Int32.MaxValue;
-
-	// Construct a complete runtime error value (runtime __isa + stack trace) from
-	// core value code, which cannot see the VM layer directly.  In C++ this routes
-	// through a hook registered by the VM (value_make_runtime_error in value.cpp);
-	// in C# we can reach the active VM directly.  Falls back to a bare error if no
-	// VM is active (e.g. unit tests exercising value ops in isolation).
-	public static Value value_make_runtime_error(String message) { // CPP: // (defined in value.cpp)
-		VM vm = VM.ActiveVM();
-		if (vm == null) return make_error(make_string(message), val_null, val_null, val_null);
-		return vm.MakeRuntimeError(message);
-	}
-
-	// Return the active VM's current call stack as a Value (frozen list of
-	// strings), or val_null if no VM is running.  Lets ErrorTypes (and other
-	// code below the VM layer) attach an accurate stack trace to error values.
-	public static Value value_current_stack_trace() { // CPP: // (defined in value.cpp)
-		VM vm = VM.ActiveVM();
-		if (vm == null) return val_null;
-		return vm.CurrentStackTrace();
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -593,7 +614,7 @@ public static class ValueHelpers {
 		return val_null;
 	}
 
-	// ── Fuzzy logic ───────────────────────────────────────────────────────────
+	// ==== FUZZY LOGIC ========================================================
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Double ToFuzzyBool(Value v) {
 		if (is_double(v)) return as_double(v);
@@ -627,12 +648,12 @@ public static class ValueHelpers {
 		return make_double(1.0 - AbsClamp01(ToFuzzyBool(a)));
 	}
 
-	// ── Hashing ───────────────────────────────────────────────────────────────
+	// ==== HASHING ============================================================
 	public static Int32 value_hash(Value v) {
 		return v.GetHashCode();
 	}
 
-	// ── Comparison ────────────────────────────────────────────────────────────
+	// ==== COMPARISON =========================================================
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool value_identical(Value a, Value b) => a._u == b._u;
 
@@ -682,7 +703,7 @@ public static class ValueHelpers {
 		return false;
 	}
 
-	// ── List operations ──────────────────────────────────────────────────────
+	// ==== LIST OPERATIONS ====================================================
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static int list_count(Value list_val) {
 		if (!is_list(list_val)) return 0;
@@ -867,7 +888,7 @@ public static class ValueHelpers {
 		for (int i = 0; i < count; i++) list.Set(i, sorted[i]);
 	}
 
-	// ── Map operations ────────────────────────────────────────────────────────
+	// ==== MAP OPERATIONS =====================================================
 	public static int map_count(Value map_val) {
 		if (!is_map(map_val)) return 0;
 		return GCManager.Maps.Get(value_item_index(map_val)).Count();
@@ -962,11 +983,9 @@ public static class ValueHelpers {
 		return val_null;
 	}
 
-	// ── Map iteration ─────────────────────────────────────────────────────────
+	// ==== MAP ITERATION ======================================================
 	// iter = -1: not started.  iter < -1: VarMap register entry index (see GCMap).
 	// iter >= 0: hash-table slot.  MAP_ITER_DONE: exhausted.
-
-	public const int MAP_ITER_DONE = Int32.MinValue;
 
 	public static int map_iter_next(Value map_val, int iter) {
 		if (!is_map(map_val) || iter == MAP_ITER_DONE) return MAP_ITER_DONE;
@@ -985,40 +1004,7 @@ public static class ValueHelpers {
 		return result;
 	}
 
-	// Legacy struct-based iterator (kept for any call sites that use it).
-	public struct MapIterator {
-		public int MapIndex;
-		public int Iter;
-		public Value Key;
-		public Value Val;
-	}
-
-	public static MapIterator map_iterator(Value map_val) {
-		MapIterator it = new MapIterator();
-		it.Key = val_null;
-		it.Val = val_null;
-		if (is_map(map_val)) {
-			it.MapIndex = value_item_index(map_val);
-			it.Iter     = -1;
-		} else {
-			it.MapIndex = -1;
-			it.Iter     = MAP_ITER_DONE;
-		}
-		return it;
-	}
-
-	public static bool map_iterator_next(ref MapIterator iter) {
-		if (iter.MapIndex < 0 || iter.Iter == MAP_ITER_DONE) return false;
-		int next = GCManager.Maps.Get(iter.MapIndex).NextEntry(iter.Iter);
-		if (next == -1) { iter.Iter = MAP_ITER_DONE; return false; }
-		iter.Iter = next;
-		GCMap m = GCManager.Maps.Get(iter.MapIndex);
-		iter.Key = m.KeyAt(next);
-		iter.Val = m.ValueAt(next);
-		return true;
-	}
-
-	// ── VarMap operations ─────────────────────────────────────────────────────
+	// ==== VARMAP OPERATIONS ==================================================
 	public static Value make_varmap(List<Value> registers, List<Value> names, int baseIdx, int count) {
 		return VarMapBacking.NewVarMap(registers, names, baseIdx, baseIdx + count - 1);
 	}
@@ -1044,7 +1030,7 @@ public static class ValueHelpers {
 		if (m._vmb != null) m._vmb.MapToRegister(idx, varName, registers, regIndex);
 	}
 
-	// ── Freeze operations ─────────────────────────────────────────────────────
+	// ==== FREEZE OPERATIONS ==================================================
 	public static bool is_frozen(Value v) {
 		if (is_list(v)) return GCManager.Lists.Get(value_item_index(v)).Frozen;
 		if (is_map(v))  return GCManager.Maps.Get(value_item_index(v)).Frozen;
@@ -1106,7 +1092,7 @@ public static class ValueHelpers {
 		return v;
 	}
 
-	// ── Map concat ────────────────────────────────────────────────────────────
+	// ==== MAP CONCAT =========================================================
 	public static Value map_concat(Value a, Value b) {
 		Value result = make_map(0);
 		if (is_map(a)) {
@@ -1122,7 +1108,7 @@ public static class ValueHelpers {
 		return result;
 	}
 
-	// ── String operations ─────────────────────────────────────────────────────
+	// ==== STRING OPERATIONS ==================================================
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static int string_length(Value v) {
 		if (!is_string(v)) return 0;
@@ -1273,6 +1259,307 @@ public static class ValueHelpers {
 		if (s.Length == 0) return 0;
 		return char.ConvertToUtf32(s, 0);
 	}
+
+	// ==== OVERRIDES ==========================================================
+	[Obsolete("Use to_String(v, vm) instead")]
+	public override string ToString() => to_String(this);
+
+	// Equals/GetHashCode embody the same semantics as MiniScript ==, so that
+	// Dictionary<Value, Value> hashes/compares keys correctly. In particular,
+	// strings compare by content (not pointer/index).
+	public override bool Equals(object obj) {
+		if (obj is Value v) return value_equal(this, v);
+		return false;
+	}
+
+	public override int GetHashCode() {
+		if (is_string(this)) {
+			string s = GCManager.GetStringContent(this);
+			return s.GetHashCode(System.StringComparison.Ordinal);
+		}
+		return (int)(_u ^ (_u >> 32));
+	}
+}
+
+// =============================================================================
+// Backward-compatibility shims.
+// These thin wrappers let existing files that use `using static MiniScript.ValueHelpers`
+// continue to compile unchanged.  They are candidates for removal once all call
+// sites have been updated to call Value methods directly.
+// =============================================================================
+public static class ValueHelpers {
+
+	// ── Constants ─────────────────────────────────────────────────────────────
+	public const int MAX_COLLECTION_SIZE = Value.MAX_COLLECTION_SIZE;
+	public const int MAP_ITER_DONE       = Value.MAP_ITER_DONE;
+
+	// ── Value constants ───────────────────────────────────────────────────────
+	public static readonly Value val_null         = Value.Null;
+	public static readonly Value val_zero         = Value.Zero;
+	public static readonly Value val_one          = Value.One;
+	public static readonly Value val_empty_string = Value.EmptyString;
+	public static readonly Value val_isa_key      = Value.val_isa_key;
+	public static readonly Value val_self         = Value.val_self;
+	public static readonly Value val_super        = Value.val_super;
+
+	// ── Raw bit access ────────────────────────────────────────────────────────
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static ulong value_bits(Value v) => Value.value_bits(v);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static int value_gc_set_index(Value v) => Value.value_gc_set_index(v);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static int value_item_index(Value v) => Value.value_item_index(v);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static int value_tiny_len(Value v) => Value.value_tiny_len(v);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static void value_tiny_copy_to(Value v, Span<byte> dst) => Value.value_tiny_copy_to(v, dst);
+
+	// ── Value creation ────────────────────────────────────────────────────────
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static Value make_null() => Value.make_null();
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static Value make_double(double d) => Value.make_double(d);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static Value make_int(int i) => Value.make_int(i);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static Value make_int(bool b) => Value.make_int(b);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static Value make_gc(int gcSet, int itemIdx) => Value.make_gc(gcSet, itemIdx);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static Value make_string(string str) => Value.make_string(str);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static Value make_list(int initial_capacity) => Value.make_list(initial_capacity);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static Value make_empty_list() => Value.make_empty_list();
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static Value make_empty_map() => Value.make_empty_map();
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static Value make_map(int initial_capacity) => Value.make_map(initial_capacity);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static Value make_funcref(FuncDef func, Value outerVars) => Value.make_funcref(func, outerVars);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static FuncDef funcref_funcdef(Value v) => Value.funcref_funcdef(v);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static Value funcref_outer_vars(Value v) => Value.funcref_outer_vars(v);
+
+	// ── Error operations ──────────────────────────────────────────────────────
+	public static Value make_error(Value message, Value inner, Value stack, Value isa) => Value.make_error(message, inner, stack, isa);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static Value error_message(Value v) => Value.error_message(v);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static Value error_inner(Value v) => Value.error_inner(v);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static Value error_stack(Value v) => Value.error_stack(v);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static Value error_isa(Value v) => Value.error_isa(v);
+	public static bool error_isa_contains(Value err, Value target) => Value.error_isa_contains(err, target);
+
+	// ── Type predicates ───────────────────────────────────────────────────────
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static bool is_null(Value v) => Value.is_null(v);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static bool is_int(Value v) => Value.is_int(v);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static bool is_double(Value v) => Value.is_double(v);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static bool is_tiny_string(Value v) => Value.is_tiny_string(v);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static bool is_gc_object(Value v) => Value.is_gc_object(v);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static bool is_heap_string(Value v) => Value.is_heap_string(v);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static bool is_interned_string(Value v) => Value.is_interned_string(v);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static bool is_string(Value v) => Value.is_string(v);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static bool is_list(Value v) => Value.is_list(v);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static bool is_map(Value v) => Value.is_map(v);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static bool is_error(Value v) => Value.is_error(v);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static bool is_funcref(Value v) => Value.is_funcref(v);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static bool is_handle(Value v) => Value.is_handle(v);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static bool is_number(Value v) => Value.is_number(v);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static bool is_truthy(Value v) => Value.is_truthy(v);
+
+	// ── Numeric accessors ─────────────────────────────────────────────────────
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static int as_int(Value v) => Value.as_int(v);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static double as_double(Value v) => Value.as_double(v);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static double numeric_val(Value v) => Value.numeric_val(v);
+
+	// ── Type name ─────────────────────────────────────────────────────────────
+	public static String value_type_name(Value v) => Value.value_type_name(v);
+
+	// ── String accessors ──────────────────────────────────────────────────────
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static String as_cstring(Value v) => Value.as_cstring(v);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	internal static string GetStringValue(Value val) => Value.GetStringValue(val);
+
+	// ── Conversion ────────────────────────────────────────────────────────────
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static String to_String(Value v, VM vm = null) => Value.to_String(v, vm);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static Value to_string(Value a, VM vm = null) => Value.to_string(a, vm);
+	public static Value value_repr(Value v, VM vm = null) => Value.value_repr(v, vm);
+	public static string code_form(Value v, VM vm = null, int recursionLimit = -1) => Value.code_form(v, vm, recursionLimit);
+	public static Value to_number(Value a) => Value.to_number(a);
+
+	// ── Runtime error / stack trace ───────────────────────────────────────────
+	public static Value value_make_runtime_error(String message) => Value.value_make_runtime_error(message);
+	public static Value value_current_stack_trace() => Value.value_current_stack_trace();
+
+	// ── Arithmetic ────────────────────────────────────────────────────────────
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static Value value_add(Value a, Value b, VM vm = null) => Value.value_add(a, b, vm);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static Value value_mult(Value a, Value b) => Value.value_mult(a, b);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static Value value_div(Value a, Value b) => Value.value_div(a, b);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static Value value_mod(Value a, Value b) => Value.value_mod(a, b);
+	public static Value value_pow(Value a, Value b) => Value.value_pow(a, b);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static Value value_sub(Value a, Value b) => Value.value_sub(a, b);
+
+	// ── Fuzzy logic ───────────────────────────────────────────────────────────
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static Double ToFuzzyBool(Value v) => Value.ToFuzzyBool(v);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static Double AbsClamp01(Double d) => Value.AbsClamp01(d);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static Value value_and(Value a, Value b) => Value.value_and(a, b);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static Value value_or(Value a, Value b) => Value.value_or(a, b);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static Value value_not(Value a) => Value.value_not(a);
+
+	// ── Hashing ───────────────────────────────────────────────────────────────
+	public static Int32 value_hash(Value v) => Value.value_hash(v);
+
+	// ── Comparison ────────────────────────────────────────────────────────────
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static bool value_identical(Value a, Value b) => Value.value_identical(a, b);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static bool value_lt(Value a, Value b) => Value.value_lt(a, b);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static bool value_le(Value a, Value b) => Value.value_le(a, b);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static bool value_equal(Value a, Value b) => Value.value_equal(a, b);
+
+	// ── List operations ───────────────────────────────────────────────────────
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static int list_count(Value list_val) => Value.list_count(list_val);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static Value list_get(Value list_val, int index) => Value.list_get(list_val, index);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static void list_set(Value list_val, int index, Value item) => Value.list_set(list_val, index, item);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static void list_push(Value list_val, Value item) => Value.list_push(list_val, item);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static bool list_remove(Value list_val, int index) => Value.list_remove(list_val, index);
+	public static void list_insert(Value list_val, int index, Value item) => Value.list_insert(list_val, index, item);
+	public static Value list_pop(Value list_val) => Value.list_pop(list_val);
+	public static Value list_pull(Value list_val) => Value.list_pull(list_val);
+	public static int list_indexOf(Value list_val, Value item, int afterIdx) => Value.list_indexOf(list_val, item, afterIdx);
+	public static void list_sort(Value list_val, bool ascending) => Value.list_sort(list_val, ascending);
+	public static void list_sort_by_key(Value list_val, Value byKey, bool ascending) => Value.list_sort_by_key(list_val, byKey, ascending);
+	public static Value list_slice(Value list_val, int start, int end) => Value.list_slice(list_val, start, end);
+	public static Value list_concat(Value a, Value b) => Value.list_concat(a, b);
+
+	// ── Map operations ────────────────────────────────────────────────────────
+	public static int map_count(Value map_val) => Value.map_count(map_val);
+	public static Value map_get(Value map_val, Value key) => Value.map_get(map_val, key);
+	public static bool map_try_get(Value map_val, Value key, out Value value) => Value.map_try_get(map_val, key, out value);
+	public static bool map_lookup(Value map_val, Value key, out Value value) => Value.map_lookup(map_val, key, out value);
+	public static bool map_lookup_with_origin(Value map_val, Value key, out Value value, out Value superVal) => Value.map_lookup_with_origin(map_val, key, out value, out superVal);
+	public static bool map_set(Value map_val, Value key, Value value) => Value.map_set(map_val, key, value);
+	public static bool map_set(Value map_val, string key, Value value) => Value.map_set(map_val, key, value);
+	public static bool map_set(Value map_val, string key, string value) => Value.map_set(map_val, key, value);
+	public static bool map_remove(Value map_val, Value key) => Value.map_remove(map_val, key);
+	public static bool map_has_key(Value map_val, Value key) => Value.map_has_key(map_val, key);
+	public static void map_clear(Value map_val) => Value.map_clear(map_val);
+	public static Value map_nth_entry(Value map_val, int n) => Value.map_nth_entry(map_val, n);
+	public static int map_iter_next(Value map_val, int iter) => Value.map_iter_next(map_val, iter);
+	public static Value map_iter_entry(Value map_val, int iter) => Value.map_iter_entry(map_val, iter);
+
+	// ── Legacy struct-based map iterator ─────────────────────────────────────
+	// MapIterator is defined here (not in Value) so existing call sites that
+	// name the type as ValueHelpers.MapIterator continue to compile.
+	public struct MapIterator {
+		public int MapIndex;
+		public int Iter;
+		public Value Key;
+		public Value Val;
+	}
+
+	public static MapIterator map_iterator(Value map_val) {
+		MapIterator it = new MapIterator();
+		it.Key = Value.val_null;
+		it.Val = Value.val_null;
+		if (Value.is_map(map_val)) {
+			it.MapIndex = Value.value_item_index(map_val);
+			it.Iter     = -1;
+		} else {
+			it.MapIndex = -1;
+			it.Iter     = MAP_ITER_DONE;
+		}
+		return it;
+	}
+
+	public static bool map_iterator_next(ref MapIterator iter) {
+		if (iter.MapIndex < 0 || iter.Iter == MAP_ITER_DONE) return false;
+		int next = GCManager.Maps.Get(iter.MapIndex).NextEntry(iter.Iter);
+		if (next == -1) { iter.Iter = MAP_ITER_DONE; return false; }
+		iter.Iter = next;
+		GCMap m = GCManager.Maps.Get(iter.MapIndex);
+		iter.Key = m.KeyAt(next);
+		iter.Val = m.ValueAt(next);
+		return true;
+	}
+
+	// ── VarMap operations ─────────────────────────────────────────────────────
+	public static Value make_varmap(List<Value> registers, List<Value> names, int baseIdx, int count) => Value.make_varmap(registers, names, baseIdx, count);
+	public static void varmap_gather(Value map_val) => Value.varmap_gather(map_val);
+	public static void varmap_rebind(Value map_val, List<Value> registers, List<Value> names) => Value.varmap_rebind(map_val, registers, names);
+	public static void varmap_map_to_register(Value map_val, Value varName, List<Value> registers, int regIndex) => Value.varmap_map_to_register(map_val, varName, registers, regIndex);
+
+	// ── Freeze operations ─────────────────────────────────────────────────────
+	public static bool is_frozen(Value v) => Value.is_frozen(v);
+	public static void freeze_value(Value v) => Value.freeze_value(v);
+	public static Value frozen_copy(Value v) => Value.frozen_copy(v);
+
+	// ── Map concat ────────────────────────────────────────────────────────────
+	public static Value map_concat(Value a, Value b) => Value.map_concat(a, b);
+
+	// ── String operations ─────────────────────────────────────────────────────
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static int string_length(Value v) => Value.string_length(v);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static int string_indexOf(Value haystack, Value needle, int start_pos) => Value.string_indexOf(haystack, needle, start_pos);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static Value string_substring(Value str, int startIndex, int len) => Value.string_substring(str, startIndex, len);
+	public static Value string_slice(Value str, int start, int end) => Value.string_slice(str, start, end);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static Value string_concat(Value a, Value b) => Value.string_concat(a, b);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static int string_compare(Value a, Value b) => Value.string_compare(a, b);
+	public static Value string_split(Value str, Value delimiter) => Value.string_split(str, delimiter);
+	public static Value string_replace(Value str, Value from, Value to) => Value.string_replace(str, from, to);
+	public static Value string_insert(Value str, int index, Value value, VM vm = null) => Value.string_insert(str, index, value, vm);
+	public static Value string_split_max(Value str, Value delimiter, int maxCount) => Value.string_split_max(str, delimiter, maxCount);
+	public static Value string_replace_max(Value str, Value from, Value to, int maxCount) => Value.string_replace_max(str, from, to, maxCount);
+	public static Value string_upper(Value str) => Value.string_upper(str);
+	public static Value string_lower(Value str) => Value.string_lower(str);
+	public static Value string_from_code_point(int codePoint) => Value.string_from_code_point(codePoint);
+	public static int string_code_point(Value str) => Value.string_code_point(str);
 }
 
 }

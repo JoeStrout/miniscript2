@@ -83,7 +83,6 @@ public:
 
 } // namespace
 
-extern "C" {
 
 // ── Creation ────────────────────────────────────────────────────────────
 
@@ -92,7 +91,7 @@ Value make_tiny_string(const char* str, int len) {
     uint64_t bits = TINY_STRING_TAG | (uint64_t)(uint8_t)len;
     for (int i = 0; i < len; i++)
         bits |= (uint64_t)(uint8_t)str[i] << (8 * (i + 1));
-    return Value(bits);
+    return Value::fromBits(bits);
 }
 
 Value make_string(const char* str) {
@@ -446,4 +445,3 @@ uint32_t get_string_hash(Value v) {
     return 0;
 }
 
-} // extern "C"

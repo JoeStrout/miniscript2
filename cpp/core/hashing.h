@@ -3,9 +3,6 @@
 #ifndef HASHING_H
 #define HASHING_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
 
 #include <stdint.h>
 
@@ -23,8 +20,5 @@ static inline uint32_t uint64_hash(uint64_t value) {
 
 
 
-#ifdef __cplusplus
-}
-#endif
 
 #endif

@@ -10,9 +10,6 @@
 #include <stdbool.h>
 #include <stddef.h>  // For size_t
 
-#ifdef __cplusplus
-extern "C" {
-#endif
 
 #include "unicodeUtil.h"
 
@@ -110,6 +107,3 @@ inline void ss_ensureHashComputed(StringStorage* storage) {
 }
 
 
-#ifdef __cplusplus
-}
-#endif

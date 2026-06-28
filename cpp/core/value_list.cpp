@@ -11,7 +11,6 @@
 using MiniScript::GCManager;
 using MiniScript::GCList;
 
-extern "C" {
 
 // ── Creation ────────────────────────────────────────────────────────────
 
@@ -257,4 +256,3 @@ Value list_to_string(Value list_val, void* vm) {
     return code_form(list_val, vm, 3);
 }
 
-} // extern "C"

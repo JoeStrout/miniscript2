@@ -12,9 +12,6 @@
 
 #define CORE_LAYER_2A
 
-#ifdef __cplusplus
-extern "C" {
-#endif
 
 // Strings shorter than this are interned; longer ones bypass the intern
 // table. The same threshold is used by GCManager.
@@ -61,8 +58,5 @@ int   string_code_point(Value str);
 uint32_t string_hash(const char* data, int len);
 uint32_t get_string_hash(Value str_val);
 
-#ifdef __cplusplus
-} // extern "C"
-#endif
 
 #endif // VALUE_STRING_H

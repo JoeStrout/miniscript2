@@ -27,18 +27,33 @@ using MiniScript::GCMap;
 using MiniScript::GCError;
 using MiniScript::GCFunction;
 
-extern "C" {
 
 // ── Constants ───────────────────────────────────────────────────────────
 
-Value val_isa_key = 0;
-Value val_self    = 0;
-Value val_super   = 0;
+Value val_isa_key = val_null;
+Value val_self    = val_null;
+Value val_super   = val_null;
+
+// MiniScript 1.x-style shared constants (declared in struct Value).  The
+// immediate ones are constant-initialized; the string ones are set up in
+// value_init_constants() (they are all tiny strings, so no GC is involved).
+Value Value::null           = val_null;
+Value Value::zero           = val_zero;
+Value Value::one            = val_one;
+Value Value::emptyString    = val_empty_string;
+Value Value::magicIsA       = val_null;
+Value Value::keyString      = val_null;
+Value Value::valueString    = val_null;
+Value Value::implicitResult = val_null;
 
 void value_init_constants(void) {
     val_isa_key = make_string("__isa");
     val_self    = make_string("self");
     val_super   = make_string("super");
+    Value::magicIsA       = make_string("__isa");
+    Value::keyString      = make_string("key");
+    Value::valueString    = make_string("value");
+    Value::implicitResult = make_string("_");
 }
 
 // ── Error accessors ─────────────────────────────────────────────────────
@@ -84,7 +99,6 @@ bool error_isa_contains(Value error, Value base) {
 
 // ── FuncRef accessors ───────────────────────────────────────────────────
 
-}  // end extern "C": make_funcref/funcref_funcdef use the C++ type FuncDef
 
 Value make_funcref(MiniScript::FuncDef func, Value outerVars) {
     return GCManager::NewFuncRef(func, outerVars);
@@ -95,7 +109,6 @@ MiniScript::FuncDef funcref_funcdef(Value v) {
     return GCManager::Functions.Get(value_item_index(v)).Func;
 }
 
-extern "C" {
 
 Value funcref_outer_vars(Value v) {
     if (!is_funcref(v)) return val_null;
@@ -500,4 +513,3 @@ Value value_current_stack_trace() {
     return val_null;
 }
 
-} // extern "C"

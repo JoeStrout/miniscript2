@@ -56,8 +56,12 @@ using Char8   = char;
 using Single  = float;
 using Double  = double;
 
-// And, for where we actually need a null in both C# and C++:
-#define null nullptr
+// And, for where we actually need a null in both C# and C++.  This is a real
+// constant rather than `#define null nullptr` so that `null` obeys scope: that
+// lets types define their own `null` member (e.g. Value::null) without the
+// preprocessor clobbering it.  It is constexpr (hence const / internal linkage),
+// so it is safe to define in this widely-included header.
+constexpr decltype(nullptr) null = nullptr;
 
 // C# `object` is an opaque reference; in C++ we model it as a raw pointer.
 // Used for user-data parameters in callbacks (e.g. GCManager mark callbacks).

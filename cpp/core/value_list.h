@@ -9,9 +9,6 @@
 
 #define CORE_LAYER_2A
 
-#ifdef __cplusplus
-extern "C" {
-#endif
 
 // Creation
 Value make_list(int initial_capacity);
@@ -46,8 +43,5 @@ void list_sort_by_key(Value list_val, Value byKey, bool ascending);
 uint32_t list_hash(Value list_val);
 Value    list_to_string(Value list_val, void* vm);
 
-#ifdef __cplusplus
-} // extern "C"
-#endif
 
 #endif // LISTS_H

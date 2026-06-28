@@ -13,7 +13,6 @@ using MiniScript::GCManager;
 using MiniScript::GCMap;
 using MiniScript::VarMapBacking;
 
-extern "C" {
 
 // ── Creation ────────────────────────────────────────────────────────────
 
@@ -239,7 +238,6 @@ Value map_to_string(Value map_val, void* vm) {
     return code_form(map_val, vm, 3);
 }
 
-} // extern "C"
 
 // ── VarMap operations ──────────────────────────────────────────────────
 // Declared in value_map.h inside namespace MiniScript so they can take

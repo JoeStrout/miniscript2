@@ -24,15 +24,11 @@
 #include <math.h>
 #include <string.h>
 #include "hashing.h"
-#ifdef __cplusplus
 #include <type_traits>
-#endif
 
 #define CORE_LAYER_2A
 
-#ifdef __cplusplus
 namespace MiniScript { struct FuncDef; }
-#endif
 
 // NaN-boxed dynamic Value.  The sole data member `bits` holds the 64-bit
 // payload: for numbers it is the IEEE-754 double bit pattern; for everything
@@ -47,23 +43,70 @@ namespace MiniScript { struct FuncDef; }
 // everything else goes through the make_*/as_*/is_* free functions.
 typedef struct Value {
     uint64_t bits;
-#ifdef __cplusplus
-    Value() = default;
-    constexpr Value(uint64_t b) : bits(b) {}
+
+    // MiniScript 1.x-compatible constructors.  The numeric and string ctors are
+    // defined out-of-line below, where the NaN-box constants and the make_*
+    // helpers are visible.  These mirror MiniScript 1.x: a default Value is
+    // null, Value(1.0) is a number, Value("x") is a string.
+    Value() noexcept;                 // null
+    Value(double number) noexcept;    // a number
+    // The string ctor is explicit: a bare const char* literal must not silently
+    // become a Value, or calls like f("x") where f is overloaded on both String
+    // and Value (e.g. RaiseRuntimeError) become ambiguous.  Value("x") still works.
+    explicit Value(const char* cString); // a string (copies the C string)
+
+    // Build a Value straight from its raw NaN-boxed payload.  This is the
+    // internal escape hatch used by make_* and the val_* constants.  It is a
+    // named factory rather than a uint64_t constructor on purpose: that keeps
+    // Value(0), Value(1.0), etc. unambiguous and meaning what they do in 1.x.
+    static constexpr Value fromBits(uint64_t rawBits) noexcept { return Value(rawBits, RawTag{}); }
+
     constexpr bool operator==(Value other) const { return bits == other.bits; }
     constexpr bool operator!=(Value other) const { return bits != other.bits; }
-#endif
+
+    // MiniScript 1.x-style convenience accessors.  These are thin, zero-overhead
+    // wrappers over the make_*/as_*/is_* free functions; they add no storage and
+    // do not change how Value is passed.  Defined out-of-line at the bottom of
+    // this header, where those free functions are visible.  (Heavier 1.x methods
+    // such as GetString/GetList/GetDict, ToString, and SetElem/GetElem are
+    // intentionally omitted here, to avoid pulling the String/List/Map/VM layers
+    // into this low-level header.)
+    inline double       DoubleValue() const noexcept;
+    inline float        FloatValue()  const noexcept;
+    inline int32_t      IntValue()    const noexcept;
+    inline uint32_t     UIntValue()   const noexcept;
+    inline bool         BoolValue()   const noexcept;
+    inline bool         IsNull()      const noexcept;
+    inline unsigned int Hash()        const noexcept;
+
+    // MiniScript 1.x-style truthiness factories (defined at the bottom of this
+    // header).  Truth(double) is just the number ctor: our Value is light enough
+    // that there is no benefit to MiniScript 1.x's special-casing of 0 and 1.
+    static Value Truth(bool b);
+    static Value Truth(double number);
+
+    // Handy shared constants, mirroring the MiniScript 1.x Value statics.
+    // Defined in value.cpp.
+    static Value null;           // null
+    static Value zero;           // 0
+    static Value one;            // 1
+    static Value emptyString;    // ""
+    static Value magicIsA;       // "__isa"
+    static Value keyString;      // "key"
+    static Value valueString;    // "value"
+    static Value implicitResult; // "_"  (MiniScript 1.x: the variable "_"; MS2 has no Var type, so this is just the string)
+
+  private:
+    // Tag type that selects the raw-payload constructor (used only by fromBits).
+    struct RawTag {};
+    constexpr Value(uint64_t rawBits, RawTag) noexcept : bits(rawBits) {}
 } Value;
 
-#ifdef __cplusplus
 static_assert(sizeof(Value) == 8, "Value must remain exactly 8 bytes");
 static_assert(std::is_trivially_copyable<Value>::value,
     "Value must stay trivially copyable so it is still passed in a register");
 static_assert(std::is_standard_layout<Value>::value,
     "Value must stay standard-layout");
-
-extern "C" {
-#endif
 
 // ── Tag bits ────────────────────────────────────────────────────────────
 #define NANISH_MASK       0xFFFF000000000000ULL
@@ -103,10 +146,10 @@ extern "C" {
 #define HANDLE_TAG_PATTERN  (GC_TAG | ((uint64_t)HANDLE_SET  << 32))
 
 // ── Common constant values ──────────────────────────────────────────────
-#define val_null         ((Value)NULL_VALUE)
-#define val_zero         ((Value)0x0000000000000000ULL)
-#define val_one          ((Value)0x3FF0000000000000ULL)
-#define val_empty_string ((Value)TINY_STRING_TAG)
+#define val_null         (Value::fromBits(NULL_VALUE))
+#define val_zero         (Value::fromBits(0x0000000000000000ULL))
+#define val_one          (Value::fromBits(0x3FF0000000000000ULL))
+#define val_empty_string (Value::fromBits(TINY_STRING_TAG))
 
 extern Value val_isa_key;   // "__isa"
 extern Value val_self;      // "self"
@@ -204,7 +247,7 @@ static inline Value make_double(double d) {
 static inline Value make_int(int32_t i) { return make_double((double)i); }
 
 static inline Value make_gc(int gcSet, int itemIdx) {
-    return (Value)(GC_TAG | ((uint64_t)gcSet << 32) | (uint64_t)(uint32_t)itemIdx);
+    return Value::fromBits(GC_TAG | ((uint64_t)gcSet << 32) | (uint64_t)(uint32_t)itemIdx);
 }
 
 static inline double as_double(Value v) {
@@ -403,11 +446,6 @@ bool     is_frozen(Value v);
 void     freeze_value(Value v);
 Value    frozen_copy(Value v);
 
-#ifdef __cplusplus
-} // extern "C"
-#endif
-
-#ifdef __cplusplus
 // Content-aware Hash and equality overloads for Value, used by
 // Dictionary<Value, Value>. Without these, Dictionary would fall back to
 // bitwise hash/equality (via Hash(int) narrowing and uint64_t ==), which
@@ -420,10 +458,33 @@ inline bool DictKeyEqual(Value a, Value b) {
     return value_equal(a, b);
 }
 
+// ── MiniScript 1.x-compatible constructors (declared in struct Value) ──────
+// Defined here, where NULL_VALUE and the make_* helpers are visible.  A default
+// Value is null; Value(1.0) is a number; Value("x") copies the C string.
+inline Value::Value() noexcept : bits(NULL_VALUE) {}
+inline Value::Value(double number) noexcept { *this = make_double(number); }
+inline Value::Value(const char* cString) { *this = make_string(cString); }
+
+// Truthiness factories.  Truth(double) maps 0 -> zero and 1 -> one for free,
+// since make_double(0.0)/make_double(1.0) are exactly val_zero/val_one.
+inline Value Value::Truth(bool b)        { return b ? one : zero; }
+inline Value Value::Truth(double number) { return Value(number); }
+
+// ── MiniScript 1.x-style convenience accessors (declared in struct Value) ──
+// Out-of-line so they can see is_double/as_double/is_truthy/is_null/value_hash,
+// which are declared earlier in this header.  Each compiles to the same code as
+// the corresponding free-function call, so it is convenience only.
+inline double       Value::DoubleValue() const noexcept { return is_double(*this) ? as_double(*this) : 0.0; }
+inline float        Value::FloatValue()  const noexcept { return (float)DoubleValue(); }
+inline int32_t      Value::IntValue()    const noexcept { return (int32_t)DoubleValue(); }
+inline uint32_t     Value::UIntValue()   const noexcept { return (uint32_t)DoubleValue(); }
+inline bool         Value::BoolValue()   const noexcept { return is_truthy(*this); }
+inline bool         Value::IsNull()      const noexcept { return is_null(*this); }
+inline unsigned int Value::Hash()        const noexcept { return value_hash(*this); }
+
 // A funcref Value pairs a FuncDef with an optional captured-variable map.
 // Declared with C++ linkage (FuncDef is a C++ type, defined in FuncDef.g.h).
 Value               make_funcref(MiniScript::FuncDef func, Value outerVars);
 MiniScript::FuncDef funcref_funcdef(Value v);
-#endif
 
 #endif // NANBOX_H

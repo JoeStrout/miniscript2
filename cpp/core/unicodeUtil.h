@@ -9,9 +9,6 @@
 // This file is part of Layer 0 (foundation utilities)
 #define CORE_LAYER_0
 
-#ifdef __cplusplus
-extern "C" {
-#endif
 
 
 // IsUTF8IntraChar
@@ -184,8 +181,5 @@ static inline bool UnicodeCharIsWhitespace(unsigned long uniChar)
 // FNV-1a hash function
 uint32_t fnv1a_hash(const char* data, int len);
 
-#ifdef __cplusplus
-}
-#endif
 
 #endif // UNICODEUTIL_H

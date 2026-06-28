@@ -10,7 +10,6 @@
 
 #define CORE_LAYER_2A
 
-#ifdef __cplusplus
 // VarMap functions take MiniScript::List<Value> (shared_ptr-backed) to
 // preserve aliasing with the VM's register/names arrays. Declared outside
 // the extern "C" block since List<Value> is a C++ template.
@@ -26,8 +25,6 @@ using MiniScript::varmap_map_to_register;
 using MiniScript::varmap_gather;
 using MiniScript::varmap_rebind;
 
-extern "C" {
-#endif
 
 // Creation
 Value make_map(int initial_capacity);
@@ -74,8 +71,5 @@ Value map_iter_entry(Value map_val, int iter);
 uint32_t map_hash(Value map_val);
 Value    map_to_string(Value map_val, void* vm);
 
-#ifdef __cplusplus
-} // extern "C"
-#endif
 
 #endif // VALUE_MAP_H

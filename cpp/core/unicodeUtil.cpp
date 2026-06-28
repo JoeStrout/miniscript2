@@ -182,7 +182,7 @@ static int compareLowerUpperPair(const void *a, const void *b) {
 }
 
 static void buildReverseLookupTable(void) {
-    LowerUpperPair *tmp = malloc(CASE_TABLE_SIZE * sizeof(LowerUpperPair));
+    LowerUpperPair *tmp = (LowerUpperPair *)malloc(CASE_TABLE_SIZE * sizeof(LowerUpperPair));
     int count = 0;
     for (int i = 0; i < CASE_TABLE_SIZE; i++) {
         unsigned short lo = sLowerTable[i];
@@ -216,7 +216,7 @@ static unsigned short findLowerInUpperTable(unsigned short lower) {
     }
     if (!sReverseLookupTable) buildReverseLookupTable();
     LowerUpperPair key = { lower, 0 };
-    LowerUpperPair *result = bsearch(&key, sReverseLookupTable, sReverseLookupCount,
+    LowerUpperPair *result = (LowerUpperPair *)bsearch(&key, sReverseLookupTable, sReverseLookupCount,
                                       sizeof(LowerUpperPair), compareLowerUpperPair);
     return result ? result->upper : lower;
 }
@@ -227,7 +227,7 @@ static unsigned short findUpperInLowerTable(unsigned short upper) {
         if (upper >= 'A' && upper <= 'Z') return upper + 32;
         return upper;
     }
-    unsigned short *found = bsearch(&upper, sUpperTable, CASE_TABLE_SIZE,
+    unsigned short *found = (unsigned short *)bsearch(&upper, sUpperTable, CASE_TABLE_SIZE,
                                      sizeof(unsigned short), compareUShort);
     if (!found) return upper;
     return sLowerTable[found - sUpperTable];
@@ -502,7 +502,7 @@ bool UTF8ToUpper( unsigned char *utf8String, unsigned long byteCount,
 	
 	//	Allocate a buffer to return
 	unsigned long retBufSize = byteCount + 5;
-	unsigned char *retBuffer = malloc(retBufSize);
+	unsigned char *retBuffer = (unsigned char *)malloc(retBufSize);
 	//	Determine the end of the input buffer
 	unsigned char *endOfBuffer = utf8String + byteCount;
 	//	Keep track of our current position the return buffer
@@ -556,7 +556,7 @@ bool UTF8ToLower( unsigned char *utf8String, unsigned long byteCount,
 	
 	//	Allocate a buffer to return
 	unsigned long retBufSize = byteCount + 5;
-	unsigned char *retBuffer = malloc(retBufSize);
+	unsigned char *retBuffer = (unsigned char *)malloc(retBufSize);
 	//	Determine the end of the input buffer
 	unsigned char *endOfBuffer = utf8String + byteCount;
 	//	Keep track of our current position the return buffer
@@ -612,7 +612,7 @@ bool UTF8Capitalize( unsigned char *utf8String, unsigned long byteCount,
 	
 	// Allocate a buffer to return
 	unsigned long retBufSize = byteCount + 5;
-	unsigned char *retBuffer = malloc(retBufSize);
+	unsigned char *retBuffer = (unsigned char *)malloc(retBufSize);
 	// Determine the end of the input buffer
 	unsigned char *endOfBuffer = utf8String + byteCount;
 	// Keep track of our current position the return buffer

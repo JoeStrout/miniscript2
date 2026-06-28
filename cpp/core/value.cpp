@@ -178,7 +178,7 @@ bool value_equal(Value a, Value b) {
         return true;
     }
     // Same-type non-container reference values: identity.
-    if ((a & NANISH_MASK) == (b & NANISH_MASK)) return a == b;
+    if ((a.bits & NANISH_MASK) == (b.bits & NANISH_MASK)) return a == b;
     return false;
 }
 
@@ -414,7 +414,7 @@ uint32_t value_hash(Value v) {
     if (is_heap_string(v)) return get_string_hash(v);
     if (is_list(v))        return list_hash(v);
     if (is_map(v))         return map_hash(v);
-    return uint64_hash((uint64_t)v);
+    return uint64_hash(v.bits);
 }
 
 // ── Frozen ──────────────────────────────────────────────────────────────

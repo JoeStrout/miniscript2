@@ -24,15 +24,46 @@
 #include <math.h>
 #include <string.h>
 #include "hashing.h"
+#ifdef __cplusplus
+#include <type_traits>
+#endif
 
 #define CORE_LAYER_2A
 
 #ifdef __cplusplus
 namespace MiniScript { struct FuncDef; }
-extern "C" {
 #endif
 
-typedef uint64_t Value;
+// NaN-boxed dynamic Value.  The sole data member `bits` holds the 64-bit
+// payload: for numbers it is the IEEE-754 double bit pattern; for everything
+// else it is a tagged encoding (see the layout notes at the top of this file).
+//
+// Value used to be a bare `typedef uint64_t`.  It is now a one-member struct so
+// that host code (and, eventually, our own code) can hang methods and operators
+// on it, the way cs/Value.cs and the MiniScript 1.x C++ API do.  It is
+// deliberately kept trivially copyable and standard-layout, so it is still
+// passed in a register exactly like the raw uint64_t it replaces (enforced by
+// the static_asserts below).  Core code reaches the payload through `.bits`;
+// everything else goes through the make_*/as_*/is_* free functions.
+typedef struct Value {
+    uint64_t bits;
+#ifdef __cplusplus
+    Value() = default;
+    constexpr Value(uint64_t b) : bits(b) {}
+    constexpr bool operator==(Value other) const { return bits == other.bits; }
+    constexpr bool operator!=(Value other) const { return bits != other.bits; }
+#endif
+} Value;
+
+#ifdef __cplusplus
+static_assert(sizeof(Value) == 8, "Value must remain exactly 8 bytes");
+static_assert(std::is_trivially_copyable<Value>::value,
+    "Value must stay trivially copyable so it is still passed in a register");
+static_assert(std::is_standard_layout<Value>::value,
+    "Value must stay standard-layout");
+
+extern "C" {
+#endif
 
 // ── Tag bits ────────────────────────────────────────────────────────────
 #define NANISH_MASK       0xFFFF000000000000ULL
@@ -83,10 +114,10 @@ extern Value val_super;     // "super"
 void value_init_constants(void);
 
 // ── Accessors used by hot paths ─────────────────────────────────────────
-static inline uint64_t value_bits(Value v)     { return (uint64_t)v; }
-static inline int value_tiny_len(Value v)      { return (int)(v & 0xFF); }
-static inline int value_gc_set_index(Value v)  { return (int)((v >> 32) & 0x7); }
-static inline int value_item_index(Value v)    { return (int)(uint32_t)v; }
+static inline uint64_t value_bits(Value v)     { return v.bits; }
+static inline int value_tiny_len(Value v)      { return (int)(v.bits & 0xFF); }
+static inline int value_gc_set_index(Value v)  { return (int)((v.bits >> 32) & 0x7); }
+static inline int value_item_index(Value v)    { return (int)(uint32_t)v.bits; }
 
 // ── Type predicates ─────────────────────────────────────────────────────
 static inline bool value_identical(Value a, Value b) { return a == b; }
@@ -101,15 +132,15 @@ static inline bool is_int(Value v) {
 }
 
 static inline bool is_tiny_string(Value v) {
-    return (v & NANISH_MASK) == TINY_STRING_TAG;
+    return (v.bits & NANISH_MASK) == TINY_STRING_TAG;
 }
 
 static inline bool is_gc_object(Value v) {
-    return (v & NANISH_MASK) == GC_TAG;
+    return (v.bits & NANISH_MASK) == GC_TAG;
 }
 
 static inline bool is_heap_string(Value v) {
-    return (v & GC_TYPE_MASK) == STRING_TAG_PATTERN;
+    return (v.bits & GC_TYPE_MASK) == STRING_TAG_PATTERN;
 }
 
 static inline bool is_string(Value v) {
@@ -117,26 +148,26 @@ static inline bool is_string(Value v) {
 }
 
 static inline bool is_funcref(Value v) {
-    return (v & GC_TYPE_MASK) == FUNCREF_TAG_PATTERN;
+    return (v.bits & GC_TYPE_MASK) == FUNCREF_TAG_PATTERN;
 }
 
 static inline bool is_list(Value v) {
-    return (v & GC_TYPE_MASK) == LIST_TAG_PATTERN;
+    return (v.bits & GC_TYPE_MASK) == LIST_TAG_PATTERN;
 }
 
 static inline bool is_map(Value v) {
-    return (v & GC_TYPE_MASK) == MAP_TAG_PATTERN;
+    return (v.bits & GC_TYPE_MASK) == MAP_TAG_PATTERN;
 }
 
 static inline bool is_error(Value v) {
-    return (v & GC_TYPE_MASK) == ERROR_TAG_PATTERN;
+    return (v.bits & GC_TYPE_MASK) == ERROR_TAG_PATTERN;
 }
 static inline bool is_handle(Value v) {
-    return (v & GC_TYPE_MASK) == HANDLE_TAG_PATTERN;
+    return (v.bits & GC_TYPE_MASK) == HANDLE_TAG_PATTERN;
 }
 
 static inline bool is_double(Value v) {
-    return (v & NANISH_MASK) < NULL_VALUE;
+    return (v.bits & NANISH_MASK) < NULL_VALUE;
 }
 
 static inline bool is_number(Value v) { return is_double(v); }
@@ -382,11 +413,11 @@ Value    frozen_copy(Value v);
 // bitwise hash/equality (via Hash(int) narrowing and uint64_t ==), which
 // fails for heap-allocated strings/lists/maps whose bits differ across
 // allocations even when their content is equal.
-inline int Hash(uint64_t v) {
-    return (int)(value_hash((Value)v) & 0x7FFFFFFFU);
+inline int Hash(Value v) {
+    return (int)(value_hash(v) & 0x7FFFFFFFU);
 }
-inline bool DictKeyEqual(uint64_t a, uint64_t b) {
-    return value_equal((Value)a, (Value)b);
+inline bool DictKeyEqual(Value a, Value b) {
+    return value_equal(a, b);
 }
 
 // A funcref Value pairs a FuncDef with an optional captured-variable map.

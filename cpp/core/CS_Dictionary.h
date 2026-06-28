@@ -27,6 +27,7 @@
 
 // Forward declaration
 class String;
+struct Value;  // defined in value.h; needed for the Hash/DictKeyEqual overloads below
 
 // This module is part of Layer 2B (Host C# Compatibility Layer)
 #define CORE_LAYER_2B
@@ -58,17 +59,17 @@ inline int Hash(T value) {
 
 // Hash(const String&) is defined in CS_String.h to avoid circular dependencies
 
-// Hash(uint64_t) is defined in value.h, where the Value-specific implementation
+// Hash(Value) is defined in value.h, where the Value-specific implementation
 // lives. Forward-declared here so the Dictionary template (instantiated for
 // Dictionary<Value, Value> in GCItems) can find it via ordinary lookup at the
-// template definition point. (ADL doesn't apply to uint64_t.)
-int Hash(uint64_t v);
+// template definition point.
+int Hash(Value v);
 
 // Key equality hook used by Dictionary. Default uses operator==; overload for
 // specific key types (e.g. Value in value.h) to get content-aware equality.
 template<typename T>
 inline bool DictKeyEqual(const T& a, const T& b) { return a == b; }
-bool DictKeyEqual(uint64_t a, uint64_t b);
+bool DictKeyEqual(Value a, Value b);
 
 // Shared storage for Dictionary — holds all mutable state so that
 // copied Dictionary handles see the same data (C# reference semantics).

@@ -57,12 +57,12 @@ class TempStorage {
 public:
     explicit TempStorage(Value v) {
         if (is_tiny_string(v)) {
-            int len = (int)(v & 0xFF);
+            int len = (int)(v.bits & 0xFF);
             if (len > 0) {
                 StringStorage* fresh = ss_createWithLength(len, std::malloc);
                 if (fresh) {
                     for (int i = 0; i < len; i++)
-                        fresh->data[i] = (char)((v >> (8 * (i + 1))) & 0xFF);
+                        fresh->data[i] = (char)((v.bits >> (8 * (i + 1))) & 0xFF);
                 }
                 _ss = fresh;
                 _owned = true;
@@ -89,10 +89,10 @@ extern "C" {
 
 Value make_tiny_string(const char* str, int len) {
     if (len > TINY_STRING_MAX_LEN) len = TINY_STRING_MAX_LEN;
-    Value v = TINY_STRING_TAG | (uint64_t)(uint8_t)len;
+    uint64_t bits = TINY_STRING_TAG | (uint64_t)(uint8_t)len;
     for (int i = 0; i < len; i++)
-        v |= (uint64_t)(uint8_t)str[i] << (8 * (i + 1));
-    return v;
+        bits |= (uint64_t)(uint8_t)str[i] << (8 * (i + 1));
+    return Value(bits);
 }
 
 Value make_string(const char* str) {
@@ -113,9 +113,9 @@ Value make_string_n(const char* str, int len) {
 const char* as_cstring(Value v) {
     static thread_local char tiny_scratch[TINY_STRING_MAX_LEN + 1];
     if (is_tiny_string(v)) {
-        int len = (int)(v & 0xFF);
+        int len = (int)(v.bits & 0xFF);
         for (int i = 0; i < len; i++)
-            tiny_scratch[i] = (char)((v >> (8 * (i + 1))) & 0xFF);
+            tiny_scratch[i] = (char)((v.bits >> (8 * (i + 1))) & 0xFF);
         tiny_scratch[len] = '\0';
         return tiny_scratch;
     }
@@ -126,7 +126,7 @@ const char* as_cstring(Value v) {
 }
 
 int string_lengthB(Value v) {
-    if (is_tiny_string(v)) return (int)(v & 0xFF);
+    if (is_tiny_string(v)) return (int)(v.bits & 0xFF);
     if (is_heap_string(v))
         return ss_lengthB(heap_string_storage(v));
     return 0;
@@ -134,11 +134,11 @@ int string_lengthB(Value v) {
 
 int string_length(Value v) {
     if (is_tiny_string(v)) {
-        int lenB = (int)(v & 0xFF);
+        int lenB = (int)(v.bits & 0xFF);
         if (lenB == 0) return 0;
         char buf[TINY_STRING_MAX_LEN + 1];
         for (int i = 0; i < lenB; i++)
-            buf[i] = (char)((v >> (8 * (i + 1))) & 0xFF);
+            buf[i] = (char)((v.bits >> (8 * (i + 1))) & 0xFF);
         return UTF8CharacterCount((const unsigned char*)buf, lenB);
     }
     if (is_heap_string(v))
@@ -436,9 +436,9 @@ Value string_replace_max(Value source, Value search, Value replacement, int maxC
 uint32_t get_string_hash(Value v) {
     if (is_tiny_string(v)) {
         char buf[TINY_STRING_MAX_LEN + 1];
-        int len = (int)(v & 0xFF);
+        int len = (int)(v.bits & 0xFF);
         for (int i = 0; i < len; i++)
-            buf[i] = (char)((v >> (8 * (i + 1))) & 0xFF);
+            buf[i] = (char)((v.bits >> (8 * (i + 1))) & 0xFF);
         return string_hash(buf, len);
     }
     if (is_heap_string(v))

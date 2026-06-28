@@ -250,7 +250,7 @@ void list_sort_by_key(Value list_val, Value byKey, bool ascending) {
 uint32_t list_hash(Value list_val) {
     if (!is_list(list_val)) return 0;
     // Identity hash — content hashing risks O(n²) recursion on cycles.
-    return uint64_hash((uint64_t)list_val);
+    return uint64_hash(list_val.bits);
 }
 
 Value list_to_string(Value list_val, void* vm) {

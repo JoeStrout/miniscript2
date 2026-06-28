@@ -232,7 +232,7 @@ Value map_iter_entry(Value map_val, int iter) {
 
 uint32_t map_hash(Value map_val) {
     if (!is_map(map_val)) return 0;
-    return uint64_hash((uint64_t)map_val);
+    return uint64_hash(map_val.bits);
 }
 
 Value map_to_string(Value map_val, void* vm) {

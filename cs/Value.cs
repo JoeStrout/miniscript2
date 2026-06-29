@@ -30,7 +30,8 @@ public readonly struct Value {
 	[FieldOffset(0)] internal readonly ulong _u;
 	[FieldOffset(0)] internal readonly double _d;
 
-	private Value(ulong u) { _d = 0; _u = u; }
+	private Value(ulong u, bool _fromBits) { _d = 0; _u = u; }
+	private static Value FromBits(ulong u) => new Value(u, true);
 
 	// MiniScript 1.x-compatible public constructors.
 	public Value(double d) { _u = 0; _d = d; }
@@ -56,10 +57,10 @@ public readonly struct Value {
 
 	// ==== SHARED CONSTANTS ===================================================
 	// PascalCase: MiniScript 1.x-style public API.
-	public static readonly Value Null           = new Value(NULL_VALUE);
-	public static readonly Value zero           = new Value(0x0000_0000_0000_0000UL);
-	public static readonly Value one            = new Value(0x3FF0_0000_0000_0000UL);
-	public static readonly Value emptyString    = new Value(TINY_STRING_TAG);
+	public static readonly Value Null           = FromBits(NULL_VALUE);
+	public static readonly Value zero           = FromBits(0x0000_0000_0000_0000UL);
+	public static readonly Value one            = FromBits(0x3FF0_0000_0000_0000UL);
+	public static readonly Value emptyString    = FromBits(TINY_STRING_TAG);
 	public static readonly Value magicIsA       = make_string("__isa");
 	public static readonly Value keyString      = make_string("key");
 	public static readonly Value valueString    = make_string("value");
@@ -117,7 +118,7 @@ public readonly struct Value {
 	// ==== VALUE CREATION =====================================================
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value make_gc(int gcSet, int itemIdx) =>
-		new Value(GC_TAG | ((ulong)gcSet << 32) | (uint)itemIdx);
+		FromBits(GC_TAG | ((ulong)gcSet << 32) | (uint)itemIdx);
 
 	public static Value make_string(string str) {
 		if (str.Length <= 5) {
@@ -134,7 +135,7 @@ public readonly struct Value {
 		int len = utf8.Length;
 		ulong u = TINY_STRING_TAG | (ulong)((uint)len & 0xFFU);
 		for (int i = 0; i < len; i++) u |= (ulong)utf8[i] << (8 * (i + 1));
-		return new Value(u);
+		return FromBits(u);
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1259,7 +1260,6 @@ public readonly struct Value {
 	}
 }
 
-// ValueHelpers deleted — all members live on the Value struct directly.
 
 }
 //*** END CS_ONLY ***

@@ -57,7 +57,7 @@ public struct CallInfo {
 	}
 
 	public Value GetLocalVarMap(List<Value> registers, List<Value> names, int baseIdx, int regCount) {
-		if (is_null(LocalVarMap)) {
+		if (LocalVarMap.IsNull()) {
 			// Create a new VarMap with references to VM's stack and names arrays
 			if (regCount == 0) {
 				// We have no local vars at all!  Make an ordinary map.
@@ -196,7 +196,7 @@ public class VM {
 		FuncDef rf = callStack[0].ReturnFunc;
 		Int32 regCount = rf.MaxRegs;
 		for (Int32 i = 0; i < regCount; i++) {
-			if (!is_null(names[i]) && value_identical(stack[i], v) && !value_identical(names[i], v))
+			if (!names[i].IsNull() && value_identical(stack[i], v) && !value_identical(names[i], v))
 				return to_String(names[i]);
 		}
 		// Fall back to the intrinsic short-name registry (type maps, etc.)
@@ -345,7 +345,7 @@ public class VM {
 	// so the variable persists across REPL iterations.
 	public void SetVar(String varName, Value value) {
 		Value targetMap;
-		if (!is_null(ReplGlobals) && callStackTop <= 1) {
+		if (!ReplGlobals.IsNull() && callStackTop <= 1) {
 			targetMap = ReplGlobals;
 		} else {
 			targetMap = GetCurrentLocalVarMap(BaseIndex, CurrentFunction.MaxRegs);
@@ -359,7 +359,7 @@ public class VM {
 	}
 
 	public void Reset(List<FuncDef> allFunctions, Value replGlobals) {
-		bool partialReset = !is_null(replGlobals);
+		bool partialReset = !replGlobals.IsNull();
 
 		// Locate @main.  All other functions are reachable from @main via its
 		// constant pool (nested-function templates), so the VM keeps no
@@ -448,7 +448,7 @@ public class VM {
 	// so that PC and CurrentFunction reflect the instruction that failed.
 	private void FinalizeErrorStackTrace() {
 		_errorStackPending = false;
-		if (!is_error(Error)) return;
+		if (!Error.IsError()) return;
 		Value stack = CurrentFunction ? BuildStackTrace() : Value.Null;
 		Int32 idx = value_item_index(Error);
 		GCError ge = GCManager.Errors.Get(idx);
@@ -491,11 +491,11 @@ public class VM {
 	// Print the current error to stdout (useful for debug/standalone use).
 	// Returns false if there is no error.
 	public bool ReportRuntimeError() {
-		if (is_null(Error)) return false;
+		if (Error.IsNull()) return false;
 		String msg = StringUtils.Format("{0}", error_message(Error));
 		String loc = "";
 		Value stack = error_stack(Error);
-		if (is_list(stack) && list_count(stack) > 0) {
+		if (stack.IsList() && list_count(stack) > 0) {
 			loc = StringUtils.Format("{0}", list_get(stack, 0));
 			// Drop the "(current program) " prefix used for the top-level
 			// script, leaving just "line N" for the common case.
@@ -553,7 +553,7 @@ public class VM {
 		outList.Add(func);
 		List<Value> consts = func.Constants;
 		for (Int32 i = 0; i < consts.Count; i++) {
-			if (is_funcref(consts[i])) CollectFunctions(funcref_funcdef(consts[i]), outList);
+			if (consts[i].IsFuncRef()) CollectFunctions(funcref_funcdef(consts[i]), outList);
 		}
 	}
 
@@ -563,7 +563,7 @@ public class VM {
 	// Check whether pendingSelf should be injected as the first parameter.
 	// Returns 1 if the callee's first param is named "self" and we have pending context, else 0.
 	private Int32 SelfParamOffset(FuncDef callee) {
-		if (hasPendingContext && callee.ParamNames.Count > 0 && value_equal(callee.ParamNames[0], Value.selfString)) {
+		if (hasPendingContext && callee.ParamNames.Count > 0 && callee.ParamNames[0] == Value.selfString) {
 			return 1;
 		}
 		return 0;
@@ -596,7 +596,7 @@ public class VM {
 			} else if (argOp == Opcode.ARG_iABC) {
 				// Argument immediate value
 				Int32 immediate = BytecodeUtil.ABCs(argInstruction);
-				argValue = make_int(immediate);
+				argValue = new Value(immediate);
 			} else {
 				RaiseRuntimeError("Expected ARG opcode in ARGBLK");
 				return -1;
@@ -866,7 +866,7 @@ public class VM {
 					// R[A] = BC (signed 16-bit immediate as integer)
 					Byte a = BytecodeUtil.Au(instruction);
 					short bc = BytecodeUtil.BCs(instruction);
-					localStack[a] = make_int(bc);
+					localStack[a] = new Value(bc);
 					break;
 				}
 
@@ -920,7 +920,7 @@ public class VM {
 						valB = LookupVariable(valC);
 					}
 
-					if (!is_funcref(valB)) {
+					if (!valB.IsFuncRef()) {
 						// Simple case: value is not a funcref, so just copy it
 						localStack[a] = valB;
 					} else {
@@ -964,7 +964,7 @@ public class VM {
 					valC = curConstants[c];
 					names[baseIndex + a] = valC;
 					// In REPL mode, register this variable in the globals VarMap
-					if (baseIndex == 0 && !is_null(ReplGlobals)) {
+					if (baseIndex == 0 && !ReplGlobals.IsNull()) {
 						varmap_map_to_register(ReplGlobals, valC, 
 							stack,
 							baseIndex + a);
@@ -985,13 +985,13 @@ public class VM {
 					// `locals` reference earlier in the function).  Without this,
 					// variables declared after the first closure/`locals` use would
 					// be missing from the locals map.
-					if (baseIndex == 0 && !is_null(ReplGlobals)) {
+					if (baseIndex == 0 && !ReplGlobals.IsNull()) {
 						varmap_map_to_register(ReplGlobals, valC,
 							stack,
 							baseIndex + a);
 					} else {
 						CallInfo nameFrame = callStack[callStackTop - 1];
-						if (!is_null(nameFrame.LocalVarMap)) {
+						if (!nameFrame.LocalVarMap.IsNull()) {
 							varmap_map_to_register(nameFrame.LocalVarMap, valC,
 								stack,
 								baseIndex + a);
@@ -1112,21 +1112,21 @@ public class VM {
 					valB = localStack[b];  // container
 					valC = localStack[c];  // index
 
-					if (is_error(valB)) {
+					if (valB.IsError()) {
 						// Address-of on an error is always an lvalue operation; terminate.
 						RaiseRuntimeError("Cannot take reference into an error value");
 						localStack[a] = Value.Null;
 						break;
 					}
-					if (is_list(valB)) {
+					if (valB.IsList()) {
 						// ToDo: add a list_try_get and use it here, like we do with map below
 						localStack[a] = list_get(valB, as_int(valC));
-					} else if (is_map(valB)) {
+					} else if (valB.IsMap()) {
 						if (!map_lookup(valB, valC, out val)) {
 							RaiseRuntimeError(StringUtils.Format("Key Not Found: '{0}' not found in map", valC));
 						}
 						localStack[a] = val;
-					} else if (is_string(valB)) {
+					} else if (valB.IsString()) {
 						Int32 idx = as_int(valC);
 						localStack[a] = string_substring(valB, idx, 1);
 					} else {
@@ -1145,13 +1145,13 @@ public class VM {
 					valB = localStack[b];  // index
 					valC = localStack[c];  // value
 
-					if (is_error(valA)) {
+					if (valA.IsError()) {
 						RaiseRuntimeError("Cannot assign into an error value");
 						break;
 					}
-					if (is_list(valA)) {
+					if (valA.IsList()) {
 						list_set(valA, as_int(valB), valC);
-					} else if (is_map(valA)) {
+					} else if (valA.IsMap()) {
 						map_set(valA, valB, valC);
 					} else {
 						RaiseRuntimeError(StringUtils.Format("Can't set indexed value in {0}", valA));
@@ -1168,19 +1168,19 @@ public class VM {
 					valC = localStack[c];
 					valD = localStack[c + 1];
 
-					if (is_error(valB)) { RaiseUncaughtError(valB); localStack[a] = Value.Null; break; }
-					if (is_error(valC)) { RaiseUncaughtError(valC); localStack[a] = Value.Null; break; }
-					if (is_error(valD)) { RaiseUncaughtError(valD); localStack[a] = Value.Null; break; }
+					if (valB.IsError()) { RaiseUncaughtError(valB); localStack[a] = Value.Null; break; }
+					if (valC.IsError()) { RaiseUncaughtError(valC); localStack[a] = Value.Null; break; }
+					if (valD.IsError()) { RaiseUncaughtError(valD); localStack[a] = Value.Null; break; }
 
-					if (is_string(valB)) {
+					if (valB.IsString()) {
 						Int32 len = string_length(valB);
-						Int32 startIdx = is_null(valC) ? 0 : as_int(valC);
-						Int32 endIdx = is_null(valD) ? len : as_int(valD);
+						Int32 startIdx = valC.IsNull() ? 0 : as_int(valC);
+						Int32 endIdx = valD.IsNull() ? len : as_int(valD);
 						localStack[a] = string_slice(valB, startIdx, endIdx);
-					} else if (is_list(valB)) {
+					} else if (valB.IsList()) {
 						Int32 len = list_count(valB);
-						Int32 startIdx = is_null(valC) ? 0 : as_int(valC);
-						Int32 endIdx = is_null(valD) ? len : as_int(valD);
+						Int32 startIdx = valC.IsNull() ? 0 : as_int(valC);
+						Int32 endIdx = valD.IsNull() ? len : as_int(valD);
 						localStack[a] = list_slice(valB, startIdx, endIdx);
 					} else {
 						RaiseRuntimeError(StringUtils.Format("Can't slice {0}", valB));
@@ -1209,7 +1209,7 @@ public class VM {
 					Byte a = BytecodeUtil.Au(instruction);
 					val = names[baseIndex + a];  // saved name
 					names[baseIndex + a] = Value.Null;   // temporarily clear it
-					if (callStackTop > 0 && !is_null(callStack[callStackTop - 1].OuterVarMap)) {
+					if (callStackTop > 0 && !callStack[callStackTop - 1].OuterVarMap.IsNull()) {
 						localStack[a] = callStack[callStackTop - 1].OuterVarMap;
 					} else {
 						// No enclosing scope or at global scope: outer == globals
@@ -1242,9 +1242,9 @@ public class VM {
 					Byte a = BytecodeUtil.Au(instruction);
 					Byte b = BytecodeUtil.Bu(instruction);
 					Byte c = BytecodeUtil.Cu(instruction);
-					if (is_error(localStack[b])) { localStack[a] = localStack[b]; break; }
-					if (is_error(localStack[c])) { localStack[a] = localStack[c]; break; }
-					localStack[a] = make_int(value_lt(localStack[b], localStack[c]));
+					if (localStack[b].IsError()) { localStack[a] = localStack[b]; break; }
+					if (localStack[c].IsError()) { localStack[a] = localStack[c]; break; }
+					localStack[a] = Truth(value_lt(localStack[b], localStack[c]));
 					break;
 				}
 
@@ -1253,8 +1253,8 @@ public class VM {
 					Byte a = BytecodeUtil.Au(instruction);
 					Byte b = BytecodeUtil.Bu(instruction);
 					SByte c = BytecodeUtil.Cs(instruction);
-					if (is_error(localStack[b])) { localStack[a] = localStack[b]; break; }
-					localStack[a] = make_int(value_lt(localStack[b], make_int(c)));
+					if (localStack[b].IsError()) { localStack[a] = localStack[b]; break; }
+					localStack[a] = Truth(value_lt(localStack[b], new Value(c)));
 					break;
 				}
 
@@ -1263,8 +1263,8 @@ public class VM {
 					Byte a = BytecodeUtil.Au(instruction);
 					SByte b = BytecodeUtil.Bs(instruction);
 					Byte c = BytecodeUtil.Cu(instruction);
-					if (is_error(localStack[c])) { localStack[a] = localStack[c]; break; }
-					localStack[a] = make_int(value_lt(make_int(b), localStack[c]));
+					if (localStack[c].IsError()) { localStack[a] = localStack[c]; break; }
+					localStack[a] = Truth(value_lt(new Value(b), localStack[c]));
 					break;
 				}
 
@@ -1273,9 +1273,9 @@ public class VM {
 					Byte a = BytecodeUtil.Au(instruction);
 					Byte b = BytecodeUtil.Bu(instruction);
 					Byte c = BytecodeUtil.Cu(instruction);
-					if (is_error(localStack[b])) { localStack[a] = localStack[b]; break; }
-					if (is_error(localStack[c])) { localStack[a] = localStack[c]; break; }
-					localStack[a] = make_int(value_le(localStack[b], localStack[c]));
+					if (localStack[b].IsError()) { localStack[a] = localStack[b]; break; }
+					if (localStack[c].IsError()) { localStack[a] = localStack[c]; break; }
+					localStack[a] = Truth(value_le(localStack[b], localStack[c]));
 					break;
 				}
 
@@ -1284,8 +1284,8 @@ public class VM {
 					Byte a = BytecodeUtil.Au(instruction);
 					Byte b = BytecodeUtil.Bu(instruction);
 					SByte c = BytecodeUtil.Cs(instruction);
-					if (is_error(localStack[b])) { localStack[a] = localStack[b]; break; }
-					localStack[a] = make_int(value_le(localStack[b], make_int(c)));
+					if (localStack[b].IsError()) { localStack[a] = localStack[b]; break; }
+					localStack[a] = Truth(value_le(localStack[b], new Value(c)));
 					break;
 				}
 
@@ -1294,8 +1294,8 @@ public class VM {
 					Byte a = BytecodeUtil.Au(instruction);
 					SByte b = BytecodeUtil.Bs(instruction);
 					Byte c = BytecodeUtil.Cu(instruction);
-					if (is_error(localStack[c])) { localStack[a] = localStack[c]; break; }
-					localStack[a] = make_int(value_le(make_int(b), localStack[c]));
+					if (localStack[c].IsError()) { localStack[a] = localStack[c]; break; }
+					localStack[a] = Truth(value_le(new Value(b), localStack[c]));
 					break;
 				}
 
@@ -1305,7 +1305,7 @@ public class VM {
 					Byte b = BytecodeUtil.Bu(instruction);
 					Byte c = BytecodeUtil.Cu(instruction);
 
-					localStack[a] = make_int(value_equal(localStack[b], localStack[c]));
+					localStack[a] = Truth(localStack[b] == localStack[c]);
 					break;
 				}
 
@@ -1315,7 +1315,7 @@ public class VM {
 					Byte b = BytecodeUtil.Bu(instruction);
 					SByte c = BytecodeUtil.Cs(instruction);
 					
-					localStack[a] = make_int(value_equal(localStack[b], make_int(c)));
+					localStack[a] = Truth(localStack[b] == new Value(c));
 					break;
 				}
 
@@ -1325,7 +1325,7 @@ public class VM {
 					Byte b = BytecodeUtil.Bu(instruction);
 					Byte c = BytecodeUtil.Cu(instruction);
 
-					localStack[a] = make_int(!value_equal(localStack[b], localStack[c]));
+					localStack[a] = Truth(localStack[b] != localStack[c]);
 					break;
 				}
 
@@ -1335,18 +1335,18 @@ public class VM {
 					Byte b = BytecodeUtil.Bu(instruction);
 					SByte c = BytecodeUtil.Cs(instruction);
 					
-					localStack[a] = make_int(!value_equal(localStack[b], make_int(c)));
+					localStack[a] = Truth(localStack[b] != new Value(c));
 					break;
 				}
 
 				case Opcode.BRTRUE_rA_iBC: {
 					Byte a = BytecodeUtil.Au(instruction);
 					Int32 offset = BytecodeUtil.BCs(instruction);
-					if (is_error(localStack[a])) {
+					if (localStack[a].IsError()) {
 						RaiseRuntimeError(StringUtils.Format("Error used in conditional: {0}", localStack[a]));
 						break;
 					}
-					if (is_truthy(localStack[a])){
+					if (localStack[a].BoolValue()){
 						pc += offset;
 					}
 					break;
@@ -1355,11 +1355,11 @@ public class VM {
 				case Opcode.BRFALSE_rA_iBC: {
 					Byte a = BytecodeUtil.Au(instruction);
 					Int32 offset = BytecodeUtil.BCs(instruction);
-					if (is_error(localStack[a])) {
+					if (localStack[a].IsError()) {
 						RaiseRuntimeError(StringUtils.Format("Error used in conditional: {0}", localStack[a]));
 						break;
 					}
-					if (!is_truthy(localStack[a])){
+					if (!localStack[a].BoolValue()){
 						pc += offset;
 					}
 					break;
@@ -1371,7 +1371,7 @@ public class VM {
 					// case before the (throwing) BRTRUE/BRFALSE test.
 					Byte a = BytecodeUtil.Au(instruction);
 					Int32 offset = BytecodeUtil.BCs(instruction);
-					if (is_error(localStack[a])) {
+					if (localStack[a].IsError()) {
 						pc += offset;
 					}
 					break;
@@ -1382,7 +1382,7 @@ public class VM {
 					Byte a = BytecodeUtil.Au(instruction);
 					Byte b = BytecodeUtil.Bu(instruction);
 					SByte offset = BytecodeUtil.Cs(instruction);
-					if (is_error(localStack[a]) || is_error(localStack[b])) {
+					if (localStack[a].IsError() || localStack[b].IsError()) {
 						RaiseRuntimeError("Error used in conditional");
 						break;
 					}
@@ -1397,11 +1397,11 @@ public class VM {
 					Byte a = BytecodeUtil.Au(instruction);
 					SByte b = BytecodeUtil.Bs(instruction);
 					SByte offset = BytecodeUtil.Cs(instruction);
-					if (is_error(localStack[a])) {
+					if (localStack[a].IsError()) {
 						RaiseRuntimeError("Error used in conditional");
 						break;
 					}
-					if (value_lt(localStack[a], make_int(b))){
+					if (value_lt(localStack[a], new Value(b))){
 						pc += offset;
 					}
 					break;
@@ -1412,11 +1412,11 @@ public class VM {
 					SByte a = BytecodeUtil.As(instruction);
 					Byte b = BytecodeUtil.Bu(instruction);
 					SByte offset = BytecodeUtil.Cs(instruction);
-					if (is_error(localStack[b])) {
+					if (localStack[b].IsError()) {
 						RaiseRuntimeError("Error used in conditional");
 						break;
 					}
-					if (value_lt(make_int(a), localStack[b])){
+					if (value_lt(new Value(a), localStack[b])){
 						pc += offset;
 					}
 					break;
@@ -1427,7 +1427,7 @@ public class VM {
 					Byte a = BytecodeUtil.Au(instruction);
 					Byte b = BytecodeUtil.Bu(instruction);
 					SByte offset = BytecodeUtil.Cs(instruction);
-					if (is_error(localStack[a]) || is_error(localStack[b])) {
+					if (localStack[a].IsError() || localStack[b].IsError()) {
 						RaiseRuntimeError("Error used in conditional");
 						break;
 					}
@@ -1442,11 +1442,11 @@ public class VM {
 					Byte a = BytecodeUtil.Au(instruction);
 					SByte b = BytecodeUtil.Bs(instruction);
 					SByte offset = BytecodeUtil.Cs(instruction);
-					if (is_error(localStack[a])) {
+					if (localStack[a].IsError()) {
 						RaiseRuntimeError("Error used in conditional");
 						break;
 					}
-					if (value_le(localStack[a], make_int(b))){
+					if (value_le(localStack[a], new Value(b))){
 						pc += offset;
 					}
 					break;
@@ -1457,11 +1457,11 @@ public class VM {
 					SByte a = BytecodeUtil.As(instruction);
 					Byte b = BytecodeUtil.Bu(instruction);
 					SByte offset = BytecodeUtil.Cs(instruction);
-					if (is_error(localStack[b])) {
+					if (localStack[b].IsError()) {
 						RaiseRuntimeError("Error used in conditional");
 						break;
 					}
-					if (value_le(make_int(a), localStack[b])){
+					if (value_le(new Value(a), localStack[b])){
 						pc += offset;
 					}
 					break;
@@ -1472,7 +1472,7 @@ public class VM {
 					Byte a = BytecodeUtil.Au(instruction);
 					Byte b = BytecodeUtil.Bu(instruction);
 					SByte offset = BytecodeUtil.Cs(instruction);
-					if (value_equal(localStack[a], localStack[b])){
+					if (localStack[a] == localStack[b]){
 						pc += offset;
 					}
 					break;
@@ -1483,7 +1483,7 @@ public class VM {
 					Byte a = BytecodeUtil.Au(instruction);
 					SByte b = BytecodeUtil.Bs(instruction);
 					SByte offset = BytecodeUtil.Cs(instruction);
-					if (value_equal(localStack[a], make_int(b))){
+					if (localStack[a] == new Value(b)){
 						pc += offset;
 					}
 					break;
@@ -1494,7 +1494,7 @@ public class VM {
 					Byte a = BytecodeUtil.Au(instruction);
 					Byte b = BytecodeUtil.Bu(instruction);
 					SByte offset = BytecodeUtil.Cs(instruction);
-					if (!value_equal(localStack[a], localStack[b])){
+					if (localStack[a] != localStack[b]){
 						pc += offset;
 					}
 					break;
@@ -1505,7 +1505,7 @@ public class VM {
 					Byte a = BytecodeUtil.Au(instruction);
 					SByte b = BytecodeUtil.Bs(instruction);
 					SByte offset = BytecodeUtil.Cs(instruction);
-					if (!value_equal(localStack[a], make_int(b))){
+					if (localStack[a] != new Value(b)){
 						pc += offset;
 					}
 					break;
@@ -1515,7 +1515,7 @@ public class VM {
 					// if R[A] < R[B] is false, skip next instruction
 					Byte a = BytecodeUtil.Au(instruction);
 					Byte b = BytecodeUtil.Bu(instruction);
-					if (is_error(localStack[a]) || is_error(localStack[b])) {
+					if (localStack[a].IsError() || localStack[b].IsError()) {
 						RaiseRuntimeError("Error used in conditional"); break;
 					}
 					if (!value_lt(localStack[a], localStack[b])) {
@@ -1528,8 +1528,8 @@ public class VM {
 					// if R[A] < BC (immediate) is false, skip next instruction
 					Byte a = BytecodeUtil.Au(instruction);
 					short bc = BytecodeUtil.BCs(instruction);
-					if (is_error(localStack[a])) { RaiseRuntimeError("Error used in conditional"); break; }
-					if (!value_lt(localStack[a], make_int(bc))) {
+					if (localStack[a].IsError()) { RaiseRuntimeError("Error used in conditional"); break; }
+					if (!value_lt(localStack[a], new Value(bc))) {
 						pc++; // Skip next instruction
 					}
 					break;
@@ -1539,8 +1539,8 @@ public class VM {
 					// if AB (immediate) < R[C] is false, skip next instruction
 					short ab = BytecodeUtil.ABs(instruction);
 					Byte c = BytecodeUtil.Cu(instruction);
-					if (is_error(localStack[c])) { RaiseRuntimeError("Error used in conditional"); break; }
-					if (!value_lt(make_int(ab), localStack[c])) {
+					if (localStack[c].IsError()) { RaiseRuntimeError("Error used in conditional"); break; }
+					if (!value_lt(new Value(ab), localStack[c])) {
 						pc++; // Skip next instruction
 					}
 					break;
@@ -1550,7 +1550,7 @@ public class VM {
 					// if R[A] <= R[B] is false, skip next instruction
 					Byte a = BytecodeUtil.Au(instruction);
 					Byte b = BytecodeUtil.Bu(instruction);
-					if (is_error(localStack[a]) || is_error(localStack[b])) {
+					if (localStack[a].IsError() || localStack[b].IsError()) {
 						RaiseRuntimeError("Error used in conditional"); break;
 					}
 					if (!value_le(localStack[a], localStack[b])) {
@@ -1563,8 +1563,8 @@ public class VM {
 					// if R[A] <= BC (immediate) is false, skip next instruction
 					Byte a = BytecodeUtil.Au(instruction);
 					short bc = BytecodeUtil.BCs(instruction);
-					if (is_error(localStack[a])) { RaiseRuntimeError("Error used in conditional"); break; }
-					if (!value_le(localStack[a], make_int(bc))) {
+					if (localStack[a].IsError()) { RaiseRuntimeError("Error used in conditional"); break; }
+					if (!value_le(localStack[a], new Value(bc))) {
 						pc++; // Skip next instruction
 					}
 					break;
@@ -1574,8 +1574,8 @@ public class VM {
 					// if AB (immediate) <= R[C] is false, skip next instruction
 					short ab = BytecodeUtil.ABs(instruction);
 					Byte c = BytecodeUtil.Cu(instruction);
-					if (is_error(localStack[c])) { RaiseRuntimeError("Error used in conditional"); break; }
-					if (!value_le(make_int(ab), localStack[c])) {
+					if (localStack[c].IsError()) { RaiseRuntimeError("Error used in conditional"); break; }
+					if (!value_le(new Value(ab), localStack[c])) {
 						pc++; // Skip next instruction
 					}
 					break;
@@ -1585,7 +1585,7 @@ public class VM {
 					// if R[A] == R[B] is false, skip next instruction
 					Byte a = BytecodeUtil.Au(instruction);
 					Byte b = BytecodeUtil.Bu(instruction);
-					if (!value_equal(localStack[a], localStack[b])) {
+					if (localStack[a] != localStack[b]) {
 						pc++; // Skip next instruction
 					}
 					break;
@@ -1595,7 +1595,7 @@ public class VM {
 					// if R[A] == BC (immediate) is false, skip next instruction
 					Byte a = BytecodeUtil.Au(instruction);
 					short bc = BytecodeUtil.BCs(instruction);
-					if (!value_equal(localStack[a], make_int(bc))) {
+					if (localStack[a] != new Value(bc)) {
 						pc++; // Skip next instruction
 					}
 					break;
@@ -1605,7 +1605,7 @@ public class VM {
 					// if R[A] != R[B] is false, skip next instruction
 					Byte a = BytecodeUtil.Au(instruction);
 					Byte b = BytecodeUtil.Bu(instruction);
-					if (value_equal(localStack[a], localStack[b])) {
+					if (localStack[a] == localStack[b]) {
 						pc++; // Skip next instruction
 					}
 					break;
@@ -1615,7 +1615,7 @@ public class VM {
 					// if R[A] != BC (immediate) is false, skip next instruction
 					Byte a = BytecodeUtil.Au(instruction);
 					short bc = BytecodeUtil.BCs(instruction);
-					if (value_equal(localStack[a], make_int(bc))) {
+					if (localStack[a] == new Value(bc)) {
 						pc++; // Skip next instruction
 					}
 					break;
@@ -1631,19 +1631,19 @@ public class VM {
 					Int32 iter = as_int(localStack[a]);
 					valB = localStack[b];  // collection
 					bool hasMore;
-					if (is_list(valB)) {
+					if (valB.IsList()) {
 						iter++;
 						hasMore = (iter < list_count(valB));
-					} else if (is_map(valB)) {
+					} else if (valB.IsMap()) {
 						iter = map_iter_next(valB, iter);
 						hasMore = (iter != MAP_ITER_DONE);
-					} else if (is_string(valB)) {
+					} else if (valB.IsString()) {
 						iter++;
 						hasMore = (iter < string_length(valB));
 					} else {
 						hasMore = false;
 					}
-					localStack[a] = make_int(iter);
+					localStack[a] = new Value(iter);
 					if (hasMore) {
 						pc++; // Skip next instruction (the JUMP to end of loop)
 					}
@@ -1674,7 +1674,7 @@ public class VM {
 					Byte c = BytecodeUtil.Cu(callInstruction);
 
 					valC = localStack[c];  // func ref
-					if (!is_funcref(valC)) {
+					if (!valC.IsFuncRef()) {
 						RaiseRuntimeError("ARGBLK/CALL: Not a function reference");
 						return Value.Null;
 					}
@@ -1806,7 +1806,7 @@ public class VM {
 					Byte c = BytecodeUtil.Cu(instruction);
 
 					valC = localStack[c];  // func reference
-					if (!is_funcref(valC)) {
+					if (!valC.IsFuncRef()) {
 						RaiseRuntimeError("CALL: Value in register is not a function reference");
 						break;
 					}
@@ -1886,24 +1886,24 @@ public class VM {
 					valB = localStack[b];  // left-hand side
 					valC = localStack[c];  // right-hand side
 					Int32 isaResult = 0;
-					if (is_null(valB) && is_null(valC)) {
+					if (valB.IsNull() && valC.IsNull()) {
 						isaResult = 1;
 					} else if (value_identical(valB, valC)) {
 						isaResult = 1;
-					} else if (is_error(valB)) {
+					} else if (valB.IsError()) {
 						// Error-specific isa rules:
 						//   e isa error   -> 1
 						//   e1 isa e2     -> 1 if e2 is in e1's __isa chain
 						if (value_identical(valC, CoreIntrinsics.ErrorType())) {
 							isaResult = 1;
-						} else if (is_error(valC) && error_isa_contains(valB, valC)) {
+						} else if (valC.IsError() && error_isa_contains(valB, valC)) {
 							isaResult = 1;
 						}
-						localStack[a] = make_int(isaResult);
+						localStack[a] = Truth(isaResult);
 						break;
-					} else if (is_map(valC)) {
+					} else if (valC.IsMap()) {
 						// Walk valB's __isa chain looking for valC
-						if (is_map(valB)) {
+						if (valB.IsMap()) {
 							val = valB;  // val is "current"; valA (below) is "next" in the __isa chain
 							for (Int32 depth = 0; depth < 256; depth++) {
 								if (!map_try_get(val, Value.magicIsA, out valA)) break;
@@ -1916,20 +1916,20 @@ public class VM {
 						}
 						// If not found via __isa chain, check built-in type maps
 						if (isaResult == 0) {
-							if (is_number(valB) && value_identical(valC, CoreIntrinsics.NumberType())) {
+							if (valB.IsNumber() && value_identical(valC, CoreIntrinsics.NumberType())) {
 								isaResult = 1;
-							} else if (is_string(valB) && value_identical(valC, CoreIntrinsics.StringType())) {
+							} else if (valB.IsString() && value_identical(valC, CoreIntrinsics.StringType())) {
 								isaResult = 1;
-							} else if (is_list(valB) && value_identical(valC, CoreIntrinsics.ListType())) {
+							} else if (valB.IsList() && value_identical(valC, CoreIntrinsics.ListType())) {
 								isaResult = 1;
-							} else if (is_map(valB) && value_identical(valC, CoreIntrinsics.MapType())) {
+							} else if (valB.IsMap() && value_identical(valC, CoreIntrinsics.MapType())) {
 								isaResult = 1;
-							} else if (is_funcref(valB) && value_identical(valC, CoreIntrinsics.FunctionType())) {
+							} else if (valB.IsFuncRef() && value_identical(valC, CoreIntrinsics.FunctionType())) {
 								isaResult = 1;
 							}
 						}
 					}
-					localStack[a] = make_int(isaResult);
+					localStack[a] = Truth(isaResult);
 					break; // CPP: VM_NEXT();
 				}
 
@@ -1944,11 +1944,11 @@ public class VM {
 					valC = localStack[c];  // index
 					typeMap = Value.Null;
 					
-					if (is_error(valB)) {
+					if (valB.IsError()) {
 						// Error field access: return field directly for reserved names,
 						// else fall back to ErrorType() for method lookup (e.g., e.err).
 						// Any other key terminates per language spec.
-						if (is_string(valC)) {
+						if (valC.IsString()) {
 							String keyStr = as_cstring(valC);
 							if (keyStr == "message") { localStack[a] = error_message(valB); hasPendingContext = false; break; }
 							if (keyStr == "inner")   { localStack[a] = error_inner(valB);   hasPendingContext = false; break; }
@@ -1968,7 +1968,7 @@ public class VM {
 						localStack[a] = Value.Null;
 						break;
 					}
-					if (is_map(valB)) {
+					if (valB.IsMap()) {
 						// For maps: first do lookup in the map itself, with inheritance
 						// (valD: the "super" value, i.e., __isa of the map in which valC
 						// was actually found.)
@@ -1981,14 +1981,14 @@ public class VM {
 						}
 						// ...falling back on the map type map
 						typeMap = CoreIntrinsics.MapType();
-					} else if (is_list(valB)) {
+					} else if (valB.IsList()) {
 						typeMap = CoreIntrinsics.ListType();
-					} else if (is_string(valB)) {
+					} else if (valB.IsString()) {
 						typeMap = CoreIntrinsics.StringType();
-					} else if (is_number(valB)) {
+					} else if (valB.IsNumber()) {
 						typeMap = CoreIntrinsics.NumberType();
 					}
-					if (is_null(typeMap)) {
+					if (typeMap.IsNull()) {
 						// If we didn't get a type map, then user is trying to index
 						// into something not indexable
 						RaiseRuntimeError(StringUtils.Format("Can't index into {0}", valB));
@@ -1998,12 +1998,12 @@ public class VM {
 						localStack[a] = val;
 						pendingSelf = valB;
 						pendingSuper = Value.Null;
-					} else if (is_number(valC)) {
+					} else if (valC.IsNumber()) {
 						// try indexing numerically
 						int index = as_int(valC);
-						if (is_list(valB)) {
+						if (valB.IsList()) {
 							localStack[a] = list_get(valB, index);
-						} else if (is_string(valB)) {
+						} else if (valB.IsString()) {
 							localStack[a] = string_substring(valB, index, 1);
 						} else {
 							RaiseRuntimeError(StringUtils.Format("Can't index into {0}", valB));
@@ -2027,30 +2027,30 @@ public class VM {
 					valC = localStack[c];  // index
 					typeMap = Value.Null;
 
-					if (is_map(valB)) {
+					if (valB.IsMap()) {
 						if (map_lookup_with_origin(valB, valC, out val, out valD)) {
 							localStack[a] = val;
 							hasPendingContext = false;
 							break; // CPP: VM_NEXT();
 						}
 						typeMap = CoreIntrinsics.MapType();
-					} else if (is_list(valB)) {
+					} else if (valB.IsList()) {
 						typeMap = CoreIntrinsics.ListType();
-					} else if (is_string(valB)) {
+					} else if (valB.IsString()) {
 						typeMap = CoreIntrinsics.StringType();
-					} else if (is_number(valB)) {
+					} else if (valB.IsNumber()) {
 						typeMap = CoreIntrinsics.NumberType();
 					}
-					if (is_null(typeMap)) {
+					if (typeMap.IsNull()) {
 						RaiseRuntimeError(StringUtils.Format("Can't index into {0}", valB));
 						localStack[a] = Value.Null;
 					} else if (map_try_get(typeMap, valC, out val)) {
 						localStack[a] = val;
-					} else if (is_number(valC)) {
+					} else if (valC.IsNumber()) {
 						int index = as_int(valC);
-						if (is_list(valB)) {
+						if (valB.IsList()) {
 							localStack[a] = list_get(valB, index);
-						} else if (is_string(valB)) {
+						} else if (valB.IsString()) {
 							localStack[a] = string_substring(valB, index, 1);
 						} else {
 							RaiseRuntimeError(StringUtils.Format("Can't index into {0}", valB));
@@ -2079,7 +2079,7 @@ public class VM {
 					Byte a = BytecodeUtil.Au(instruction);
 					val = localStack[a];
 
-					if (!is_funcref(val) || !hasPendingContext) {
+					if (!val.IsFuncRef() || !hasPendingContext) {
 						// Not a funcref or no context — clear pending state and leave value as-is
 						hasPendingContext = false;
 						pendingSelf = Value.Null;
@@ -2111,7 +2111,7 @@ public class VM {
 					// Gather the current execution-context frame's locals VarMap if one exists
 					// (makes closure values survive beyond the function's lifetime).
 					CallInfo frame = callStack[callStackTop - 1];
-					if (!is_null(frame.LocalVarMap)) {
+					if (!frame.LocalVarMap.IsNull()) {
 						varmap_gather(frame.LocalVarMap);
 						frame.LocalVarMap = Value.Null;
 						callStack[callStackTop - 1] = frame;  // write back (CallInfo is a struct)
@@ -2159,11 +2159,11 @@ public class VM {
 					valB = localStack[b];  // container
 					Int32 idx = as_int(localStack[c]);
 
-					if (is_list(valB)) {
+					if (valB.IsList()) {
 						localStack[a] = list_get(valB, idx);
-					} else if (is_map(valB)) {
+					} else if (valB.IsMap()) {
 						localStack[a] = map_iter_entry(valB, idx);
-					} else if (is_string(valB)) {
+					} else if (valB.IsString()) {
 						localStack[a] = string_substring(valB, idx, 1);
 					} else {
 						localStack[a] = Value.Null;
@@ -2244,7 +2244,7 @@ public class VM {
 	// holds @main's own function index (by convention for this slot), used to
 	// find @main's MaxRegs.
 	private Value GetGlobalsVarMap() {
-		if (!is_null(ReplGlobals)) return ReplGlobals;
+		if (!ReplGlobals.IsNull()) return ReplGlobals;
 		CallInfo gframe = callStack[0];
 		FuncDef rf = gframe.ReturnFunc;
 		Int32 regCount = rf.MaxRegs;
@@ -2282,7 +2282,7 @@ public class VM {
 		FuncDef func = CurrentFunction;
 		Value nameVal = make_string(varName);
 		for (Int32 i = 0; i < func.ParamNames.Count; i++) {
-			if (value_equal(func.ParamNames[i], nameVal)) {
+			if (func.ParamNames[i] == nameVal) {
 				return stack[BaseIndex + 1 + i];
 			}
 		}
@@ -2297,12 +2297,12 @@ public class VM {
 			CallInfo currentFrame = callStack[callStackTop - 1];  // Current frame, not next frame
 			// Check locals VarMap for variables set dynamically (e.g. by the import intrinsic).
 			// This mirrors what user code "locals[varName] = x" does at runtime.
-			if (!is_null(currentFrame.LocalVarMap)) {
+			if (!currentFrame.LocalVarMap.IsNull()) {
 				if (map_try_get(currentFrame.LocalVarMap, varName, out result)) {
 					return result;
 				}
 			}
-			if (!is_null(currentFrame.OuterVarMap)) {
+			if (!currentFrame.OuterVarMap.IsNull()) {
 				if (map_try_get(currentFrame.OuterVarMap, varName, out result)) {
 					return result;
 				}
@@ -2311,7 +2311,7 @@ public class VM {
 
 		// Check global variables via VarMap (registers at base 0 in the @main frame)
 		Value globalMap;
-		if (callStackTop > 0 || !is_null(ReplGlobals)) {
+		if (callStackTop > 0 || !ReplGlobals.IsNull()) {
 			globalMap = GetGlobalsVarMap();
 			if (map_try_get(globalMap, varName, out result)) {
 				return result;
@@ -2325,7 +2325,7 @@ public class VM {
 		}
 
 		// self/super return null when not in a method context
-		if (value_equal(varName, Value.selfString) || value_equal(varName, Value.superString)) {
+		if (varName == Value.selfString || varName == Value.superString) {
 			return Value.Null;
 		}
 

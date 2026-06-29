@@ -136,22 +136,22 @@ public struct VMVis {
 	}
 
 	private String GetValueTypeCode(Value v) {
-		if (is_null(v)) return "nul";
-		if (is_double(v)) return "dbl";
-		if (is_string(v)) return "str";
-		if (is_list(v)) return "lst";
-		if (is_map(v)) return "map";
-		if (is_funcref(v)) return "fun";
+		if (v.IsNull()) return "nul";
+		if (v.IsNumber()) return "dbl";
+		if (v.IsString()) return "str";
+		if (v.IsList()) return "lst";
+		if (v.IsMap()) return "map";
+		if (v.IsFuncRef()) return "fun";
 		return "unk";
 	}
 
 	private String GetValueDisplayString(Value v) {
-		if (is_null(v)) return "";
+		if (v.IsNull()) return "";
 		return StringUtils.Format("{0}", v);
 	}
 
 	private String GetVariableNameDisplay(Value nameVal) {
-		if (is_null(nameVal)) {
+		if (nameVal.IsNull()) {
 			return "        "; // 8 spaces for unnamed variables
 		}
 		String name = StringUtils.Format("{0}", nameVal);

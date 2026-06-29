@@ -452,7 +452,7 @@ public struct App {
 			}
 		}
 
-		if (is_null(vm.Error)) {
+		if (vm.Error.IsNull()) {
 			if (!quietMode) {
 				IOHelper.Print("\nVM execution complete. Result in r0:");
 				IOHelper.Print(StringUtils.Format("\x1b[1;93m{0}\x1b[0m", result)); // (bold bright yellow)
@@ -646,7 +646,7 @@ public struct App {
 					// Mirror MiniScript 1.x: the global `_` always holds the most
 					// recent implicit REPL result (i.e. _out[-1]).
 					interp.SetGlobalValue("_", implVal);
-					if (!is_null(implVal)) {
+					if (!implVal.IsNull()) {
 						IOHelper.PrintNoCR(StringUtils.Format("_out[{0}]: ", idx), TextStyle.Subdued);
 						IOHelper.Print(StringUtils.Format("{0}", implVal), TextStyle.Strong);
 					}

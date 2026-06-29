@@ -31,7 +31,7 @@ namespace MiniScript {
 		}
 
 		public override string ToString() {
-			if (is_null(OuterVars)) {
+			if (OuterVars.IsNull()) {
 				return $"FuncRef(#{FuncIndex})";
 			} else {
 				return $"FuncRef(#{FuncIndex}, closure)";

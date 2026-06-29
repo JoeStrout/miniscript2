@@ -26,11 +26,11 @@ public static class ErrorTypes {
 			GCManager.RegisterMarkCallback(MarkRoots, null); // CPP: GCManager::RegisterMarkCallback(ErrorTypes::MarkRoots, nullptr);
 			_markRootsRegistered = true;
 		}
-		if (is_null(compiler)) {
+		if (compiler.IsNull()) {
 			compiler = make_error(make_string("Compiler Error"), Value.Null, Value.Null, Value.Null);
 			freeze_value(compiler);
 		}
-		if (is_null(runtime)) {
+		if (runtime.IsNull()) {
 			runtime = make_error(make_string("Runtime Error"), Value.Null, Value.Null, Value.Null);
 			freeze_value(runtime);
 		}
@@ -38,13 +38,13 @@ public static class ErrorTypes {
 
 	// Create a compiler error value with the given message.
 	public static Value CompilerError(String msg) {
-		if (is_null(compiler)) Init();
+		if (compiler.IsNull()) Init();
 		return make_error(make_string(msg), Value.Null, Value.Null, compiler);
 	}
 
 	// Create a runtime error value with the given message and stack trace.
 	public static Value RuntimeError(String msg, Value stack) {
-		if (is_null(runtime)) Init();
+		if (runtime.IsNull()) Init();
 		return make_error(make_string(msg), Value.Null, stack, runtime);
 	}
 
@@ -54,7 +54,7 @@ public static class ErrorTypes {
 	// the VM itself -- carries an accurate trace.  Returns Value.Null stack if no
 	// VM is running (e.g. errors built during setup, before execution).
 	public static Value RuntimeError(String msg) {
-		if (is_null(runtime)) Init();
+		if (runtime.IsNull()) Init();
 		return make_error(make_string(msg), Value.Null, value_current_stack_trace(), runtime);
 	}
 	

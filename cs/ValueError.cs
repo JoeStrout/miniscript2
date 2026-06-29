@@ -31,7 +31,7 @@ namespace MiniScript {
 		}
 
 		public override string ToString() {
-			string msg = is_string(Message) ? as_cstring(Message) : to_String(Message);
+			string msg = Message.IsString() ? as_cstring(Message) : to_String(Message);
 			return "error: " + msg;
 		}
 	}

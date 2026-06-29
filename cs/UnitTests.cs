@@ -234,7 +234,7 @@ public static class UnitTests {
 	public static Boolean TestValueMap() {
 		// Test map creation
 		Value map = make_empty_map();
-		Boolean basicOk = Assert(is_map(map), "Map should be identified as map")
+		Boolean basicOk = Assert(map.IsMap(), "Map should be identified as map")
 			&& AssertEqual(map_count(map), 0);
 
 		if (!basicOk) return false;
@@ -243,7 +243,7 @@ public static class UnitTests {
 		Value key1 = make_string("name");
 		Value value1 = make_string("John");
 		Value key2 = make_string("age");
-		Value value2 = make_double(30.0);
+		Value value2 = new Value(30.0);
 
 		Boolean insertOk = map_set(map, key1, value1)
 			&& map_set(map, key2, value2)
@@ -254,8 +254,8 @@ public static class UnitTests {
 		// Test lookup
 		Value retrieved1 = map_get(map, key1);
 		Value retrieved2 = map_get(map, key2);
-		Boolean lookupOk = Assert(is_string(retrieved1), "Retrieved value should be string")
-			&& Assert(is_double(retrieved2), "Retrieved value should be number")
+		Boolean lookupOk = Assert(retrieved1.IsString(), "Retrieved value should be string")
+			&& Assert(retrieved2.IsNumber(), "Retrieved value should be number")
 			&& AssertEqual((int)as_double(retrieved2), 30);
 
 		if (!lookupOk) return false;
@@ -270,7 +270,7 @@ public static class UnitTests {
 		// Test lookup of nonexistent key
 		// (For now; later: this should invoke error-handling pipeline)
 		Value nonexistent = map_get(map, make_string("missing"));
-		Boolean nonexistentOk = Assert(is_null(nonexistent), "Nonexistent key should return null");
+		Boolean nonexistentOk = Assert(nonexistent.IsNull(), "Nonexistent key should return null");
 
 		if (!nonexistentOk) return false;
 
@@ -285,9 +285,9 @@ public static class UnitTests {
 
 		// Test string conversion (runtime C functions)
 		Value singleMap = make_empty_map();
-		map_set(singleMap, "test", make_int(42));
+		map_set(singleMap, "test", new Value(42));
 		Value singleStr = to_string(singleMap, null);
-		Boolean singleStrOk = Assert(is_string(singleStr), "Map toString should return string")
+		Boolean singleStrOk = Assert(singleStr.IsString(), "Map toString should return string")
 			&& AssertEqual(as_cstring(singleStr), "{\"test\": 42}");
 		if (!singleStrOk) return false;
 		String result = as_cstring(to_string(singleMap, null));
@@ -975,9 +975,9 @@ public static class UnitTests {
 
 		// Allocate a handle and verify the predicate.
 		Value h = GCManager.NewHandle(null, TestHandleFinalizer);
-		ok = ok && Assert(is_handle(h), "NewHandle should produce a handle value");
-		ok = ok && Assert(!is_map(h), "handle should not test as map");
-		ok = ok && Assert(!is_null(h), "handle should not test as null");
+		ok = ok && Assert(h.IsHandle(), "NewHandle should produce a handle value");
+		ok = ok && Assert(!h.IsMap(), "handle should not test as map");
+		ok = ok && Assert(!h.IsNull(), "handle should not test as null");
 
 		// Keep the handle alive across a GC cycle via retain count; callback must not fire yet.
 		GCManager.Handles.Retain(value_item_index(h));

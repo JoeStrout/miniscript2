@@ -290,7 +290,7 @@ public class CodeGenerator : IASTVisitor {
 			_emitter.EmitAB(Opcode.LOAD_rA_iBC, reg, (Int32)value, $"r{reg} = {value}");
 		} else {
 			// Store in constants and load from there
-			Int32 constIdx = _emitter.AddConstant(make_double(value));
+			Int32 constIdx = _emitter.AddConstant(new Value(value));
 			_emitter.EmitAB(Opcode.LOAD_rA_kBC, reg, constIdx, $"r{reg} = {value}");
 		}
 		return reg;
@@ -348,7 +348,7 @@ public class CodeGenerator : IASTVisitor {
 
 	public Int32 Visit(AssignmentNode node) {
 		if (_targetReg > 0) {
-			if (is_null(Error)) Error = ErrorTypes.CompilerError(StringUtils.Format("unexpected target register {0} in assignment", _targetReg));
+			if (Error.IsNull()) Error = ErrorTypes.CompilerError(StringUtils.Format("unexpected target register {0} in assignment", _targetReg));
 		}
 		
 		// Get or allocate register for this variable
@@ -458,7 +458,7 @@ public class CodeGenerator : IASTVisitor {
 		}
 
 		// Unknown unary operator - move operand to result if needed
-		if (is_null(Error)) Error = ErrorTypes.CompilerError("unknown unary operator");
+		if (Error.IsNull()) Error = ErrorTypes.CompilerError("unknown unary operator");
 		if (operandReg != resultReg) {
 			_emitter.EmitABC(Opcode.LOAD_rA_rB, resultReg, operandReg, 0, "move to target");
 			FreeReg(operandReg);
@@ -1100,7 +1100,7 @@ public class CodeGenerator : IASTVisitor {
 	public Int32 Visit(BreakNode node) {
 		// Break jumps to the innermost loop's exit label
 		if (_loopExitLabels.Count == 0) {
-			if (is_null(Error)) Error = ErrorTypes.CompilerError("'break' without open loop block");
+			if (Error.IsNull()) Error = ErrorTypes.CompilerError("'break' without open loop block");
 			_emitter.Emit(Opcode.NOOP, "break outside loop (error)");
 		} else {
 			Int32 exitLabel = _loopExitLabels[_loopExitLabels.Count - 1];
@@ -1112,7 +1112,7 @@ public class CodeGenerator : IASTVisitor {
 	public Int32 Visit(ContinueNode node) {
 		// Continue jumps to the innermost loop's continue label (loop start)
 		if (_loopContinueLabels.Count == 0) {
-			if (is_null(Error)) Error = ErrorTypes.CompilerError("'continue' without open loop block");
+			if (Error.IsNull()) Error = ErrorTypes.CompilerError("'continue' without open loop block");
 			_emitter.Emit(Opcode.NOOP, "continue outside loop (error)");
 		} else {
 			Int32 continueLabel = _loopContinueLabels[_loopContinueLabels.Count - 1];
@@ -1129,7 +1129,7 @@ public class CodeGenerator : IASTVisitor {
 		result = Value.Null;
 		NumberNode numNode = node as NumberNode;
 		if (numNode != null) {
-			result = make_double(numNode.Value);
+			result = new Value(numNode.Value);
 			return true;
 		}
 		StringNode strNode = node as StringNode;
@@ -1140,15 +1140,15 @@ public class CodeGenerator : IASTVisitor {
 		IdentifierNode idNode = node as IdentifierNode;
 		if (idNode != null) {
 			if (idNode.Name == "null") { result = Value.Null; return true; }
-			if (idNode.Name == "true") { result = make_double(1); return true; }
-			if (idNode.Name == "false") { result = make_double(0); return true; }
+			if (idNode.Name == "true") { result = new Value(1); return true; }
+			if (idNode.Name == "false") { result = new Value(0); return true; }
 			return false;
 		}
 		UnaryOpNode unaryNode = node as UnaryOpNode;
 		if (unaryNode != null && unaryNode.Op == Op.MINUS) {
 			NumberNode innerNum = unaryNode.Operand as NumberNode;
 			if (innerNum != null) {
-				result = make_double(-innerNum.Value);
+				result = new Value(-innerNum.Value);
 				return true;
 			}
 			return false;
@@ -1228,7 +1228,7 @@ public class CodeGenerator : IASTVisitor {
 
 		// Compile the function body
 		innerGen.CompileBody(bodyToCompile);
-		if (is_null(Error) && !is_null(innerGen.Error)) Error = innerGen.Error;
+		if (Error.IsNull() && !innerGen.Error.IsNull()) Error = innerGen.Error;
 
 		// Emit implicit RETURN at end of body
 		innerEmitter.Emit(Opcode.RETURN, null);
@@ -1250,7 +1250,7 @@ public class CodeGenerator : IASTVisitor {
 				if (TryEvaluateConstant(defaultNode, out defaultVal)) {
 					funcDef.ParamDefaults.Add(defaultVal);
 				} else {
-					if (is_null(Error)) Error = ErrorTypes.CompilerError(StringUtils.Format("Default value for parameter '{0}' must be a constant", node.ParamNames[i]));
+					if (Error.IsNull()) Error = ErrorTypes.CompilerError(StringUtils.Format("Default value for parameter '{0}' must be a constant", node.ParamNames[i]));
 					funcDef.ParamDefaults.Add(Value.Null);
 				}
 			} else {

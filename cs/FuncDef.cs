@@ -80,7 +80,7 @@ public class FuncDef {
 			if (i > 0) result += ", ";
 			result += as_cstring(ParamNames[i]);
 			defaultVal = ParamDefaults[i];
-			if (!is_null(defaultVal)) {
+			if (!defaultVal.IsNull()) {
 				result += "=";
 				result += as_cstring(value_repr(defaultVal, null));
 			}

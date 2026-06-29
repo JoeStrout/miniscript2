@@ -56,7 +56,7 @@ public struct GCList : IGCItem {
 		Items = new List<Value>(3);
 		Items.Add(baseVal);
 		Items.Add(increment);
-		Items.Add(make_int(length));
+		Items.Add(new Value(length));
 		Frozen   = false;
 		Computed = true;
 	}
@@ -92,9 +92,9 @@ public struct GCList : IGCItem {
 			if (i < 0) i += len;
 			if ((UInt32)i >= (UInt32)len) return Value.Null;
 			Value incr = Items[1];
-			if (is_null(incr)) return Items[0];
+			if (incr.IsNull()) return Items[0];
 			Double d = numeric_val(Items[0]) + numeric_val(incr) * i;
-			return (d == (Int32)d) ? make_int((Int32)d) : make_double(d);
+			return (d == (Int32)d) ? new Value((Int32)d) : new Value(d);
 		}
 		if (i < 0) i += Items.Count;
 		return (UInt32)i < (UInt32)Items.Count ? Items[i] : Value.Null;
@@ -131,7 +131,7 @@ public struct GCList : IGCItem {
 			Int32 len = (Int32)numeric_val(Items[2]);
 			if (len == 0) return Value.Null;
 			Value last = Get(len - 1);
-			Items[2] = make_int(len - 1);
+			Items[2] = new Value(len - 1);
 			return last;
 		}
 		if (Items == null || Items.Count == 0) return Value.Null; // ToDo: error
@@ -151,7 +151,7 @@ public struct GCList : IGCItem {
 	public Int32 IndexOf(Value item, Int32 afterIdx) {
 		Int32 n = Count();
 		for (Int32 i = afterIdx + 1; i < n; i++) {
-			if (value_equal(Get(i), item)) return i;
+			if (Get(i) == item) return i;
 		}
 		return -1;
 	}

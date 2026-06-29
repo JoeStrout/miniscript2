@@ -211,7 +211,7 @@ public class Interpreter {
 		generator.FileName = SourceFile;
 		generator.CompileProgram(statements, "@main");
 
-		if (!is_null(generator.Error)) {
+		if (!generator.Error.IsNull()) {
 			Error = generator.Error;
 			ReportError(Error);
 			return;
@@ -264,7 +264,7 @@ public class Interpreter {
 		while (vm.IsRunning && !vm.yielding) {
 			if (vm.ElapsedTime() - startTime > timeLimit) return;	// time's up for now
 			vm.Run(1000);	// run in small batches so we can check the time
-			if (!is_null(vm.Error)) {
+			if (!vm.Error.IsNull()) {
 				Error = vm.Error;
 				ReportError(Error);
 				Stop();
@@ -282,7 +282,7 @@ public class Interpreter {
 		Compile();
 		if (vm == null) return;
 		vm.Run(1);
-		if (!is_null(vm.Error)) {
+		if (!vm.Error.IsNull()) {
 			Error = vm.Error;
 			ReportError(Error);
 			Stop();
@@ -358,7 +358,7 @@ public class Interpreter {
 		CodeGenerator generator = new CodeGenerator(emitter);
 		generator.CompileProgram(statements, "@main");
 
-		if (!is_null(generator.Error)) {
+		if (!generator.Error.IsNull()) {
 			Error = generator.Error;
 			ReportError(Error);
 			_pendingSource = null;
@@ -378,7 +378,7 @@ public class Interpreter {
 		vm.Reset(functions, _replGlobals);
 
 		// If this is the first REPL entry, create the initial globals VarMap
-		if (is_null(_replGlobals)) {
+		if (_replGlobals.IsNull()) {
 			_replGlobals = make_varmap(vm.GetStack(), vm.GetNames(), 0, 
 				functions[0].MaxRegs);  // CPP: functions[0].MaxRegs());
 			// ToDo: make the transpiler smart enough to do this ---^ on its own
@@ -392,7 +392,7 @@ public class Interpreter {
 		while (vm.IsRunning && !vm.yielding) {
 			if (vm.ElapsedTime() - startTime > timeLimit) break;
 			vm.Run(1000);
-			if (!is_null(vm.Error)) {
+			if (!vm.Error.IsNull()) {
 				Error = vm.Error;
 				ReportError(Error);
 				hadRuntimeError = true;
@@ -406,7 +406,7 @@ public class Interpreter {
 		Value result;
 		if (hasImplicitOutput && !hadRuntimeError) {
 			result = vm.GetStackValue(vm.BaseIndex);
-			if (!is_null(result)) {
+			if (!result.IsNull()) {
 				lastImplicitResult = result;
 				if (implicitOutput != null) {
 					implicitOutput.Invoke(StringUtils.Format("{0}", result), true);
@@ -450,7 +450,7 @@ public class Interpreter {
 		Value name;
 		for (Int32 i = 0; i < regCount; i++) {
 			name = vm.GetStackName(i);
-			if (!is_null(name) && value_equal(name, nameVal)) {
+			if (!name.IsNull() && name == nameVal) {
 				return vm.GetStackValue(i);
 			}
 		}
@@ -468,7 +468,7 @@ public class Interpreter {
 		// Setting a key here makes it visible to subsequent user code as a
 		// global variable.  If a global VarMap doesn't exist yet (e.g. no REPL
 		// entry has run), there is nothing to set.
-		if (is_null(_replGlobals)) return;
+		if (_replGlobals.IsNull()) return;
 		map_set(_replGlobals, varName, value);
 	}
 

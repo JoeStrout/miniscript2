@@ -249,7 +249,7 @@ public class Assembler {
 			Byte src = ParseRegister(parts[2]);
 
 			constantValue = ParseAsConstant(parts[3]);
-			if (!is_string(constantValue)) Error("Variable name must be a string");
+			if (!constantValue.IsString()) Error("Variable name must be a string");
 			Int32 constIdx = AddConstant(constantValue);
 			if (constIdx > 255) Error("Constant index out of range for LOADV opcode");
 			if (HasError) return 0;
@@ -267,7 +267,7 @@ public class Assembler {
 			Byte src = ParseRegister(parts[2]);
 
 			constantValue = ParseAsConstant(parts[3]);
-			if (!is_string(constantValue)) Error("Variable name must be a string");
+			if (!constantValue.IsString()) Error("Variable name must be a string");
 			Int32 constIdx = AddConstant(constantValue);
 			if (constIdx > 255) Error("Constant index out of range for LOADC opcode");
 			if (HasError) return 0;
@@ -307,7 +307,7 @@ public class Assembler {
 			Byte src = ParseRegister(parts[2]);
 
 			constantValue = ParseAsConstant(parts[3]);
-			if (!is_string(constantValue)) Error("Variable name must be a string");
+			if (!constantValue.IsString()) Error("Variable name must be a string");
 			Int32 constIdx = AddConstant(constantValue);
 			if (constIdx > 255) Error("Constant index out of range for ASSIGN opcode");
 			if (HasError) return 0;
@@ -325,7 +325,7 @@ public class Assembler {
 			if (HasError) return 0;
 
 			constantValue = ParseAsConstant(parts[2]);
-			if (!is_string(constantValue)) Error("Variable name must be a string");
+			if (!constantValue.IsString()) Error("Variable name must be a string");
 			Int32 constIdx = AddConstant(constantValue);
 			if (constIdx > 65535) Error("Constant index out of range for NAME opcode");
 			if (HasError) return 0;
@@ -906,12 +906,12 @@ public class Assembler {
 		if (token.Contains(".")) {
 			// Simple double parsing (basic implementation)
 			Double doubleValue = ParseDouble(token);
-			return make_double(doubleValue);
+			return new Value(doubleValue);
 		}
 		
 		// Parse as integer
 		Int32 intValue = ParseInt32(token);
-		return make_int(intValue);
+		return new Value(intValue);
 	}
 
 	// Helper to parse a double from a string (basic implementation)

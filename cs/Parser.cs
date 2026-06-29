@@ -124,7 +124,7 @@ public class Parser : IParser {
 		_previousType = _current.Type;
 		do {
 			_current = _lexer.NextToken();
-			if (is_null(Error) && _lexer.HadError()) Error = _lexer.Error;
+			if (Error.IsNull() && _lexer.HadError()) Error = _lexer.Error;
 		} while (_current.Type == TokenType.COMMENT
 			|| (_current.Type == TokenType.EOL && AllowsLineContinuation(_previousType)));
 		// If the last meaningful token allows line continuation and we've run out
@@ -817,12 +817,12 @@ public class Parser : IParser {
 
 	// Report an error.  Only the first error is kept.
 	public void ReportError(String message) {
-		if (is_null(Error)) Error = ErrorTypes.CompilerError(StringUtils.Format("{0} [line {1}]", message, _current.Line));
+		if (Error.IsNull()) Error = ErrorTypes.CompilerError(StringUtils.Format("{0} [line {1}]", message, _current.Line));
 	}
 
 	// Check if any errors occurred
 	public Boolean HadError() {
-		return !is_null(Error);
+		return !Error.IsNull();
 	}
 }
 

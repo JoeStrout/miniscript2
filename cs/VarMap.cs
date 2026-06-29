@@ -26,7 +26,7 @@ public class VarMapBacking {
 		_regIndices = new List<Int32>();
 
 		for (Int32 i = firstIdx; i <= lastIdx; i++) {
-			if (!is_null(_names[i])) {
+			if (!_names[i].IsNull()) {
 				Int32 orderIdx = FindOrderIdx(_names[i]);
 				if (orderIdx < 0) {
 					_regOrder.Add(_names[i]);
@@ -42,11 +42,11 @@ public class VarMapBacking {
 
 	// Try to get a value via register binding. Returns false if key is not register-mapped or register is unassigned.
 	public Boolean TryGet(Value key, out Value value) {
-		if (is_string(key)) {
+		if (key.IsString()) {
 			Int32 orderIdx = FindOrderIdx(key);
 			if (orderIdx >= 0) {
 				Int32 regIdx = _regIndices[orderIdx];
-				if (!is_null(_names[regIdx])) {
+				if (!_names[regIdx].IsNull()) {
 					value = _registers[regIdx];
 					return true;
 				}
@@ -58,7 +58,7 @@ public class VarMapBacking {
 
 	// Try to set a value via register binding. Returns true if key was register-mapped (and value was stored).
 	public Boolean TrySet(Value key, Value value) {
-		if (is_string(key)) {
+		if (key.IsString()) {
 			Int32 orderIdx = FindOrderIdx(key);
 			if (orderIdx >= 0) {
 				Int32 regIdx = _regIndices[orderIdx];
@@ -72,7 +72,7 @@ public class VarMapBacking {
 
 	// Try to remove a key via register binding. Returns true if key was register-mapped.
 	public Boolean TryRemove(Value key) {
-		if (is_string(key)) {
+		if (key.IsString()) {
 			Int32 orderIdx = FindOrderIdx(key);
 			if (orderIdx >= 0) {
 				Int32 regIdx = _regIndices[orderIdx];
@@ -85,11 +85,11 @@ public class VarMapBacking {
 
 	// Returns true if the key is register-mapped and the register is assigned.
 	public Boolean HasKey(Value key) {
-		if (is_string(key)) {
+		if (key.IsString()) {
 			Int32 orderIdx = FindOrderIdx(key);
 			if (orderIdx >= 0) {
 				Int32 regIdx = _regIndices[orderIdx];
-				return !is_null(_names[regIdx]);
+				return !_names[regIdx].IsNull();
 			}
 		}
 		return false;
@@ -102,7 +102,7 @@ public class VarMapBacking {
 		Int32 n = 0;
 		for (Int32 i = 0; i < _regOrder.Count; i++) {
 			Int32 regIdx = _regIndices[i];
-			if (!is_null(_names[regIdx])) n++;
+			if (!_names[regIdx].IsNull()) n++;
 		}
 		return n;
 	}
@@ -114,7 +114,7 @@ public class VarMapBacking {
 	public Int32 NextAssignedRegEntry(Int32 startIdx) {
 		for (Int32 i = startIdx; i < _regOrder.Count; i++) {
 			Int32 regIdx = _regIndices[i];
-			if (!is_null(_names[regIdx])) return i;
+			if (!_names[regIdx].IsNull()) return i;
 		}
 		return -1;
 	}
@@ -138,7 +138,7 @@ public class VarMapBacking {
 	public void MarkChildren() {
 		for (Int32 i = 0; i < _regOrder.Count; i++) {
 			Int32 regIdx = _regIndices[i];
-			if (regIdx < _names.Count && !is_null(_names[regIdx])) {
+			if (regIdx < _names.Count && !_names[regIdx].IsNull()) {
 				GCManager.Mark(_regOrder[i]);
 				GCManager.Mark(_registers[regIdx]);
 			}
@@ -157,7 +157,7 @@ public class VarMapBacking {
 		GCMap map = GCManager.Maps.Get(mapIdx);
 		for (Int32 i = 0; i < _regOrder.Count; i++) {
 			Int32 regIdx = _regIndices[i];
-			if (regIdx < _names.Count && !is_null(_names[regIdx])) {
+			if (regIdx < _names.Count && !_names[regIdx].IsNull()) {
 				map.Set(_regOrder[i], _registers[regIdx]);
 			}
 		}
@@ -233,7 +233,7 @@ public class VarMapBacking {
 	[MethodImpl(AggressiveInlining)]
 	private Int32 FindOrderIdx(Value key) {
 		for (Int32 i = 0; i < _regOrder.Count; i++) {
-			if (value_equal(_regOrder[i], key)) return i;
+			if (_regOrder[i] == key) return i;
 		}
 		return -1;
 	}

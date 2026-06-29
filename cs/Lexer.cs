@@ -341,11 +341,11 @@ public struct Lexer {
 
 	// Record a compiler error.  Only the first error is kept.
 	public void ReportError(String message) {
-		if (is_null(Error)) Error = ErrorTypes.CompilerError(StringUtils.Format("{0} [line {1}]", message, _line));
+		if (Error.IsNull()) Error = ErrorTypes.CompilerError(StringUtils.Format("{0} [line {1}]", message, _line));
 	}
 
 	public Boolean HadError() {
-		return !is_null(Error);
+		return !Error.IsNull();
 	}
 }
 

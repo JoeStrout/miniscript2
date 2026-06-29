@@ -3,7 +3,7 @@
 
 using System;
 using System.Collections.Generic;
-using static MiniScript.ValueHelpers;
+using static MiniScript.Value;
 // CPP: #include "CS_value_util.h"
 // CPP: #include "IOHelper.g.h"
 // CPP: #include "StringUtils.g.h"

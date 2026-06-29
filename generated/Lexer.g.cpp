@@ -21,7 +21,7 @@ Lexer::Lexer(String source) {
 	_position = 0;
 	_line = 1;
 	_column = 1;
-	Error = val_null;
+	Error = Value::Null;
 }
 Char Lexer::Peek() {
 	if (_position >= _input.Length()) return '\0';

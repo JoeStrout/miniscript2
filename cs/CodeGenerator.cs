@@ -3,7 +3,7 @@
 
 using System;
 using System.Collections.Generic;
-using static MiniScript.ValueHelpers;
+using static MiniScript.Value;
 // H: #include "AST.g.h"
 // H: #include "CodeEmitter.g.h"
 // H: #include "ErrorTypes.g.h"
@@ -39,7 +39,7 @@ public class CodeGenerator : IASTVisitor {
 		_loopExitLabels = new List<Int32>();
 		_loopContinueLabels = new List<Int32>();
 		_functions = new List<FuncDef>();
-		Error = val_null;
+		Error = Value.Null;
 	}
 
 	// Get all compiled functions (index 0 = @main, 1+ = inner functions)
@@ -1126,7 +1126,7 @@ public class CodeGenerator : IASTVisitor {
 	// Handles: numbers, strings, null/true/false, unary minus, list/map literals.
 	// Lists and maps are automatically frozen (immutable).
 	public static Boolean TryEvaluateConstant(ASTNode node, out Value result) {
-		result = val_null;
+		result = Value.Null;
 		NumberNode numNode = node as NumberNode;
 		if (numNode != null) {
 			result = make_double(numNode.Value);
@@ -1139,7 +1139,7 @@ public class CodeGenerator : IASTVisitor {
 		}
 		IdentifierNode idNode = node as IdentifierNode;
 		if (idNode != null) {
-			if (idNode.Name == "null") { result = val_null; return true; }
+			if (idNode.Name == "null") { result = Value.Null; return true; }
 			if (idNode.Name == "true") { result = make_double(1); return true; }
 			if (idNode.Name == "false") { result = make_double(0); return true; }
 			return false;
@@ -1251,10 +1251,10 @@ public class CodeGenerator : IASTVisitor {
 					funcDef.ParamDefaults.Add(defaultVal);
 				} else {
 					if (is_null(Error)) Error = ErrorTypes.CompilerError(StringUtils.Format("Default value for parameter '{0}' must be a constant", node.ParamNames[i]));
-					funcDef.ParamDefaults.Add(val_null);
+					funcDef.ParamDefaults.Add(Value.Null);
 				}
 			} else {
-				funcDef.ParamDefaults.Add(val_null);
+				funcDef.ParamDefaults.Add(Value.Null);
 			}
 		}
 
@@ -1269,7 +1269,7 @@ public class CodeGenerator : IASTVisitor {
 
 		// Store a template funcref (no captured outer vars) in this function's
 		// constant pool, and emit FUNCREF to bind it into a closure at runtime.
-		Value funcTemplate = make_funcref(funcDef, val_null);
+		Value funcTemplate = make_funcref(funcDef, Value.Null);
 		Int32 templateConst = _emitter.AddConstant(funcTemplate);
 		_emitter.EmitAB(Opcode.FUNCREF_iA_iBC, resultReg, templateConst,
 			$"r{resultReg} = funcref {funcName}");
@@ -1417,7 +1417,7 @@ public class CodeGenerator : IASTVisitor {
 	public Int32 Visit(SelfNode node) {
 		Int32 resultReg = GetTargetOrAlloc();
 		Int32 selfReg = GetSelfReg();
-		Int32 nameIdx = _emitter.AddConstant(val_self);
+		Int32 nameIdx = _emitter.AddConstant(Value.selfString);
 		_emitter.EmitABC(Opcode.LOADV_rA_rB_kC, resultReg, selfReg, nameIdx,
 			$"r{resultReg} = self");
 		return resultReg;
@@ -1426,7 +1426,7 @@ public class CodeGenerator : IASTVisitor {
 	public Int32 Visit(SuperNode node) {
 		Int32 resultReg = GetTargetOrAlloc();
 		Int32 superReg = GetSuperReg();
-		Int32 nameIdx = _emitter.AddConstant(val_super);
+		Int32 nameIdx = _emitter.AddConstant(Value.superString);
 		_emitter.EmitABC(Opcode.LOADV_rA_rB_kC, resultReg, superReg, nameIdx,
 			$"r{resultReg} = super");
 		return resultReg;

@@ -23,15 +23,15 @@ CallInfo::CallInfo(Int32 returnPC,Int32 returnBase,FuncDef returnFunc,Int32 copy
 	ReturnBase = returnBase;
 	ReturnFunc = returnFunc;
 	CopyResultToReg = copyToReg;
-	LocalVarMap = val_null;
-	OuterVarMap = val_null;
+	LocalVarMap = Value::Null;
+	OuterVarMap = Value::Null;
 }
 CallInfo::CallInfo(Int32 returnPC,Int32 returnBase,FuncDef returnFunc,Int32 copyToReg,Value outerVars) {
 	ReturnPC = returnPC;
 	ReturnBase = returnBase;
 	ReturnFunc = returnFunc;
 	CopyResultToReg = copyToReg;
-	LocalVarMap = val_null;
+	LocalVarMap = Value::Null;
 	OuterVarMap = outerVars;
 }
 Value CallInfo::GetLocalVarMap(List<Value> registers,List<Value> names,int baseIdx,int regCount) {
@@ -76,11 +76,11 @@ Int32 VMStorage::CallStackDepth() {
 	return callStackTop;
 }
 Value VMStorage::GetStackValue(Int32 index) {
-	if (index < 0 || index >= stack.Count()) return val_null;
+	if (index < 0 || index >= stack.Count()) return Value::Null;
 	return stack[index];
 }
 Value VMStorage::GetStackName(Int32 index) {
-	if (index < 0 || index >= names.Count()) return val_null;
+	if (index < 0 || index >= names.Count()) return Value::Null;
 	return names[index];
 }
 CallInfo VMStorage::GetCallStackFrame(Int32 index) {
@@ -106,12 +106,12 @@ void VMStorage::InitVM(Int32 stackSlots,Int32 callSlots) {
 	names =  List<Value>::New();
 	callStack =  List<CallInfo>::New();
 	callStackTop = 0;
-	Error = val_null;
+	Error = Value::Null;
 
 	// Initialize stack with null values
 	for (Int32 i = 0; i < stackSlots; i++) {
-		stack.Add(val_null);
-		names.Add(val_null);		// No variable name initially
+		stack.Add(Value::Null);
+		names.Add(Value::Null);		// No variable name initially
 	}
 	
 	
@@ -134,7 +134,7 @@ void VMStorage::InitVM(Int32 stackSlots,Int32 callSlots) {
 	// stay free of the VM layer; we cast back here.
 	set_short_name_lookup([](void* vm_ptr, Value v) -> Value {
 		String s = static_cast<VMStorage*>(vm_ptr)->FindShortName(v);
-		if (s.Length() == 0) return val_null;
+		if (s.Length() == 0) return Value::Null;
 		return make_string(s.c_str());
 	});
 
@@ -144,7 +144,7 @@ void VMStorage::InitVM(Int32 stackSlots,Int32 callSlots) {
 	// the C# side.  Falls back to a bare error if there is no active VM.
 	set_runtime_error_maker([](const char* msg) -> Value {
 		VM vm = VMStorage::ActiveVM();
-		if (IsNull(vm)) return make_error(make_string(msg), val_null, val_null, val_null);
+		if (IsNull(vm)) return make_error(make_string(msg), Value::Null, Value::Null, Value::Null);
 		return vm.MakeRuntimeError(String(msg));
 	});
 
@@ -153,7 +153,7 @@ void VMStorage::InitVM(Int32 stackSlots,Int32 callSlots) {
 	// runtime error value it creates.
 	set_stack_trace_hook([]() -> Value {
 		VM vm = VMStorage::ActiveVM();
-		if (IsNull(vm)) return val_null;
+		if (IsNull(vm)) return Value::Null;
 		return vm.CurrentStackTrace();
 	});
 }
@@ -194,8 +194,8 @@ void VMStorage::ManuallyPushCall(Int32 intrinsicCalleeBase,FuncDef importMain) {
 	Int32 calleeBase = intrinsicCalleeBase + 2;
 	if (!EnsureFrame(calleeBase, importMain.MaxRegs())) return;
 	for (Int32 i = 0; i < importMain.MaxRegs(); i++) {
-		stack[calleeBase + i] = val_null;
-		names[calleeBase + i] = val_null;
+		stack[calleeBase + i] = Value::Null;
+		names[calleeBase + i] = Value::Null;
 	}
 
 	if (callStackTop >= callStack.Count()) callStack.Add(CallInfo(0, 0, nullptr));
@@ -208,7 +208,7 @@ void VMStorage::ManuallyPushCall(Int32 intrinsicCalleeBase,FuncDef importMain) {
 
 	_hasPendingManualCall = Boolean(true);
 	_pendingManualCallDepth = callStackTop;
-	ManualCallResult = val_null;
+	ManualCallResult = Value::Null;
 }
 void VMStorage::SetVar(String varName,Value value) {
 	Value targetMap;
@@ -220,7 +220,7 @@ void VMStorage::SetVar(String varName,Value value) {
 	map_set(targetMap, varName, value);
 }
 void VMStorage::Reset(List<FuncDef> allFunctions) {
-	Reset(allFunctions, val_null);
+	Reset(allFunctions, Value::Null);
 }
 void VMStorage::Reset(List<FuncDef> allFunctions,Value replGlobals) {
 	bool partialReset = !is_null(replGlobals);
@@ -263,9 +263,9 @@ void VMStorage::Reset(List<FuncDef> allFunctions,Value replGlobals) {
 	// ReturnFunc is set to @main so GetGlobalsVarMap can find @main's MaxRegs.
 	callStack[0] = CallInfo(0, 0, mainFunc);
 	callStackTop = 1;
-	Error = val_null;
-	pendingSelf = val_null;
-	pendingSuper = val_null;
+	Error = Value::Null;
+	pendingSelf = Value::Null;
+	pendingSuper = Value::Null;
 	hasPendingContext = Boolean(false);
 
 	EnsureFrame(BaseIndex, CurrentFunction.MaxRegs());
@@ -278,8 +278,8 @@ void VMStorage::Reset(List<FuncDef> allFunctions,Value replGlobals) {
 		List<Value> newStack =  List<Value>::New(capacity);	
 		List<Value> newNames =  List<Value>::New(capacity);
 		for (int i=0; i<capacity; i++) {
-			newStack.Add(val_null);
-			newNames.Add(val_null);
+			newStack.Add(Value::Null);
+			newNames.Add(Value::Null);
 		}
 		varmap_rebind(ReplGlobals, newStack, newNames);
 		stack = newStack;
@@ -304,7 +304,7 @@ void VMStorage::RaiseRuntimeError(String message) {
 void VMStorage::FinalizeErrorStackTrace() {
 	_errorStackPending = Boolean(false);
 	if (!is_error(Error)) return;
-	Value stack = CurrentFunction ? BuildStackTrace() : val_null;
+	Value stack = CurrentFunction ? BuildStackTrace() : Value::Null;
 	Int32 idx = value_item_index(Error);
 	GCError ge = GCManager::Errors.Get(idx);
 	GCManager::Errors.SetFields(idx, ge.Message, ge.Inner, stack, ge.Isa);
@@ -314,7 +314,7 @@ void VMStorage::RaiseRuntimeError(Value error) {
 	IsRunning = Boolean(false);
 }
 Value VMStorage::CurrentStackTrace() {
-	if (!CurrentFunction) return val_null;
+	if (!CurrentFunction) return Value::Null;
 	return BuildStackTrace();
 }
 Value VMStorage::MakeRuntimeError(String message) {
@@ -383,7 +383,7 @@ void VMStorage::CollectFunctions(FuncDef func,List<FuncDef> outList) {
 	}
 }
 Int32 VMStorage::SelfParamOffset(FuncDef callee) {
-	if (hasPendingContext && callee.ParamNames().Count() > 0 && value_equal(callee.ParamNames()[0], val_self)) {
+	if (hasPendingContext && callee.ParamNames().Count() > 0 && value_equal(callee.ParamNames()[0], Value::selfString)) {
 		return 1;
 	}
 	return 0;
@@ -402,12 +402,12 @@ Int32 VMStorage::ProcessArguments(Int32 argCount,Int32 selfParam,Int32 startPC,I
 	// Note: Parameters start at r1 (r0 is reserved for return value)
 	// selfParam offsets explicit args so they go after the injected self parameter
 	Int32 currentPC = startPC;
-	Value argValue = val_null;  // Declared outside loop for GC safety
+	Value argValue = Value::Null;  // Declared outside loop for GC safety
 	for (Int32 i = 0; i < argCount; i++) {
 		UInt32 argInstruction = code[currentPC];
 		Opcode argOp = (Opcode)BytecodeUtil::OP(argInstruction);
 
-		argValue = val_null;
+		argValue = Value::Null;
 		if (argOp == Opcode::ARG_rA) {
 			// Argument from register
 			Byte srcReg = BytecodeUtil::Au(argInstruction);
@@ -435,14 +435,14 @@ void VMStorage::ApplyPendingContext(Int32 calleeBase,FuncDef callee) {
 	if (!hasPendingContext) return;
 	if (callee.SelfReg() >= 0) {
 		stack[calleeBase + callee.SelfReg()] = pendingSelf;
-		names[calleeBase + callee.SelfReg()] = val_self;
+		names[calleeBase + callee.SelfReg()] = Value::selfString;
 	}
 	if (callee.SuperReg() >= 0) {
 		stack[calleeBase + callee.SuperReg()] = pendingSuper;
-		names[calleeBase + callee.SuperReg()] = val_super;
+		names[calleeBase + callee.SuperReg()] = Value::superString;
 	}
-	pendingSelf = val_null;
-	pendingSuper = val_null;
+	pendingSelf = Value::Null;
+	pendingSuper = Value::Null;
 	hasPendingContext = Boolean(false);
 }
 void VMStorage::SetupCallFrame(Int32 argCount,Int32 selfParam,Int32 calleeBase,FuncDef callee) {
@@ -456,11 +456,11 @@ void VMStorage::SetupCallFrame(Int32 argCount,Int32 selfParam,Int32 calleeBase,F
 	}
 
 	// Step 5: Clear remaining registers (r0, and any beyond parameters)
-	stack[calleeBase] = val_null;
-	names[calleeBase] = val_null;
+	stack[calleeBase] = Value::Null;
+	names[calleeBase] = Value::Null;
 	for (Int32 i = paramCount + 1; i < callee.MaxRegs(); i++) {
-		stack[calleeBase + i] = val_null;
-		names[calleeBase + i] = val_null;
+		stack[calleeBase + i] = Value::Null;
+		names[calleeBase + i] = Value::Null;
 	}
 
 	// Step 6 is handled by the caller (pushing CallInfo, switching frame, etc.)
@@ -487,8 +487,8 @@ Int32 VMStorage::AutoInvokeFuncRef(Value funcRefVal,Int32 resultReg,Int32 return
 		SetupCallFrame(0, selfParam, calleeBase, callee);
 		if (selfParam > 0) {
 			stack[calleeBase + 1] = pendingSelf;
-			names[calleeBase + 1] = val_self;
-			pendingSelf = val_null;
+			names[calleeBase + 1] = Value::selfString;
+			pendingSelf = Value::Null;
 			hasPendingContext = Boolean(false);
 		}
 		SaveState(returnPC, baseIndex, currentFunc);
@@ -508,7 +508,7 @@ Int32 VMStorage::AutoInvokeFuncRef(Value funcRefVal,Int32 resultReg,Int32 return
 
 	if (selfParam > 0) {
 		stack[calleeBase + 1] = pendingSelf;
-		names[calleeBase + 1] = val_self;
+		names[calleeBase + 1] = Value::selfString;
 	}
 	SetupCallFrame(0, selfParam, calleeBase, callee);
 	ApplyPendingContext(calleeBase, callee);
@@ -543,7 +543,7 @@ Value VMStorage::Execute(FuncDef entry,UInt32 maxCycles) {
 Value VMStorage::Run(UInt32 maxCycles) {
 	VM _this(std::static_pointer_cast<VMStorage>(shared_from_this()));
 	if (!IsRunning || !CurrentFunction) {
-		return val_null;
+		return Value::Null;
 	}
 
 	// Set thread-local active VM (save/restore for nested calls)
@@ -561,7 +561,7 @@ Value VMStorage::Run(UInt32 maxCycles) {
 			if (!InvokeNativeCallback(_pendingCallback, _pendingCalleeBase, _pendingArgCount, partialResult, _pendingResultIndex)) {
 				// Still not done; return without running any bytecode
 				_activeVM = previousVM;
-				return val_null;
+				return Value::Null;
 			}
 			_pendingCallback = nullptr;
 		}
@@ -611,14 +611,14 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 		VM_DISPATCH_TOP();
 		if (cyclesLeft == 0) {
 			SaveState(pc, baseIndex, currentFunc);
-			return val_null;
+			return Value::Null;
 		}
 		cyclesLeft--;
 
 		if (pc >= codeCount) {
 			IsRunning = Boolean(false);
 			SaveState(pc, baseIndex, currentFunc);
-			return val_null;
+			return Value::Null;
 		}
 
 		UInt32 instruction = curCode[pc++];
@@ -674,7 +674,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 			VM_CASE(LOADNULL_rA) {
 				// R[A] = null
 				Byte a = BytecodeUtil::Au(instruction);
-				localStack[a] = val_null;
+				localStack[a] = Value::Null;
 				VM_NEXT();
 			}
 
@@ -907,7 +907,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				if (is_error(valB)) {
 					// Address-of on an error is always an lvalue operation; terminate.
 					RaiseRuntimeError("Cannot take reference into an error value");
-					localStack[a] = val_null;
+					localStack[a] = Value::Null;
 					VM_NEXT();
 				}
 				if (is_list(valB)) {
@@ -923,7 +923,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 					localStack[a] = string_substring(valB, idx, 1);
 				} else {
 					RaiseRuntimeError(StringUtils::Format("Can't index into {0}", valB));
-					localStack[a] = val_null;
+					localStack[a] = Value::Null;
 				}
 				VM_NEXT();
 			}
@@ -960,9 +960,9 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				valC = localStack[c];
 				valD = localStack[c + 1];
 
-				if (is_error(valB)) { RaiseUncaughtError(valB); localStack[a] = val_null; break; }
-				if (is_error(valC)) { RaiseUncaughtError(valC); localStack[a] = val_null; break; }
-				if (is_error(valD)) { RaiseUncaughtError(valD); localStack[a] = val_null; break; }
+				if (is_error(valB)) { RaiseUncaughtError(valB); localStack[a] = Value::Null; break; }
+				if (is_error(valC)) { RaiseUncaughtError(valC); localStack[a] = Value::Null; break; }
+				if (is_error(valD)) { RaiseUncaughtError(valD); localStack[a] = Value::Null; break; }
 
 				if (is_string(valB)) {
 					Int32 len = string_length(valB);
@@ -976,7 +976,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 					localStack[a] = list_slice(valB, startIdx, endIdx);
 				} else {
 					RaiseRuntimeError(StringUtils::Format("Can't slice {0}", valB));
-					localStack[a] = val_null;
+					localStack[a] = Value::Null;
 				}
 				VM_NEXT();
 			}
@@ -989,7 +989,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				// user wrote `myLocals = locals`, the name "myLocals" remains findable.
 				Byte a = BytecodeUtil::Au(instruction);
 				val = names[baseIndex + a];  // saved name
-				names[baseIndex + a] = val_null;   // temporarily clear it
+				names[baseIndex + a] = Value::Null;   // temporarily clear it
 				localStack[a] = GetCurrentLocalVarMap(baseIndex, curFuncRaw->MaxRegs);
 				names[baseIndex + a] = val;  // restore name
 				VM_NEXT();
@@ -1000,7 +1000,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				// Same temporary-clear pattern as LOCALS_rA (see above).
 				Byte a = BytecodeUtil::Au(instruction);
 				val = names[baseIndex + a];  // saved name
-				names[baseIndex + a] = val_null;   // temporarily clear it
+				names[baseIndex + a] = Value::Null;   // temporarily clear it
 				if (callStackTop > 0 && !is_null(callStack[callStackTop - 1].OuterVarMap)) {
 					localStack[a] = callStack[callStackTop - 1].OuterVarMap;
 				} else {
@@ -1016,7 +1016,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				// Same temporary-clear pattern as LOCALS_rA (see above).
 				Byte a = BytecodeUtil::Au(instruction);
 				val = names[baseIndex + a];  // saved name
-				names[baseIndex + a] = val_null;   // temporarily clear it
+				names[baseIndex + a] = Value::Null;   // temporarily clear it
 				localStack[a] = GetGlobalsVarMap();
 				names[baseIndex + a] = val;  // restore name
 				VM_NEXT();
@@ -1451,13 +1451,13 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Int32 callPC = pc + argCount;
 				if (callPC >= codeCount) {
 					RaiseRuntimeError("ARGBLK: CALL instruction out of range");
-					return val_null;
+					return Value::Null;
 				}
 				UInt32 callInstruction = curCode[callPC];
 				Opcode callOp = (Opcode)BytecodeUtil::OP(callInstruction);
 				if (callOp != Opcode::CALL_rA_rB_rC) {
 					RaiseRuntimeError("ARGBLK must be followed by CALL");
-					return val_null;
+					return Value::Null;
 				}
 
 				// CALL r[A], r[B], r[C]: invoke funcref in r[C], frame at r[B], result to r[A]
@@ -1468,13 +1468,13 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				valC = localStack[c];  // func ref
 				if (!is_funcref(valC)) {
 					RaiseRuntimeError("ARGBLK/CALL: Not a function reference");
-					return val_null;
+					return Value::Null;
 				}
 
 				FuncDef callee = funcref_funcdef(valC);
 				if (IsNull(callee)) {
 					RaiseRuntimeError("ARGBLK/CALL: Invalid function reference");
-					return val_null;
+					return Value::Null;
 				}
 				Int32 calleeBase = baseIndex + b;
 				Int32 resultReg = a;
@@ -1484,13 +1484,13 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Int32 selfParam = SelfParamOffset(callee);
 				// Bounds-check the callee frame BEFORE writing any arguments or
 				// defaults into it (otherwise deep recursion writes out of range).
-				if (!EnsureFrame(calleeBase, callee.MaxRegs())) return val_null;
+				if (!EnsureFrame(calleeBase, callee.MaxRegs())) return Value::Null;
 				Int32 nextPC = ProcessArguments(argCount, selfParam, pc, baseIndex, calleeBase, callee,
 				  curFuncRaw->Code);
-				if (nextPC < 0) return val_null; // Error already raised
+				if (nextPC < 0) return Value::Null; // Error already raised
 				if (selfParam > 0) {
 					stack[calleeBase + 1] = pendingSelf;
-					names[calleeBase + 1] = val_self;
+					names[calleeBase + 1] = Value::selfString;
 				}
 
 				// Set up call frame using helper
@@ -1615,7 +1615,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				SetupCallFrame(0, selfParam, calleeBase, callee);
 				if (selfParam > 0) {
 					stack[calleeBase + 1] = pendingSelf;
-					names[calleeBase + 1] = val_self;
+					names[calleeBase + 1] = Value::selfString;
 				}
 				ApplyPendingContext(calleeBase, callee);
 
@@ -1655,7 +1655,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				val = make_map(2);
-				map_set(val, val_isa_key, localStack[b]);
+				map_set(val, Value::magicIsA, localStack[b]);
 				localStack[a] = val;
 				VM_NEXT();
 			}
@@ -1693,7 +1693,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 					if (is_map(valB)) {
 						val = valB;  // val is "current"; valA (below) is "next" in the __isa chain
 						for (Int32 depth = 0; depth < 256; depth++) {
-							if (!map_try_get(val, val_isa_key, &valA)) break;
+							if (!map_try_get(val, Value::magicIsA, &valA)) break;
 							if (value_identical(valA, valC)) {
 								isaResult = 1;
 								break;
@@ -1729,7 +1729,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Byte c = BytecodeUtil::Cu(instruction);
 				valB = localStack[b];  // container
 				valC = localStack[c];  // index
-				typeMap = val_null;
+				typeMap = Value::Null;
 				
 				if (is_error(valB)) {
 					// Error field access: return field directly for reserved names,
@@ -1746,13 +1746,13 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 					if (map_try_get(typeMap, valC, &val)) {
 						localStack[a] = val;
 						pendingSelf = valB;
-						pendingSuper = val_null;
+						pendingSuper = Value::Null;
 						hasPendingContext = Boolean(true);
 						VM_NEXT();
 					}
 					// Wrap the error as inner in a new termination error
 					RaiseRuntimeError(StringUtils::Format("Undefined error field '{0}'", valC));
-					localStack[a] = val_null;
+					localStack[a] = Value::Null;
 					VM_NEXT();
 				}
 				if (is_map(valB)) {
@@ -1779,12 +1779,12 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 					// If we didn't get a type map, then user is trying to index
 					// into something not indexable
 					RaiseRuntimeError(StringUtils::Format("Can't index into {0}", valB));
-					localStack[a] = val_null;
+					localStack[a] = Value::Null;
 				} else if (map_try_get(typeMap, valC, &val)) {
 					// found what we're looking for in the type map
 					localStack[a] = val;
 					pendingSelf = valB;
-					pendingSuper = val_null;
+					pendingSuper = Value::Null;
 				} else if (is_number(valC)) {
 					// try indexing numerically
 					int index = as_int(valC);
@@ -1794,11 +1794,11 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 						localStack[a] = string_substring(valB, index, 1);
 					} else {
 						RaiseRuntimeError(StringUtils::Format("Can't index into {0}", valB));
-						localStack[a] = val_null;
+						localStack[a] = Value::Null;
 					}
 				} else {
 					RaiseRuntimeError(StringUtils::Format("Key Not Found: '{0}' not found in map", valC));
-					localStack[a] = val_null;
+					localStack[a] = Value::Null;
 				}
 				hasPendingContext = Boolean(true);
 				VM_NEXT();
@@ -1812,7 +1812,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Byte c = BytecodeUtil::Cu(instruction);
 				valB = localStack[b];  // container
 				valC = localStack[c];  // index
-				typeMap = val_null;
+				typeMap = Value::Null;
 
 				if (is_map(valB)) {
 					if (map_lookup_with_origin(valB, valC, &val, &valD)) {
@@ -1830,7 +1830,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				}
 				if (is_null(typeMap)) {
 					RaiseRuntimeError(StringUtils::Format("Can't index into {0}", valB));
-					localStack[a] = val_null;
+					localStack[a] = Value::Null;
 				} else if (map_try_get(typeMap, valC, &val)) {
 					localStack[a] = val;
 				} else if (is_number(valC)) {
@@ -1841,11 +1841,11 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 						localStack[a] = string_substring(valB, index, 1);
 					} else {
 						RaiseRuntimeError(StringUtils::Format("Can't index into {0}", valB));
-						localStack[a] = val_null;
+						localStack[a] = Value::Null;
 					}
 				} else {
 					RaiseRuntimeError(StringUtils::Format("Key Not Found: '{0}' not found in map", valC));
-					localStack[a] = val_null;
+					localStack[a] = Value::Null;
 				}
 				hasPendingContext = Boolean(false);
 				VM_NEXT();
@@ -1869,8 +1869,8 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				if (!is_funcref(val) || !hasPendingContext) {
 					// Not a funcref or no context — clear pending state and leave value as-is
 					hasPendingContext = Boolean(false);
-					pendingSelf = val_null;
-					pendingSuper = val_null;
+					pendingSelf = Value::Null;
+					pendingSuper = Value::Null;
 					VM_NEXT();
 				}
 
@@ -1899,7 +1899,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				CallInfo frame = callStack[callStackTop - 1];
 				if (!is_null(frame.LocalVarMap)) {
 					varmap_gather(frame.LocalVarMap);
-					frame.LocalVarMap = val_null;
+					frame.LocalVarMap = Value::Null;
 					callStack[callStackTop - 1] = frame;  // write back (CallInfo is a struct)
 				}
 
@@ -1951,7 +1951,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				} else if (is_string(valB)) {
 					localStack[a] = string_substring(valB, idx, 1);
 				} else {
-					localStack[a] = val_null;
+					localStack[a] = Value::Null;
 				}
 				VM_NEXT();
 			}
@@ -1962,7 +1962,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 	
 	// Save state after loop exit (e.g. from error condition)
 	SaveState(pc, baseIndex, currentFunc);
-	return val_null;
+	return Value::Null;
 }
 FORCE_INLINE void VMStorage::SwitchFrame(const FuncDef& currentFunc, Int32 baseIndex,
 		FuncDefStorage* &curFuncRaw, Int32 &codeCount,
@@ -1999,7 +1999,7 @@ Value VMStorage::LookupParamByName(String varName) {
 			return stack[BaseIndex + 1 + i];
 		}
 	}
-	return val_null;
+	return Value::Null;
 }
 Value VMStorage::LookupVariable(Value varName) {
 	// Look up a variable in outer context (and eventually globals)
@@ -2037,13 +2037,13 @@ Value VMStorage::LookupVariable(Value varName) {
 	}
 
 	// self/super return null when not in a method context
-	if (value_equal(varName, val_self) || value_equal(varName, val_super)) {
-		return val_null;
+	if (value_equal(varName, Value::selfString) || value_equal(varName, Value::superString)) {
+		return Value::Null;
 	}
 
 	// Variable not found anywhere — raise an error
 	RaiseRuntimeError(StringUtils::Format("Undefined Identifier: '{0}' is unknown in this context", varName));
-	return val_null;
+	return Value::Null;
 }
 
 } // end of namespace MiniScript

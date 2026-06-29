@@ -1,6 +1,6 @@
 //*** BEGIN CS_ONLY ***
 using System;
-using static MiniScript.ValueHelpers;
+using static MiniScript.Value;
 
 namespace MiniScript {
 	// 
@@ -22,7 +22,7 @@ namespace MiniScript {
 
 		public ValueFuncRef(Int32 funcIndex) {
 			FuncIndex = funcIndex;
-			OuterVars = val_null;
+			OuterVars = Value.Null;
 		}
 
 		public ValueFuncRef(Int32 funcIndex, Value outerVars) {

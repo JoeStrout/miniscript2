@@ -56,9 +56,10 @@ typedef struct Value {
     explicit Value(const char* cString); // a string (copies the C string)
 
     // Build a Value straight from its raw NaN-boxed payload.  This is the
-    // internal escape hatch used by make_* and the val_* constants.  It is a
-    // named factory rather than a uint64_t constructor on purpose: that keeps
-    // Value(0), Value(1.0), etc. unambiguous and meaning what they do in 1.x.
+    // internal escape hatch used by make_* and the Value:: static constants.
+    // It is a named factory rather than a uint64_t constructor on purpose:
+    // that keeps Value(0), Value(1.0), etc. unambiguous and meaning what they
+    // do in 1.x.
     static constexpr Value fromBits(uint64_t rawBits) noexcept { return Value(rawBits, RawTag{}); }
 
     constexpr bool operator==(Value other) const { return bits == other.bits; }
@@ -79,22 +80,23 @@ typedef struct Value {
     inline bool         IsNull()      const noexcept;
     inline unsigned int Hash()        const noexcept;
 
-    // MiniScript 1.x-style truthiness factories (defined at the bottom of this
-    // header).  Truth(double) is just the number ctor: our Value is light enough
-    // that there is no benefit to MiniScript 1.x's special-casing of 0 and 1.
+    // Truth factories. Note: Truth(double) is just the number ctor: our Value 
+    // is light enough that there is no benefit to MiniScript 1.x's special-casing
+    // of 0 and 1.
     static Value Truth(bool b);
     static Value Truth(double number);
 
-    // Handy shared constants, mirroring the MiniScript 1.x Value statics.
-    // Defined in value.cpp.
-    static Value null;           // null
+    static Value null;           // DEPRECATED: used in MS 1.x; prefer Null for new code.
+    static Value Null;           // null value (C#-compatible capitalization)
     static Value zero;           // 0
     static Value one;            // 1
     static Value emptyString;    // ""
     static Value magicIsA;       // "__isa"
     static Value keyString;      // "key"
     static Value valueString;    // "value"
-    static Value implicitResult; // "_"  (MiniScript 1.x: the variable "_"; MS2 has no Var type, so this is just the string)
+    static Value implicitResult; // "_"
+    static Value selfString;     // "self"
+    static Value superString;    // "super"
 
   private:
     // Tag type that selects the raw-payload constructor (used only by fromBits).
@@ -146,14 +148,8 @@ static_assert(std::is_standard_layout<Value>::value,
 #define HANDLE_TAG_PATTERN  (GC_TAG | ((uint64_t)HANDLE_SET  << 32))
 
 // ── Common constant values ──────────────────────────────────────────────
-#define val_null         (Value::fromBits(NULL_VALUE))
-#define val_zero         (Value::fromBits(0x0000000000000000ULL))
-#define val_one          (Value::fromBits(0x3FF0000000000000ULL))
-#define val_empty_string (Value::fromBits(TINY_STRING_TAG))
-
-extern Value val_isa_key;   // "__isa"
-extern Value val_self;      // "self"
-extern Value val_super;     // "super"
+// All constants are static members of Value (see struct declaration above).
+// Call value_init_constants() once at startup to set the string-valued ones.
 void value_init_constants(void);
 
 // ── Accessors used by hot paths ─────────────────────────────────────────
@@ -166,7 +162,7 @@ static inline int value_item_index(Value v)    { return (int)(uint32_t)v.bits; }
 static inline bool value_identical(Value a, Value b) { return a == b; }
 
 static inline bool is_null(Value v) {
-    return v == val_null;
+    return v == Value::null;
 }
 
 static inline bool is_int(Value v) {
@@ -236,7 +232,7 @@ extern void  list_push(Value list_val, Value item);
 extern Value make_list(int initial_capacity);
 
 // ── Numeric & null factories (immediate Values, no GC) ──────────────────
-static inline Value make_null(void) { return val_null; }
+static inline Value make_null(void) { return Value::null; }
 
 static inline Value make_double(double d) {
     Value v;
@@ -292,7 +288,7 @@ Value to_number(Value v);
 
 // Short-name lookup hook: called by code_form when printing a map/list that
 // might be a known type or named global. Returns a string Value holding the
-// short name, or val_null if no match. Registered by the VM at init so we
+// short name, or Value::null if no match. Registered by the VM at init so we
 // can avoid a hard dependency from value.cpp on the VM layer.
 typedef Value (*ShortNameLookupFn)(void* vm, Value v);
 void set_short_name_lookup(ShortNameLookupFn fn);
@@ -307,7 +303,7 @@ void set_runtime_error_maker(RuntimeErrorMakerFn fn);
 Value value_make_runtime_error(const char* message);
 
 // Stack-trace hook: returns the active VM's current call stack as a Value (a
-// frozen list of strings), or val_null if there is no running VM.  Registered
+// frozen list of strings), or Value::null if there is no running VM.  Registered
 // by the VM at init so layers below it (ErrorTypes, value ops) can attach an
 // accurate stack trace to error values they create, without a hard dependency
 // on the VM layer.
@@ -345,7 +341,7 @@ static inline Value value_add(Value a, Value b, void* vm) {
         return list_concat(a, b);
     }
     if (is_map(a)  && is_map(b))  return map_concat(a, b);
-    return val_null;
+    return Value::null;
 }
 
 static inline Value value_sub(Value a, Value b) {
@@ -355,7 +351,7 @@ static inline Value value_sub(Value a, Value b) {
         return make_double(as_double(a) - as_double(b));
     }
     if (is_string(a) && is_string(b)) return string_sub(a, b);
-    return val_null;
+    return Value::null;
 }
 
 static inline bool value_lt(Value a, Value b) {
@@ -381,21 +377,21 @@ static inline Value value_div(Value a, Value b) {
         if (is_double(a)) return make_double(as_double(a) / as_double(b));
         return value_mult_nonnumeric(a, value_div(make_double(1), b));
     }
-    return val_null;
+    return Value::null;
 }
 
 static inline Value value_mod(Value a, Value b) {
     if (is_error(a)) return a;
     if (is_error(b)) return b;
     if (is_double(a) && is_double(b)) return make_double(fmod(as_double(a), as_double(b)));
-    return val_null;
+    return Value::null;
 }
 
 static inline Value value_pow(Value a, Value b) {
     if (is_error(a)) return a;
     if (is_error(b)) return b;
     if (is_double(a) && is_double(b)) return make_double(pow(as_double(a), as_double(b)));
-    return val_null;
+    return Value::null;
 }
 
 bool value_equal(Value a, Value b);
@@ -466,7 +462,7 @@ inline Value::Value(double number) noexcept { *this = make_double(number); }
 inline Value::Value(const char* cString) { *this = make_string(cString); }
 
 // Truthiness factories.  Truth(double) maps 0 -> zero and 1 -> one for free,
-// since make_double(0.0)/make_double(1.0) are exactly val_zero/val_one.
+// since make_double(0.0)/make_double(1.0) are exactly Value::zero/Value::one.
 inline Value Value::Truth(bool b)        { return b ? one : zero; }
 inline Value Value::Truth(double number) { return Value(number); }
 

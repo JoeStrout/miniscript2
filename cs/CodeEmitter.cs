@@ -3,7 +3,7 @@
 
 using System;
 using System.Collections.Generic;
-using static MiniScript.ValueHelpers;
+using static MiniScript.Value;
 // H: #include "Bytecode.g.h"
 // H: #include "value.h"
 // H: #include "FuncDef.g.h"

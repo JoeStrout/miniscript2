@@ -43,7 +43,7 @@ Intrinsic IntrinsicStorage::Create(String name) {
 }
 void IntrinsicStorage::AddParam(String name) {
 	_paramNames.Add(name);
-	_paramDefaults.Add(val_null);
+	_paramDefaults.Add(Value::Null);
 }
 void IntrinsicStorage::AddParam(String name,Value defaultValue) {
 	_paramNames.Add(name);
@@ -60,7 +60,7 @@ Intrinsic IntrinsicStorage::GetByIndex(Int32 i) {
 void IntrinsicStorage::EnsureBuilt() {
 	if (IsNull(_funcDef)) {
 		_funcDef = BuildFuncDef();
-		_funcRef = make_funcref(_funcDef, val_null);
+		_funcRef = make_funcref(_funcDef, Value::Null);
 		GCManager::AddRoot(_funcRef);
 	}
 }

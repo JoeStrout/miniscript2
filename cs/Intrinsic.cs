@@ -6,7 +6,7 @@
 
 using System;
 using System.Collections.Generic;
-using static MiniScript.ValueHelpers;
+using static MiniScript.Value;
 // H: #include "value.h"
 // H: #include "FuncDef.g.h"
 // CPP: #include "CoreIntrinsics.g.h"
@@ -21,7 +21,7 @@ public class Intrinsic {
 	private List<String> _paramNames;
 	private List<Value> _paramDefaults;
 	private FuncDef _funcDef = null;
-	private Value _funcRef = val_null;
+	private Value _funcRef = Value.Null;
 
 	private static List<Intrinsic> _all = new List<Intrinsic>();
 	private static Dictionary<String, Intrinsic> _byName = new Dictionary<String, Intrinsic>();
@@ -71,7 +71,7 @@ public class Intrinsic {
 
 	public void AddParam(String name) {
 		_paramNames.Add(name);
-		_paramDefaults.Add(val_null);
+		_paramDefaults.Add(Value.Null);
 	}
 
 	public void AddParam(String name, Value defaultValue) {
@@ -95,7 +95,7 @@ public class Intrinsic {
 	private void EnsureBuilt() {
 		if (_funcDef == null) {
 			_funcDef = BuildFuncDef();
-			_funcRef = make_funcref(_funcDef, val_null);
+			_funcRef = make_funcref(_funcDef, Value.Null);
 			GCManager.AddRoot(_funcRef);
 		}
 	}

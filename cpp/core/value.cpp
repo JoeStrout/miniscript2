@@ -29,31 +29,27 @@ using MiniScript::GCFunction;
 
 
 // ── Constants ───────────────────────────────────────────────────────────
-
-Value val_isa_key = val_null;
-Value val_self    = val_null;
-Value val_super   = val_null;
-
-// MiniScript 1.x-style shared constants (declared in struct Value).  The
-// immediate ones are constant-initialized; the string ones are set up in
-// value_init_constants() (they are all tiny strings, so no GC is involved).
-Value Value::null           = val_null;
-Value Value::zero           = val_zero;
-Value Value::one            = val_one;
-Value Value::emptyString    = val_empty_string;
-Value Value::magicIsA       = val_null;
-Value Value::keyString      = val_null;
-Value Value::valueString    = val_null;
-Value Value::implicitResult = val_null;
+// Static members of Value (declared in value.h).  The immediate ones are
+// constant-initialized; the string ones are set in value_init_constants().
+Value Value::null           = Value::fromBits(NULL_VALUE);
+Value Value::Null           = Value::fromBits(NULL_VALUE);
+Value Value::zero           = Value::fromBits(0x0000000000000000ULL);
+Value Value::one            = Value::fromBits(0x3FF0000000000000ULL);
+Value Value::emptyString    = Value::fromBits(TINY_STRING_TAG);
+Value Value::magicIsA       = Value::fromBits(NULL_VALUE);
+Value Value::keyString      = Value::fromBits(NULL_VALUE);
+Value Value::valueString    = Value::fromBits(NULL_VALUE);
+Value Value::implicitResult = Value::fromBits(NULL_VALUE);
+Value Value::selfString     = Value::fromBits(NULL_VALUE);
+Value Value::superString    = Value::fromBits(NULL_VALUE);
 
 void value_init_constants(void) {
-    val_isa_key = make_string("__isa");
-    val_self    = make_string("self");
-    val_super   = make_string("super");
     Value::magicIsA       = make_string("__isa");
     Value::keyString      = make_string("key");
     Value::valueString    = make_string("value");
     Value::implicitResult = make_string("_");
+    Value::selfString     = make_string("self");
+    Value::superString    = make_string("super");
 }
 
 // ── Error accessors ─────────────────────────────────────────────────────
@@ -67,22 +63,22 @@ Value make_error(Value message, Value inner, Value stack, Value isa) {
 }
 
 Value error_message(Value v) {
-    if (!is_error(v)) return val_null;
+    if (!is_error(v)) return Value::null;
     return GCManager::Errors.Get(value_item_index(v)).Message;
 }
 
 Value error_inner(Value v) {
-    if (!is_error(v)) return val_null;
+    if (!is_error(v)) return Value::null;
     return GCManager::Errors.Get(value_item_index(v)).Inner;
 }
 
 Value error_stack(Value v) {
-    if (!is_error(v)) return val_null;
+    if (!is_error(v)) return Value::null;
     return GCManager::Errors.Get(value_item_index(v)).Stack;
 }
 
 Value error_isa(Value v) {
-    if (!is_error(v)) return val_null;
+    if (!is_error(v)) return Value::null;
     return GCManager::Errors.Get(value_item_index(v)).Isa;
 }
 
@@ -111,7 +107,7 @@ MiniScript::FuncDef funcref_funcdef(Value v) {
 
 
 Value funcref_outer_vars(Value v) {
-    if (!is_funcref(v)) return val_null;
+    if (!is_funcref(v)) return Value::null;
     return GCManager::Functions.Get(value_item_index(v)).OuterVars;
 }
 
@@ -121,13 +117,13 @@ Value value_mult_nonnumeric(Value a, Value b) {
     if (is_string(a) && is_double(b)) {
         double factor = as_double(b);
         int factorClass = std::fpclassify(factor);
-        if (factorClass == FP_NAN || factorClass == FP_INFINITE) return val_null;
-        if (factor <= 0) return val_empty_string;
+        if (factorClass == FP_NAN || factorClass == FP_INFINITE) return Value::null;
+        if (factor <= 0) return Value::emptyString;
         if (string_length(a) * factor > MAX_COLLECTION_SIZE) {
             return value_make_runtime_error("string too large (exceeds maximum size)");
         }
         int repeats = (int)factor;
-        Value result = val_empty_string;
+        Value result = Value::emptyString;
         for (int i = 0; i < repeats; i++) result = string_concat(result, a);
         int extraChars = (int)(string_length(a) * (factor - repeats));
         if (extraChars > 0) result = string_concat(result, string_substring(a, 0, extraChars));
@@ -136,7 +132,7 @@ Value value_mult_nonnumeric(Value a, Value b) {
     if (is_list(a) && is_double(b)) {
         double factor = as_double(b);
         int factorClass = std::fpclassify(factor);
-        if (factorClass == FP_NAN || factorClass == FP_INFINITE) return val_null;
+        if (factorClass == FP_NAN || factorClass == FP_INFINITE) return Value::null;
         int len = list_count(a);
         if (factor <= 0 || len == 0) return make_list(0);
         if (len * factor > MAX_COLLECTION_SIZE) {
@@ -149,7 +145,7 @@ Value value_mult_nonnumeric(Value a, Value b) {
         if (len == 1 && extraItems == 0) {
             Value elem = list_get(a, 0);
             if (is_number(elem) || is_string(elem) || is_null(elem) || is_frozen(elem)) {
-                return GCManager::NewComputedList(elem, val_null, fullCopies);
+                return GCManager::NewComputedList(elem, Value::null, fullCopies);
             }
         }
         Value result = make_list(fullCopies * len + extraItems);
@@ -158,7 +154,7 @@ Value value_mult_nonnumeric(Value a, Value b) {
         for (int i = 0; i < extraItems; i++) list_push(result, list_get(a, i));
         return result;
     }
-    return val_null;
+    return Value::null;
 }
 
 bool value_le(Value a, Value b) {
@@ -232,7 +228,7 @@ RuntimeErrorMakerFn g_runtime_error_maker = nullptr;
 StackTraceFn g_stack_trace_hook = nullptr;
 
 Value find_short_name(void* vm, Value v) {
-    if (!vm || !g_short_name_lookup) return val_null;
+    if (!vm || !g_short_name_lookup) return Value::null;
     return g_short_name_lookup(vm, v);
 }
 
@@ -359,7 +355,7 @@ Value code_form(Value v, void* vm, int recursion_limit) {
             int next_limit = recursion_limit - 1;
             Value key = m.KeyAt(i);
             Value val = m.ValueAt(i);
-            if (value_equal(key, val_isa_key)) next_limit = 1;
+            if (value_equal(key, Value::magicIsA)) next_limit = 1;
             Value key_str = code_form(key, vm, next_limit);
             Value val_str = is_null(val) ? make_string("null") : code_form(val, vm, next_limit);
             result = string_concat(result, key_str);
@@ -399,16 +395,16 @@ Value value_repr(Value v, void* vm) {
 
 Value to_number(Value v) {
     if (is_number(v)) return v;
-    if (!is_string(v)) return val_zero;
+    if (!is_string(v)) return Value::zero;
     int len;
     const char* str = get_string_data_zerocopy(&v, &len);
-    if (!str || len == 0) return val_zero;
+    if (!str || len == 0) return Value::zero;
     char* endptr;
     double result = std::strtod(str, &endptr);
-    if (endptr == str) return val_zero;
+    if (endptr == str) return Value::zero;
     while (endptr < str + len && (*endptr == ' ' || *endptr == '\t'
         || *endptr == '\n' || *endptr == '\r')) endptr++;
-    if (endptr != str + len) return val_zero;
+    if (endptr != str + len) return Value::zero;
     return make_double(result);
 }
 
@@ -501,7 +497,7 @@ void set_runtime_error_maker(RuntimeErrorMakerFn fn) {
 
 Value value_make_runtime_error(const char* message) {
     if (g_runtime_error_maker) return g_runtime_error_maker(message);
-    return make_error(make_string(message), val_null, val_null, val_null);
+    return make_error(make_string(message), Value::null, Value::null, Value::null);
 }
 
 void set_stack_trace_hook(StackTraceFn fn) {
@@ -510,6 +506,6 @@ void set_stack_trace_hook(StackTraceFn fn) {
 
 Value value_current_stack_trace() {
     if (g_stack_trace_hook) return g_stack_trace_hook();
-    return val_null;
+    return Value::null;
 }
 

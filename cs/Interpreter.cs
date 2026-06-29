@@ -8,7 +8,7 @@
 
 using System;
 using System.Collections.Generic;
-using static MiniScript.ValueHelpers;
+using static MiniScript.Value;
 // H: #include "IntrinsicAPI.g.h"
 // H: #include "VM.g.h"
 // H: #include "Parser.g.h"
@@ -83,7 +83,7 @@ public class Interpreter {
 	protected List<FuncDef> compiledFunctions;
 
 	// 
-	// The most recent compiler or runtime error, as an error Value, or val_null
+	// The most recent compiler or runtime error, as an error Value, or Value.Null
 	// if there is no error.  Host code can inspect this (and its __isa chain)
 	// to distinguish error types.
 	// 
@@ -91,15 +91,15 @@ public class Interpreter {
 
 	// 
 	// The Value produced by the last complete REPL interaction that had implicit
-	// output (a bare expression as the last statement), or val_null otherwise.
+	// output (a bare expression as the last statement), or Value.Null otherwise.
 	// Updated at the end of each complete REPL() call.  Host code (e.g. the
 	// REPL loop in App.cs) reads this to push it into the _out history list.
 	// 
-	public Value lastImplicitResult = val_null;
+	public Value lastImplicitResult = Value.Null;
 
 	// REPL state
 	private String _pendingSource;       // accumulated REPL lines so far
-	private Value _replGlobals = val_null; // persistent globals VarMap
+	private Value _replGlobals = Value.Null; // persistent globals VarMap
 
 	// H_WRAPPER: public: Interpreter(InterpreterStorage* p) : storage(p ? p->shared_from_this() : nullptr) {}  
   
@@ -118,7 +118,7 @@ public class Interpreter {
 		if (errorOutput == null) errorOutput = _standardOutput;
 		standardOutput = _standardOutput;
 		errorOutput = _errorOutput;
-		Error = val_null;
+		Error = Value.Null;
 	}
 
 	// 
@@ -160,7 +160,7 @@ public class Interpreter {
 		parser = null;
 		vm = null;
 		compiledFunctions = null;
-		Error = val_null;
+		Error = Value.Null;
 	}
 
 	// 
@@ -171,7 +171,7 @@ public class Interpreter {
 		source = null;
 		parser = null;
 		compiledFunctions = functions;
-		Error = val_null;
+		Error = Value.Null;
 
 		// Create and configure VM
 		vm = new VM();
@@ -186,7 +186,7 @@ public class Interpreter {
 	public void Compile() {
 		if (vm != null) return;		// already compiled
 
-		Error = val_null;
+		Error = Value.Null;
 
 		if (parser == null) parser = new Parser();
 		parser.Init(source);
@@ -233,7 +233,7 @@ public class Interpreter {
 	// 
 	public void Restart() {
 		if (vm != null && compiledFunctions != null) {
-			Error = val_null;
+			Error = Value.Null;
 			vm.Reset(compiledFunctions);
 		}
 	}
@@ -307,7 +307,7 @@ public class Interpreter {
 		}
 
 		// Try to parse
-		Error = val_null;
+		Error = Value.Null;
 		if (parser == null) parser = new Parser();
 		parser.Init(_pendingSource);
 		List<ASTNode> statements = parser.ParseProgram();
@@ -402,7 +402,7 @@ public class Interpreter {
 
 		// Implicit output: if last statement was a bare expression, capture r0.
 		// Always update lastImplicitResult (null on error or no implicit output).
-		lastImplicitResult = val_null;
+		lastImplicitResult = Value.Null;
 		Value result;
 		if (hasImplicitOutput && !hadRuntimeError) {
 			result = vm.GetStackValue(vm.BaseIndex);
@@ -440,9 +440,9 @@ public class Interpreter {
 	// Searches the @main frame's named registers for the given variable name.
 	// 
 	// <param name="varName">name of global variable to get</param>
-	// <returns>Value of the named variable, or val_null if not found</returns>
+	// <returns>Value of the named variable, or Value.Null if not found</returns>
 	public Value GetGlobalValue(String varName) {
-		if (vm == null) return val_null;
+		if (vm == null) return Value.Null;
 		// Search the @main frame (base 0) for a register with this name
 		Value nameVal = make_string(varName);
 		Int32 regCount = vm.CurrentFunction != null ? vm.StackSize() : 0;
@@ -454,7 +454,7 @@ public class Interpreter {
 				return vm.GetStackValue(i);
 			}
 		}
-		return val_null;
+		return Value.Null;
 	}
 
 	// 
@@ -478,8 +478,8 @@ public class Interpreter {
 	// Called by the `reset` intrinsic to take effect immediately during execution.
 	// 
 	public void ResetReplGlobals() {
-		_replGlobals = val_null;
-		if (vm != null) vm.ReplGlobals = val_null;
+		_replGlobals = Value.Null;
+		if (vm != null) vm.ReplGlobals = Value.Null;
 	}
 
 	// 

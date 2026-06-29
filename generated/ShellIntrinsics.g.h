@@ -124,7 +124,7 @@ class ShellIntrinsics {
 	// ── FileHandle helpers ────────────────────────────────────────────────────
 
 	// Open a file and return a GCHandle value wrapping the native file handle.
-	// Returns val_null on failure.
+	// Returns Value.Null on failure.
 	private: static Value MakeFileHandle(String path, String mode);
 
 	// Close the file and mark the handle as closed (set Stream/f to null).
@@ -137,7 +137,7 @@ class ShellIntrinsics {
 	// Read up to `byteCount` bytes (or all remaining if < 0). Returns string.
 	private: static String ReadFromFile(Value handleVal, Int32 byteCount);
 
-	// Read the next line (stripped of trailing \n/\r\n). Returns val_null at EOF.
+	// Read the next line (stripped of trailing \n/\r\n). Returns Value.Null at EOF.
 	private: static Value ReadLineFromFile(Value handleVal);
 
 	private: static Int32 GetFilePosition(Value handleVal);
@@ -162,7 +162,7 @@ class ShellIntrinsics {
 
 	private: static Boolean FsExists(String path);
 
-	// Returns a map {path, isDirectory, size, date} or val_null if path not found.
+	// Returns a map {path, isDirectory, size, date} or Value.Null if path not found.
 	private: static Value FsInfo(String path);
 
 	private: static Boolean FsMakeDir(String path);

@@ -38,7 +38,7 @@ int list_capacity(Value list_val) {
 }
 
 Value list_get(Value list_val, int index) {
-    if (!is_list(list_val)) return val_null;
+    if (!is_list(list_val)) return Value::null;
     GCList l = GCManager::Lists.Get(value_item_index(list_val));
     return l.Get(index);
 }
@@ -64,11 +64,11 @@ void list_push(Value list_val, Value item) {
 }
 
 Value list_pop(Value list_val) {
-    if (!is_list(list_val)) return val_null;
+    if (!is_list(list_val)) return Value::null;
     int idx = value_item_index(list_val);
     GCList l = GCManager::Lists.Get(idx);
-    if (l.Count() == 0) return val_null;
-    if (l.Frozen) { vm_raise_runtime_error("Attempt to modify a frozen list"); return val_null; }
+    if (l.Count() == 0) return Value::null;
+    if (l.Frozen) { vm_raise_runtime_error("Attempt to modify a frozen list"); return Value::null; }
     bool wasComputed = l.Computed;
     Value result = l.Pop();
     if (wasComputed) GCManager::Lists.Set(idx, l);  // write back length/materialization
@@ -76,11 +76,11 @@ Value list_pop(Value list_val) {
 }
 
 Value list_pull(Value list_val) {
-    if (!is_list(list_val)) return val_null;
+    if (!is_list(list_val)) return Value::null;
     int idx = value_item_index(list_val);
     GCList l = GCManager::Lists.Get(idx);
-    if (l.Count() == 0) return val_null;
-    if (l.Frozen) { vm_raise_runtime_error("Attempt to modify a frozen list"); return val_null; }
+    if (l.Count() == 0) return Value::null;
+    if (l.Frozen) { vm_raise_runtime_error("Attempt to modify a frozen list"); return Value::null; }
     bool wasComputed = l.Computed;
     Value result = l.Pull();
     if (wasComputed) GCManager::Lists.Set(idx, l);  // write back materialization
@@ -132,7 +132,7 @@ void list_clear(Value list_val) {
 }
 
 Value list_copy(Value list_val) {
-    if (!is_list(list_val)) return val_null;
+    if (!is_list(list_val)) return Value::null;
     GCList src = GCManager::Lists.Get(value_item_index(list_val));
     int n = src.Count();
     Value newList = make_list(n);
@@ -200,7 +200,7 @@ void list_sort(Value list_val, bool ascending) {
     l.Materialize();
     int n = l.Count();
     if (n >= 2) {
-        std::vector<Value> tmp((size_t)n, val_null);
+        std::vector<Value> tmp((size_t)n, Value::null);
         for (int i = 0; i < n; i++) tmp[i] = l.Get(i);
         std::sort(tmp.begin(), tmp.end(),
             [ascending](Value a, Value b) {
@@ -225,8 +225,8 @@ void list_sort_by_key(Value list_val, Value byKey, bool ascending) {
     if (n < 2) { if (wasComputed) GCManager::Lists.Set(lidx, l); return; }
 
     // Decorate with sort keys so we don't recompute per comparison.
-    std::vector<Value> elems((size_t)n, val_null);
-    std::vector<Value> keys((size_t)n, val_null);
+    std::vector<Value> elems((size_t)n, Value::null);
+    std::vector<Value> keys((size_t)n, Value::null);
     for (int i = 0; i < n; i++) {
         Value e = l.Get(i);
         elems[i] = e;

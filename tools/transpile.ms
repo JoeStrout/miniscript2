@@ -486,7 +486,7 @@ Transpiler.transformStatement = function(trimmedLine)
 	// non-identifier string.
 	tokens = roughTokenize(trimmedLine)
 	
-	deepDebug = false //trimmedLine.contains("ParamNames");
+	deepDebug = trimmedLine.contains("ReplGlobals");
 	ddprint = function(s); if deepDebug then print "====> " + s; end function
 	summarize = function(obj)
 		if obj == null then return "<null>"
@@ -1176,7 +1176,8 @@ Transpiler.updateStateCLASS = function
 				if exprm then
 					self.m.dec += " = ≤type≥::New(≤params≥)".fill(exprm)
 				else
-				   	self.m.dec += " = " + self.m.expr
+					self.m.expr = self.transformStatement(self.m.expr)
+					self.m.dec += " = " + self.m.expr
 				end if
 			end if
 			if self.curClass.type == ClassType.CLASS then

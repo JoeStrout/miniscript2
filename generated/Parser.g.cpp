@@ -9,7 +9,7 @@
 namespace MiniScript {
 
 ParserStorage::ParserStorage() {
-	Error = val_null;
+	Error = Value::Null;
 	_prefixParselets =  Dictionary<TokenType, PrefixParselet>::New();
 	_infixParselets =  Dictionary<TokenType, InfixParselet>::New();
 
@@ -71,7 +71,7 @@ void ParserStorage::RegisterInfix(TokenType type,InfixParselet parselet) {
 }
 void ParserStorage::Init(String source) {
 	_lexer = Lexer(source);
-	Error = val_null;
+	Error = Value::Null;
 	_needMoreInput = Boolean(false);
 	Advance();  // Prime the pump with the first token
 }

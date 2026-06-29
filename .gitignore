@@ -60,6 +60,7 @@ cpp/xcode
 *.user
 *.suo
 *.cache
+cs/cs.sln
 
 # Mono Compiler Outputs
 *.exe.mdb

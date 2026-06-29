@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using static System.Runtime.CompilerServices.MethodImplOptions;
-using static MiniScript.ValueHelpers;
+using static MiniScript.Value;
 // H: #include "GCInterfaces.g.h"
 // H: #include "value.h"
 // H: #include "VarMap.g.h"
@@ -51,7 +51,7 @@ public struct GCList : IGCItem {
 		Computed = false;
 	}
 
-	// Construct a computed list.  increment may be val_null to repeat baseVal.
+	// Construct a computed list.  increment may be Value.Null to repeat baseVal.
 	public void InitComputed(Value baseVal, Value increment, Int32 length) {
 		Items = new List<Value>(3);
 		Items.Add(baseVal);
@@ -90,14 +90,14 @@ public struct GCList : IGCItem {
 		if (Computed) {
 			Int32 len = (Int32)numeric_val(Items[2]);
 			if (i < 0) i += len;
-			if ((UInt32)i >= (UInt32)len) return val_null;
+			if ((UInt32)i >= (UInt32)len) return Value.Null;
 			Value incr = Items[1];
 			if (is_null(incr)) return Items[0];
 			Double d = numeric_val(Items[0]) + numeric_val(incr) * i;
 			return (d == (Int32)d) ? make_int((Int32)d) : make_double(d);
 		}
 		if (i < 0) i += Items.Count;
-		return (UInt32)i < (UInt32)Items.Count ? Items[i] : val_null;
+		return (UInt32)i < (UInt32)Items.Count ? Items[i] : Value.Null;
 	}
 
 	[MethodImpl(AggressiveInlining)]
@@ -129,12 +129,12 @@ public struct GCList : IGCItem {
 	public Value Pop() {
 		if (Computed) {
 			Int32 len = (Int32)numeric_val(Items[2]);
-			if (len == 0) return val_null;
+			if (len == 0) return Value.Null;
 			Value last = Get(len - 1);
 			Items[2] = make_int(len - 1);
 			return last;
 		}
-		if (Items == null || Items.Count == 0) return val_null; // ToDo: error
+		if (Items == null || Items.Count == 0) return Value.Null; // ToDo: error
 		Value result = Items[Items.Count - 1];
 		Items.RemoveAt(Items.Count - 1);
 		return result;
@@ -142,7 +142,7 @@ public struct GCList : IGCItem {
 
 	public Value Pull() {
 		if (Computed) Materialize();
-		if (Items == null || Items.Count == 0) return val_null; // ToDo: error
+		if (Items == null || Items.Count == 0) return Value.Null; // ToDo: error
 		Value result = Items[0];
 		Items.RemoveAt(0);
 		return result;
@@ -200,9 +200,9 @@ public struct GCMap : IGCItem {
 		// Check VarMap register bindings first.
 		if (_vmb != null && _vmb.TryGet(key, out value)) return true;
 
-		if (Items == null) { value = val_null; return false; }
+		if (Items == null) { value = Value.Null; return false; }
 		if (Items.TryGetValue(key, out value)) return true;
-		value = val_null;
+		value = Value.Null;
 		return false;
 	}
 
@@ -256,13 +256,13 @@ public struct GCMap : IGCItem {
 			Int32 regIdx = -(i) - 2;
 			return _vmb.GetRegEntryKey(regIdx);
 		}
-		if (Items == null) return val_null;
+		if (Items == null) return Value.Null;
 		Int32 j = 0;
 		foreach (Value k in Items.Keys) {
 			if (j == i) return k;
 			j++;
 		}
-		return val_null;
+		return Value.Null;
 	}
 
 	public Value ValueAt(Int32 i) {
@@ -270,13 +270,13 @@ public struct GCMap : IGCItem {
 			Int32 regIdx = -(i) - 2;
 			return _vmb.GetRegEntryValue(regIdx);
 		}
-		if (Items == null) return val_null;
+		if (Items == null) return Value.Null;
 		Int32 j = 0;
 		foreach (Value v in Items.Values) {
 			if (j == i) return v;
 			j++;
 		}
-		return val_null;
+		return Value.Null;
 	}
 
 	// ── GC ────────────────────────────────────────────────────────────────────
@@ -317,10 +317,10 @@ public struct GCError : IGCItem {
 
 	[MethodImpl(AggressiveInlining)]
 	public void OnSweep() {
-		Message = val_null;
-		Inner   = val_null;
-		Stack   = val_null;
-		Isa     = val_null;
+		Message = Value.Null;
+		Inner   = Value.Null;
+		Stack   = Value.Null;
+		Isa     = Value.Null;
 	}
 }
 
@@ -348,7 +348,7 @@ public struct GCFunction : IGCItem {
 	[MethodImpl(AggressiveInlining)]
 	public void OnSweep() {
 		Func = null;
-		OuterVars = val_null;
+		OuterVars = Value.Null;
 	}
 }
 

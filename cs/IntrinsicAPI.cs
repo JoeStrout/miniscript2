@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using static System.Runtime.CompilerServices.MethodImplOptions;
-using static MiniScript.ValueHelpers;
+using static MiniScript.Value;
 // H: #include "value.h"
 // CPP: #include "VM.g.h"
 // CPP: #include "Interpreter.g.h"
@@ -84,10 +84,10 @@ public struct IntrinsicResult {
 	}
 
 	// Some standard results you can efficiently use:
-	public static readonly IntrinsicResult Null = new IntrinsicResult(val_null);
-	public static readonly IntrinsicResult EmptyString = new IntrinsicResult(val_empty_string);
-	public static readonly IntrinsicResult Zero = new IntrinsicResult(val_zero);
-	public static readonly IntrinsicResult One = new IntrinsicResult(val_one);
+	public static readonly IntrinsicResult Null = new IntrinsicResult(Value.Null);
+	public static readonly IntrinsicResult EmptyString = new IntrinsicResult(Value.emptyString);
+	public static readonly IntrinsicResult Zero = new IntrinsicResult(Value.zero);
+	public static readonly IntrinsicResult One = new IntrinsicResult(Value.one);
 }
 
 

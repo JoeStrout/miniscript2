@@ -9,7 +9,7 @@ using System.Collections.Generic;
 // CPP: #include "IOHelper.g.h"
 // CPP: #include <climits>
 
-using static MiniScript.ValueHelpers;
+using static MiniScript.Value;
 
 namespace MiniScript {
 
@@ -153,7 +153,7 @@ public class Assembler {
 		String mnemonic = parts[0];
 		UInt32 instruction = 0;
 		Value constantValue;
-		Value defaultValue = val_null;
+		Value defaultValue = Value.Null;
 
 		// Handle .param directive (not an instruction, but a function parameter definition)
 		if (mnemonic == ".param") {
@@ -288,7 +288,7 @@ public class Assembler {
 				Error(StringUtils.Format("Unknown function: '{0}'", parts[2]));
 				return 0;
 			}
-			Int32 funcConstIdx = AddConstant(make_funcref(target, val_null));
+			Int32 funcConstIdx = AddConstant(make_funcref(target, Value.Null));
 			if (funcConstIdx > Int16.MaxValue) {
 				Error("Constant index out of range for FUNCREF");
 				return 0;
@@ -577,7 +577,7 @@ public class Assembler {
 				Error(StringUtils.Format("Unknown function: '{0}'", parts[2]));
 				return 0;
 			}
-			Int32 funcConstIdx = AddConstant(make_funcref(target, val_null));
+			Int32 funcConstIdx = AddConstant(make_funcref(target, Value.Null));
 			if (funcConstIdx > Int16.MaxValue) {
 				Error("Constant index out of range for CALLF");
 				return 0;

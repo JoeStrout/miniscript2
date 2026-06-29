@@ -23,8 +23,8 @@ class IntrinsicStorage : public std::enable_shared_from_this<IntrinsicStorage> {
 	public: NativeCallbackDelegate Code;
 	private: List<String> _paramNames;
 	private: List<Value> _paramDefaults;
-	private: FuncDef _funcDef = null;
-	private: Value _funcRef = val_null;
+	private: FuncDef _funcDef = nullptr;
+	private: Value _funcRef = Value::Null;
 	private: static List<Intrinsic> _all;
 	private: static Dictionary<String, Intrinsic> _byName;
 	private: static Boolean _initialized;

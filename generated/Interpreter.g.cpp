@@ -19,7 +19,7 @@ void InterpreterStorage::Init(String _source,TextOutputMethod _standardOutput,Te
 	if (IsNull(errorOutput)) errorOutput = _standardOutput;
 	standardOutput = _standardOutput;
 	errorOutput = _errorOutput;
-	Error = val_null;
+	Error = Value::Null;
 }
 InterpreterStorage::InterpreterStorage(List<String> sourceList,TextOutputMethod standardOutput,TextOutputMethod errorOutput) {
 	String source = String::Join("\n", sourceList);
@@ -34,14 +34,14 @@ void InterpreterStorage::Reset(String _source) {
 	parser = nullptr;
 	vm = nullptr;
 	compiledFunctions = nullptr;
-	Error = val_null;
+	Error = Value::Null;
 }
 void InterpreterStorage::Reset(List<FuncDef> functions) {
 	Interpreter _this(std::static_pointer_cast<InterpreterStorage>(shared_from_this()));
 	source = nullptr;
 	parser = nullptr;
 	compiledFunctions = functions;
-	Error = val_null;
+	Error = Value::Null;
 
 	// Create and configure VM
 	vm =  VM::New();
@@ -52,7 +52,7 @@ void InterpreterStorage::Compile() {
 	Interpreter _this(std::static_pointer_cast<InterpreterStorage>(shared_from_this()));
 	if (!IsNull(vm)) return;		// already compiled
 
-	Error = val_null;
+	Error = Value::Null;
 
 	if (IsNull(parser)) parser =  Parser::New();
 	parser.Init(source);
@@ -92,7 +92,7 @@ void InterpreterStorage::Compile() {
 }
 void InterpreterStorage::Restart() {
 	if (!IsNull(vm) && !IsNull(compiledFunctions)) {
-		Error = val_null;
+		Error = Value::Null;
 		vm.Reset(compiledFunctions);
 	}
 }
@@ -137,7 +137,7 @@ void InterpreterStorage::REPL(String sourceLine,double timeLimit) {
 	}
 
 	// Try to parse
-	Error = val_null;
+	Error = Value::Null;
 	if (IsNull(parser)) parser =  Parser::New();
 	parser.Init(_pendingSource);
 	List<ASTNode> statements = parser.ParseProgram();
@@ -232,7 +232,7 @@ void InterpreterStorage::REPL(String sourceLine,double timeLimit) {
 
 	// Implicit output: if last statement was a bare expression, capture r0.
 	// Always update lastImplicitResult (null on error or no implicit output).
-	lastImplicitResult = val_null;
+	lastImplicitResult = Value::Null;
 	Value result;
 	if (hasImplicitOutput && !hadRuntimeError) {
 		result = vm.GetStackValue(vm.BaseIndex());
@@ -253,7 +253,7 @@ bool InterpreterStorage::NeedMoreInput() {
 	return !IsNull(_pendingSource) && !IsNull(parser) && parser.NeedMoreInput();
 }
 Value InterpreterStorage::GetGlobalValue(String varName) {
-	if (IsNull(vm)) return val_null;
+	if (IsNull(vm)) return Value::Null;
 	// Search the @main frame (base 0) for a register with this name
 	Value nameVal = make_string(varName);
 	Int32 regCount = !IsNull(vm.CurrentFunction()) ? vm.StackSize() : 0;
@@ -265,7 +265,7 @@ Value InterpreterStorage::GetGlobalValue(String varName) {
 			return vm.GetStackValue(i);
 		}
 	}
-	return val_null;
+	return Value::Null;
 }
 void InterpreterStorage::SetGlobalValue(String varName,Value value) {
 	// In REPL mode the persistent globals live in _replGlobals, a VarMap.
@@ -276,8 +276,8 @@ void InterpreterStorage::SetGlobalValue(String varName,Value value) {
 	map_set(_replGlobals, varName, value);
 }
 void InterpreterStorage::ResetReplGlobals() {
-	_replGlobals = val_null;
-	if (!IsNull(vm)) vm.set_ReplGlobals(val_null);
+	_replGlobals = Value::Null;
+	if (!IsNull(vm)) vm.set_ReplGlobals(Value::Null);
 }
 void InterpreterStorage::ReportError(Value error) {
 	String msg = StringUtils::Format("{0}", error_message(error));

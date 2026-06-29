@@ -18,7 +18,7 @@ CodeGeneratorStorage::CodeGeneratorStorage(CodeEmitterBase emitter) {
 	_loopExitLabels =  List<Int32>::New();
 	_loopContinueLabels =  List<Int32>::New();
 	_functions =  List<FuncDef>::New();
-	Error = val_null;
+	Error = Value::Null;
 }
 List<FuncDef> CodeGeneratorStorage::GetFunctions() {
 	return _functions;
@@ -1030,7 +1030,7 @@ Int32 CodeGeneratorStorage::Visit(ContinueNode node) {
 	return -1;
 }
 Boolean CodeGeneratorStorage::TryEvaluateConstant(ASTNode node,Value* result) {
-	*result = val_null;
+	*result = Value::Null;
 	NumberNode numNode = As<NumberNode, NumberNodeStorage>(node);
 	if (!IsNull(numNode)) {
 		*result = make_double(numNode.Value());
@@ -1043,7 +1043,7 @@ Boolean CodeGeneratorStorage::TryEvaluateConstant(ASTNode node,Value* result) {
 	}
 	IdentifierNode idNode = As<IdentifierNode, IdentifierNodeStorage>(node);
 	if (!IsNull(idNode)) {
-		if (idNode.Name() == "null") { *result = val_null; return Boolean(true); }
+		if (idNode.Name() == "null") { *result = Value::Null; return Boolean(true); }
 		if (idNode.Name() == "true") { *result = make_double(1); return Boolean(true); }
 		if (idNode.Name() == "false") { *result = make_double(0); return Boolean(true); }
 		return Boolean(false);
@@ -1154,10 +1154,10 @@ Int32 CodeGeneratorStorage::Visit(FunctionNode node) {
 				funcDef.ParamDefaults().Add(defaultVal);
 			} else {
 				if (is_null(Error)) Error = ErrorTypes::CompilerError(StringUtils::Format("Default value for parameter '{0}' must be a constant", node.ParamNames()[i]));
-				funcDef.ParamDefaults().Add(val_null);
+				funcDef.ParamDefaults().Add(Value::Null);
 			}
 		} else {
-			funcDef.ParamDefaults().Add(val_null);
+			funcDef.ParamDefaults().Add(Value::Null);
 		}
 	}
 
@@ -1172,7 +1172,7 @@ Int32 CodeGeneratorStorage::Visit(FunctionNode node) {
 
 	// Store a template funcref (no captured outer vars) in this function's
 	// constant pool, and emit FUNCREF to bind it into a closure at runtime.
-	Value funcTemplate = make_funcref(funcDef, val_null);
+	Value funcTemplate = make_funcref(funcDef, Value::Null);
 	Int32 templateConst = _emitter.AddConstant(funcTemplate);
 	_emitter.EmitAB(Opcode::FUNCREF_iA_iBC, resultReg, templateConst,
 		Interp("r{} = funcref {}", resultReg, funcName));
@@ -1302,7 +1302,7 @@ void CodeGeneratorStorage::ScanNode(ASTNode node) {
 Int32 CodeGeneratorStorage::Visit(SelfNode node) {
 	Int32 resultReg = GetTargetOrAlloc();
 	Int32 selfReg = GetSelfReg();
-	Int32 nameIdx = _emitter.AddConstant(val_self);
+	Int32 nameIdx = _emitter.AddConstant(Value::selfString);
 	_emitter.EmitABC(Opcode::LOADV_rA_rB_kC, resultReg, selfReg, nameIdx,
 		Interp("r{} = self", resultReg));
 	return resultReg;
@@ -1310,7 +1310,7 @@ Int32 CodeGeneratorStorage::Visit(SelfNode node) {
 Int32 CodeGeneratorStorage::Visit(SuperNode node) {
 	Int32 resultReg = GetTargetOrAlloc();
 	Int32 superReg = GetSuperReg();
-	Int32 nameIdx = _emitter.AddConstant(val_super);
+	Int32 nameIdx = _emitter.AddConstant(Value::superString);
 	_emitter.EmitABC(Opcode::LOADV_rA_rB_kC, resultReg, superReg, nameIdx,
 		Interp("r{} = super", resultReg));
 	return resultReg;

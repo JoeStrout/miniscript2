@@ -9,7 +9,7 @@
 
 using System;
 using System.Collections.Generic;
-using static MiniScript.ValueHelpers;
+using static MiniScript.Value;
 // H: #include "LangConstants.g.h"
 // H: #include "Lexer.g.h"
 // H: #include "Parselet.g.h"
@@ -35,7 +35,7 @@ public class Parser : IParser {
 	private Dictionary<TokenType, InfixParselet> _infixParselets;
 
 	public Parser() {
-		Error = val_null;
+		Error = Value.Null;
 		_prefixParselets = new Dictionary<TokenType, PrefixParselet>();
 		_infixParselets = new Dictionary<TokenType, InfixParselet>();
 
@@ -103,7 +103,7 @@ public class Parser : IParser {
 	// Initialize the parser with source code
 	public void Init(String source) {
 		_lexer = new Lexer(source);
-		Error = val_null;
+		Error = Value.Null;
 		_needMoreInput = false;
 		Advance();  // Prime the pump with the first token
 	}

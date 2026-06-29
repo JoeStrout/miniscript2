@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using static System.Runtime.CompilerServices.MethodImplOptions;
-using static MiniScript.ValueHelpers;
+using static MiniScript.Value;
 // H: #include "GCInterfaces.g.h"
 // H: #include "GCSet.g.h"
 // CPP: #include "value.h"
@@ -103,7 +103,7 @@ public static class GCManager {
 	}
 
 	// Create a computed list: element i is baseVal + increment * i, for `length`
-	// elements.  Pass increment = val_null to repeat baseVal (for `[x] * n`).
+	// elements.  Pass increment = Value.Null to repeat baseVal (for `[x] * n`).
 	public static Value NewComputedList(Value baseVal, Value increment, Int32 length) {
 		Int32 idx = Lists.AllocItem();
 		GCList item = Lists.Get(idx);

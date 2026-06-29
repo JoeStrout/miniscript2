@@ -35,7 +35,7 @@ struct CallInfo {
 
 class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	friend struct VM;
-	public: Boolean DebugMode = false;
+	public: Boolean DebugMode = Boolean(false);
 	private: List<Value> stack;
 	private: List<Value> names; // Variable names parallel to stack (null if unnamed)
 	private: InterpreterStorage* interpreter = nullptr;
@@ -53,19 +53,19 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	public: Boolean IsRunning;
 	public: Int32 BaseIndex;
 	public: Value Error;
-	private: Boolean _errorStackPending = false;
-	public: Value ReplGlobals = val_null;
+	private: Boolean _errorStackPending = Boolean(false);
+	public: Value ReplGlobals = Value::Null;
 	private: Value pendingSelf;
 	private: Value pendingSuper;
 	private: bool hasPendingContext;
-	private: NativeCallbackDelegate _pendingCallback = null;
+	private: NativeCallbackDelegate _pendingCallback = nullptr;
 	private: Int32 _pendingCalleeBase = 0; // base index for reconstructing Context
 	private: Int32 _pendingArgCount = 0; // arg count for reconstructing Context
 	private: Int32 _pendingResultIndex = 0; // absolute stack index for result (and partial result)
-	private: Boolean _hasPendingManualCall = false;
+	private: Boolean _hasPendingManualCall = Boolean(false);
 	private: Int32 _pendingManualCallDepth = 0; // callStackTop value after the push
-	public: Value ManualCallResult = val_null; // return value of the manually-pushed call
-	public: bool yielding = false;
+	public: Value ManualCallResult = Value::Null; // return value of the manually-pushed call
+	public: bool yielding = Boolean(false);
 	private: std::chrono::steady_clock::time_point _startTime;
 
 	// callStack is indexed by execution depth: callStack[0] is always @main's execution
@@ -81,7 +81,7 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	// built later, at the next SaveState, when that state is accurate.
 
 	// REPL mode: persistent globals VarMap shared across REPL entries.
-	// When set (not val_null), used instead of callStack[0].GetLocalVarMap for globals.
+	// When set (not Value.Null), used instead of callStack[0].GetLocalVarMap for globals.
 
 	// Pending self/super for method calls, set by METHFIND/SETSELF,
 	// consumed by the next CALL instruction
@@ -174,7 +174,7 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	public: void RaiseRuntimeError(Value error);
 
 	// Return the current call stack as a Value (frozen list of strings), or
-	// val_null if there is no active function.  Guarded wrapper around
+	// Value.Null if there is no active function.  Guarded wrapper around
 	// BuildStackTrace used by the stack-trace hook and value_current_stack_trace.
 	public: Value CurrentStackTrace();
 
@@ -361,7 +361,7 @@ struct VM {
 	// built later, at the next SaveState, when that state is accurate.
 
 	// REPL mode: persistent globals VarMap shared across REPL entries.
-	// When set (not val_null), used instead of callStack[0].GetLocalVarMap for globals.
+	// When set (not Value.Null), used instead of callStack[0].GetLocalVarMap for globals.
 
 	// Pending self/super for method calls, set by METHFIND/SETSELF,
 	// consumed by the next CALL instruction
@@ -453,7 +453,7 @@ struct VM {
 	public: inline void RaiseRuntimeError(Value error);
 
 	// Return the current call stack as a Value (frozen list of strings), or
-	// val_null if there is no active function.  Guarded wrapper around
+	// Value.Null if there is no active function.  Guarded wrapper around
 	// BuildStackTrace used by the stack-trace hook and value_current_stack_trace.
 	public: inline Value CurrentStackTrace();
 

@@ -3,7 +3,7 @@
 
 using System;
 using System.Collections.Generic;
-using static MiniScript.ValueHelpers;
+using static MiniScript.Value;
 
 // CPP: #include "StringUtils.g.h"
 // CPP: #include "CS_Math.h"

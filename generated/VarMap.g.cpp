@@ -35,7 +35,7 @@ Boolean VarMapBackingStorage::TryGet(Value key,Value* value) {
 			}
 		}
 	}
-	*value = val_null;
+	*value = Value::Null;
 	return Boolean(false);
 }
 Boolean VarMapBackingStorage::TrySet(Value key,Value value) {
@@ -55,7 +55,7 @@ Boolean VarMapBackingStorage::TryRemove(Value key) {
 		Int32 orderIdx = FindOrderIdx(key);
 		if (orderIdx >= 0) {
 			Int32 regIdx = _regIndices[orderIdx];
-			_names[regIdx] = val_null;
+			_names[regIdx] = Value::Null;
 			return Boolean(true);
 		}
 	}
@@ -87,11 +87,11 @@ Int32 VarMapBackingStorage::NextAssignedRegEntry(Int32 startIdx) {
 	return -1;
 }
 Value VarMapBackingStorage::GetRegEntryKey(Int32 i) {
-	if (i < 0 || i >= _regOrder.Count()) return val_null;
+	if (i < 0 || i >= _regOrder.Count()) return Value::Null;
 	return _regOrder[i];
 }
 Value VarMapBackingStorage::GetRegEntryValue(Int32 i) {
-	if (i < 0 || i >= _regOrder.Count()) return val_null;
+	if (i < 0 || i >= _regOrder.Count()) return Value::Null;
 	Int32 regIdx = _regIndices[i];
 	return _registers[regIdx];
 }
@@ -152,7 +152,7 @@ void VarMapBackingStorage::MapToRegister(Int32 mapIdx,Value varName,List<Value> 
 void VarMapBackingStorage::Clear() {
 	for (Int32 i = 0; i < _regOrder.Count(); i++) {
 		Int32 regIdx = _regIndices[i];
-		if (regIdx < _names.Count()) _names[regIdx] = val_null;
+		if (regIdx < _names.Count()) _names[regIdx] = Value::Null;
 	}
 }
 Value VarMapBackingStorage::NewVarMap(List<Value> registers,List<Value> names,Int32 firstIdx,Int32 lastIdx) {

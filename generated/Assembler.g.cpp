@@ -119,7 +119,7 @@ UInt32 AssemblerStorage::AddLine(String line,Int32 lineNumber) {
 	String mnemonic = parts[0];
 	UInt32 instruction = 0;
 	Value constantValue;
-	Value defaultValue = val_null;
+	Value defaultValue = Value::Null;
 
 	// Handle .param directive (not an instruction, but a function parameter definition)
 	if (mnemonic == ".param") {
@@ -254,7 +254,7 @@ UInt32 AssemblerStorage::AddLine(String line,Int32 lineNumber) {
 			Error(StringUtils::Format("Unknown function: '{0}'", parts[2]));
 			return 0;
 		}
-		Int32 funcConstIdx = AddConstant(make_funcref(target, val_null));
+		Int32 funcConstIdx = AddConstant(make_funcref(target, Value::Null));
 		if (funcConstIdx > Int16MaxValue) {
 			Error("Constant index out of range for FUNCREF");
 			return 0;
@@ -543,7 +543,7 @@ UInt32 AssemblerStorage::AddLine(String line,Int32 lineNumber) {
 			Error(StringUtils::Format("Unknown function: '{0}'", parts[2]));
 			return 0;
 		}
-		Int32 funcConstIdx = AddConstant(make_funcref(target, val_null));
+		Int32 funcConstIdx = AddConstant(make_funcref(target, Value::Null));
 		if (funcConstIdx > Int16MaxValue) {
 			Error("Constant index out of range for CALLF");
 			return 0;

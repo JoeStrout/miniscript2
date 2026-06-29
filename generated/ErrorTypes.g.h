@@ -35,7 +35,7 @@ class ErrorTypes {
 	// Create a runtime error value with the given message.  Attaches the active
 	// VM's current stack trace (via value_current_stack_trace), so every runtime
 	// error value -- whether returned by an intrinsic, a core value operation, or
-	// the VM itself -- carries an accurate trace.  Returns val_null stack if no
+	// the VM itself -- carries an accurate trace.  Returns Value.Null stack if no
 	// VM is running (e.g. errors built during setup, before execution).
 	public: static Value RuntimeError(String msg);
 	

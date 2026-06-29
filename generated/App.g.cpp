@@ -371,7 +371,7 @@ void App::RunInterpreter(Interpreter interp) {
 		IOHelper::Print("Executing @main with VM...");
 	}
 
-	Value result = val_null;
+	Value result = Value::Null;
 
 	if (visMode) {
 		VMVis vis = VMVis(vm);

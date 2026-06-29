@@ -5,7 +5,7 @@
 // allowing host code to categorize errors by type.
 
 using System;
-using static MiniScript.ValueHelpers;
+using static MiniScript.Value;
 // H: #include "value.h"
 // H: #include "GCManager.g.h"
 // CPP: #include "CS_value_util.h"
@@ -13,8 +13,8 @@ using static MiniScript.ValueHelpers;
 namespace MiniScript {
 
 public static class ErrorTypes {
-	public static Value compiler = val_null;
-	public static Value runtime = val_null;
+	public static Value compiler = Value.Null;
+	public static Value runtime = Value.Null;
 
 	private static bool _markRootsRegistered = false;
 
@@ -27,11 +27,11 @@ public static class ErrorTypes {
 			_markRootsRegistered = true;
 		}
 		if (is_null(compiler)) {
-			compiler = make_error(make_string("Compiler Error"), val_null, val_null, val_null);
+			compiler = make_error(make_string("Compiler Error"), Value.Null, Value.Null, Value.Null);
 			freeze_value(compiler);
 		}
 		if (is_null(runtime)) {
-			runtime = make_error(make_string("Runtime Error"), val_null, val_null, val_null);
+			runtime = make_error(make_string("Runtime Error"), Value.Null, Value.Null, Value.Null);
 			freeze_value(runtime);
 		}
 	}
@@ -39,23 +39,23 @@ public static class ErrorTypes {
 	// Create a compiler error value with the given message.
 	public static Value CompilerError(String msg) {
 		if (is_null(compiler)) Init();
-		return make_error(make_string(msg), val_null, val_null, compiler);
+		return make_error(make_string(msg), Value.Null, Value.Null, compiler);
 	}
 
 	// Create a runtime error value with the given message and stack trace.
 	public static Value RuntimeError(String msg, Value stack) {
 		if (is_null(runtime)) Init();
-		return make_error(make_string(msg), val_null, stack, runtime);
+		return make_error(make_string(msg), Value.Null, stack, runtime);
 	}
 
 	// Create a runtime error value with the given message.  Attaches the active
 	// VM's current stack trace (via value_current_stack_trace), so every runtime
 	// error value -- whether returned by an intrinsic, a core value operation, or
-	// the VM itself -- carries an accurate trace.  Returns val_null stack if no
+	// the VM itself -- carries an accurate trace.  Returns Value.Null stack if no
 	// VM is running (e.g. errors built during setup, before execution).
 	public static Value RuntimeError(String msg) {
 		if (is_null(runtime)) Init();
-		return make_error(make_string(msg), val_null, value_current_stack_trace(), runtime);
+		return make_error(make_string(msg), Value.Null, value_current_stack_trace(), runtime);
 	}
 	
 	// Create a file error value with the given message.

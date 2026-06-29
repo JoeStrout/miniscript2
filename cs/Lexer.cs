@@ -5,7 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using static System.Runtime.CompilerServices.MethodImplOptions;
-using static MiniScript.ValueHelpers;
+using static MiniScript.Value;
 // H: #include "LangConstants.g.h"
 // H: #include "ErrorTypes.g.h"
 // CPP: #include "StringUtils.g.h"
@@ -46,7 +46,7 @@ public struct Lexer {
 		_position = 0;
 		_line = 1;
 		_column = 1;
-		Error = val_null;
+		Error = Value.Null;
 	}
 
 	// Peek at current character without advancing

@@ -40,19 +40,19 @@ void GCList::Insert(Int32 index,Value v) {
 Value GCList::Pop() {
 	if (Computed) {
 		Int32 len = (Int32)numeric_val(Items[2]);
-		if (len == 0) return val_null;
+		if (len == 0) return Value::Null;
 		Value last = Get(len - 1);
 		Items[2] = make_int(len - 1);
 		return last;
 	}
-	if (IsNull(Items) || Items.Count() == 0) return val_null; // ToDo: error
+	if (IsNull(Items) || Items.Count() == 0) return Value::Null; // ToDo: error
 	Value result = Items[Items.Count() - 1];
 	Items.RemoveAt(Items.Count() - 1);
 	return result;
 }
 Value GCList::Pull() {
 	if (Computed) Materialize();
-	if (IsNull(Items) || Items.Count() == 0) return val_null; // ToDo: error
+	if (IsNull(Items) || Items.Count() == 0) return Value::Null; // ToDo: error
 	Value result = Items[0];
 	Items.RemoveAt(0);
 	return result;
@@ -86,9 +86,9 @@ Boolean GCMap::TryGet(Value key,Value* value) {
 	// Check VarMap register bindings first.
 	if (!IsNull(_vmb) && _vmb.TryGet(key, &*value)) return Boolean(true);
 
-	if (IsNull(Items)) { *value = val_null; return Boolean(false); }
+	if (IsNull(Items)) { *value = Value::Null; return Boolean(false); }
 	if (Items.TryGetValue(key, &*value)) return Boolean(true);
-	*value = val_null;
+	*value = Value::Null;
 	return Boolean(false);
 }
 void GCMap::Set(Value key,Value value) {
@@ -126,26 +126,26 @@ Value GCMap::KeyAt(Int32 i) {
 		Int32 regIdx = -(i) - 2;
 		return _vmb.GetRegEntryKey(regIdx);
 	}
-	if (IsNull(Items)) return val_null;
+	if (IsNull(Items)) return Value::Null;
 	Int32 j = 0;
 	for (Value k : Items.Keys()) {
 		if (j == i) return k;
 		j++;
 	}
-	return val_null;
+	return Value::Null;
 }
 Value GCMap::ValueAt(Int32 i) {
 	if (i < -1 && !IsNull(_vmb)) {
 		Int32 regIdx = -(i) - 2;
 		return _vmb.GetRegEntryValue(regIdx);
 	}
-	if (IsNull(Items)) return val_null;
+	if (IsNull(Items)) return Value::Null;
 	Int32 j = 0;
 	for (Value v : Items.Values()) {
 		if (j == i) return v;
 		j++;
 	}
-	return val_null;
+	return Value::Null;
 }
 void GCMap::MarkChildren() {
 	if (!IsNull(Items)) {

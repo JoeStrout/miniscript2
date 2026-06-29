@@ -4,7 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using static System.Runtime.CompilerServices.MethodImplOptions;
-using static MiniScript.ValueHelpers;
+using static MiniScript.Value;
 // H: #include "CS_String.h"
 // H: #include "value.h"
 // H: #include "value_string.h"
@@ -139,8 +139,8 @@ public static class StringUtils {
 	}
 
 	public static String makeRepr(Value v) {
-		if (ValueHelpers.is_string(v)) {
-			String str = ValueHelpers.as_cstring(v);
+		if (v.IsString()) {
+			String str = as_cstring(v);
 			// Replace quotes: " becomes ""
 			String escaped = str.Replace("\"", "\"\"");
 			// Wrap in quotes

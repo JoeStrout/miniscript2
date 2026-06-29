@@ -1074,5 +1074,15 @@ I've decided to add a minimal `key` module that will allow users of command-line
 
 The new keyboard.h/.cpp file is going into cpp/core, for expediency, but sometime soon I need to revisit the organization of my C++ files and sort out the ones that are truly core from ones that are command-line MiniScript add-ons (like this one).  Of course we have to deal with terminal mode, resulting in a call from IOHelper to our Keyboard module -- this too will have to get sorted out.
 
+## Jun 29, 2026
+
+I've been working this weekend to reduce the difference between MS1 APIs and MS2 APIs, particularly with regard to intrinsic functions that a host app can define.  This led to a realization: most of the pain was caused by Value, in C++, being a typedef double rather than a class or struct (since in MS1 it was a class, with static and instance methods).  But there's no reason it *needs* to be a typedef double; it can instead be a POD struct that _contains_ a double (or a uint64, which may be easier to work with).
+
+So, I'm doing that refactoring now.  This enables the use of Value methods throughout the code, eliminating the need for the free functions which even the C# code was using (somewhat inconsistently).  I'm removing all those free functions and standardizing on Value methods and operators (including == and !=), which will both make the code more readable and make it much more compatible with MS1.
+
+One little wrinkle: in MS1 C++, the null value constant is Value::null (lowercase), which is not valid in C# (`null` is a reserved word).  We'd have to call it `@null` or `Null`.  And I now realize I've been so focused on easing pain for C++ embedders, I haven't been paying attention to what these things were called in MS1 C#... I see.  Most constants (Value.one, etc.) are lowercase just like in C++, but `null` was a different thing in MS1; because Value was a class there, we actually used `null` in place of a special Value.  Now we can't easily do that; we need a null constant, just like in C++... but we can't call it `null`.  How annoying.
+
+OK, new plan: deprecate `Value::null` but leave it for backward compatibility, while recommending and supporting `Null` in both languages.
+
 
 

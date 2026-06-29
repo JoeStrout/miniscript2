@@ -42,7 +42,7 @@ class FuncDefStorage : public std::enable_shared_from_this<FuncDefStorage> {
 	// Return the source line number for the instruction at the given PC index.
 	// Returns 0 if no line information is available.
 	public: Int32 GetLineNumber(Int32 pc);
-	public: NativeCallbackDelegate NativeCallback = null;
+	public: NativeCallbackDelegate NativeCallback = nullptr;
 
 	// Native callback for intrinsic functions. When non-null, this FuncDef
 	// represents a built-in function: CALL invokes the callback directly

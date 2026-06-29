@@ -27,18 +27,18 @@ typedef void* object;
 class InterpreterStorage : public std::enable_shared_from_this<InterpreterStorage> {
 	friend struct Interpreter;
 	public: TextOutputMethod standardOutput;
-	public: TextOutputMethod implicitOutput = null;
+	public: TextOutputMethod implicitOutput = nullptr;
 	public: TextOutputMethod errorOutput;
-	public: object hostData = null;
+	public: object hostData = nullptr;
 	public: VM vm;
 	public: String SourceFile = "";
 	protected: String source;
 	protected: Parser parser;
 	protected: List<FuncDef> compiledFunctions;
 	public: Value Error;
-	public: Value lastImplicitResult = val_null;
+	public: Value lastImplicitResult = Value::Null;
 	private: String _pendingSource; // accumulated REPL lines so far
-	private: Value _replGlobals = val_null; // persistent globals VarMap
+	private: Value _replGlobals = Value::Null; // persistent globals VarMap
 
 	// 
 	// standardOutput: receives the output of the "print" intrinsic.
@@ -81,14 +81,14 @@ class InterpreterStorage : public std::enable_shared_from_this<InterpreterStorag
 	// 
 
 	// 
-	// The most recent compiler or runtime error, as an error Value, or val_null
+	// The most recent compiler or runtime error, as an error Value, or Value.Null
 	// if there is no error.  Host code can inspect this (and its __isa chain)
 	// to distinguish error types.
 	// 
 
 	// 
 	// The Value produced by the last complete REPL interaction that had implicit
-	// output (a bare expression as the last statement), or val_null otherwise.
+	// output (a bare expression as the last statement), or Value.Null otherwise.
 	// Updated at the end of each complete REPL() call.  Host code (e.g. the
 	// REPL loop in App.cs) reads this to push it into the _out history list.
 	// 
@@ -194,7 +194,7 @@ class InterpreterStorage : public std::enable_shared_from_this<InterpreterStorag
 	// Searches the @main frame's named registers for the given variable name.
 	// 
 	// <param name="varName">name of global variable to get</param>
-	// <returns>Value of the named variable, or val_null if not found</returns>
+	// <returns>Value of the named variable, or Value.Null if not found</returns>
 	public: Value GetGlobalValue(String varName);
 
 	// 
@@ -312,14 +312,14 @@ struct Interpreter {
 	// 
 
 	// 
-	// The most recent compiler or runtime error, as an error Value, or val_null
+	// The most recent compiler or runtime error, as an error Value, or Value.Null
 	// if there is no error.  Host code can inspect this (and its __isa chain)
 	// to distinguish error types.
 	// 
 
 	// 
 	// The Value produced by the last complete REPL interaction that had implicit
-	// output (a bare expression as the last statement), or val_null otherwise.
+	// output (a bare expression as the last statement), or Value.Null otherwise.
 	// Updated at the end of each complete REPL() call.  Host code (e.g. the
 	// REPL loop in App.cs) reads this to push it into the _out history list.
 	// 
@@ -429,7 +429,7 @@ struct Interpreter {
 	// Searches the @main frame's named registers for the given variable name.
 	// 
 	// <param name="varName">name of global variable to get</param>
-	// <returns>Value of the named variable, or val_null if not found</returns>
+	// <returns>Value of the named variable, or Value.Null if not found</returns>
 	public: inline Value GetGlobalValue(String varName);
 
 	// 

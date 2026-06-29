@@ -41,19 +41,19 @@ int map_capacity(Value map_val) {
 }
 
 Value map_get(Value map_val, Value key) {
-    if (!is_map(map_val)) return val_null;
+    if (!is_map(map_val)) return Value::null;
     GCMap m = GCManager::Maps.Get(value_item_index(map_val));
     Value out;
     if (m.TryGet(key, &out)) return out;
-    return val_null;
+    return Value::null;
 }
 
 bool map_try_get(Value map_val, Value key, Value* out_value) {
-    if (!is_map(map_val)) { if (out_value) *out_value = val_null; return false; }
+    if (!is_map(map_val)) { if (out_value) *out_value = Value::null; return false; }
     GCMap m = GCManager::Maps.Get(value_item_index(map_val));
     Value out;
     bool ok = m.TryGet(key, &out);
-    if (out_value) *out_value = ok ? out : val_null;
+    if (out_value) *out_value = ok ? out : Value::null;
     return ok;
 }
 
@@ -61,15 +61,15 @@ bool map_try_get(Value map_val, Value key, Value* out_value) {
 bool map_lookup(Value map_val, Value key, Value* out_value) {
     Value current = map_val;
     for (int depth = 0; depth < 256; depth++) {
-        if (!is_map(current)) { if (out_value) *out_value = val_null; return false; }
+        if (!is_map(current)) { if (out_value) *out_value = Value::null; return false; }
         GCMap m = GCManager::Maps.Get(value_item_index(current));
         Value v;
         if (m.TryGet(key, &v)) { if (out_value) *out_value = v; return true; }
         Value isa;
-        if (!m.TryGet(val_isa_key, &isa)) { if (out_value) *out_value = val_null; return false; }
+        if (!m.TryGet(Value::magicIsA, &isa)) { if (out_value) *out_value = Value::null; return false; }
         current = isa;
     }
-    if (out_value) *out_value = val_null;
+    if (out_value) *out_value = Value::null;
     return false;
 }
 
@@ -77,29 +77,29 @@ bool map_lookup_with_origin(Value map_val, Value key, Value* out_value, Value* o
     Value current = map_val;
     for (int depth = 0; depth < 256; depth++) {
         if (!is_map(current)) {
-            if (out_value) *out_value = val_null;
-            if (out_super) *out_super = val_null;
+            if (out_value) *out_value = Value::null;
+            if (out_super) *out_super = Value::null;
             return false;
         }
         GCMap m = GCManager::Maps.Get(value_item_index(current));
         Value v;
         if (m.TryGet(key, &v)) {
             Value isa;
-            m.TryGet(val_isa_key, &isa);
+            m.TryGet(Value::magicIsA, &isa);
             if (out_value) *out_value = v;
             if (out_super) *out_super = isa;
             return true;
         }
         Value isa;
-        if (!m.TryGet(val_isa_key, &isa)) {
-            if (out_value) *out_value = val_null;
-            if (out_super) *out_super = val_null;
+        if (!m.TryGet(Value::magicIsA, &isa)) {
+            if (out_value) *out_value = Value::null;
+            if (out_super) *out_super = Value::null;
             return false;
         }
         current = isa;
     }
-    if (out_value) *out_value = val_null;
-    if (out_super) *out_super = val_null;
+    if (out_value) *out_value = Value::null;
+    if (out_super) *out_super = Value::null;
     return false;
 }
 
@@ -135,7 +135,7 @@ void map_clear(Value map_val) {
 }
 
 Value map_copy(Value map_val) {
-    if (!is_map(map_val)) return val_null;
+    if (!is_map(map_val)) return Value::null;
     GCMap src = GCManager::Maps.Get(value_item_index(map_val));
     Value newMap = make_map(src.Count());
     GCMap dst = GCManager::Maps.Get(value_item_index(newMap));
@@ -180,8 +180,8 @@ MapIterator map_iterator(Value map_val) {
 
 bool map_iterator_next(MapIterator* iter, Value* out_key, Value* out_value) {
     if (!iter || iter->map_idx < 0 || iter->iter == MAP_ITER_DONE) {
-        if (out_key)   *out_key   = val_null;
-        if (out_value) *out_value = val_null;
+        if (out_key)   *out_key   = Value::null;
+        if (out_value) *out_value = Value::null;
         return false;
     }
     GCMap m = GCManager::Maps.Get(iter->map_idx);
@@ -194,7 +194,7 @@ bool map_iterator_next(MapIterator* iter, Value* out_key, Value* out_value) {
 }
 
 Value map_nth_entry(Value map_val, int n) {
-    if (!is_map(map_val)) return val_null;
+    if (!is_map(map_val)) return Value::null;
     GCMap m = GCManager::Maps.Get(value_item_index(map_val));
     int count = 0;
     for (int i = m.NextEntry(-1); i != -1; i = m.NextEntry(i)) {
@@ -206,7 +206,7 @@ Value map_nth_entry(Value map_val, int n) {
         }
         count++;
     }
-    return val_null;
+    return Value::null;
 }
 
 // ── New iterator interface ──────────────────────────────────────────────
@@ -219,7 +219,7 @@ int map_iter_next(Value map_val, int iter) {
 }
 
 Value map_iter_entry(Value map_val, int iter) {
-    if (!is_map(map_val) || iter == MAP_ITER_DONE) return val_null;
+    if (!is_map(map_val) || iter == MAP_ITER_DONE) return Value::null;
     GCMap m = GCManager::Maps.Get(value_item_index(map_val));
     Value entry = make_map(4);
     map_set(entry, make_string("key"),   m.KeyAt(iter));

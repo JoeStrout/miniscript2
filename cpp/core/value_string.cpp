@@ -34,7 +34,7 @@ const StringStorage* heap_string_storage(Value v) {
 
 // Adopt a freshly malloc'd StringStorage* (e.g. from ss_*) into the GC system.
 Value adopt_ss(StringStorage* ss) {
-    if (!ss) return val_empty_string;
+    if (!ss) return Value::emptyString;
     return GCManager::NewString(String::fromMallocStorage(ss));
 }
 
@@ -42,7 +42,7 @@ Value adopt_ss(StringStorage* ss) {
 // the tiny-string case or wants a heap allocation).
 Value make_heap_string_bytes(const char* str, int len) {
     StringStorage* ss = ss_createWithLength(len, std::malloc);
-    if (!ss) return val_empty_string;
+    if (!ss) return Value::emptyString;
     if (len > 0) std::memcpy(ss->data, str, (size_t)len);
     ss->data[len] = '\0';
     return adopt_ss(ss);
@@ -95,14 +95,14 @@ Value make_tiny_string(const char* str, int len) {
 }
 
 Value make_string(const char* str) {
-    if (str == nullptr) return val_null;
+    if (str == nullptr) return Value::null;
     int lenB = (int)std::strlen(str);
     if (lenB <= TINY_STRING_MAX_LEN) return make_tiny_string(str, lenB);
     return make_heap_string_bytes(str, lenB);
 }
 
 Value make_string_n(const char* str, int len) {
-    if (str == nullptr || len < 0) return val_null;
+    if (str == nullptr || len < 0) return Value::null;
     if (len <= TINY_STRING_MAX_LEN) return make_tiny_string(str, len);
     return make_heap_string_bytes(str, len);
 }
@@ -223,13 +223,13 @@ Value string_slice(Value str, int start, int end) {
     if (end   < 0) end   += slen;
     if (start < 0) start = 0;
     if (end > slen) end = slen;
-    if (start >= end) return val_empty_string;
+    if (start >= end) return Value::emptyString;
     StringStorage* result = ss_substringLen(ts, start, end - start, std::malloc);
     return adopt_ss(result);
 }
 
 Value string_sub(Value a, Value b) {
-    if (!is_string(a) || !is_string(b)) return val_null;
+    if (!is_string(a) || !is_string(b)) return Value::null;
     TempStorage ta(a), tb(b);
     if (!tb.get() || ss_lengthB(tb) == 0) return a;
     if (ss_endsWith(ta, tb)) {
@@ -329,7 +329,7 @@ Value string_split(Value str, Value delimiter) {
 }
 
 Value string_split_max(Value str, Value delimiter, int maxCount) {
-    if (!is_string(str) || !is_string(delimiter)) return val_null;
+    if (!is_string(str) || !is_string(delimiter)) return Value::null;
     int slen, dlen;
     const char* sdata = get_string_data_zerocopy(&str, &slen);
     const char* ddata = get_string_data_zerocopy(&delimiter, &dlen);
@@ -377,14 +377,14 @@ Value string_split_max(Value str, Value delimiter, int maxCount) {
         pos += segLen + dlen;
         found++;
         if (pos > slen) break;
-        if (pos == slen) { list_push(list, val_empty_string); break; }
+        if (pos == slen) { list_push(list, Value::emptyString); break; }
     }
     return list;
 }
 
 Value string_replace(Value source, Value search, Value replacement) {
     if (!is_string(source) || !is_string(search) || !is_string(replacement))
-        return val_null;
+        return Value::null;
     TempStorage ts(source), tf(search), tr(replacement);
     if (!tf.get() || ss_lengthB(tf) == 0) return source;
     StringStorage* result = ss_replace(ts, tf, tr, std::malloc);
@@ -394,7 +394,7 @@ Value string_replace(Value source, Value search, Value replacement) {
 Value string_replace_max(Value source, Value search, Value replacement, int maxCount) {
     if (maxCount <= 0) return string_replace(source, search, replacement);
     if (!is_string(source) || !is_string(search) || !is_string(replacement))
-        return val_null;
+        return Value::null;
     int slen, flen, rlen;
     const char* sdata = get_string_data_zerocopy(&source, &slen);
     const char* fdata = get_string_data_zerocopy(&search, &flen);

@@ -173,7 +173,7 @@ case "$TARGET" in
     "cs")
         echo "Building C# version..."
         cd cs
-        dotnet build -o ../build/cs/
+        dotnet build MiniScript2.csproj -o ../build/cs/
         echo "C# build complete."
         ;;
     

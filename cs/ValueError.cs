@@ -1,6 +1,6 @@
 //*** BEGIN CS_ONLY ***
 using System;
-using static MiniScript.ValueHelpers;
+using static MiniScript.Value;
 
 namespace MiniScript {
 	// 

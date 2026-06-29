@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using static System.Runtime.CompilerServices.MethodImplOptions;
-using static MiniScript.ValueHelpers;
+using static MiniScript.Value;
 // H: #include "value.h"
 // CPP: #include "GCManager.g.h"
 
@@ -52,7 +52,7 @@ public class VarMapBacking {
 				}
 			}
 		}
-		value = val_null;
+		value = Value.Null;
 		return false;
 	}
 
@@ -76,7 +76,7 @@ public class VarMapBacking {
 			Int32 orderIdx = FindOrderIdx(key);
 			if (orderIdx >= 0) {
 				Int32 regIdx = _regIndices[orderIdx];
-				_names[regIdx] = val_null;
+				_names[regIdx] = Value.Null;
 				return true;
 			}
 		}
@@ -121,13 +121,13 @@ public class VarMapBacking {
 
 	// Get the variable name (key) for the ith register entry in insertion order.
 	public Value GetRegEntryKey(Int32 i) {
-		if (i < 0 || i >= _regOrder.Count) return val_null;
+		if (i < 0 || i >= _regOrder.Count) return Value.Null;
 		return _regOrder[i];
 	}
 
 	// Get the register value for the ith register entry in insertion order.
 	public Value GetRegEntryValue(Int32 i) {
-		if (i < 0 || i >= _regOrder.Count) return val_null;
+		if (i < 0 || i >= _regOrder.Count) return Value.Null;
 		Int32 regIdx = _regIndices[i];
 		return _registers[regIdx];
 	}
@@ -212,7 +212,7 @@ public class VarMapBacking {
 	public void Clear() {
 		for (Int32 i = 0; i < _regOrder.Count; i++) {
 			Int32 regIdx = _regIndices[i];
-			if (regIdx < _names.Count) _names[regIdx] = val_null;
+			if (regIdx < _names.Count) _names[regIdx] = Value.Null;
 		}
 	}
 

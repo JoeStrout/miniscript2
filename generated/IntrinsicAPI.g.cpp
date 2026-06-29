@@ -18,9 +18,9 @@ IntrinsicResult::IntrinsicResult(Value result,Boolean done ) {
 	this->result = result;
 	this->done = done;
 }
-const IntrinsicResult IntrinsicResult::Null = IntrinsicResult(val_null);
-const IntrinsicResult IntrinsicResult::EmptyString = IntrinsicResult(val_empty_string);
-const IntrinsicResult IntrinsicResult::Zero = IntrinsicResult(val_zero);
-const IntrinsicResult IntrinsicResult::One = IntrinsicResult(val_one);
+const IntrinsicResult IntrinsicResult::Null = IntrinsicResult(Value::Null);
+const IntrinsicResult IntrinsicResult::EmptyString = IntrinsicResult(Value::emptyString);
+const IntrinsicResult IntrinsicResult::Zero = IntrinsicResult(Value::zero);
+const IntrinsicResult IntrinsicResult::One = IntrinsicResult(Value::one);
 
 } // end of namespace MiniScript

@@ -57,21 +57,15 @@ public readonly struct Value {
 	// ==== SHARED CONSTANTS ===================================================
 	// PascalCase: MiniScript 1.x-style public API.
 	public static readonly Value Null           = new Value(NULL_VALUE);
-	public static readonly Value Zero           = new Value(0x0000_0000_0000_0000UL);
-	public static readonly Value One            = new Value(0x3FF0_0000_0000_0000UL);
-	public static readonly Value EmptyString    = new Value(TINY_STRING_TAG);
-	public static readonly Value MagicIsA       = make_string("__isa");
-	public static readonly Value KeyString      = make_string("key");
-	public static readonly Value ValueString    = make_string("value");
-	public static readonly Value ImplicitResult = make_string("_");
-	// snake_case aliases for call sites that use `using static MiniScript.Value`.
-	public static readonly Value val_null         = Null;
-	public static readonly Value val_zero         = Zero;
-	public static readonly Value val_one          = One;
-	public static readonly Value val_empty_string = EmptyString;
-	public static readonly Value val_isa_key      = make_string("__isa");
-	public static readonly Value val_self         = make_string("self");
-	public static readonly Value val_super        = make_string("super");
+	public static readonly Value zero           = new Value(0x0000_0000_0000_0000UL);
+	public static readonly Value one            = new Value(0x3FF0_0000_0000_0000UL);
+	public static readonly Value emptyString    = new Value(TINY_STRING_TAG);
+	public static readonly Value magicIsA       = make_string("__isa");
+	public static readonly Value keyString      = make_string("key");
+	public static readonly Value valueString    = make_string("value");
+	public static readonly Value implicitResult = make_string("_");
+	public static readonly Value selfString     = make_string("self");
+	public static readonly Value superString    = make_string("super");
 
 	// ==== MS1 INSTANCE PREDICATES ============================================
 	[MethodImpl(MethodImplOptions.AggressiveInlining)] public bool IsNull()    => _u == NULL_VALUE;
@@ -91,7 +85,7 @@ public readonly struct Value {
 	[MethodImpl(MethodImplOptions.AggressiveInlining)] public bool   BoolValue()   => is_truthy(this);
 
 	// ==== MS1 TRUTH FACTORIES ================================================
-	public static Value Truth(bool b)   => b ? One : Zero;
+	public static Value Truth(bool b)   => b ? one : zero;
 	public static Value Truth(double d) => new Value(d);
 
 	// ==== RAW BIT ACCESS =====================================================
@@ -174,7 +168,7 @@ public readonly struct Value {
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value funcref_outer_vars(Value v) {
-		if (!is_funcref(v)) return val_null;
+		if (!is_funcref(v)) return Value.Null;
 		return GCManager.Functions.Get(value_item_index(v)).OuterVars;
 	}
 
@@ -190,25 +184,25 @@ public readonly struct Value {
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value error_message(Value v) {
-		if (!is_error(v)) return val_null;
+		if (!is_error(v)) return Value.Null;
 		return GCManager.Errors.Get(value_item_index(v)).Message;
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value error_inner(Value v) {
-		if (!is_error(v)) return val_null;
+		if (!is_error(v)) return Value.Null;
 		return GCManager.Errors.Get(value_item_index(v)).Inner;
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value error_stack(Value v) {
-		if (!is_error(v)) return val_null;
+		if (!is_error(v)) return Value.Null;
 		return GCManager.Errors.Get(value_item_index(v)).Stack;
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value error_isa(Value v) {
-		if (!is_error(v)) return val_null;
+		if (!is_error(v)) return Value.Null;
 		return GCManager.Errors.Get(value_item_index(v)).Isa;
 	}
 
@@ -445,7 +439,7 @@ public readonly struct Value {
 				Value key = map.KeyAt(iter);
 				Value val = map.ValueAt(iter);
 				int nextRecurLimit = recursionLimit - 1;
-				if (value_equal(key, val_isa_key)) nextRecurLimit = 1;
+				if (value_equal(key, Value.magicIsA)) nextRecurLimit = 1;
 				strs.Add(string.Format("{0}: {1}", code_form(key, vm, nextRecurLimit),
 					is_null(val) ? "null" : code_form(val, vm, nextRecurLimit)));
 			}
@@ -468,7 +462,7 @@ public readonly struct Value {
 
 	public static Value to_number(Value a) {
 		try { return make_double(double.Parse(to_String(a), CultureInfo.InvariantCulture)); }
-		catch { return val_zero; }
+		catch { return Value.zero; }
 	}
 
 	// ==== RUNTIME ERROR / STACK TRACE ========================================
@@ -480,15 +474,15 @@ public readonly struct Value {
 	// VM is active (e.g. unit tests exercising value ops in isolation).
 	public static Value value_make_runtime_error(String message) { // CPP: // (defined in value.cpp)
 		VM vm = VM.ActiveVM();
-		if (vm == null) return make_error(make_string(message), val_null, val_null, val_null);
+		if (vm == null) return make_error(make_string(message), Value.Null, Value.Null, Value.Null);
 		return vm.MakeRuntimeError(message);
 	}
 
 	// Return the active VM's current call stack as a Value (frozen list of
-	// strings), or val_null if no VM is running.
+	// strings), or Value.Null if no VM is running.
 	public static Value value_current_stack_trace() { // CPP: // (defined in value.cpp)
 		VM vm = VM.ActiveVM();
-		if (vm == null) return val_null;
+		if (vm == null) return Value.Null;
 		return vm.CurrentStackTrace();
 	}
 
@@ -521,7 +515,7 @@ public readonly struct Value {
 			return list_concat(a, b);
 		}
 		if (is_map(a)  && is_map(b))  return map_concat(a, b);
-		return val_null;
+		return Value.Null;
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -531,13 +525,13 @@ public readonly struct Value {
 		if (is_double(a) && is_double(b)) return make_double(as_double(a) * as_double(b));
 		if (is_string(a) && is_double(b)) {
 			double factor = as_double(b);
-			if (double.IsNaN(factor) || double.IsInfinity(factor)) return val_null;
-			if (factor <= 0) return val_empty_string;
+			if (double.IsNaN(factor) || double.IsInfinity(factor)) return Value.Null;
+			if (factor <= 0) return Value.emptyString;
 			if (string_length(a) * factor > MAX_COLLECTION_SIZE) {
 				return value_make_runtime_error("string too large (exceeds maximum size)");
 			}
 			int repeats = (int)factor;
-			Value result = val_empty_string;
+			Value result = Value.emptyString;
 			for (int i = 0; i < repeats; i++) result = string_concat(result, a);
 			int extraChars = (int)(string_length(a) * (factor - repeats));
 			if (extraChars > 0) result = string_concat(result, string_substring(a, 0, extraChars));
@@ -545,7 +539,7 @@ public readonly struct Value {
 		}
 		if (is_list(a) && is_double(b)) {
 			double factor = as_double(b);
-			if (double.IsNaN(factor) || double.IsInfinity(factor)) return val_null;
+			if (double.IsNaN(factor) || double.IsInfinity(factor)) return Value.Null;
 			int len = list_count(a);
 			if (factor <= 0 || len == 0) return make_list(0);
 			if (len * factor > MAX_COLLECTION_SIZE) {
@@ -558,7 +552,7 @@ public readonly struct Value {
 			if (len == 1 && extraItems == 0) {
 				Value elem = list_get(a, 0);
 				if (is_number(elem) || is_string(elem) || is_null(elem) || is_frozen(elem)) {
-					return GCManager.NewComputedList(elem, val_null, fullCopies);
+					return GCManager.NewComputedList(elem, Value.Null, fullCopies);
 				}
 			}
 			Value result = make_list(fullCopies * len + extraItems);
@@ -567,7 +561,7 @@ public readonly struct Value {
 			for (int i = 0; i < extraItems; i++) list_push(result, list_get(a, i));
 			return result;
 		}
-		return val_null;
+		return Value.Null;
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -578,10 +572,10 @@ public readonly struct Value {
 		if (is_string(a) && is_double(b)) return value_mult(a, value_div(make_double(1), b));
 		if (is_list(a) && is_double(b)) {
 			double db = as_double(b);
-			if (db == 0 || double.IsNaN(db) || double.IsInfinity(db)) return val_null;
+			if (db == 0 || double.IsNaN(db) || double.IsInfinity(db)) return Value.Null;
 			return value_mult(a, value_div(make_double(1), b));
 		}
-		return val_null;
+		return Value.Null;
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -589,14 +583,14 @@ public readonly struct Value {
 		if (is_error(a)) return a;
 		if (is_error(b)) return b;
 		if (is_double(a) && is_double(b)) return make_double(as_double(a) % as_double(b));
-		return val_null;
+		return Value.Null;
 	}
 
 	public static Value value_pow(Value a, Value b) {
 		if (is_error(a)) return a;
 		if (is_error(b)) return b;
 		if (is_double(a) && is_double(b)) return make_double(Math.Pow(as_double(a), as_double(b)));
-		return val_null;
+		return Value.Null;
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -611,7 +605,7 @@ public readonly struct Value {
 				return make_string(sa.Substring(0, sa.Length - sb.Length));
 			return a;
 		}
-		return val_null;
+		return Value.Null;
 	}
 
 	// ==== FUZZY LOGIC ========================================================
@@ -712,7 +706,7 @@ public readonly struct Value {
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value list_get(Value list_val, int index) {
-		if (!is_list(list_val)) return val_null;
+		if (!is_list(list_val)) return Value.Null;
 		return GCManager.Lists.Get(value_item_index(list_val)).Get(index);
 	}
 
@@ -761,10 +755,10 @@ public readonly struct Value {
 	}
 
 	public static Value list_pop(Value list_val) {
-		if (!is_list(list_val)) return val_null;
+		if (!is_list(list_val)) return Value.Null;
 		int idx = value_item_index(list_val);
 		GCList list = GCManager.Lists.Get(idx);
-		if (list.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return val_null; }
+		if (list.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return Value.Null; }
 		bool wasComputed = list.Computed;
 		Value result = list.Pop();
 		if (wasComputed) GCManager.Lists.Set(idx, list);  // write back length/materialization
@@ -772,10 +766,10 @@ public readonly struct Value {
 	}
 
 	public static Value list_pull(Value list_val) {
-		if (!is_list(list_val)) return val_null;
+		if (!is_list(list_val)) return Value.Null;
 		int idx = value_item_index(list_val);
 		GCList list = GCManager.Lists.Get(idx);
-		if (list.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return val_null; }
+		if (list.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return Value.Null; }
 		bool wasComputed = list.Computed;
 		Value result = list.Pull();
 		if (wasComputed) GCManager.Lists.Set(idx, list);  // write back materialization
@@ -864,7 +858,7 @@ public readonly struct Value {
 			} else if (is_list(elem) && is_number(byKey)) {
 				keys[i] = list_get(elem, (int)numeric_val(byKey));
 			} else {
-				keys[i] = val_null;
+				keys[i] = Value.Null;
 			}
 		}
 		int[] indices = new int[count];
@@ -895,20 +889,20 @@ public readonly struct Value {
 	}
 
 	public static Value map_get(Value map_val, Value key) {
-		if (!is_map(map_val)) return val_null;
+		if (!is_map(map_val)) return Value.Null;
 		GCManager.Maps.Get(value_item_index(map_val)).TryGet(key, out Value result);
 		return result;
 	}
 
 	public static bool map_try_get(Value map_val, Value key, out Value value) {
-		value = val_null;
+		value = Value.Null;
 		if (!is_map(map_val)) return false;
 		return GCManager.Maps.Get(value_item_index(map_val)).TryGet(key, out value);
 	}
 
 	public static bool map_lookup(Value map_val, Value key, out Value value) {
-		value = val_null;
-		Value isaKey = val_isa_key;
+		value = Value.Null;
+		Value isaKey = Value.magicIsA;
 		Value current = map_val;
 		for (Int32 depth = 0; depth < 256; depth++) {
 			if (!is_map(current)) return false;
@@ -921,9 +915,9 @@ public readonly struct Value {
 	}
 
 	public static bool map_lookup_with_origin(Value map_val, Value key, out Value value, out Value superVal) {
-		value    = val_null;
-		superVal = val_null;
-		Value isaKey = val_isa_key;
+		value    = Value.Null;
+		superVal = Value.Null;
+		Value isaKey = Value.magicIsA;
 		Value current = map_val;
 		for (Int32 depth = 0; depth < 256; depth++) {
 			if (!is_map(current)) return false;
@@ -968,7 +962,7 @@ public readonly struct Value {
 	}
 
 	public static Value map_nth_entry(Value map_val, int n) {
-		if (!is_map(map_val)) return val_null;
+		if (!is_map(map_val)) return Value.Null;
 		GCMap m = GCManager.Maps.Get(value_item_index(map_val));
 		int count = 0;
 		for (int iter = m.NextEntry(-1); iter != -1; iter = m.NextEntry(iter)) {
@@ -980,7 +974,7 @@ public readonly struct Value {
 			}
 			count++;
 		}
-		return val_null;
+		return Value.Null;
 	}
 
 	// ==== MAP ITERATION ======================================================
@@ -994,7 +988,7 @@ public readonly struct Value {
 	}
 
 	public static Value map_iter_entry(Value map_val, int iter) {
-		if (!is_map(map_val) || iter == MAP_ITER_DONE) return val_null;
+		if (!is_map(map_val) || iter == MAP_ITER_DONE) return Value.Null;
 		GCMap m = GCManager.Maps.Get(value_item_index(map_val));
 		Value key = m.KeyAt(iter);
 		Value val = m.ValueAt(iter);
@@ -1135,13 +1129,13 @@ public readonly struct Value {
 		if (end   < 0) end   += len;
 		if (start < 0) start = 0;
 		if (end > len) end   = len;
-		if (start >= end) return val_empty_string;
+		if (start >= end) return Value.emptyString;
 		return make_string(s.Substring(start, end - start));
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value string_concat(Value a, Value b) {
-		if (!is_string(a) || !is_string(b)) return val_null;
+		if (!is_string(a) || !is_string(b)) return Value.Null;
 		return make_string(GetStringValue(a) + GetStringValue(b));
 	}
 
@@ -1152,7 +1146,7 @@ public readonly struct Value {
 	}
 
 	public static Value string_split(Value str, Value delimiter) {
-		if (!is_string(str) || !is_string(delimiter)) return val_null;
+		if (!is_string(str) || !is_string(delimiter)) return Value.Null;
 		string s = GetStringValue(str);
 		string delim = GetStringValue(delimiter);
 		string[] parts;
@@ -1168,7 +1162,7 @@ public readonly struct Value {
 	}
 
 	public static Value string_replace(Value str, Value from, Value to) {
-		if (!is_string(str) || !is_string(from) || !is_string(to)) return val_null;
+		if (!is_string(str) || !is_string(from) || !is_string(to)) return Value.Null;
 		string s = GetStringValue(str);
 		string fromStr = GetStringValue(from);
 		if (fromStr == "" || !s.Contains(fromStr)) return str;
@@ -1186,7 +1180,7 @@ public readonly struct Value {
 	}
 
 	public static Value string_split_max(Value str, Value delimiter, int maxCount) {
-		if (!is_string(str) || !is_string(delimiter)) return val_null;
+		if (!is_string(str) || !is_string(delimiter)) return Value.Null;
 		string s = GetStringValue(str);
 		string delim = GetStringValue(delimiter);
 		Value list = make_list(8);
@@ -1219,7 +1213,7 @@ public readonly struct Value {
 	}
 
 	public static Value string_replace_max(Value str, Value from, Value to, int maxCount) {
-		if (!is_string(str) || !is_string(from) || !is_string(to)) return val_null;
+		if (!is_string(str) || !is_string(from) || !is_string(to)) return Value.Null;
 		string s = GetStringValue(str);
 		string fromStr = GetStringValue(from);
 		string toStr   = GetStringValue(to);
@@ -1260,6 +1254,39 @@ public readonly struct Value {
 		return char.ConvertToUtf32(s, 0);
 	}
 
+	// ── Map iterator (struct-based) ───────────────────────────────────────────
+	public struct MapIterator {
+		public int MapIndex;
+		public int Iter;
+		public Value Key;
+		public Value Val;
+	}
+
+	public static MapIterator map_iterator(Value map_val) {
+		MapIterator it = new MapIterator();
+		it.Key = Value.Null;
+		it.Val = Value.Null;
+		if (map_val.IsMap()) {
+			it.MapIndex = value_item_index(map_val);
+			it.Iter     = -1;
+		} else {
+			it.MapIndex = -1;
+			it.Iter     = MAP_ITER_DONE;
+		}
+		return it;
+	}
+
+	public static bool map_iterator_next(ref MapIterator iter) {
+		if (iter.MapIndex < 0 || iter.Iter == MAP_ITER_DONE) return false;
+		int next = GCManager.Maps.Get(iter.MapIndex).NextEntry(iter.Iter);
+		if (next == -1) { iter.Iter = MAP_ITER_DONE; return false; }
+		iter.Iter = next;
+		GCMap m = GCManager.Maps.Get(iter.MapIndex);
+		iter.Key = m.KeyAt(next);
+		iter.Val = m.ValueAt(next);
+		return true;
+	}
+
 	// ==== OVERRIDES ==========================================================
 	[Obsolete("Use to_String(v, vm) instead")]
 	public override string ToString() => to_String(this);
@@ -1281,286 +1308,7 @@ public readonly struct Value {
 	}
 }
 
-// =============================================================================
-// Backward-compatibility shims.
-// These thin wrappers let existing files that use `using static MiniScript.ValueHelpers`
-// continue to compile unchanged.  They are candidates for removal once all call
-// sites have been updated to call Value methods directly.
-// =============================================================================
-public static class ValueHelpers {
-
-	// ── Constants ─────────────────────────────────────────────────────────────
-	public const int MAX_COLLECTION_SIZE = Value.MAX_COLLECTION_SIZE;
-	public const int MAP_ITER_DONE       = Value.MAP_ITER_DONE;
-
-	// ── Value constants ───────────────────────────────────────────────────────
-	public static readonly Value val_null         = Value.Null;
-	public static readonly Value val_zero         = Value.Zero;
-	public static readonly Value val_one          = Value.One;
-	public static readonly Value val_empty_string = Value.EmptyString;
-	public static readonly Value val_isa_key      = Value.val_isa_key;
-	public static readonly Value val_self         = Value.val_self;
-	public static readonly Value val_super        = Value.val_super;
-
-	// ── Raw bit access ────────────────────────────────────────────────────────
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static ulong value_bits(Value v) => Value.value_bits(v);
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static int value_gc_set_index(Value v) => Value.value_gc_set_index(v);
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static int value_item_index(Value v) => Value.value_item_index(v);
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static int value_tiny_len(Value v) => Value.value_tiny_len(v);
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static void value_tiny_copy_to(Value v, Span<byte> dst) => Value.value_tiny_copy_to(v, dst);
-
-	// ── Value creation ────────────────────────────────────────────────────────
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value make_null() => Value.make_null();
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value make_double(double d) => Value.make_double(d);
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value make_int(int i) => Value.make_int(i);
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value make_int(bool b) => Value.make_int(b);
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value make_gc(int gcSet, int itemIdx) => Value.make_gc(gcSet, itemIdx);
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value make_string(string str) => Value.make_string(str);
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value make_list(int initial_capacity) => Value.make_list(initial_capacity);
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value make_empty_list() => Value.make_empty_list();
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value make_empty_map() => Value.make_empty_map();
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value make_map(int initial_capacity) => Value.make_map(initial_capacity);
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value make_funcref(FuncDef func, Value outerVars) => Value.make_funcref(func, outerVars);
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static FuncDef funcref_funcdef(Value v) => Value.funcref_funcdef(v);
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value funcref_outer_vars(Value v) => Value.funcref_outer_vars(v);
-
-	// ── Error operations ──────────────────────────────────────────────────────
-	public static Value make_error(Value message, Value inner, Value stack, Value isa) => Value.make_error(message, inner, stack, isa);
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value error_message(Value v) => Value.error_message(v);
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value error_inner(Value v) => Value.error_inner(v);
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value error_stack(Value v) => Value.error_stack(v);
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value error_isa(Value v) => Value.error_isa(v);
-	public static bool error_isa_contains(Value err, Value target) => Value.error_isa_contains(err, target);
-
-	// ── Type predicates ───────────────────────────────────────────────────────
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool is_null(Value v) => Value.is_null(v);
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool is_int(Value v) => Value.is_int(v);
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool is_double(Value v) => Value.is_double(v);
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool is_tiny_string(Value v) => Value.is_tiny_string(v);
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool is_gc_object(Value v) => Value.is_gc_object(v);
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool is_heap_string(Value v) => Value.is_heap_string(v);
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool is_interned_string(Value v) => Value.is_interned_string(v);
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool is_string(Value v) => Value.is_string(v);
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool is_list(Value v) => Value.is_list(v);
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool is_map(Value v) => Value.is_map(v);
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool is_error(Value v) => Value.is_error(v);
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool is_funcref(Value v) => Value.is_funcref(v);
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool is_handle(Value v) => Value.is_handle(v);
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool is_number(Value v) => Value.is_number(v);
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool is_truthy(Value v) => Value.is_truthy(v);
-
-	// ── Numeric accessors ─────────────────────────────────────────────────────
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static int as_int(Value v) => Value.as_int(v);
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static double as_double(Value v) => Value.as_double(v);
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static double numeric_val(Value v) => Value.numeric_val(v);
-
-	// ── Type name ─────────────────────────────────────────────────────────────
-	public static String value_type_name(Value v) => Value.value_type_name(v);
-
-	// ── String accessors ──────────────────────────────────────────────────────
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static String as_cstring(Value v) => Value.as_cstring(v);
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	internal static string GetStringValue(Value val) => Value.GetStringValue(val);
-
-	// ── Conversion ────────────────────────────────────────────────────────────
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static String to_String(Value v, VM vm = null) => Value.to_String(v, vm);
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value to_string(Value a, VM vm = null) => Value.to_string(a, vm);
-	public static Value value_repr(Value v, VM vm = null) => Value.value_repr(v, vm);
-	public static string code_form(Value v, VM vm = null, int recursionLimit = -1) => Value.code_form(v, vm, recursionLimit);
-	public static Value to_number(Value a) => Value.to_number(a);
-
-	// ── Runtime error / stack trace ───────────────────────────────────────────
-	public static Value value_make_runtime_error(String message) => Value.value_make_runtime_error(message);
-	public static Value value_current_stack_trace() => Value.value_current_stack_trace();
-
-	// ── Arithmetic ────────────────────────────────────────────────────────────
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value value_add(Value a, Value b, VM vm = null) => Value.value_add(a, b, vm);
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value value_mult(Value a, Value b) => Value.value_mult(a, b);
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value value_div(Value a, Value b) => Value.value_div(a, b);
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value value_mod(Value a, Value b) => Value.value_mod(a, b);
-	public static Value value_pow(Value a, Value b) => Value.value_pow(a, b);
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value value_sub(Value a, Value b) => Value.value_sub(a, b);
-
-	// ── Fuzzy logic ───────────────────────────────────────────────────────────
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Double ToFuzzyBool(Value v) => Value.ToFuzzyBool(v);
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Double AbsClamp01(Double d) => Value.AbsClamp01(d);
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value value_and(Value a, Value b) => Value.value_and(a, b);
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value value_or(Value a, Value b) => Value.value_or(a, b);
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value value_not(Value a) => Value.value_not(a);
-
-	// ── Hashing ───────────────────────────────────────────────────────────────
-	public static Int32 value_hash(Value v) => Value.value_hash(v);
-
-	// ── Comparison ────────────────────────────────────────────────────────────
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool value_identical(Value a, Value b) => Value.value_identical(a, b);
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool value_lt(Value a, Value b) => Value.value_lt(a, b);
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool value_le(Value a, Value b) => Value.value_le(a, b);
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool value_equal(Value a, Value b) => Value.value_equal(a, b);
-
-	// ── List operations ───────────────────────────────────────────────────────
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static int list_count(Value list_val) => Value.list_count(list_val);
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value list_get(Value list_val, int index) => Value.list_get(list_val, index);
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static void list_set(Value list_val, int index, Value item) => Value.list_set(list_val, index, item);
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static void list_push(Value list_val, Value item) => Value.list_push(list_val, item);
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool list_remove(Value list_val, int index) => Value.list_remove(list_val, index);
-	public static void list_insert(Value list_val, int index, Value item) => Value.list_insert(list_val, index, item);
-	public static Value list_pop(Value list_val) => Value.list_pop(list_val);
-	public static Value list_pull(Value list_val) => Value.list_pull(list_val);
-	public static int list_indexOf(Value list_val, Value item, int afterIdx) => Value.list_indexOf(list_val, item, afterIdx);
-	public static void list_sort(Value list_val, bool ascending) => Value.list_sort(list_val, ascending);
-	public static void list_sort_by_key(Value list_val, Value byKey, bool ascending) => Value.list_sort_by_key(list_val, byKey, ascending);
-	public static Value list_slice(Value list_val, int start, int end) => Value.list_slice(list_val, start, end);
-	public static Value list_concat(Value a, Value b) => Value.list_concat(a, b);
-
-	// ── Map operations ────────────────────────────────────────────────────────
-	public static int map_count(Value map_val) => Value.map_count(map_val);
-	public static Value map_get(Value map_val, Value key) => Value.map_get(map_val, key);
-	public static bool map_try_get(Value map_val, Value key, out Value value) => Value.map_try_get(map_val, key, out value);
-	public static bool map_lookup(Value map_val, Value key, out Value value) => Value.map_lookup(map_val, key, out value);
-	public static bool map_lookup_with_origin(Value map_val, Value key, out Value value, out Value superVal) => Value.map_lookup_with_origin(map_val, key, out value, out superVal);
-	public static bool map_set(Value map_val, Value key, Value value) => Value.map_set(map_val, key, value);
-	public static bool map_set(Value map_val, string key, Value value) => Value.map_set(map_val, key, value);
-	public static bool map_set(Value map_val, string key, string value) => Value.map_set(map_val, key, value);
-	public static bool map_remove(Value map_val, Value key) => Value.map_remove(map_val, key);
-	public static bool map_has_key(Value map_val, Value key) => Value.map_has_key(map_val, key);
-	public static void map_clear(Value map_val) => Value.map_clear(map_val);
-	public static Value map_nth_entry(Value map_val, int n) => Value.map_nth_entry(map_val, n);
-	public static int map_iter_next(Value map_val, int iter) => Value.map_iter_next(map_val, iter);
-	public static Value map_iter_entry(Value map_val, int iter) => Value.map_iter_entry(map_val, iter);
-
-	// ── Legacy struct-based map iterator ─────────────────────────────────────
-	// MapIterator is defined here (not in Value) so existing call sites that
-	// name the type as ValueHelpers.MapIterator continue to compile.
-	public struct MapIterator {
-		public int MapIndex;
-		public int Iter;
-		public Value Key;
-		public Value Val;
-	}
-
-	public static MapIterator map_iterator(Value map_val) {
-		MapIterator it = new MapIterator();
-		it.Key = Value.val_null;
-		it.Val = Value.val_null;
-		if (Value.is_map(map_val)) {
-			it.MapIndex = Value.value_item_index(map_val);
-			it.Iter     = -1;
-		} else {
-			it.MapIndex = -1;
-			it.Iter     = MAP_ITER_DONE;
-		}
-		return it;
-	}
-
-	public static bool map_iterator_next(ref MapIterator iter) {
-		if (iter.MapIndex < 0 || iter.Iter == MAP_ITER_DONE) return false;
-		int next = GCManager.Maps.Get(iter.MapIndex).NextEntry(iter.Iter);
-		if (next == -1) { iter.Iter = MAP_ITER_DONE; return false; }
-		iter.Iter = next;
-		GCMap m = GCManager.Maps.Get(iter.MapIndex);
-		iter.Key = m.KeyAt(next);
-		iter.Val = m.ValueAt(next);
-		return true;
-	}
-
-	// ── VarMap operations ─────────────────────────────────────────────────────
-	public static Value make_varmap(List<Value> registers, List<Value> names, int baseIdx, int count) => Value.make_varmap(registers, names, baseIdx, count);
-	public static void varmap_gather(Value map_val) => Value.varmap_gather(map_val);
-	public static void varmap_rebind(Value map_val, List<Value> registers, List<Value> names) => Value.varmap_rebind(map_val, registers, names);
-	public static void varmap_map_to_register(Value map_val, Value varName, List<Value> registers, int regIndex) => Value.varmap_map_to_register(map_val, varName, registers, regIndex);
-
-	// ── Freeze operations ─────────────────────────────────────────────────────
-	public static bool is_frozen(Value v) => Value.is_frozen(v);
-	public static void freeze_value(Value v) => Value.freeze_value(v);
-	public static Value frozen_copy(Value v) => Value.frozen_copy(v);
-
-	// ── Map concat ────────────────────────────────────────────────────────────
-	public static Value map_concat(Value a, Value b) => Value.map_concat(a, b);
-
-	// ── String operations ─────────────────────────────────────────────────────
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static int string_length(Value v) => Value.string_length(v);
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static int string_indexOf(Value haystack, Value needle, int start_pos) => Value.string_indexOf(haystack, needle, start_pos);
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value string_substring(Value str, int startIndex, int len) => Value.string_substring(str, startIndex, len);
-	public static Value string_slice(Value str, int start, int end) => Value.string_slice(str, start, end);
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value string_concat(Value a, Value b) => Value.string_concat(a, b);
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static int string_compare(Value a, Value b) => Value.string_compare(a, b);
-	public static Value string_split(Value str, Value delimiter) => Value.string_split(str, delimiter);
-	public static Value string_replace(Value str, Value from, Value to) => Value.string_replace(str, from, to);
-	public static Value string_insert(Value str, int index, Value value, VM vm = null) => Value.string_insert(str, index, value, vm);
-	public static Value string_split_max(Value str, Value delimiter, int maxCount) => Value.string_split_max(str, delimiter, maxCount);
-	public static Value string_replace_max(Value str, Value from, Value to, int maxCount) => Value.string_replace_max(str, from, to, maxCount);
-	public static Value string_upper(Value str) => Value.string_upper(str);
-	public static Value string_lower(Value str) => Value.string_lower(str);
-	public static Value string_from_code_point(int codePoint) => Value.string_from_code_point(codePoint);
-	public static int string_code_point(Value str) => Value.string_code_point(str);
-}
+// ValueHelpers deleted — all members live on the Value struct directly.
 
 }
 //*** END CS_ONLY ***

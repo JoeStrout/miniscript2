@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;	// only for ToList!
 using System.Threading;
 using MiniScript;
-using static MiniScript.ValueHelpers;
+using static MiniScript.Value;
 
 /*** BEGIN CPP_ONLY ***
 #include "CodeEmitter.g.h"
@@ -419,7 +419,7 @@ public struct App {
 			IOHelper.Print("Executing @main with VM...");
 		}
 
-		Value result = val_null;
+		Value result = Value.Null;
 
 		if (visMode) {
 			VMVis vis = new VMVis(vm);

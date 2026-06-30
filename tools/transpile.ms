@@ -487,7 +487,7 @@ Transpiler.transformStatement = function(trimmedLine)
 	// non-identifier string.
 	tokens = roughTokenize(trimmedLine)
 	
-	deepDebug = trimmedLine.contains("OuterVarMap");
+	deepDebug = false //trimmedLine.contains("OuterVarMap");
 	ddprint = function(s); if deepDebug then print "====> " + s; end function
 	summarize = function(obj)
 		if obj == null then return "<null>"
@@ -678,7 +678,7 @@ Transpiler.transformStatement = function(trimmedLine)
 		nextInfo = self.lookup(tokens[i], curInfo)
 		if self.curClass then curClassName = self.curClass.name else curClassName = ""
 		ddprint "lookup of " + tokens[i] + ": " + summarize(nextInfo)
-		if tokens[i] == "callee" then print "localVars: " + self.localVars.applied(@summarize)
+		//if tokens[i] == "callee" then print "localVars: " + self.localVars.applied(@summarize)
 		if nextInfo isa VariableInfo and nextInfo.ref then
 			// "reference" (pointer) type -- insert '*'
 			tokens[i] = "*" + tokens[i]

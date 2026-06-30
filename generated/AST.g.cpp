@@ -210,7 +210,7 @@ ASTNode BinaryOpNodeStorage::Simplify() {
 		double factor = rightNum.Value();
 		if (StringUtils::IsNaN(factor) || StringUtils::IsInfinity(factor) || factor <= 0) return  StringNode::New("");
 		// If the result would exceed the maximum size, don't fold; leave it as
-		// a runtime op so value_mult raises the "string too large" error.
+		// a runtime op so operator* raises the "string too large" error.
 		if (leftStr.Value().Length() * factor > Value::MAX_COLLECTION_SIZE) {
 			return  BinaryOpNode::New(Op, simplifiedLeft, simplifiedRight);
 		}

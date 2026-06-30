@@ -111,14 +111,9 @@ typedef struct Value {
     static double AbsClamp01(double d);
 
     static Value  value_add(Value a, Value b, void* vm);
-    static Value  value_sub(Value a, Value b);
-    static Value  value_mult(Value a, Value b);
-    static Value  value_div(Value a, Value b);
-    static Value  value_mod(Value a, Value b);
     static Value  value_pow(Value a, Value b);
     static Value  value_and(Value a, Value b);
     static Value  value_or(Value a, Value b);
-    static Value  value_not(Value a);
     static bool   value_lt(Value a, Value b);
     static bool   value_le(Value a, Value b);
 
@@ -403,7 +398,7 @@ inline Value Value::value_add(Value a, Value b, void* vm) {
     return Value::null;
 }
 
-inline Value Value::value_sub(Value a, Value b) {
+inline Value operator-(Value a, Value b) {
     if (a.IsError()) return a;
     if (b.IsError()) return b;
     if (a.IsNumber() && b.IsNumber()) {
@@ -420,7 +415,7 @@ inline bool Value::value_lt(Value a, Value b) {
 }
 
 extern Value value_mult_nonnumeric(Value a, Value b);
-inline Value Value::value_mult(Value a, Value b) {
+inline Value operator*(Value a, Value b) {
     if (a.IsError()) return a;
     if (b.IsError()) return b;
     if (a.IsNumber() && b.IsNumber()) {
@@ -429,17 +424,17 @@ inline Value Value::value_mult(Value a, Value b) {
     return value_mult_nonnumeric(a, b);
 }
 
-inline Value Value::value_div(Value a, Value b) {
+inline Value operator/(Value a, Value b) {
     if (a.IsError()) return a;
     if (b.IsError()) return b;
     if (b.IsNumber()) {
         if (a.IsNumber()) return Value(as_double(a) / as_double(b));
-        return value_mult_nonnumeric(a, Value::value_div(Value(1.0), b));
+        return value_mult_nonnumeric(a, Value(1.0) / b);
     }
     return Value::null;
 }
 
-inline Value Value::value_mod(Value a, Value b) {
+inline Value operator%(Value a, Value b) {
     if (a.IsError()) return a;
     if (b.IsError()) return b;
     if (a.IsNumber() && b.IsNumber()) return Value(fmod(as_double(a), as_double(b)));
@@ -483,7 +478,7 @@ inline Value Value::value_or(Value a, Value b) {
     return Value(Value::AbsClamp01(fA + fB - fA * fB));
 }
 
-inline Value Value::value_not(Value a) {
+inline Value operator!(Value a) {
     if (a.IsError()) return a;
     return Value(1.0 - Value::AbsClamp01(ToFuzzyBool(a)));
 }

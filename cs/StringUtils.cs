@@ -209,15 +209,15 @@ public static class StringUtils {
 	}
 	// Value type: delegate to to_string (handles all types, raw string for strings)
 	inline static String makeString(Value v) {
-		return String(as_cstring(to_string(v, NULL)));
+		return String(Value::as_cstring(Value::to_string(v, NULL)));
 	}
 	// Value type with VM context: enables short-name display for maps/lists
 	inline static String makeString(Value v, void* vm) {
-		return String(as_cstring(to_string(v, vm)));
+		return String(Value::as_cstring(Value::to_string(v, vm)));
 	}
 	// Value repr (strings quoted): delegate to value_repr
 	inline static String makeRepr(const Value v) {
-		return String(as_cstring(value_repr(v, NULL)));
+		return String(Value::as_cstring(Value::value_repr(v, NULL)));
 	}
 
 	// Generic fallback for numbers and streamable types.

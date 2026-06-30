@@ -475,7 +475,7 @@ public readonly struct Value {
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value value_mult(Value a, Value b) {
+	public static Value operator *(Value a, Value b) {
 		if (a.IsError()) return a;
 		if (b.IsError()) return b;
 		if (a.IsNumber() && b.IsNumber()) return new Value(as_double(a) * as_double(b));
@@ -521,21 +521,21 @@ public readonly struct Value {
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value value_div(Value a, Value b) {
+	public static Value operator /(Value a, Value b) {
 		if (a.IsError()) return a;
 		if (b.IsError()) return b;
 		if (a.IsNumber() && b.IsNumber()) return new Value(as_double(a) / as_double(b));
-		if (a.IsString() && b.IsNumber()) return value_mult(a, value_div(new Value(1.0), b));
+		if (a.IsString() && b.IsNumber()) return a * (new Value(1.0) / b);
 		if (a.IsList() && b.IsNumber()) {
 			double db = as_double(b);
 			if (db == 0 || double.IsNaN(db) || double.IsInfinity(db)) return Value.Null;
-			return value_mult(a, value_div(new Value(1.0), b));
+			return a * (new Value(1.0) / b);
 		}
 		return Value.Null;
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value value_mod(Value a, Value b) {
+	public static Value operator %(Value a, Value b) {
 		if (a.IsError()) return a;
 		if (b.IsError()) return b;
 		if (a.IsNumber() && b.IsNumber()) return new Value(as_double(a) % as_double(b));
@@ -550,7 +550,7 @@ public readonly struct Value {
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value value_sub(Value a, Value b) {
+	public static Value operator -(Value a, Value b) {
 		if (a.IsError()) return a;
 		if (b.IsError()) return b;
 		if (a.IsNumber() && b.IsNumber()) return new Value(as_double(a) - as_double(b));
@@ -593,7 +593,7 @@ public readonly struct Value {
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value value_not(Value a) {
+	public static Value operator !(Value a) {
 		if (a.IsError()) return a;
 		return new Value(1.0 - AbsClamp01(ToFuzzyBool(a)));
 	}

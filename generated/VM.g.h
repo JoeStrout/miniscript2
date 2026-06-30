@@ -180,7 +180,7 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 
 	// Build a complete runtime error *value* (runtime __isa + an accurate stack
 	// trace) without stopping the VM.  This is the non-halting counterpart to
-	// RaiseRuntimeError: core value operations (e.g. value_mult) use it to return
+	// RaiseRuntimeError: core value operations (e.g. operator*) use it to return
 	// an error as a value that propagates normally and only terminates the program
 	// if the caller misuses it.  The stack trace is attached by ErrorTypes.RuntimeError
 	// itself (via value_current_stack_trace), so this just delegates.
@@ -459,7 +459,7 @@ struct VM {
 
 	// Build a complete runtime error *value* (runtime __isa + an accurate stack
 	// trace) without stopping the VM.  This is the non-halting counterpart to
-	// RaiseRuntimeError: core value operations (e.g. value_mult) use it to return
+	// RaiseRuntimeError: core value operations (e.g. operator*) use it to return
 	// an error as a value that propagates normally and only terminates the program
 	// if the caller misuses it.  The stack trace is attached by ErrorTypes.RuntimeError
 	// itself (via value_current_stack_trace), so this just delegates.

@@ -139,7 +139,7 @@ void VMStorage::InitVM(Int32 stackSlots,Int32 callSlots) {
 	});
 
 	// Wire value.cpp's runtime-error constructor hook (layer 2A) to the
-	// active VM's MakeRuntimeError, so errors created from value_mult and
+	// active VM's MakeRuntimeError, so errors created from operator* and
 	// friends carry the runtime __isa *and* an accurate stack trace, matching
 	// the C# side.  Falls back to a bare error if there is no active VM.
 	set_runtime_error_maker([](const char* msg) -> Value {
@@ -627,7 +627,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 		UInt32 instruction = curCode[pc++];
 
 		// Keep the PC field current (one store per instruction) so that any
-		// code which builds a stack trace mid-instruction -- e.g. value_mult
+		// code which builds a stack trace mid-instruction -- e.g. operator*
 		// calling MakeRuntimeError -- sees an accurate location.  pc is already
 		// post-incremented here, matching BuildStackTrace's `PC - 1` convention.
 		// CurrentFunction and BaseIndex are kept current in SwitchFrame.
@@ -809,7 +809,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				Byte c = BytecodeUtil::Cu(instruction);
-				localStack[a] = Value::value_sub(localStack[b], localStack[c]);
+				localStack[a] = localStack[b] - localStack[c];
 				VM_NEXT();
 			}
 
@@ -818,7 +818,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				Byte c = BytecodeUtil::Cu(instruction);
-				localStack[a] = Value::value_mult(localStack[b], localStack[c]);
+				localStack[a] = localStack[b] * localStack[c];
 				VM_NEXT();
 			}
 
@@ -827,7 +827,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				Byte c = BytecodeUtil::Cu(instruction);
-				localStack[a] = Value::value_div(localStack[b], localStack[c]);
+				localStack[a] = localStack[b] / localStack[c];
 				VM_NEXT();
 			}
 
@@ -836,7 +836,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				Byte c = BytecodeUtil::Cu(instruction);
-				localStack[a] = Value::value_mod(localStack[b], localStack[c]);
+				localStack[a] = localStack[b] % localStack[c];
 				VM_NEXT();
 			}
 
@@ -871,7 +871,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				// R[A] = not R[B] (fuzzy logic: 1 - AbsClamp01(b))
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
-				localStack[a] = Value::value_not(localStack[b]);
+				localStack[a] = !localStack[b];
 				VM_NEXT();
 			}
 

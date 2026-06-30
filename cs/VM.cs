@@ -1246,7 +1246,7 @@ public class VM {
 					Byte c = BytecodeUtil.Cu(instruction);
 					if (localStack[b].IsError()) { localStack[a] = localStack[b]; break; }
 					if (localStack[c].IsError()) { localStack[a] = localStack[c]; break; }
-					localStack[a] = Value.Truth(Value.value_lt(localStack[b], localStack[c]));
+					localStack[a] = Value.Truth(localStack[b] < localStack[c]);
 					break;
 				}
 
@@ -1256,7 +1256,7 @@ public class VM {
 					Byte b = BytecodeUtil.Bu(instruction);
 					SByte c = BytecodeUtil.Cs(instruction);
 					if (localStack[b].IsError()) { localStack[a] = localStack[b]; break; }
-					localStack[a] = Value.Truth(Value.value_lt(localStack[b], new Value(c)));
+					localStack[a] = Value.Truth(localStack[b] < new Value(c));
 					break;
 				}
 
@@ -1266,7 +1266,7 @@ public class VM {
 					SByte b = BytecodeUtil.Bs(instruction);
 					Byte c = BytecodeUtil.Cu(instruction);
 					if (localStack[c].IsError()) { localStack[a] = localStack[c]; break; }
-					localStack[a] = Value.Truth(Value.value_lt(new Value(b), localStack[c]));
+					localStack[a] = Value.Truth(new Value(b) < localStack[c]);
 					break;
 				}
 
@@ -1277,7 +1277,7 @@ public class VM {
 					Byte c = BytecodeUtil.Cu(instruction);
 					if (localStack[b].IsError()) { localStack[a] = localStack[b]; break; }
 					if (localStack[c].IsError()) { localStack[a] = localStack[c]; break; }
-					localStack[a] = Value.Truth(Value.value_le(localStack[b], localStack[c]));
+					localStack[a] = Value.Truth(localStack[b] <= localStack[c]);
 					break;
 				}
 
@@ -1287,7 +1287,7 @@ public class VM {
 					Byte b = BytecodeUtil.Bu(instruction);
 					SByte c = BytecodeUtil.Cs(instruction);
 					if (localStack[b].IsError()) { localStack[a] = localStack[b]; break; }
-					localStack[a] = Value.Truth(Value.value_le(localStack[b], new Value(c)));
+					localStack[a] = Value.Truth(localStack[b] <= new Value(c));
 					break;
 				}
 
@@ -1297,7 +1297,7 @@ public class VM {
 					SByte b = BytecodeUtil.Bs(instruction);
 					Byte c = BytecodeUtil.Cu(instruction);
 					if (localStack[c].IsError()) { localStack[a] = localStack[c]; break; }
-					localStack[a] = Value.Truth(Value.value_le(new Value(b), localStack[c]));
+					localStack[a] = Value.Truth(new Value(b) <= localStack[c]);
 					break;
 				}
 
@@ -1388,7 +1388,7 @@ public class VM {
 						RaiseRuntimeError("Error used in conditional");
 						break;
 					}
-					if (Value.value_lt(localStack[a], localStack[b])){
+					if (localStack[a] < localStack[b]){
 						pc += offset;
 					}
 					break;
@@ -1403,7 +1403,7 @@ public class VM {
 						RaiseRuntimeError("Error used in conditional");
 						break;
 					}
-					if (Value.value_lt(localStack[a], new Value(b))){
+					if (localStack[a] < new Value(b)){
 						pc += offset;
 					}
 					break;
@@ -1418,7 +1418,7 @@ public class VM {
 						RaiseRuntimeError("Error used in conditional");
 						break;
 					}
-					if (Value.value_lt(new Value(a), localStack[b])){
+					if (new Value(a) < localStack[b]){
 						pc += offset;
 					}
 					break;
@@ -1433,7 +1433,7 @@ public class VM {
 						RaiseRuntimeError("Error used in conditional");
 						break;
 					}
-					if (Value.value_le(localStack[a], localStack[b])){
+					if (localStack[a] <= localStack[b]){
 						pc += offset;
 					}
 					break;
@@ -1448,7 +1448,7 @@ public class VM {
 						RaiseRuntimeError("Error used in conditional");
 						break;
 					}
-					if (Value.value_le(localStack[a], new Value(b))){
+					if (localStack[a] <= new Value(b)){
 						pc += offset;
 					}
 					break;
@@ -1463,7 +1463,7 @@ public class VM {
 						RaiseRuntimeError("Error used in conditional");
 						break;
 					}
-					if (Value.value_le(new Value(a), localStack[b])){
+					if (new Value(a) <= localStack[b]){
 						pc += offset;
 					}
 					break;
@@ -1520,7 +1520,7 @@ public class VM {
 					if (localStack[a].IsError() || localStack[b].IsError()) {
 						RaiseRuntimeError("Error used in conditional"); break;
 					}
-					if (!Value.value_lt(localStack[a], localStack[b])) {
+					if (localStack[a] >= localStack[b]) {
 						pc++; // Skip next instruction
 					}
 					break;
@@ -1531,7 +1531,7 @@ public class VM {
 					Byte a = BytecodeUtil.Au(instruction);
 					short bc = BytecodeUtil.BCs(instruction);
 					if (localStack[a].IsError()) { RaiseRuntimeError("Error used in conditional"); break; }
-					if (!Value.value_lt(localStack[a], new Value(bc))) {
+					if (localStack[a] >= new Value(bc)) {
 						pc++; // Skip next instruction
 					}
 					break;
@@ -1542,7 +1542,7 @@ public class VM {
 					short ab = BytecodeUtil.ABs(instruction);
 					Byte c = BytecodeUtil.Cu(instruction);
 					if (localStack[c].IsError()) { RaiseRuntimeError("Error used in conditional"); break; }
-					if (!Value.value_lt(new Value(ab), localStack[c])) {
+					if (new Value(ab) >= localStack[c]) {
 						pc++; // Skip next instruction
 					}
 					break;
@@ -1555,7 +1555,7 @@ public class VM {
 					if (localStack[a].IsError() || localStack[b].IsError()) {
 						RaiseRuntimeError("Error used in conditional"); break;
 					}
-					if (!Value.value_le(localStack[a], localStack[b])) {
+					if (localStack[a] > localStack[b]) {
 						pc++; // Skip next instruction
 					}
 					break;
@@ -1566,7 +1566,7 @@ public class VM {
 					Byte a = BytecodeUtil.Au(instruction);
 					short bc = BytecodeUtil.BCs(instruction);
 					if (localStack[a].IsError()) { RaiseRuntimeError("Error used in conditional"); break; }
-					if (!Value.value_le(localStack[a], new Value(bc))) {
+					if (localStack[a] > new Value(bc)) {
 						pc++; // Skip next instruction
 					}
 					break;
@@ -1577,7 +1577,7 @@ public class VM {
 					short ab = BytecodeUtil.ABs(instruction);
 					Byte c = BytecodeUtil.Cu(instruction);
 					if (localStack[c].IsError()) { RaiseRuntimeError("Error used in conditional"); break; }
-					if (!Value.value_le(new Value(ab), localStack[c])) {
+					if (new Value(ab) > localStack[c]) {
 						pc++; // Skip next instruction
 					}
 					break;

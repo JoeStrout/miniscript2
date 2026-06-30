@@ -20,6 +20,7 @@
 #include <cstring>
 #include <cmath>
 #include <climits>
+#include <vector>
 
 using MiniScript::GCManager;
 using MiniScript::GCList;
@@ -160,38 +161,87 @@ Value value_mult_nonnumeric(Value a, Value b) {
     return Value::null;
 }
 
-bool Value::value_le(Value a, Value b) {
-    if (a.IsNumber() && b.IsNumber()) return as_double(a) <= as_double(b);
-    if (a.IsString() && b.IsString()) return string_compare(a, b) <= 0;
-    return false;
-}
-
-bool value_equal(Value a, Value b) {
-    if (a == b) return true;
+// Scalar (non-collection) equality: numbers by value, strings by content,
+// null with null, and everything else (funcref/error/handle) by reference
+// identity.  Lists and maps are NOT handled here -- RecursiveEqual walks them
+// iteratively so that reference cycles cannot recurse forever.
+static bool value_equal_scalar(Value a, Value b) {
+    if (a.RefEquals(b)) return true;
     if (a.IsNumber() && b.IsNumber()) return as_double(a) == as_double(b);
     if (a.IsString() && b.IsString()) return string_equals(a, b);
     if (a.IsNull()   && b.IsNull())   return true;
-    if (a.IsList()   && b.IsList()) {
-        int n = Value::list_count(a);
-        if (n != Value::list_count(b)) return false;
-        for (int i = 0; i < n; i++)
-            if (!value_equal(Value::list_get(a, i), Value::list_get(b, i))) return false;
-        return true;
-    }
-    if (a.IsMap() && b.IsMap()) {
-        GCMap mA = GCManager::Maps.Get(Value::value_item_index(a));
-        GCMap mB = GCManager::Maps.Get(Value::value_item_index(b));
-        if (mA.Count() != mB.Count()) return false;
-        for (int i = mA.NextEntry(-1); i != -1; i = mA.NextEntry(i)) {
-            Value bv;
-            if (!mB.TryGet(mA.KeyAt(i), &bv)) return false;
-            if (!value_equal(mA.ValueAt(i), bv)) return false;
-        }
-        return true;
-    }
-    // Same-type non-container reference values: identity.
-    if ((a.bits & NANISH_MASK) == (b.bits & NANISH_MASK)) return a == b;
+    // Same-type non-container reference values compare by identity; since
+    // RefEquals already failed above, two distinct such values are not equal.
     return false;
+}
+
+// A pair of Values to compare, used by RecursiveEqual's work-list below.
+namespace {
+    struct ValuePair {
+        Value a;
+        Value b;
+        // Careful: compare with RefEquals, not == (deep), so that the visited
+        // set can detect reference loops without recursing back into RecursiveEqual.
+        bool ref_equal(const ValuePair& other) const {
+            return a.RefEquals(other.a) && b.RefEquals(other.b);
+        }
+    };
+    bool visited_contains(const std::vector<ValuePair>& visited, const ValuePair& p) {
+        for (size_t i = 0; i < visited.size(); i++)
+            if (visited[i].ref_equal(p)) return true;
+        return false;
+    }
+}
+
+// Deep MiniScript equality (the implementation behind operator==).  Scalars are
+// compared directly; lists and maps are compared with an explicit work-list
+// (toDo) and a visited set, mirroring MS1's Value::RecursiveEqual.  The visited
+// set (compared by reference, not deep) means cyclic structures terminate
+// instead of overflowing the stack.
+bool Value::RecursiveEqual(Value rhs) const {
+    Value a = *this, b = rhs;
+    if (a.RefEquals(b)) return true;
+    // Hot path: if neither side is a collection, no work-list is needed.
+    if (!(a.IsList() || a.IsMap()) && !(b.IsList() || b.IsMap()))
+        return value_equal_scalar(a, b);
+
+    std::vector<ValuePair> toDo;
+    std::vector<ValuePair> visited;
+    ValuePair start; start.a = a; start.b = b;
+    toDo.push_back(start);
+    while (!toDo.empty()) {
+        ValuePair pair = toDo.back();
+        toDo.pop_back();
+        visited.push_back(pair);
+        Value pa = pair.a, pb = pair.b;
+        if (pa.IsList()) {
+            if (!pb.IsList()) return false;
+            int aCount = Value::list_count(pa);
+            if (Value::list_count(pb) != aCount) return false;
+            if (pa.RefEquals(pb)) continue;  // same list object: nothing to do
+            for (int i = 0; i < aCount; i++) {
+                ValuePair np; np.a = Value::list_get(pa, i); np.b = Value::list_get(pb, i);
+                if (!visited_contains(visited, np)) toDo.push_back(np);
+            }
+        } else if (pa.IsMap()) {
+            if (!pb.IsMap()) return false;
+            GCMap mA = GCManager::Maps.Get(Value::value_item_index(pa));
+            GCMap mB = GCManager::Maps.Get(Value::value_item_index(pb));
+            if (mA.Count() != mB.Count()) return false;
+            if (pa.RefEquals(pb)) continue;  // same map object: nothing to do
+            for (int i = mA.NextEntry(-1); i != -1; i = mA.NextEntry(i)) {
+                Value bv;
+                if (!mB.TryGet(mA.KeyAt(i), &bv)) return false;
+                ValuePair np; np.a = mA.ValueAt(i); np.b = bv;
+                if (!visited_contains(visited, np)) toDo.push_back(np);
+            }
+        } else {
+            // No other types can recurse, so compare them directly.
+            if (!value_equal_scalar(pa, pb)) return false;
+        }
+    }
+    // Drained the work-list without finding any inequality: the values are equal.
+    return true;
 }
 
 int value_compare(Value a, Value b) {
@@ -358,7 +408,7 @@ Value code_form(Value v, void* vm, int recursion_limit) {
             int next_limit = recursion_limit - 1;
             Value key = m.KeyAt(i);
             Value val = m.ValueAt(i);
-            if (value_equal(key, Value::magicIsA)) next_limit = 1;
+            if (key.RecursiveEqual(Value::magicIsA)) next_limit = 1;
             Value key_str = code_form(key, vm, next_limit);
             Value val_str = val.IsNull() ? Value::make_string("null") : code_form(val, vm, next_limit);
             result = string_concat(result, key_str);

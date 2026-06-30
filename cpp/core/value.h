@@ -71,8 +71,24 @@ typedef struct Value {
     // do in 1.x.
     static constexpr Value fromBits(uint64_t rawBits) noexcept { return Value(rawBits, RawTag{}); }
 
-    constexpr bool operator==(Value other) const { return bits == other.bits; }
-    constexpr bool operator!=(Value other) const { return bits != other.bits; }
+    // MiniScript-semantic equality: a deep value comparison (numbers by value,
+    // strings/lists/maps by content; see RecursiveEqual).  Defined out-of-line
+    // below.  For a simple bitwise/reference identity check (same NaN-boxed
+    // payload) use RefEquals instead.
+    bool operator==(Value other) const;
+    bool operator!=(Value other) const;
+
+    // Deep MiniScript equality (the implementation behind operator==): numbers by
+    // value, strings/lists/maps by content, other reference types by identity.
+    // Walks lists/maps iteratively with a visited set so reference cycles
+    // terminate instead of overflowing the stack.  Mirrors MS1 Value::RecursiveEqual.
+    bool RecursiveEqual(Value rhs) const;
+
+    // Simple bitwise/reference identity: true iff this and rhs have the exact
+    // same NaN-boxed payload.  This is the fast pointer-identity comparison; it
+    // does NOT do MiniScript-semantic (deep) equality -- use operator== for that.
+    // Instance method, mirroring MiniScript 1.x.
+    bool RefEquals(const Value& rhs) const { return bits == rhs.bits; }
 
     // MiniScript 1.x-style convenience accessors.  These are thin, zero-overhead
     // wrappers over the make_*/as_*/is_* free functions; they add no storage and
@@ -114,8 +130,6 @@ typedef struct Value {
     static Value  value_pow(Value a, Value b);
     static Value  value_and(Value a, Value b);
     static Value  value_or(Value a, Value b);
-    static bool   value_lt(Value a, Value b);
-    static bool   value_le(Value a, Value b);
 
     // Strings
     static Value  make_string(const char* str);
@@ -274,7 +288,7 @@ inline int Value::value_gc_set_index(Value v)  { return (int)((v.bits >> 32) & 0
 inline int Value::value_item_index(Value v)    { return (int)(uint32_t)v.bits; }
 
 // ── Type predicates ─────────────────────────────────────────────────────
-inline bool Value::value_identical(Value a, Value b) { return a == b; }
+inline bool Value::value_identical(Value a, Value b) { return a.RefEquals(b); }
 
 static inline bool is_int(Value v) {
     (void)v;
@@ -408,11 +422,18 @@ inline Value operator-(Value a, Value b) {
     return Value::null;
 }
 
-inline bool Value::value_lt(Value a, Value b) {
+inline bool operator<(Value a, Value b) {
     if (a.IsNumber() && b.IsNumber()) return as_double(a) < as_double(b);
     if (a.IsString() && b.IsString()) return string_compare(a, b) < 0;
     return false;
 }
+inline bool operator<=(Value a, Value b) {
+    if (a.IsNumber() && b.IsNumber()) return as_double(a) <= as_double(b);
+    if (a.IsString() && b.IsString()) return string_compare(a, b) <= 0;
+    return false;
+}
+inline bool operator>(Value a, Value b)  { return !(a <= b); }
+inline bool operator>=(Value a, Value b) { return !(a < b); }
 
 extern Value value_mult_nonnumeric(Value a, Value b);
 inline Value operator*(Value a, Value b) {
@@ -448,10 +469,13 @@ inline Value Value::value_pow(Value a, Value b) {
     return Value::null;
 }
 
-bool value_equal(Value a, Value b);
-static inline bool value_gt(Value a, Value b) { return !Value::value_le(a, b); }
-static inline bool value_ge(Value a, Value b) { return !Value::value_lt(a, b); }
 int  value_compare(Value a, Value b);
+
+// MiniScript-semantic equality (deep) -- delegates to RecursiveEqual (defined in
+// value.cpp).  RefEquals (in the struct) remains the bitwise/reference-identity
+// comparison.
+inline bool Value::operator==(Value other) const { return RecursiveEqual(other); }
+inline bool Value::operator!=(Value other) const { return !RecursiveEqual(other); }
 
 // ── Helpers / fuzzy logic ───────────────────────────────────────────────
 static inline double ToFuzzyBool(Value v) {
@@ -501,7 +525,7 @@ inline int Hash(Value v) {
     return (int)(value_hash(v) & 0x7FFFFFFFU);
 }
 inline bool DictKeyEqual(Value a, Value b) {
-    return value_equal(a, b);
+    return a.RecursiveEqual(b);
 }
 
 // ── MiniScript 1.x-compatible constructors (declared in struct Value) ──────

@@ -180,7 +180,7 @@ const char* get_string_data_nullterm(const Value* v_ptr, char* tiny_buffer) {
 
 bool string_equals(Value a, Value b) {
     if (!a.IsString() || !b.IsString()) return false;
-    if (a == b) return true;  // identical bits → equal (interning makes this common)
+    if (a.RefEquals(b)) return true;  // identical bits → equal (interning makes this common)
     if (is_tiny_string(a) && is_tiny_string(b)) return false;
     TempStorage ta(a), tb(b);
     return ss_equals(ta, tb);

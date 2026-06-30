@@ -1039,7 +1039,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Byte c = BytecodeUtil::Cu(instruction);
 				if (localStack[b].IsError()) { localStack[a] = localStack[b]; break; }
 				if (localStack[c].IsError()) { localStack[a] = localStack[c]; break; }
-				localStack[a] = Value::Truth(Value::value_lt(localStack[b], localStack[c]));
+				localStack[a] = Value::Truth(localStack[b] < localStack[c]);
 				VM_NEXT();
 			}
 
@@ -1049,7 +1049,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Byte b = BytecodeUtil::Bu(instruction);
 				SByte c = BytecodeUtil::Cs(instruction);
 				if (localStack[b].IsError()) { localStack[a] = localStack[b]; break; }
-				localStack[a] = Value::Truth(Value::value_lt(localStack[b], Value(c)));
+				localStack[a] = Value::Truth(localStack[b] < Value(c));
 				VM_NEXT();
 			}
 
@@ -1059,7 +1059,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				SByte b = BytecodeUtil::Bs(instruction);
 				Byte c = BytecodeUtil::Cu(instruction);
 				if (localStack[c].IsError()) { localStack[a] = localStack[c]; break; }
-				localStack[a] = Value::Truth(Value::value_lt(Value(b), localStack[c]));
+				localStack[a] = Value::Truth(Value(b) < localStack[c]);
 				VM_NEXT();
 			}
 
@@ -1070,7 +1070,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Byte c = BytecodeUtil::Cu(instruction);
 				if (localStack[b].IsError()) { localStack[a] = localStack[b]; break; }
 				if (localStack[c].IsError()) { localStack[a] = localStack[c]; break; }
-				localStack[a] = Value::Truth(Value::value_le(localStack[b], localStack[c]));
+				localStack[a] = Value::Truth(localStack[b] <= localStack[c]);
 				VM_NEXT();
 			}
 
@@ -1080,7 +1080,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Byte b = BytecodeUtil::Bu(instruction);
 				SByte c = BytecodeUtil::Cs(instruction);
 				if (localStack[b].IsError()) { localStack[a] = localStack[b]; break; }
-				localStack[a] = Value::Truth(Value::value_le(localStack[b], Value(c)));
+				localStack[a] = Value::Truth(localStack[b] <= Value(c));
 				VM_NEXT();
 			}
 
@@ -1090,7 +1090,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				SByte b = BytecodeUtil::Bs(instruction);
 				Byte c = BytecodeUtil::Cu(instruction);
 				if (localStack[c].IsError()) { localStack[a] = localStack[c]; break; }
-				localStack[a] = Value::Truth(Value::value_le(Value(b), localStack[c]));
+				localStack[a] = Value::Truth(Value(b) <= localStack[c]);
 				VM_NEXT();
 			}
 
@@ -1181,7 +1181,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 					RaiseRuntimeError("Error used in conditional");
 					VM_NEXT();
 				}
-				if (Value::value_lt(localStack[a], localStack[b])){
+				if (localStack[a] < localStack[b]){
 					pc += offset;
 				}
 				VM_NEXT();
@@ -1196,7 +1196,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 					RaiseRuntimeError("Error used in conditional");
 					VM_NEXT();
 				}
-				if (Value::value_lt(localStack[a], Value(b))){
+				if (localStack[a] < Value(b)){
 					pc += offset;
 				}
 				VM_NEXT();
@@ -1211,7 +1211,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 					RaiseRuntimeError("Error used in conditional");
 					VM_NEXT();
 				}
-				if (Value::value_lt(Value(a), localStack[b])){
+				if (Value(a) < localStack[b]){
 					pc += offset;
 				}
 				VM_NEXT();
@@ -1226,7 +1226,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 					RaiseRuntimeError("Error used in conditional");
 					VM_NEXT();
 				}
-				if (Value::value_le(localStack[a], localStack[b])){
+				if (localStack[a] <= localStack[b]){
 					pc += offset;
 				}
 				VM_NEXT();
@@ -1241,7 +1241,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 					RaiseRuntimeError("Error used in conditional");
 					VM_NEXT();
 				}
-				if (Value::value_le(localStack[a], Value(b))){
+				if (localStack[a] <= Value(b)){
 					pc += offset;
 				}
 				VM_NEXT();
@@ -1256,7 +1256,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 					RaiseRuntimeError("Error used in conditional");
 					VM_NEXT();
 				}
-				if (Value::value_le(Value(a), localStack[b])){
+				if (Value(a) <= localStack[b]){
 					pc += offset;
 				}
 				VM_NEXT();
@@ -1313,7 +1313,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				if (localStack[a].IsError() || localStack[b].IsError()) {
 					RaiseRuntimeError("Error used in conditional"); break;
 				}
-				if (!Value::value_lt(localStack[a], localStack[b])) {
+				if (localStack[a] >= localStack[b]) {
 					pc++; // Skip next instruction
 				}
 				VM_NEXT();
@@ -1324,7 +1324,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Byte a = BytecodeUtil::Au(instruction);
 				short bc = BytecodeUtil::BCs(instruction);
 				if (localStack[a].IsError()) { RaiseRuntimeError("Error used in conditional"); break; }
-				if (!Value::value_lt(localStack[a], Value(bc))) {
+				if (localStack[a] >= Value(bc)) {
 					pc++; // Skip next instruction
 				}
 				VM_NEXT();
@@ -1335,7 +1335,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				short ab = BytecodeUtil::ABs(instruction);
 				Byte c = BytecodeUtil::Cu(instruction);
 				if (localStack[c].IsError()) { RaiseRuntimeError("Error used in conditional"); break; }
-				if (!Value::value_lt(Value(ab), localStack[c])) {
+				if (Value(ab) >= localStack[c]) {
 					pc++; // Skip next instruction
 				}
 				VM_NEXT();
@@ -1348,7 +1348,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				if (localStack[a].IsError() || localStack[b].IsError()) {
 					RaiseRuntimeError("Error used in conditional"); break;
 				}
-				if (!Value::value_le(localStack[a], localStack[b])) {
+				if (localStack[a] > localStack[b]) {
 					pc++; // Skip next instruction
 				}
 				VM_NEXT();
@@ -1359,7 +1359,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Byte a = BytecodeUtil::Au(instruction);
 				short bc = BytecodeUtil::BCs(instruction);
 				if (localStack[a].IsError()) { RaiseRuntimeError("Error used in conditional"); break; }
-				if (!Value::value_le(localStack[a], Value(bc))) {
+				if (localStack[a] > Value(bc)) {
 					pc++; // Skip next instruction
 				}
 				VM_NEXT();
@@ -1370,7 +1370,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				short ab = BytecodeUtil::ABs(instruction);
 				Byte c = BytecodeUtil::Cu(instruction);
 				if (localStack[c].IsError()) { RaiseRuntimeError("Error used in conditional"); break; }
-				if (!Value::value_le(Value(ab), localStack[c])) {
+				if (Value(ab) > localStack[c]) {
 					pc++; // Skip next instruction
 				}
 				VM_NEXT();

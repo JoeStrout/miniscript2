@@ -599,56 +599,121 @@ public readonly struct Value {
 	}
 
 	// ==== COMPARISON =========================================================
+	// Simple bitwise/reference identity: true iff the two Values have the exact
+	// same NaN-boxed payload.  This is the fast pointer-identity comparison; it
+	// does NOT do MiniScript-semantic (deep) equality -- use operator== for that.
+	// Instance method, mirroring MiniScript 1.x.
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool value_identical(Value a, Value b) => a._u == b._u;
+	public bool RefEquals(Value rhs) => _u == rhs._u;
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool value_lt(Value a, Value b) {
+	public static bool value_identical(Value a, Value b) => a.RefEquals(b);
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static bool operator <(Value a, Value b) {
 		if (a.IsNumber() && b.IsNumber()) return as_double(a) < as_double(b);
 		if (a.IsString() && b.IsString()) return string_compare(a, b) < 0;
 		return false;
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool value_le(Value a, Value b) {
+	public static bool operator >(Value a, Value b) => !(a <= b);
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static bool operator <=(Value a, Value b) {
 		if (a.IsNumber() && b.IsNumber()) return as_double(a) <= as_double(b);
 		if (a.IsString() && b.IsString()) return string_compare(a, b) <= 0;
 		return false;
 	}
 
-	public static bool operator ==(Value a, Value b) {
-		if (a._u == b._u) return true;
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static bool operator >=(Value a, Value b) => !(a < b);
+
+	// Deep MiniScript equality -- delegates to RecursiveEqual.
+	public static bool operator ==(Value a, Value b) => a.RecursiveEqual(b);
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static bool operator !=(Value a, Value b) => !a.RecursiveEqual(b);
+
+	// Scalar (non-collection) equality: numbers by value, strings by content,
+	// null with null, and everything else (funcRef/error/handle) by reference
+	// identity.  Lists and maps are NOT handled here -- RecursiveEqual walks them.
+	private static bool ScalarEqual(Value a, Value b) {
+		if (a.RefEquals(b)) return true;
 		if (a.IsNumber() && b.IsNumber()) return as_double(a) == as_double(b);
-		if (is_tiny_string(a) && is_tiny_string(b)) return a._u == b._u;
-		if (a.IsString() && b.IsString()) {
+		// Two tiny strings with differing bits already differ in content.
+		if (is_tiny_string(a) && is_tiny_string(b)) return false;
+		if (a.IsString() && b.IsString())
 			return string.Equals(as_cstring(a), as_cstring(b), StringComparison.Ordinal);
-		}
-		if (a.IsNull() || b.IsNull()) return a.IsNull() && b.IsNull();
-		if (a.IsList() && b.IsList()) {
-			int countA = Value.list_count(a);
-			if (countA != Value.list_count(b)) return false;
-			for (int i = 0; i < countA; i++) {
-				if (Value.list_get(a, i) != Value.list_get(b, i)) return false;
-			}
-			return true;
-		}
-		if (a.IsMap() && b.IsMap()) {
-			GCMap mapA = GCManager.Maps.Get(value_item_index(a));
-			GCMap mapB = GCManager.Maps.Get(value_item_index(b));
-			if (mapA.Count() != mapB.Count()) return false;
-			for (int iter = mapA.NextEntry(-1); iter != -1; iter = mapA.NextEntry(iter)) {
-				Value key = mapA.KeyAt(iter);
-				Value val = mapA.ValueAt(iter);
-				if (!mapB.TryGet(key, out Value bVal)) return false;
-				if (val != bVal) return false;
-			}
-			return true;
-		}
+		if (a.IsNull() && b.IsNull()) return true;
+		// Same-type non-container reference values compare by identity; RefEquals
+		// already failed above, so two distinct such values are not equal.
 		return false;
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool operator !=(Value a, Value b) => !(a == b);
+	// A pair of Values awaiting comparison in RecursiveEqual's work-list.
+	private struct ValuePair {
+		public Value a;
+		public Value b;
+		// Careful: compare with RefEquals (reference identity), not == (deep), so
+		// the visited set can detect reference loops without recursing back here.
+		public override bool Equals(object obj) {
+			if (obj is ValuePair other) return a.RefEquals(other.a) && b.RefEquals(other.b);
+			return false;
+		}
+		public override int GetHashCode() {
+			unchecked { return (int)((a._u * 397) ^ b._u); }
+		}
+	}
+
+	// Deep MiniScript equality (the implementation behind operator==): numbers by
+	// value, strings/lists/maps by content, other reference types by identity.
+	// Scalars are compared directly; lists and maps are walked with an explicit
+	// work-list (toDo) and a visited set, mirroring MS1's Value.RecursiveEqual.
+	// The visited set (compared by reference, not deep) makes cyclic structures
+	// terminate instead of overflowing the stack.
+	public bool RecursiveEqual(Value rhs) {
+		Value a = this, b = rhs;
+		if (a.RefEquals(b)) return true;
+		// Hot path: if neither side is a collection, no work-list is needed.
+		if (!(a.IsList() || a.IsMap()) && !(b.IsList() || b.IsMap())) return ScalarEqual(a, b);
+
+		var toDo = new Stack<ValuePair>();
+		var visited = new HashSet<ValuePair>();
+		toDo.Push(new ValuePair { a = a, b = b });
+		while (toDo.Count > 0) {
+			ValuePair pair = toDo.Pop();
+			visited.Add(pair);
+			Value pa = pair.a, pb = pair.b;
+			if (pa.IsList()) {
+				if (!pb.IsList()) return false;
+				int aCount = list_count(pa);
+				if (list_count(pb) != aCount) return false;
+				if (pa.RefEquals(pb)) continue;  // same list object: nothing to do
+				for (int i = 0; i < aCount; i++) {
+					var np = new ValuePair { a = list_get(pa, i), b = list_get(pb, i) };
+					if (!visited.Contains(np)) toDo.Push(np);
+				}
+			} else if (pa.IsMap()) {
+				if (!pb.IsMap()) return false;
+				GCMap mapA = GCManager.Maps.Get(value_item_index(pa));
+				GCMap mapB = GCManager.Maps.Get(value_item_index(pb));
+				if (mapA.Count() != mapB.Count()) return false;
+				if (pa.RefEquals(pb)) continue;  // same map object: nothing to do
+				for (int iter = mapA.NextEntry(-1); iter != -1; iter = mapA.NextEntry(iter)) {
+					Value key = mapA.KeyAt(iter);
+					if (!mapB.TryGet(key, out Value bVal)) return false;
+					var np = new ValuePair { a = mapA.ValueAt(iter), b = bVal };
+					if (!visited.Contains(np)) toDo.Push(np);
+				}
+			} else {
+				// No other types can recurse, so compare them directly.
+				if (!ScalarEqual(pa, pb)) return false;
+			}
+		}
+		// Drained the work-list without finding inequality: the values are equal.
+		return true;
+	}
 
 
 	// ==== LIST OPERATIONS ====================================================

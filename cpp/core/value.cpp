@@ -43,52 +43,55 @@ Value Value::implicitResult = Value::fromBits(NULL_VALUE);
 Value Value::selfString     = Value::fromBits(NULL_VALUE);
 Value Value::superString    = Value::fromBits(NULL_VALUE);
 
+int Value::MAX_COLLECTION_SIZE = 0x7FFFFFFF;
+int Value::MAP_ITER_DONE = (-2147483647 - 1);  // INT_MIN; mirrors cs/Value.cs
+
 void value_init_constants(void) {
-    Value::magicIsA       = make_string("__isa");
-    Value::keyString      = make_string("key");
-    Value::valueString    = make_string("value");
-    Value::implicitResult = make_string("_");
-    Value::selfString     = make_string("self");
-    Value::superString    = make_string("super");
+    Value::magicIsA       = Value::make_string("__isa");
+    Value::keyString      = Value::make_string("key");
+    Value::valueString    = Value::make_string("value");
+    Value::implicitResult = Value::make_string("_");
+    Value::selfString     = Value::make_string("self");
+    Value::superString    = Value::make_string("super");
 }
 
 // ── Error accessors ─────────────────────────────────────────────────────
 
-Value make_error(Value message, Value inner, Value stack, Value isa) {
-    if (is_null(stack)) {
-        stack = make_list(0);
-        freeze_value(stack);
+Value Value::make_error(Value message, Value inner, Value stack, Value isa) {
+    if (stack.IsNull()) {
+        stack = Value::make_list(0);
+        Value::freeze_value(stack);
     }
     return GCManager::NewError(message, inner, stack, isa);
 }
 
-Value error_message(Value v) {
-    if (!is_error(v)) return Value::null;
-    return GCManager::Errors.Get(value_item_index(v)).Message;
+Value Value::error_message(Value v) {
+    if (!v.IsError()) return Value::null;
+    return GCManager::Errors.Get(Value::value_item_index(v)).Message;
 }
 
-Value error_inner(Value v) {
-    if (!is_error(v)) return Value::null;
-    return GCManager::Errors.Get(value_item_index(v)).Inner;
+Value Value::error_inner(Value v) {
+    if (!v.IsError()) return Value::null;
+    return GCManager::Errors.Get(Value::value_item_index(v)).Inner;
 }
 
-Value error_stack(Value v) {
-    if (!is_error(v)) return Value::null;
-    return GCManager::Errors.Get(value_item_index(v)).Stack;
+Value Value::error_stack(Value v) {
+    if (!v.IsError()) return Value::null;
+    return GCManager::Errors.Get(Value::value_item_index(v)).Stack;
 }
 
-Value error_isa(Value v) {
-    if (!is_error(v)) return Value::null;
-    return GCManager::Errors.Get(value_item_index(v)).Isa;
+Value Value::error_isa(Value v) {
+    if (!v.IsError()) return Value::null;
+    return GCManager::Errors.Get(Value::value_item_index(v)).Isa;
 }
 
-bool error_isa_contains(Value error, Value base) {
+bool Value::error_isa_contains(Value error, Value base) {
     Value current = error;
     for (int depth = 0; depth < 256; depth++) {
-        if (is_null(current)) return false;
-        if (value_identical(current, base)) return true;
-        if (!is_error(current)) return false;
-        current = GCManager::Errors.Get(value_item_index(current)).Isa;
+        if (current.IsNull()) return false;
+        if (Value::value_identical(current, base)) return true;
+        if (!current.IsError()) return false;
+        current = GCManager::Errors.Get(Value::value_item_index(current)).Isa;
     }
     return false;
 }
@@ -96,46 +99,46 @@ bool error_isa_contains(Value error, Value base) {
 // ── FuncRef accessors ───────────────────────────────────────────────────
 
 
-Value make_funcref(MiniScript::FuncDef func, Value outerVars) {
+Value Value::make_funcref(MiniScript::FuncDef func, Value outerVars) {
     return GCManager::NewFuncRef(func, outerVars);
 }
 
-MiniScript::FuncDef funcref_funcdef(Value v) {
-    if (!is_funcref(v)) return MiniScript::FuncDef();
-    return GCManager::Functions.Get(value_item_index(v)).Func;
+MiniScript::FuncDef Value::funcref_funcdef(Value v) {
+    if (!v.IsFuncRef()) return MiniScript::FuncDef();
+    return GCManager::Functions.Get(Value::value_item_index(v)).Func;
 }
 
 
-Value funcref_outer_vars(Value v) {
-    if (!is_funcref(v)) return Value::null;
-    return GCManager::Functions.Get(value_item_index(v)).OuterVars;
+Value Value::funcref_outer_vars(Value v) {
+    if (!v.IsFuncRef()) return Value::null;
+    return GCManager::Functions.Get(Value::value_item_index(v)).OuterVars;
 }
 
 // ── Arithmetic helpers ──────────────────────────────────────────────────
 
 Value value_mult_nonnumeric(Value a, Value b) {
-    if (is_string(a) && is_double(b)) {
+    if (a.IsString() && b.IsNumber()) {
         double factor = as_double(b);
         int factorClass = std::fpclassify(factor);
         if (factorClass == FP_NAN || factorClass == FP_INFINITE) return Value::null;
         if (factor <= 0) return Value::emptyString;
-        if (string_length(a) * factor > MAX_COLLECTION_SIZE) {
+        if (Value::string_length(a) * factor > Value::MAX_COLLECTION_SIZE) {
             return value_make_runtime_error("string too large (exceeds maximum size)");
         }
         int repeats = (int)factor;
         Value result = Value::emptyString;
         for (int i = 0; i < repeats; i++) result = string_concat(result, a);
-        int extraChars = (int)(string_length(a) * (factor - repeats));
-        if (extraChars > 0) result = string_concat(result, string_substring(a, 0, extraChars));
+        int extraChars = (int)(Value::string_length(a) * (factor - repeats));
+        if (extraChars > 0) result = string_concat(result, Value::string_substring(a, 0, extraChars));
         return result;
     }
-    if (is_list(a) && is_double(b)) {
+    if (a.IsList() && b.IsNumber()) {
         double factor = as_double(b);
         int factorClass = std::fpclassify(factor);
         if (factorClass == FP_NAN || factorClass == FP_INFINITE) return Value::null;
-        int len = list_count(a);
-        if (factor <= 0 || len == 0) return make_list(0);
-        if (len * factor > MAX_COLLECTION_SIZE) {
+        int len = Value::list_count(a);
+        if (factor <= 0 || len == 0) return Value::make_list(0);
+        if (len * factor > Value::MAX_COLLECTION_SIZE) {
             return value_make_runtime_error("list too large (exceeds maximum size)");
         }
         int fullCopies = (int)factor;
@@ -143,41 +146,41 @@ Value value_mult_nonnumeric(Value a, Value b) {
         // Fast path: a single immutable element repeated a whole number of
         // times becomes a computed list (null increment => repeat the base).
         if (len == 1 && extraItems == 0) {
-            Value elem = list_get(a, 0);
-            if (is_number(elem) || is_string(elem) || is_null(elem) || is_frozen(elem)) {
+            Value elem = Value::list_get(a, 0);
+            if (elem.IsNumber() || elem.IsString() || elem.IsNull() || Value::is_frozen(elem)) {
                 return GCManager::NewComputedList(elem, Value::null, fullCopies);
             }
         }
-        Value result = make_list(fullCopies * len + extraItems);
+        Value result = Value::make_list(fullCopies * len + extraItems);
         for (int c = 0; c < fullCopies; c++)
-            for (int i = 0; i < len; i++) list_push(result, list_get(a, i));
-        for (int i = 0; i < extraItems; i++) list_push(result, list_get(a, i));
+            for (int i = 0; i < len; i++) Value::list_push(result, Value::list_get(a, i));
+        for (int i = 0; i < extraItems; i++) Value::list_push(result, Value::list_get(a, i));
         return result;
     }
     return Value::null;
 }
 
-bool value_le(Value a, Value b) {
-    if (is_double(a) && is_double(b)) return as_double(a) <= as_double(b);
-    if (is_string(a) && is_string(b)) return string_compare(a, b) <= 0;
+bool Value::value_le(Value a, Value b) {
+    if (a.IsNumber() && b.IsNumber()) return as_double(a) <= as_double(b);
+    if (a.IsString() && b.IsString()) return string_compare(a, b) <= 0;
     return false;
 }
 
 bool value_equal(Value a, Value b) {
     if (a == b) return true;
-    if (is_double(a) && is_double(b)) return as_double(a) == as_double(b);
-    if (is_string(a) && is_string(b)) return string_equals(a, b);
-    if (is_null(a)   && is_null(b))   return true;
-    if (is_list(a)   && is_list(b)) {
-        int n = list_count(a);
-        if (n != list_count(b)) return false;
+    if (a.IsNumber() && b.IsNumber()) return as_double(a) == as_double(b);
+    if (a.IsString() && b.IsString()) return string_equals(a, b);
+    if (a.IsNull()   && b.IsNull())   return true;
+    if (a.IsList()   && b.IsList()) {
+        int n = Value::list_count(a);
+        if (n != Value::list_count(b)) return false;
         for (int i = 0; i < n; i++)
-            if (!value_equal(list_get(a, i), list_get(b, i))) return false;
+            if (!value_equal(Value::list_get(a, i), Value::list_get(b, i))) return false;
         return true;
     }
-    if (is_map(a) && is_map(b)) {
-        GCMap mA = GCManager::Maps.Get(value_item_index(a));
-        GCMap mB = GCManager::Maps.Get(value_item_index(b));
+    if (a.IsMap() && b.IsMap()) {
+        GCMap mA = GCManager::Maps.Get(Value::value_item_index(a));
+        GCMap mB = GCManager::Maps.Get(Value::value_item_index(b));
         if (mA.Count() != mB.Count()) return false;
         for (int i = mA.NextEntry(-1); i != -1; i = mA.NextEntry(i)) {
             Value bv;
@@ -192,31 +195,31 @@ bool value_equal(Value a, Value b) {
 }
 
 int value_compare(Value a, Value b) {
-    if (is_number(a) && is_number(b)) {
-        double da = numeric_val(a), db = numeric_val(b);
+    if (a.IsNumber() && b.IsNumber()) {
+        double da = Value::numeric_val(a), db = Value::numeric_val(b);
         if (da < db) return -1;
         if (da > db) return 1;
         return 0;
     }
-    if (is_string(a) && is_string(b)) return string_compare(a, b);
-    int ta = is_number(a) ? 0 : is_string(a) ? 1 : 2;
-    int tb = is_number(b) ? 0 : is_string(b) ? 1 : 2;
+    if (a.IsString() && b.IsString()) return string_compare(a, b);
+    int ta = a.IsNumber() ? 0 : a.IsString() ? 1 : 2;
+    int tb = b.IsNumber() ? 0 : b.IsString() ? 1 : 2;
     return (ta < tb) ? -1 : (ta > tb) ? 1 : 0;
 }
 
 // ── Bitwise ops (cast to int64, operate, cast back to double) ────────────
 
 Value value_xor(Value a, Value b) {
-    return make_double((double)((int64_t)as_double(a) ^ (int64_t)as_double(b)));
+    return Value((double)((int64_t)as_double(a) ^ (int64_t)as_double(b)));
 }
 Value value_unary(Value a) {
-    return make_double((double)(~(int64_t)as_double(a)));
+    return Value((double)(~(int64_t)as_double(a)));
 }
 Value value_shr(Value v, int shift) {
-    return make_double((double)((int64_t)as_double(v) >> shift));
+    return Value((double)((int64_t)as_double(v) >> shift));
 }
 Value value_shl(Value v, int shift) {
-    return make_double((double)((int64_t)as_double(v) << shift));
+    return Value((double)((int64_t)as_double(v) << shift));
 }
 
 // ── code_form / to_string / to_number ───────────────────────────────────
@@ -292,7 +295,7 @@ void format_double(double value, char* buf) {
 }
 
 Value quote_string(Value v) {
-    const char* content = as_cstring(v);
+    const char* content = Value::as_cstring(v);
     if (!content) content = "";
     int quote_count = 0;
     for (const char* p = content; *p; p++) if (*p == '"') quote_count++;
@@ -306,7 +309,7 @@ Value quote_string(Value v) {
         else *out++ = *p;
     }
     *out++ = '"'; *out = '\0';
-    Value result = make_string(escaped);
+    Value result = Value::make_string(escaped);
     std::free(escaped);
     return result;
 }
@@ -316,86 +319,86 @@ Value quote_string(Value v) {
 Value code_form(Value v, void* vm, int recursion_limit) {
     char buf[32];
 
-    if (is_null(v))   return make_string("null");
-    if (is_double(v)) { format_double(as_double(v), buf); return make_string(buf); }
-    if (is_string(v)) return quote_string(v);
+    if (v.IsNull())   return Value::make_string("null");
+    if (v.IsNumber()) { format_double(as_double(v), buf); return Value::make_string(buf); }
+    if (v.IsString()) return quote_string(v);
 
-    if (is_list(v)) {
-        if (recursion_limit == 0) return make_string("[...]");
+    if (v.IsList()) {
+        if (recursion_limit == 0) return Value::make_string("[...]");
         if (recursion_limit > 0 && recursion_limit < 3 && vm != nullptr) {
             Value sn = find_short_name(vm, v);
-            if (!is_null(sn)) return sn;
+            if (!sn.IsNull()) return sn;
         }
-        GCList list = GCManager::Lists.Get(value_item_index(v));
+        GCList list = GCManager::Lists.Get(Value::value_item_index(v));
         int listCount = list.Count();
-        Value result = make_string("[");
+        Value result = Value::make_string("[");
         for (int i = 0; i < listCount; i++) {
-            if (i > 0) result = string_concat(result, make_string(", "));
+            if (i > 0) result = string_concat(result, Value::make_string(", "));
             Value item = list.Get(i);
-            Value item_str = is_null(item) ? make_string("null")
+            Value item_str = item.IsNull() ? Value::make_string("null")
                                            : code_form(item, vm, recursion_limit - 1);
             result = string_concat(result, item_str);
         }
-        return string_concat(result, make_string("]"));
+        return string_concat(result, Value::make_string("]"));
     }
 
-    if (is_map(v)) {
-        if (recursion_limit == 0) return make_string("{...}");
+    if (v.IsMap()) {
+        if (recursion_limit == 0) return Value::make_string("{...}");
         if (recursion_limit > 0 && recursion_limit < 3 && vm != nullptr) {
             Value sn = find_short_name(vm, v);
-            if (!is_null(sn)) return sn;
+            if (!sn.IsNull()) return sn;
         }
-        GCMap m = GCManager::Maps.Get(value_item_index(v));
-        if (m.Count() == 0) return make_string("{}");
-        Value result = make_string("{");
+        GCMap m = GCManager::Maps.Get(Value::value_item_index(v));
+        if (m.Count() == 0) return Value::make_string("{}");
+        Value result = Value::make_string("{");
         bool first = true;
         for (int i = m.NextEntry(-1); i != -1; i = m.NextEntry(i)) {
-            if (!first) result = string_concat(result, make_string(", "));
+            if (!first) result = string_concat(result, Value::make_string(", "));
             first = false;
             int next_limit = recursion_limit - 1;
             Value key = m.KeyAt(i);
             Value val = m.ValueAt(i);
             if (value_equal(key, Value::magicIsA)) next_limit = 1;
             Value key_str = code_form(key, vm, next_limit);
-            Value val_str = is_null(val) ? make_string("null") : code_form(val, vm, next_limit);
+            Value val_str = val.IsNull() ? Value::make_string("null") : code_form(val, vm, next_limit);
             result = string_concat(result, key_str);
-            result = string_concat(result, make_string(": "));
+            result = string_concat(result, Value::make_string(": "));
             result = string_concat(result, val_str);
         }
-        return string_concat(result, make_string("}"));
+        return string_concat(result, Value::make_string("}"));
     }
 
-    if (is_funcref(v)) {
-        MiniScript::FuncDef fn = funcref_funcdef(v);
-        Value outer = funcref_outer_vars(v);
-        if (!is_null(outer))
+    if (v.IsFuncRef()) {
+        MiniScript::FuncDef fn = Value::funcref_funcdef(v);
+        Value outer = Value::funcref_outer_vars(v);
+        if (!outer.IsNull())
             std::snprintf(buf, sizeof buf, "FuncRef(%s, closure)", fn.Name().c_str());
         else
             std::snprintf(buf, sizeof buf, "FuncRef(%s)", fn.Name().c_str());
-        return make_string(buf);
+        return Value::make_string(buf);
     }
 
-    if (is_error(v)) {
-        Value msg = error_message(v);
-        if (is_string(msg)) return string_concat(make_string("error: "), msg);
-        return make_string("error");
+    if (v.IsError()) {
+        Value msg = Value::error_message(v);
+        if (msg.IsString()) return string_concat(Value::make_string("error: "), msg);
+        return Value::make_string("error");
     }
 
-    return make_string("<value>");
+    return Value::make_string("<value>");
 }
 
-Value to_string(Value v, void* vm) {
-    if (is_string(v)) return v;
+Value Value::to_string(Value v, void* vm) {
+    if (v.IsString()) return v;
     return code_form(v, vm, 3);
 }
 
-Value value_repr(Value v, void* vm) {
+Value Value::value_repr(Value v, void* vm) {
     return code_form(v, vm, -1);
 }
 
-Value to_number(Value v) {
-    if (is_number(v)) return v;
-    if (!is_string(v)) return Value::zero;
+Value Value::to_number(Value v) {
+    if (v.IsNumber()) return v;
+    if (!v.IsString()) return Value::zero;
     int len;
     const char* str = get_string_data_zerocopy(&v, &len);
     if (!str || len == 0) return Value::zero;
@@ -405,83 +408,73 @@ Value to_number(Value v) {
     while (endptr < str + len && (*endptr == ' ' || *endptr == '\t'
         || *endptr == '\n' || *endptr == '\r')) endptr++;
     if (endptr != str + len) return Value::zero;
-    return make_double(result);
+    return Value(result);
 }
 
-bool is_truthy(Value v) {
-    // Falsy values: null, 0, "", [], {}.  Everything else (including
-    // funcrefs and host handles) is truthy.
-    if (is_null(v)) return false;
-    if (is_double(v)) return as_double(v) != 0.0;
-    if (is_string(v)) return string_length(v) != 0;
-    if (is_list(v)) return list_count(v) != 0;
-    if (is_map(v)) return map_count(v) != 0;
-    return true;
-}
 
 uint32_t value_hash(Value v) {
     if (is_heap_string(v)) return get_string_hash(v);
-    if (is_list(v))        return list_hash(v);
-    if (is_map(v))         return map_hash(v);
+    if (v.IsList())        return list_hash(v);
+    if (v.IsMap())         return map_hash(v);
     return uint64_hash(v.bits);
 }
 
 // ── Frozen ──────────────────────────────────────────────────────────────
 
-bool is_frozen(Value v) {
-    if (is_list(v)) return GCManager::Lists.Get(value_item_index(v)).Frozen;
-    if (is_map(v))  return GCManager::Maps.Get(value_item_index(v)).Frozen;
+bool Value::is_frozen(Value v) {
+    if (v.IsList()) return GCManager::Lists.Get(Value::value_item_index(v)).Frozen;
+    if (v.IsMap())  return GCManager::Maps.Get(Value::value_item_index(v)).Frozen;
     return false;
 }
 
-void freeze_value(Value v) {
-    if (is_list(v)) {
-        int32_t idx = value_item_index(v);
+void Value::freeze_value(Value v) {
+    if (v.IsList()) {
+        int32_t idx = Value::value_item_index(v);
         GCList l = GCManager::Lists.Get(idx);
         if (l.Frozen) return;
         GCManager::Lists.SetFrozen(idx, true);
         if (l.Computed) {
             // Computed-list elements derive from an immutable base; freezing
             // the base covers them all without materializing the list.
-            freeze_value(l.Get(0));
+            Value::freeze_value(l.Get(0));
         } else {
             int n = l.Count();
-            for (int i = 0; i < n; i++) freeze_value(l.Get(i));
+            for (int i = 0; i < n; i++) Value::freeze_value(l.Get(i));
         }
-    } else if (is_map(v)) {
-        int32_t idx = value_item_index(v);
+    } else if (v.IsMap()) {
+        int32_t idx = Value::value_item_index(v);
         GCMap m = GCManager::Maps.Get(idx);
         if (m.Frozen) return;
         GCManager::Maps.SetFrozen(idx, true);
         for (int i = m.NextEntry(-1); i != -1; i = m.NextEntry(i)) {
-            freeze_value(m.KeyAt(i));
-            freeze_value(m.ValueAt(i));
+            Value::freeze_value(m.KeyAt(i));
+            Value::freeze_value(m.ValueAt(i));
         }
     }
 }
 
-Value frozen_copy(Value v) {
-    if (is_list(v)) {
-        GCList src = GCManager::Lists.Get(value_item_index(v));
+Value Value::frozen_copy(Value v) {
+    if (v.IsList()) {
+        GCList src = GCManager::Lists.Get(Value::value_item_index(v));
         if (src.Frozen) return v;
         int srcCount = src.Count();
-        Value newList = make_list(srcCount);
-        int32_t dstIdx = value_item_index(newList);
+        Value newList = Value::make_list(srcCount);
+        int32_t dstIdx = Value::value_item_index(newList);
         GCList dst = GCManager::Lists.Get(dstIdx);
         GCManager::Lists.SetFrozen(dstIdx, true);
         for (int i = 0; i < srcCount; i++)
-            dst.Push(frozen_copy(src.Get(i)));
+            dst.Push(Value::frozen_copy(src.Get(i)));
         return newList;
     }
-    if (is_map(v)) {
-        GCMap src = GCManager::Maps.Get(value_item_index(v));
+    if (v.IsMap()) {
+        GCMap src = GCManager::Maps.Get(Value::value_item_index(v));
         if (src.Frozen) return v;
-        Value newMap = make_map(src.Count());
-        int32_t dstIdx = value_item_index(newMap);
+        Value newMap = Value::make_map(src.Count());
+        int32_t dstIdx = Value::value_item_index(newMap);
         GCMap dst = GCManager::Maps.Get(dstIdx);
         GCManager::Maps.SetFrozen(dstIdx, true);
         for (int i = src.NextEntry(-1); i != -1; i = src.NextEntry(i))
-            dst.Set(frozen_copy(src.KeyAt(i)), frozen_copy(src.ValueAt(i)));
+            dst.Set(Value::frozen_copy(src.KeyAt(i)), Value::frozen_copy(src.ValueAt(i)));
         return newMap;
     }
     return v;
@@ -497,14 +490,14 @@ void set_runtime_error_maker(RuntimeErrorMakerFn fn) {
 
 Value value_make_runtime_error(const char* message) {
     if (g_runtime_error_maker) return g_runtime_error_maker(message);
-    return make_error(make_string(message), Value::null, Value::null, Value::null);
+    return Value::make_error(Value::make_string(message), Value::null, Value::null, Value::null);
 }
 
 void set_stack_trace_hook(StackTraceFn fn) {
     g_stack_trace_hook = fn;
 }
 
-Value value_current_stack_trace() {
+Value Value::value_current_stack_trace() {
     if (g_stack_trace_hook) return g_stack_trace_hook();
     return Value::null;
 }

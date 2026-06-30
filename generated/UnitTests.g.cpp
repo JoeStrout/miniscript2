@@ -218,64 +218,64 @@ Boolean UnitTests::TestAssembler() {
 }
 Boolean UnitTests::TestValueMap() {
 	// Test map creation
-	Value map = make_empty_map();
-	Boolean basicOk = Assert(is_map(map), "Map should be identified as map")
-		&& AssertEqual(map_count(map), 0);
+	Value map = Value::make_empty_map();
+	Boolean basicOk = Assert(map.IsMap(), "Map should be identified as map")
+		&& AssertEqual(Value::map_count(map), 0);
 
 	if (!basicOk) return Boolean(false);
 
 	// Test insertion and lookup
-	Value key1 = make_string("name");
-	Value value1 = make_string("John");
-	Value key2 = make_string("age");
-	Value value2 = make_double(30.0);
+	Value key1 = Value::make_string("name");
+	Value value1 = Value::make_string("John");
+	Value key2 = Value::make_string("age");
+	Value value2 = Value(30.0);
 
-	Boolean insertOk = map_set(map, key1, value1)
-		&& map_set(map, key2, value2)
-		&& AssertEqual(map_count(map), 2);
+	Boolean insertOk = Value::map_set(map, key1, value1)
+		&& Value::map_set(map, key2, value2)
+		&& AssertEqual(Value::map_count(map), 2);
 
 	if (!insertOk) return Boolean(false);
 
 	// Test lookup
-	Value retrieved1 = map_get(map, key1);
-	Value retrieved2 = map_get(map, key2);
-	Boolean lookupOk = Assert(is_string(retrieved1), "Retrieved value should be string")
-		&& Assert(is_double(retrieved2), "Retrieved value should be number")
-		&& AssertEqual((int)as_double(retrieved2), 30);
+	Value retrieved1 = Value::map_get(map, key1);
+	Value retrieved2 = Value::map_get(map, key2);
+	Boolean lookupOk = Assert(retrieved1.IsString(), "Retrieved value should be string")
+		&& Assert(retrieved2.IsNumber(), "Retrieved value should be number")
+		&& AssertEqual((int)retrieved2.DoubleValue(), 30);
 
 	if (!lookupOk) return Boolean(false);
 
 	// Test key existence
-	Boolean hasKeyOk = Assert(map_has_key(map, key1), "Should have key1")
-		&& Assert(map_has_key(map, key2), "Should have key2")
-		&& Assert(!map_has_key(map, make_string("nonexistent")), "Should not have nonexistent key");
+	Boolean hasKeyOk = Assert(Value::map_has_key(map, key1), "Should have key1")
+		&& Assert(Value::map_has_key(map, key2), "Should have key2")
+		&& Assert(!Value::map_has_key(map, Value::make_string("nonexistent")), "Should not have nonexistent key");
 
 	if (!hasKeyOk) return Boolean(false);
 
 	// Test lookup of nonexistent key
 	// (For now; later: this should invoke error-handling pipeline)
-	Value nonexistent = map_get(map, make_string("missing"));
-	Boolean nonexistentOk = Assert(is_null(nonexistent), "Nonexistent key should return null");
+	Value nonexistent = Value::map_get(map, Value::make_string("missing"));
+	Boolean nonexistentOk = Assert(nonexistent.IsNull(), "Nonexistent key should return null");
 
 	if (!nonexistentOk) return Boolean(false);
 
 	// Test removal
-	Boolean removeOk = Assert(map_remove(map, key1), "Should successfully remove existing key")
-		&& AssertEqual(map_count(map), 1)
-		&& Assert(!map_has_key(map, key1), "Should no longer have removed key")
-		&& Assert(map_has_key(map, key2), "Should still have other key")
-		&& Assert(!map_remove(map, key1), "Should return false when removing nonexistent key");
+	Boolean removeOk = Assert(Value::map_remove(map, key1), "Should successfully remove existing key")
+		&& AssertEqual(Value::map_count(map), 1)
+		&& Assert(!Value::map_has_key(map, key1), "Should no longer have removed key")
+		&& Assert(Value::map_has_key(map, key2), "Should still have other key")
+		&& Assert(!Value::map_remove(map, key1), "Should return false when removing nonexistent key");
 
 	if (!removeOk) return Boolean(false);
 
 	// Test string conversion (runtime C functions)
-	Value singleMap = make_empty_map();
-	map_set(singleMap, "test", make_int(42));
-	Value singleStr = to_string(singleMap, nullptr);
-	Boolean singleStrOk = Assert(is_string(singleStr), "Map toString should return string")
-		&& AssertEqual(as_cstring(singleStr), "{\"test\": 42}");
+	Value singleMap = Value::make_empty_map();
+	Value::map_set(singleMap, "test", Value(42));
+	Value singleStr = Value::to_string(singleMap, nullptr);
+	Boolean singleStrOk = Assert(singleStr.IsString(), "Map toString should return string")
+		&& AssertEqual(Value::as_cstring(singleStr), "{\"test\": 42}");
 	if (!singleStrOk) return Boolean(false);
-	String result = as_cstring(to_string(singleMap, nullptr));
+	String result = Value::as_cstring(Value::to_string(singleMap, nullptr));
 	if (!AssertEqual(result, "{\"test\": 42}")) return Boolean(false);
 
 	// Note: We have successfully implemented and tested both conversion approaches:
@@ -284,8 +284,8 @@ Boolean UnitTests::TestValueMap() {
 	// Both are working correctly in their respective contexts.
 
 	// Test clearing
-	map_clear(map);
-	Boolean clearOk = AssertEqual(map_count(map), 0);
+	Value::map_clear(map);
+	Boolean clearOk = AssertEqual(Value::map_count(map), 0);
 
 	return clearOk;
 }
@@ -937,18 +937,18 @@ Boolean UnitTests::TestGCHandle() {
 
 	// Allocate a handle and verify the predicate.
 	Value h = GCManager::NewHandle(nullptr, TestHandleFinalizer);
-	ok = ok && Assert(is_handle(h), "NewHandle should produce a handle value");
-	ok = ok && Assert(!is_map(h), "handle should not test as map");
-	ok = ok && Assert(!is_null(h), "handle should not test as null");
+	ok = ok && Assert(h.IsHandle(), "NewHandle should produce a handle value");
+	ok = ok && Assert(!h.IsMap(), "handle should not test as map");
+	ok = ok && Assert(!h.IsNull(), "handle should not test as null");
 
 	// Keep the handle alive across a GC cycle via retain count; callback must not fire yet.
-	GCManager::Handles.Retain(value_item_index(h));
+	GCManager::Handles.Retain(Value::value_item_index(h));
 	GCManager::CollectGarbage();
 	ok = ok && Assert(_handleFinalizerCallCount == 0,
 		"callback should not fire while handle is still reachable");
 
 	// Release the retain — handle is now unreachable.  Next GC must sweep it.
-	GCManager::Handles.Release(value_item_index(h));
+	GCManager::Handles.Release(Value::value_item_index(h));
 	GCManager::CollectGarbage();
 	ok = ok && Assert(_handleFinalizerCallCount == 1,
 		"callback should fire exactly once when handle is collected");

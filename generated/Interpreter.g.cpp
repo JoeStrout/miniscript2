@@ -77,7 +77,7 @@ void InterpreterStorage::Compile() {
 	generator.set_FileName(SourceFile);
 	generator.CompileProgram(statements, "@main");
 
-	if (!is_null(generator.Error())) {
+	if (!generator.Error().IsNull()) {
 		Error = generator.Error();
 		ReportError(Error);
 		return;
@@ -106,7 +106,7 @@ void InterpreterStorage::RunUntilDone(double timeLimit,bool returnEarly) {
 	while (vm.IsRunning() && !vm.yielding()) {
 		if (vm.ElapsedTime() - startTime > timeLimit) return;	// time's up for now
 		vm.Run(1000);	// run in small batches so we can check the time
-		if (!is_null(vm.Error())) {
+		if (!vm.Error().IsNull()) {
 			Error = vm.Error();
 			ReportError(Error);
 			Stop();
@@ -119,7 +119,7 @@ void InterpreterStorage::Step() {
 	Compile();
 	if (IsNull(vm)) return;
 	vm.Run(1);
-	if (!is_null(vm.Error())) {
+	if (!vm.Error().IsNull()) {
 		Error = vm.Error();
 		ReportError(Error);
 		Stop();
@@ -188,7 +188,7 @@ void InterpreterStorage::REPL(String sourceLine,double timeLimit) {
 	CodeGenerator generator =  CodeGenerator::New(emitter);
 	generator.CompileProgram(statements, "@main");
 
-	if (!is_null(generator.Error())) {
+	if (!generator.Error().IsNull()) {
 		Error = generator.Error();
 		ReportError(Error);
 		_pendingSource = nullptr;
@@ -208,8 +208,8 @@ void InterpreterStorage::REPL(String sourceLine,double timeLimit) {
 	vm.Reset(functions, _replGlobals);
 
 	// If this is the first REPL entry, create the initial globals VarMap
-	if (is_null(_replGlobals)) {
-		_replGlobals = make_varmap(vm.GetStack(), vm.GetNames(), 0, 
+	if (_replGlobals.IsNull()) {
+		_replGlobals = Value::make_varmap(vm.GetStack(), vm.GetNames(), 0, 
 			functions[0].MaxRegs());
 		// ToDo: make the transpiler smart enough to do this ---^ on its own
 		vm.set_ReplGlobals(_replGlobals);
@@ -222,7 +222,7 @@ void InterpreterStorage::REPL(String sourceLine,double timeLimit) {
 	while (vm.IsRunning() && !vm.yielding()) {
 		if (vm.ElapsedTime() - startTime > timeLimit) break;
 		vm.Run(1000);
-		if (!is_null(vm.Error())) {
+		if (!vm.Error().IsNull()) {
 			Error = vm.Error();
 			ReportError(Error);
 			hadRuntimeError = Boolean(true);
@@ -236,7 +236,7 @@ void InterpreterStorage::REPL(String sourceLine,double timeLimit) {
 	Value result;
 	if (hasImplicitOutput && !hadRuntimeError) {
 		result = vm.GetStackValue(vm.BaseIndex());
-		if (!is_null(result)) {
+		if (!result.IsNull()) {
 			lastImplicitResult = result;
 			if (!IsNull(implicitOutput)) {
 				implicitOutput(StringUtils::Format("{0}", result), Boolean(true));
@@ -255,13 +255,13 @@ bool InterpreterStorage::NeedMoreInput() {
 Value InterpreterStorage::GetGlobalValue(String varName) {
 	if (IsNull(vm)) return Value::Null;
 	// Search the @main frame (base 0) for a register with this name
-	Value nameVal = make_string(varName);
+	Value nameVal = Value::make_string(varName);
 	Int32 regCount = !IsNull(vm.CurrentFunction()) ? vm.StackSize() : 0;
 	// Look through all named registers at base 0 (the global frame)
 	Value name;
 	for (Int32 i = 0; i < regCount; i++) {
 		name = vm.GetStackName(i);
-		if (!is_null(name) && value_equal(name, nameVal)) {
+		if (!name.IsNull() && name == nameVal) {
 			return vm.GetStackValue(i);
 		}
 	}
@@ -272,16 +272,16 @@ void InterpreterStorage::SetGlobalValue(String varName,Value value) {
 	// Setting a key here makes it visible to subsequent user code as a
 	// global variable.  If a global VarMap doesn't exist yet (e.g. no REPL
 	// entry has run), there is nothing to set.
-	if (is_null(_replGlobals)) return;
-	map_set(_replGlobals, varName, value);
+	if (_replGlobals.IsNull()) return;
+	Value::map_set(_replGlobals, varName, value);
 }
 void InterpreterStorage::ResetReplGlobals() {
 	_replGlobals = Value::Null;
 	if (!IsNull(vm)) vm.set_ReplGlobals(Value::Null);
 }
 void InterpreterStorage::ReportError(Value error) {
-	String msg = StringUtils::Format("{0}", error_message(error));
-	String prefix = error_isa_contains(error, ErrorTypes::compiler) ? "Compiler Error: " : "Runtime Error: ";
+	String msg = StringUtils::Format("{0}", Value::error_message(error));
+	String prefix = Value::error_isa_contains(error, ErrorTypes::compiler) ? "Compiler Error: " : "Runtime Error: ";
 	ReportError(prefix + msg);
 }
 void InterpreterStorage::ReportError(String message) {

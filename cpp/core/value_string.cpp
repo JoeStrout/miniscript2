@@ -28,7 +28,7 @@ namespace {
 
 // Get the raw StringStorage* for a heap-string Value (borrowed; do not free).
 const StringStorage* heap_string_storage(Value v) {
-    GCString s = GCManager::BigStrings.Get(value_item_index(v));
+    GCString s = GCManager::BigStrings.Get(Value::value_item_index(v));
     return s.Data.getStorageRaw();
 }
 
@@ -94,7 +94,7 @@ Value make_tiny_string(const char* str, int len) {
     return Value::fromBits(bits);
 }
 
-Value make_string(const char* str) {
+Value Value::make_string(const char* str) {
     if (str == nullptr) return Value::null;
     int lenB = (int)std::strlen(str);
     if (lenB <= TINY_STRING_MAX_LEN) return make_tiny_string(str, lenB);
@@ -109,7 +109,7 @@ Value make_string_n(const char* str, int len) {
 
 // ── Access ──────────────────────────────────────────────────────────────
 
-const char* as_cstring(Value v) {
+const char* Value::as_cstring(Value v) {
     static thread_local char tiny_scratch[TINY_STRING_MAX_LEN + 1];
     if (is_tiny_string(v)) {
         int len = (int)(v.bits & 0xFF);
@@ -131,7 +131,7 @@ int string_lengthB(Value v) {
     return 0;
 }
 
-int string_length(Value v) {
+int Value::string_length(Value v) {
     if (is_tiny_string(v)) {
         int lenB = (int)(v.bits & 0xFF);
         if (lenB == 0) return 0;
@@ -179,7 +179,7 @@ const char* get_string_data_nullterm(const Value* v_ptr, char* tiny_buffer) {
 // ── Operations ──────────────────────────────────────────────────────────
 
 bool string_equals(Value a, Value b) {
-    if (!is_string(a) || !is_string(b)) return false;
+    if (!a.IsString() || !b.IsString()) return false;
     if (a == b) return true;  // identical bits → equal (interning makes this common)
     if (is_tiny_string(a) && is_tiny_string(b)) return false;
     TempStorage ta(a), tb(b);
@@ -203,20 +203,20 @@ Value string_concat(Value a, Value b) {
     return adopt_ss(result);
 }
 
-int string_indexOf(Value haystack, Value needle, int start_pos) {
+int Value::string_indexOf(Value haystack, Value needle, int start_pos) {
     TempStorage th(haystack), tn(needle);
     if (start_pos <= 0) return ss_indexOf(th, tn);
     return ss_indexOfFrom(th, tn, start_pos);
 }
 
-Value string_substring(Value str, int startIndex, int len) {
+Value Value::string_substring(Value str, int startIndex, int len) {
     TempStorage ts(str);
     if (startIndex < 0) startIndex += ss_lengthC(ts);
     StringStorage* result = ss_substringLen(ts, startIndex, len, std::malloc);
     return adopt_ss(result);
 }
 
-Value string_slice(Value str, int start, int end) {
+Value Value::string_slice(Value str, int start, int end) {
     TempStorage ts(str);
     int slen = ss_lengthC(ts);
     if (start < 0) start += slen;
@@ -229,7 +229,7 @@ Value string_slice(Value str, int start, int end) {
 }
 
 Value string_sub(Value a, Value b) {
-    if (!is_string(a) || !is_string(b)) return Value::null;
+    if (!a.IsString() || !b.IsString()) return Value::null;
     TempStorage ta(a), tb(b);
     if (!tb.get() || ss_lengthB(tb) == 0) return a;
     if (ss_endsWith(ta, tb)) {
@@ -240,11 +240,11 @@ Value string_sub(Value a, Value b) {
     return a;
 }
 
-Value string_insert(Value str, int index, Value value, void* vm) {
-    if (!is_string(str)) return str;
-    Value insertVal = is_string(value) ? value : to_string(value, vm);
+Value Value::string_insert(Value str, int index, Value value, void* vm) {
+    if (!str.IsString()) return str;
+    Value insertVal = value.IsString() ? value : Value::to_string(value, vm);
     int strLenB    = string_lengthB(str);
-    int strLenC    = string_length(str);
+    int strLenC    = Value::string_length(str);
     int insertLenB = string_lengthB(insertVal);
 
     if (index < 0) index += strLenC + 1;
@@ -274,8 +274,8 @@ Value string_insert(Value str, int index, Value value, void* vm) {
     return result;
 }
 
-Value string_upper(Value str) {
-    if (!is_string(str)) return str;
+Value Value::string_upper(Value str) {
+    if (!str.IsString()) return str;
     TempStorage ts(str);
     StringStorage* result = ss_toUpper(ts, std::malloc);
     // ss_toUpper returns the input storage when it has no caseable chars;
@@ -285,15 +285,15 @@ Value string_upper(Value str) {
     return adopt_ss(result);
 }
 
-Value string_lower(Value str) {
-    if (!is_string(str)) return str;
+Value Value::string_lower(Value str) {
+    if (!str.IsString()) return str;
     TempStorage ts(str);
     StringStorage* result = ss_toLower(ts, std::malloc);
     if (result == ts.get()) return str;
     return adopt_ss(result);
 }
 
-Value string_from_code_point(int codePoint) {
+Value Value::string_from_code_point(int codePoint) {
     char buf[8];
     int n = 0;
     if (codePoint < 0x80) {
@@ -314,8 +314,8 @@ Value string_from_code_point(int codePoint) {
     return make_string_n(buf, n);
 }
 
-int string_code_point(Value str) {
-    if (!is_string(str)) return 0;
+int Value::string_code_point(Value str) {
+    if (!str.IsString()) return 0;
     TempStorage ts(str);
     if (!ts.get() || ss_lengthB(ts) == 0) return 0;
     return (int)ss_codePointAt(ts, 0);
@@ -325,23 +325,23 @@ int string_code_point(Value str) {
 // while delegating the unbounded case to ss_splitStr.
 
 Value string_split(Value str, Value delimiter) {
-    return string_split_max(str, delimiter, -1);
+    return Value::string_split_max(str, delimiter, -1);
 }
 
-Value string_split_max(Value str, Value delimiter, int maxCount) {
-    if (!is_string(str) || !is_string(delimiter)) return Value::null;
+Value Value::string_split_max(Value str, Value delimiter, int maxCount) {
+    if (!str.IsString() || !delimiter.IsString()) return Value::null;
     int slen, dlen;
     const char* sdata = get_string_data_zerocopy(&str, &slen);
     const char* ddata = get_string_data_zerocopy(&delimiter, &dlen);
 
-    Value list = make_list(8);
+    Value list = Value::make_list(8);
 
     if (dlen == 0) {
         // Empty delimiter: split into individual UTF-8 code points.
         int i = 0; int count = 0;
         while (i < slen) {
             if (maxCount > 0 && count >= maxCount - 1) {
-                list_push(list, make_string_n(sdata + i, slen - i));
+                Value::list_push(list, make_string_n(sdata + i, slen - i));
                 return list;
             }
             unsigned char c = (unsigned char)sdata[i];
@@ -350,7 +350,7 @@ Value string_split_max(Value str, Value delimiter, int maxCount) {
             else if ((c & 0xF0) == 0xE0) cl = 3;
             else if ((c & 0xF8) == 0xF0) cl = 4;
             if (i + cl > slen) cl = slen - i;
-            list_push(list, make_string_n(sdata + i, cl));
+            Value::list_push(list, make_string_n(sdata + i, cl));
             i += cl;
             count++;
         }
@@ -369,21 +369,21 @@ Value string_split_max(Value str, Value delimiter, int maxCount) {
             }
         }
         if (!hit) {
-            list_push(list, make_string_n(sdata + pos, slen - pos));
+            Value::list_push(list, make_string_n(sdata + pos, slen - pos));
             break;
         }
         int segLen = (int)(hit - (sdata + pos));
-        list_push(list, make_string_n(sdata + pos, segLen));
+        Value::list_push(list, make_string_n(sdata + pos, segLen));
         pos += segLen + dlen;
         found++;
         if (pos > slen) break;
-        if (pos == slen) { list_push(list, Value::emptyString); break; }
+        if (pos == slen) { Value::list_push(list, Value::emptyString); break; }
     }
     return list;
 }
 
 Value string_replace(Value source, Value search, Value replacement) {
-    if (!is_string(source) || !is_string(search) || !is_string(replacement))
+    if (!source.IsString() || !search.IsString() || !replacement.IsString())
         return Value::null;
     TempStorage ts(source), tf(search), tr(replacement);
     if (!tf.get() || ss_lengthB(tf) == 0) return source;
@@ -391,9 +391,9 @@ Value string_replace(Value source, Value search, Value replacement) {
     return adopt_ss(result);
 }
 
-Value string_replace_max(Value source, Value search, Value replacement, int maxCount) {
+Value Value::string_replace_max(Value source, Value search, Value replacement, int maxCount) {
     if (maxCount <= 0) return string_replace(source, search, replacement);
-    if (!is_string(source) || !is_string(search) || !is_string(replacement))
+    if (!source.IsString() || !search.IsString() || !replacement.IsString())
         return Value::null;
     int slen, flen, rlen;
     const char* sdata = get_string_data_zerocopy(&source, &slen);

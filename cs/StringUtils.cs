@@ -4,7 +4,6 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using static System.Runtime.CompilerServices.MethodImplOptions;
-using static MiniScript.Value;
 // H: #include "CS_String.h"
 // H: #include "value.h"
 // H: #include "value_string.h"
@@ -140,13 +139,13 @@ public static class StringUtils {
 
 	public static String makeRepr(Value v) {
 		if (v.IsString()) {
-			String str = as_cstring(v);
+			String str = Value.as_cstring(v);
 			// Replace quotes: " becomes ""
 			String escaped = str.Replace("\"", "\"\"");
 			// Wrap in quotes
 			return "\"" + escaped + "\"";
 		}
-		return to_String(v);
+		return Value.to_String(v);
 	}
 	
 	// Usage: StringUtils.Format("Hello {0}, x={1}, {{braces}}", name, 42)

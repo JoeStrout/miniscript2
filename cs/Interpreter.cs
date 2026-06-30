@@ -8,7 +8,6 @@
 
 using System;
 using System.Collections.Generic;
-using static MiniScript.Value;
 // H: #include "IntrinsicAPI.g.h"
 // H: #include "VM.g.h"
 // H: #include "Parser.g.h"
@@ -379,7 +378,7 @@ public class Interpreter {
 
 		// If this is the first REPL entry, create the initial globals VarMap
 		if (_replGlobals.IsNull()) {
-			_replGlobals = make_varmap(vm.GetStack(), vm.GetNames(), 0, 
+			_replGlobals = Value.make_varmap(vm.GetStack(), vm.GetNames(), 0, 
 				functions[0].MaxRegs);  // CPP: functions[0].MaxRegs());
 			// ToDo: make the transpiler smart enough to do this ---^ on its own
 			vm.ReplGlobals = _replGlobals;
@@ -444,7 +443,7 @@ public class Interpreter {
 	public Value GetGlobalValue(String varName) {
 		if (vm == null) return Value.Null;
 		// Search the @main frame (base 0) for a register with this name
-		Value nameVal = make_string(varName);
+		Value nameVal = Value.make_string(varName);
 		Int32 regCount = vm.CurrentFunction != null ? vm.StackSize() : 0;
 		// Look through all named registers at base 0 (the global frame)
 		Value name;
@@ -469,7 +468,7 @@ public class Interpreter {
 		// global variable.  If a global VarMap doesn't exist yet (e.g. no REPL
 		// entry has run), there is nothing to set.
 		if (_replGlobals.IsNull()) return;
-		map_set(_replGlobals, varName, value);
+		Value.map_set(_replGlobals, varName, value);
 	}
 
 	// 
@@ -490,8 +489,8 @@ public class Interpreter {
 	// 
 	// <param name="error">error Value to report</param>
 	protected virtual void ReportError(Value error) {
-		String msg = StringUtils.Format("{0}", error_message(error));
-		String prefix = error_isa_contains(error, ErrorTypes.compiler) ? "Compiler Error: " : "Runtime Error: ";
+		String msg = StringUtils.Format("{0}", Value.error_message(error));
+		String prefix = Value.error_isa_contains(error, ErrorTypes.compiler) ? "Compiler Error: " : "Runtime Error: ";
 		ReportError(prefix + msg);
 	}
 

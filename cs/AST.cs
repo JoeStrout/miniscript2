@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using static MiniScript.Value;
 
 // CPP: #include "StringUtils.g.h"
 // CPP: #include "CS_Math.h"
@@ -225,7 +224,7 @@ public class UnaryOpNode : ASTNode {
 				return new NumberNode(-num.Value);
 			} else if (Op == MiniScript.Op.NOT) {
 				// Fuzzy logic NOT: 1 - AbsClamp01(value)
-				return new NumberNode(1.0 - AbsClamp01(num.Value));
+				return new NumberNode(1.0 - Value.AbsClamp01(num.Value));
 			}
 		}
 
@@ -291,12 +290,12 @@ public class BinaryOpNode : ASTNode {
 				// Fuzzy logic AND: AbsClamp01(a * b)
 				Double a = leftNum.Value;
 				Double b = rightNum.Value;
-				return new NumberNode(AbsClamp01(a * b));
+				return new NumberNode(Value.AbsClamp01(a * b));
 			} else if (Op == MiniScript.Op.OR) {
 				// Fuzzy logic OR: AbsClamp01(a + b - a*b)
 				Double a = leftNum.Value;
 				Double b = rightNum.Value;
-				return new NumberNode(AbsClamp01(a + b - a * b));
+				return new NumberNode(Value.AbsClamp01(a + b - a * b));
 			}
 		}
 
@@ -318,7 +317,7 @@ public class BinaryOpNode : ASTNode {
 			if (StringUtils.IsNaN(factor) || StringUtils.IsInfinity(factor) || factor <= 0) return new StringNode("");
 			// If the result would exceed the maximum size, don't fold; leave it as
 			// a runtime op so value_mult raises the "string too large" error.
-			if (leftStr.Value.Length * factor > MAX_COLLECTION_SIZE) {
+			if (leftStr.Value.Length * factor > Value.MAX_COLLECTION_SIZE) {
 				return new BinaryOpNode(Op, simplifiedLeft, simplifiedRight);
 			}
 			int repeats = (int)factor;

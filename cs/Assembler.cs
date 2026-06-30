@@ -9,7 +9,6 @@ using System.Collections.Generic;
 // CPP: #include "IOHelper.g.h"
 // CPP: #include <climits>
 
-using static MiniScript.Value;
 
 namespace MiniScript {
 
@@ -188,7 +187,7 @@ public class Assembler {
 
 			// Add parameter to current function (store name as Value string)
 			// ToDo: make simple, consistent conversion functions between String and Value, and use everywhere.
-			Current.ParamNames.Add(make_string(paramName));
+			Current.ParamNames.Add(Value.make_string(paramName));
 			Current.ParamDefaults.Add(defaultValue);
 
 			return 0; // Directives don't produce instructions
@@ -288,7 +287,7 @@ public class Assembler {
 				Error(StringUtils.Format("Unknown function: '{0}'", parts[2]));
 				return 0;
 			}
-			Int32 funcConstIdx = AddConstant(make_funcref(target, Value.Null));
+			Int32 funcConstIdx = AddConstant(Value.make_funcref(target, Value.Null));
 			if (funcConstIdx > Int16.MaxValue) {
 				Error("Constant index out of range for FUNCREF");
 				return 0;
@@ -577,7 +576,7 @@ public class Assembler {
 				Error(StringUtils.Format("Unknown function: '{0}'", parts[2]));
 				return 0;
 			}
-			Int32 funcConstIdx = AddConstant(make_funcref(target, Value.Null));
+			Int32 funcConstIdx = AddConstant(Value.make_funcref(target, Value.Null));
 			if (funcConstIdx > Int16.MaxValue) {
 				Error("Constant index out of range for CALLF");
 				return 0;
@@ -853,7 +852,7 @@ public class Assembler {
 	private Int32 AddConstant(Value value) {
 		// First look for an existing content that is the same value
 		for (Int32 i = 0; i < Current.Constants.Count; i++) {
-			if (value_identical(Current.Constants[i], value)) return i;
+			if (Value.value_identical(Current.Constants[i], value)) return i;
 		}
 		
 		// Failing that, add it to the table
@@ -899,7 +898,7 @@ public class Assembler {
 		if (IsStringLiteral(token)) {
 			// Remove quotes and create string value
 			String content = token.Substring(1, token.Length - 2);
-			return make_string(content);
+			return Value.make_string(content);
 		}
 		
 		// Check if it contains a decimal point (floating point number).

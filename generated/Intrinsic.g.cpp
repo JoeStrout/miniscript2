@@ -21,7 +21,7 @@ void IntrinsicStorage::ClearShortNames() {
 }
 String IntrinsicStorage::GetShortName(Value v) {
 	for (Int32 i = 0; i < _shortNameKeys.Count(); i++) {
-		if (value_identical(_shortNameKeys[i], v)) return _shortNameVals[i];
+		if (Value::value_identical(_shortNameKeys[i], v)) return _shortNameVals[i];
 	}
 	return nullptr;
 }
@@ -60,7 +60,7 @@ Intrinsic IntrinsicStorage::GetByIndex(Int32 i) {
 void IntrinsicStorage::EnsureBuilt() {
 	if (IsNull(_funcDef)) {
 		_funcDef = BuildFuncDef();
-		_funcRef = make_funcref(_funcDef, Value::Null);
+		_funcRef = Value::make_funcref(_funcDef, Value::Null);
 		GCManager::AddRoot(_funcRef);
 	}
 }
@@ -72,7 +72,7 @@ FuncDef IntrinsicStorage::BuildFuncDef() {
 	FuncDef def =  FuncDef::New();
 	def.set_Name(Name);
 	for (Int32 i = 0; i < _paramNames.Count(); i++) {
-		def.ParamNames().Add(make_string(_paramNames[i]));
+		def.ParamNames().Add(Value::make_string(_paramNames[i]));
 		def.ParamDefaults().Add(_paramDefaults[i]);
 	}
 	def.set_MaxRegs((UInt16)(_paramNames.Count() + 1)); // r0 + params

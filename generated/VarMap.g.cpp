@@ -13,7 +13,7 @@ VarMapBackingStorage::VarMapBackingStorage(List<Value> registers,List<Value> nam
 	_regIndices =  List<Int32>::New();
 
 	for (Int32 i = firstIdx; i <= lastIdx; i++) {
-		if (!is_null(_names[i])) {
+		if (!_names[i].IsNull()) {
 			Int32 orderIdx = FindOrderIdx(_names[i]);
 			if (orderIdx < 0) {
 				_regOrder.Add(_names[i]);
@@ -25,11 +25,11 @@ VarMapBackingStorage::VarMapBackingStorage(List<Value> registers,List<Value> nam
 	}
 }
 Boolean VarMapBackingStorage::TryGet(Value key,Value* value) {
-	if (is_string(key)) {
+	if (key.IsString()) {
 		Int32 orderIdx = FindOrderIdx(key);
 		if (orderIdx >= 0) {
 			Int32 regIdx = _regIndices[orderIdx];
-			if (!is_null(_names[regIdx])) {
+			if (!_names[regIdx].IsNull()) {
 				*value = _registers[regIdx];
 				return Boolean(true);
 			}
@@ -39,7 +39,7 @@ Boolean VarMapBackingStorage::TryGet(Value key,Value* value) {
 	return Boolean(false);
 }
 Boolean VarMapBackingStorage::TrySet(Value key,Value value) {
-	if (is_string(key)) {
+	if (key.IsString()) {
 		Int32 orderIdx = FindOrderIdx(key);
 		if (orderIdx >= 0) {
 			Int32 regIdx = _regIndices[orderIdx];
@@ -51,7 +51,7 @@ Boolean VarMapBackingStorage::TrySet(Value key,Value value) {
 	return Boolean(false);
 }
 Boolean VarMapBackingStorage::TryRemove(Value key) {
-	if (is_string(key)) {
+	if (key.IsString()) {
 		Int32 orderIdx = FindOrderIdx(key);
 		if (orderIdx >= 0) {
 			Int32 regIdx = _regIndices[orderIdx];
@@ -62,11 +62,11 @@ Boolean VarMapBackingStorage::TryRemove(Value key) {
 	return Boolean(false);
 }
 Boolean VarMapBackingStorage::HasKey(Value key) {
-	if (is_string(key)) {
+	if (key.IsString()) {
 		Int32 orderIdx = FindOrderIdx(key);
 		if (orderIdx >= 0) {
 			Int32 regIdx = _regIndices[orderIdx];
-			return !is_null(_names[regIdx]);
+			return !_names[regIdx].IsNull();
 		}
 	}
 	return Boolean(false);
@@ -75,14 +75,14 @@ Int32 VarMapBackingStorage::RegEntryCount() {
 	Int32 n = 0;
 	for (Int32 i = 0; i < _regOrder.Count(); i++) {
 		Int32 regIdx = _regIndices[i];
-		if (!is_null(_names[regIdx])) n++;
+		if (!_names[regIdx].IsNull()) n++;
 	}
 	return n;
 }
 Int32 VarMapBackingStorage::NextAssignedRegEntry(Int32 startIdx) {
 	for (Int32 i = startIdx; i < _regOrder.Count(); i++) {
 		Int32 regIdx = _regIndices[i];
-		if (!is_null(_names[regIdx])) return i;
+		if (!_names[regIdx].IsNull()) return i;
 	}
 	return -1;
 }
@@ -98,7 +98,7 @@ Value VarMapBackingStorage::GetRegEntryValue(Int32 i) {
 void VarMapBackingStorage::MarkChildren() {
 	for (Int32 i = 0; i < _regOrder.Count(); i++) {
 		Int32 regIdx = _regIndices[i];
-		if (regIdx < _names.Count() && !is_null(_names[regIdx])) {
+		if (regIdx < _names.Count() && !_names[regIdx].IsNull()) {
 			GCManager::Mark(_regOrder[i]);
 			GCManager::Mark(_registers[regIdx]);
 		}
@@ -110,7 +110,7 @@ void VarMapBackingStorage::Gather(Int32 mapIdx) {
 	GCMap map = GCManager::Maps.Get(mapIdx);
 	for (Int32 i = 0; i < _regOrder.Count(); i++) {
 		Int32 regIdx = _regIndices[i];
-		if (regIdx < _names.Count() && !is_null(_names[regIdx])) {
+		if (regIdx < _names.Count() && !_names[regIdx].IsNull()) {
 			map.Set(_regOrder[i], _registers[regIdx]);
 		}
 	}
@@ -160,7 +160,7 @@ Value VarMapBackingStorage::NewVarMap(List<Value> registers,List<Value> names,In
 	Int32 idx = GCManager::Maps.AllocItem();
 	GCManager::Maps.Init(idx, 4);
 	GCManager::Maps.SetVmb(idx, vmb);
-	return make_gc(GCManager::MapSet, idx);
+	return Value::make_gc(GCManager::MapSet, idx);
 }
 
 } // end of namespace MiniScript

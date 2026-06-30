@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using static MiniScript.Value;
 // H: #include "AST.g.h"
 // H: #include "CodeEmitter.g.h"
 // H: #include "ErrorTypes.g.h"
@@ -200,7 +199,7 @@ public class CodeGenerator : IASTVisitor {
 		for (Int32 i = 0; i < _namedStack.Count; i++) {
 			if (_namedStack[i] == varName) return;
 		}
-		Int32 nameIdx = _emitter.AddConstant(make_string(varName));
+		Int32 nameIdx = _emitter.AddConstant(Value.make_string(varName));
 		_emitter.EmitAB(Opcode.NAME_rA_kBC, varReg, nameIdx, $"use r{varReg} for {varName}");
 		_namedStack.Add(varName);
 	}
@@ -298,7 +297,7 @@ public class CodeGenerator : IASTVisitor {
 
 	public Int32 Visit(StringNode node) {
 		Int32 reg = GetTargetOrAlloc();
-		Int32 constIdx = _emitter.AddConstant(make_string(node.Value));
+		Int32 constIdx = _emitter.AddConstant(Value.make_string(node.Value));
 		_emitter.EmitAB(Opcode.LOAD_rA_kBC, reg, constIdx, $"r{reg} = \"{node.Value}\"");
 		return reg;
 	}
@@ -323,7 +322,7 @@ public class CodeGenerator : IASTVisitor {
 		Int32 varReg;
 		if (_variableRegs.TryGetValue(node.Name, out varReg)) {
 			// Variable found - emit LOADC (load-and-call for implicit function invocation)
-			Int32 nameIdx = _emitter.AddConstant(make_string(node.Name));
+			Int32 nameIdx = _emitter.AddConstant(Value.make_string(node.Name));
 			Opcode op = addressOf ? Opcode.LOADV_rA_rB_kC : Opcode.LOADC_rA_rB_kC;
 			String a = addressOf ? "@" : "";
 			_emitter.EmitABC(op, resultReg, varReg, nameIdx,
@@ -332,7 +331,7 @@ public class CodeGenerator : IASTVisitor {
 			// Variable not in local scope — emit LOADC/LOADV referencing r0 with
 			// the variable name. At runtime, the name check on r0 will fail,
 			// triggering LookupVariable to search outer/global scope.
-			Int32 nameIdx = _emitter.AddConstant(make_string(node.Name));
+			Int32 nameIdx = _emitter.AddConstant(Value.make_string(node.Name));
 			Opcode op = addressOf ? Opcode.LOADV_rA_rB_kC : Opcode.LOADC_rA_rB_kC;
 			String a = addressOf ? "@" : "";
 			_emitter.EmitABC(op, resultReg, 0, nameIdx,
@@ -666,7 +665,7 @@ public class CodeGenerator : IASTVisitor {
 		// Not a known local — resolve at runtime via LOADV (outer/global/intrinsic).
 		// We use LOADV (not LOADC) to get the funcref without auto-invoking it.
 		Int32 funcReg = AllocReg();
-		Int32 nameIdx = _emitter.AddConstant(make_string(node.Function));
+		Int32 nameIdx = _emitter.AddConstant(Value.make_string(node.Function));
 		_emitter.EmitABC(Opcode.LOADV_rA_rB_kC, funcReg, 0, nameIdx,
 			$"r{funcReg} = @{node.Function} (runtime lookup)");
 
@@ -815,7 +814,7 @@ public class CodeGenerator : IASTVisitor {
 		Int32 resultReg = GetTargetOrAlloc();
 		Int32 targetReg = node.Target.Accept(this);
 		Int32 indexReg = AllocReg();
-		Int32 constIdx = _emitter.AddConstant(make_string(node.Member));
+		Int32 constIdx = _emitter.AddConstant(Value.make_string(node.Member));
 		_emitter.EmitAB(Opcode.LOAD_rA_kBC, indexReg, constIdx, $"r{indexReg} = \"{node.Member}\"");
 		String comment = $"{node.Target.ToStr()}.{node.Member}";
 
@@ -1134,7 +1133,7 @@ public class CodeGenerator : IASTVisitor {
 		}
 		StringNode strNode = node as StringNode;
 		if (strNode != null) {
-			result = make_string(strNode.Value);
+			result = Value.make_string(strNode.Value);
 			return true;
 		}
 		IdentifierNode idNode = node as IdentifierNode;
@@ -1157,12 +1156,12 @@ public class CodeGenerator : IASTVisitor {
 		Value elemVal;
 		ListNode listNode = node as ListNode;
 		if (listNode != null) {
-			list = make_list(listNode.Elements.Count);
+			list = Value.make_list(listNode.Elements.Count);
 			for (Int32 i = 0; i < listNode.Elements.Count; i++) {
 				if (!TryEvaluateConstant(listNode.Elements[i], out elemVal)) return false;
-				list_push(list, elemVal);
+				Value.list_push(list, elemVal);
 			}
-			freeze_value(list);
+			Value.freeze_value(list);
 			result = list;
 			return true;
 		}
@@ -1171,13 +1170,13 @@ public class CodeGenerator : IASTVisitor {
 		Value valVal;
 		MapNode mapNode = node as MapNode;
 		if (mapNode != null) {
-			map = make_map(mapNode.Keys.Count);
+			map = Value.make_map(mapNode.Keys.Count);
 			for (Int32 i = 0; i < mapNode.Keys.Count; i++) {
 				if (!TryEvaluateConstant(mapNode.Keys[i], out keyVal)) return false;
 				if (!TryEvaluateConstant(mapNode.Values[i], out valVal)) return false;
-				map_set(map, keyVal, valVal);
+				Value.map_set(map, keyVal, valVal);
 			}
-			freeze_value(map);
+			Value.freeze_value(map);
 			result = map;
 			return true;
 		}
@@ -1203,7 +1202,7 @@ public class CodeGenerator : IASTVisitor {
 			Int32 paramReg = innerGen.AllocReg();  // r1, r2, ...
 			String name = node.ParamNames[i];
 			innerGen._variableRegs[name] = paramReg;
-			Int32 nameIdx = innerEmitter.AddConstant(make_string(name));
+			Int32 nameIdx = innerEmitter.AddConstant(Value.make_string(name));
 			innerEmitter.EmitAB(Opcode.NAME_rA_kBC, paramReg, nameIdx, $"param {name}");
 			// Params are named unconditionally at function entry, so reassigning
 			// one in the body needn't re-emit NAME.
@@ -1244,7 +1243,7 @@ public class CodeGenerator : IASTVisitor {
 		// Set parameter info on the FuncDef
 		Value defaultVal;
 		for (Int32 i = 0; i < node.ParamNames.Count; i++) {
-			funcDef.ParamNames.Add(make_string(node.ParamNames[i]));
+			funcDef.ParamNames.Add(Value.make_string(node.ParamNames[i]));
 			ASTNode defaultNode = node.ParamDefaults[i];
 			if (defaultNode != null) {
 				if (TryEvaluateConstant(defaultNode, out defaultVal)) {
@@ -1269,7 +1268,7 @@ public class CodeGenerator : IASTVisitor {
 
 		// Store a template funcref (no captured outer vars) in this function's
 		// constant pool, and emit FUNCREF to bind it into a closure at runtime.
-		Value funcTemplate = make_funcref(funcDef, Value.Null);
+		Value funcTemplate = Value.make_funcref(funcDef, Value.Null);
 		Int32 templateConst = _emitter.AddConstant(funcTemplate);
 		_emitter.EmitAB(Opcode.FUNCREF_iA_iBC, resultReg, templateConst,
 			$"r{resultReg} = funcref {funcName}");
@@ -1461,7 +1460,7 @@ public class CodeGenerator : IASTVisitor {
 
 		// Look up the method using METHFIND (walks __isa chain, sets pending self/super)
 		Int32 keyReg = AllocReg();
-		Int32 constIdx = _emitter.AddConstant(make_string(methodKey));
+		Int32 constIdx = _emitter.AddConstant(Value.make_string(methodKey));
 		_emitter.EmitAB(Opcode.LOAD_rA_kBC, keyReg, constIdx, $"r{keyReg} = \"{methodKey}\"");
 		Int32 funcReg = AllocReg();
 		_emitter.EmitABC(Opcode.METHFIND_rA_rB_rC, funcReg, receiverReg, keyReg,

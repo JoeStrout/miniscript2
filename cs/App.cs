@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;	// only for ToList!
 using System.Threading;
 using MiniScript;
-using static MiniScript.Value;
 
 /*** BEGIN CPP_ONLY ***
 #include "CodeEmitter.g.h"
@@ -468,7 +467,7 @@ public struct App {
 		while (true) {
 			// Build prompt: " _in[N]: " for a fresh line, or a matching-width
 			// continuation prompt whose spaces align with the _in prompt.
-			Int32 idx = list_count(CoreIntrinsics.replInList);
+			Int32 idx = Value.list_count(CoreIntrinsics.replInList);
 			String prompt;
 			if (interp.NeedMoreInput()) {
 				// Width of " _in[N]: " = 8 + digits(N).  Use (3+digits(N)) spaces before "...:".
@@ -567,12 +566,12 @@ public struct App {
 			search = metaRest;
 		}
 
-		Int32 total = list_count(CoreIntrinsics.replInList);
+		Int32 total = Value.list_count(CoreIntrinsics.replInList);
 		// First pass (backward): find the oldest index among the last `count` matches.
 		Int32 remaining = count;
 		Int32 firstIdx = total;
 		for (Int32 i = total - 1; i >= 0 && remaining > 0; i--) {
-			String entry = as_cstring(list_get(CoreIntrinsics.replInList, i));
+			String entry = Value.as_cstring(Value.list_get(CoreIntrinsics.replInList, i));
 			if (search != null && entry.IndexOf(search) < 0) continue;
 			remaining--;
 			firstIdx = i;
@@ -580,7 +579,7 @@ public struct App {
 		// Second pass (forward): display in ascending order.
 		Int32 shown = 0;
 		for (Int32 i = firstIdx; i < total && shown < count; i++) {
-			String entry = as_cstring(list_get(CoreIntrinsics.replInList, i));
+			String entry = Value.as_cstring(Value.list_get(CoreIntrinsics.replInList, i));
 			if (search != null && entry.IndexOf(search) < 0) continue;
 			IOHelper.Print(StringUtils.Format(" _in[{0}]: {1}", i, entry), TextStyle.Subdued);
 			shown++;
@@ -591,19 +590,19 @@ public struct App {
 	// Recall a history entry by index string ("5", "-2", etc.).
 	// Returns the source string, or null if the index is out of range.
 	private static String RecallInput(String indexStr) {
-		Int32 total = list_count(CoreIntrinsics.replInList);
+		Int32 total = Value.list_count(CoreIntrinsics.replInList);
 		if (total == 0) return null;
 		bool negative = indexStr.Length > 0 && indexStr[0] == '-';
 		Int32 idx = ParseInt(negative ? indexStr.Substring(1) : indexStr);
 		if (idx < 0) return null;
 		if (negative) idx = total - idx;
 		if (idx < 0 || idx >= total) return null;
-		return as_cstring(list_get(CoreIntrinsics.replInList, idx));
+		return Value.as_cstring(Value.list_get(CoreIntrinsics.replInList, idx));
 	}
 
 	private static void RunREPL() {
-		CoreIntrinsics.replInList = make_list(0);
-		CoreIntrinsics.replOutList = make_list(0);
+		CoreIntrinsics.replInList = Value.make_list(0);
+		CoreIntrinsics.replOutList = Value.make_list(0);
 
 		Interpreter interp = new Interpreter();
 		//*** BEGIN CS_ONLY ***
@@ -637,12 +636,12 @@ public struct App {
 			// When the interaction completes, record it and display implicit output.
 			// Skip recording if reset was called (it replaces the lists with fresh ones).
 			if (!interp.NeedMoreInput()) {
-				bool wasReset = !value_identical(CoreIntrinsics.replInList, inListBefore);
+				bool wasReset = !Value.value_identical(CoreIntrinsics.replInList, inListBefore);
 				if (!wasReset) {
-					Int32 idx = list_count(CoreIntrinsics.replInList);
+					Int32 idx = Value.list_count(CoreIntrinsics.replInList);
 					implVal = interp.lastImplicitResult;
-					list_push(CoreIntrinsics.replInList, make_string(currentInput));
-					list_push(CoreIntrinsics.replOutList, implVal);
+					Value.list_push(CoreIntrinsics.replInList, Value.make_string(currentInput));
+					Value.list_push(CoreIntrinsics.replOutList, implVal);
 					// Mirror MiniScript 1.x: the global `_` always holds the most
 					// recent implicit REPL result (i.e. _out[-1]).
 					interp.SetGlobalValue("_", implVal);

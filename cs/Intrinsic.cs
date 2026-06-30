@@ -6,7 +6,6 @@
 
 using System;
 using System.Collections.Generic;
-using static MiniScript.Value;
 // H: #include "value.h"
 // H: #include "FuncDef.g.h"
 // CPP: #include "CoreIntrinsics.g.h"
@@ -43,7 +42,7 @@ public class Intrinsic {
 
 	public static String GetShortName(Value v) {
 		for (Int32 i = 0; i < _shortNameKeys.Count; i++) {
-			if (value_identical(_shortNameKeys[i], v)) return _shortNameVals[i];
+			if (Value.value_identical(_shortNameKeys[i], v)) return _shortNameVals[i];
 		}
 		return null;
 	}
@@ -95,7 +94,7 @@ public class Intrinsic {
 	private void EnsureBuilt() {
 		if (_funcDef == null) {
 			_funcDef = BuildFuncDef();
-			_funcRef = make_funcref(_funcDef, Value.Null);
+			_funcRef = Value.make_funcref(_funcDef, Value.Null);
 			GCManager.AddRoot(_funcRef);
 		}
 	}
@@ -110,7 +109,7 @@ public class Intrinsic {
 		FuncDef def = new FuncDef();
 		def.Name = Name;
 		for (Int32 i = 0; i < _paramNames.Count; i++) {
-			def.ParamNames.Add(make_string(_paramNames[i]));
+			def.ParamNames.Add(Value.make_string(_paramNames[i]));
 			def.ParamDefaults.Add(_paramDefaults[i]);
 		}
 		def.MaxRegs = (UInt16)(_paramNames.Count + 1); // r0 + params

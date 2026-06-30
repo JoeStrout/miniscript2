@@ -154,7 +154,7 @@ UInt32 AssemblerStorage::AddLine(String line,Int32 lineNumber) {
 
 		// Add parameter to current function (store name as Value string)
 		// ToDo: make simple, consistent conversion functions between String and Value, and use everywhere.
-		Current.ParamNames().Add(make_string(paramName));
+		Current.ParamNames().Add(Value::make_string(paramName));
 		Current.ParamDefaults().Add(defaultValue);
 
 		return 0; // Directives don't produce instructions
@@ -215,7 +215,7 @@ UInt32 AssemblerStorage::AddLine(String line,Int32 lineNumber) {
 		Byte src = ParseRegister(parts[2]);
 
 		constantValue = ParseAsConstant(parts[3]);
-		if (!is_string(constantValue)) Error("Variable name must be a string");
+		if (!constantValue.IsString()) Error("Variable name must be a string");
 		Int32 constIdx = AddConstant(constantValue);
 		if (constIdx > 255) Error("Constant index out of range for LOADV opcode");
 		if (HasError) return 0;
@@ -233,7 +233,7 @@ UInt32 AssemblerStorage::AddLine(String line,Int32 lineNumber) {
 		Byte src = ParseRegister(parts[2]);
 
 		constantValue = ParseAsConstant(parts[3]);
-		if (!is_string(constantValue)) Error("Variable name must be a string");
+		if (!constantValue.IsString()) Error("Variable name must be a string");
 		Int32 constIdx = AddConstant(constantValue);
 		if (constIdx > 255) Error("Constant index out of range for LOADC opcode");
 		if (HasError) return 0;
@@ -254,7 +254,7 @@ UInt32 AssemblerStorage::AddLine(String line,Int32 lineNumber) {
 			Error(StringUtils::Format("Unknown function: '{0}'", parts[2]));
 			return 0;
 		}
-		Int32 funcConstIdx = AddConstant(make_funcref(target, Value::Null));
+		Int32 funcConstIdx = AddConstant(Value::make_funcref(target, Value::Null));
 		if (funcConstIdx > Int16MaxValue) {
 			Error("Constant index out of range for FUNCREF");
 			return 0;
@@ -273,7 +273,7 @@ UInt32 AssemblerStorage::AddLine(String line,Int32 lineNumber) {
 		Byte src = ParseRegister(parts[2]);
 
 		constantValue = ParseAsConstant(parts[3]);
-		if (!is_string(constantValue)) Error("Variable name must be a string");
+		if (!constantValue.IsString()) Error("Variable name must be a string");
 		Int32 constIdx = AddConstant(constantValue);
 		if (constIdx > 255) Error("Constant index out of range for ASSIGN opcode");
 		if (HasError) return 0;
@@ -291,7 +291,7 @@ UInt32 AssemblerStorage::AddLine(String line,Int32 lineNumber) {
 		if (HasError) return 0;
 
 		constantValue = ParseAsConstant(parts[2]);
-		if (!is_string(constantValue)) Error("Variable name must be a string");
+		if (!constantValue.IsString()) Error("Variable name must be a string");
 		Int32 constIdx = AddConstant(constantValue);
 		if (constIdx > 65535) Error("Constant index out of range for NAME opcode");
 		if (HasError) return 0;
@@ -543,7 +543,7 @@ UInt32 AssemblerStorage::AddLine(String line,Int32 lineNumber) {
 			Error(StringUtils::Format("Unknown function: '{0}'", parts[2]));
 			return 0;
 		}
-		Int32 funcConstIdx = AddConstant(make_funcref(target, Value::Null));
+		Int32 funcConstIdx = AddConstant(Value::make_funcref(target, Value::Null));
 		if (funcConstIdx > Int16MaxValue) {
 			Error("Constant index out of range for CALLF");
 			return 0;
@@ -779,7 +779,7 @@ Int32 AssemblerStorage::FindLabelAddress(String labelName) {
 Int32 AssemblerStorage::AddConstant(Value value) {
 	// First look for an existing content that is the same value
 	for (Int32 i = 0; i < Current.Constants().Count(); i++) {
-		if (value_identical(Current.Constants()[i], value)) return i;
+		if (Value::value_identical(Current.Constants()[i], value)) return i;
 	}
 	
 	// Failing that, add it to the table
@@ -818,19 +818,19 @@ Value AssemblerStorage::ParseAsConstant(String token) {
 	if (IsStringLiteral(token)) {
 		// Remove quotes and create string value
 		String content = token.Substring(1, token.Length() - 2);
-		return make_string(content);
+		return Value::make_string(content);
 	}
 	
 	// Check if it contains a decimal point (floating point number).
 	if (token.Contains(".")) {
 		// Simple double parsing (basic implementation)
 		Double doubleValue = ParseDouble(token);
-		return make_double(doubleValue);
+		return Value(doubleValue);
 	}
 	
 	// Parse as integer
 	Int32 intValue = ParseInt32(token);
-	return make_int(intValue);
+	return Value(intValue);
 }
 Double AssemblerStorage::ParseDouble(String str) {
 	// Find the decimal point

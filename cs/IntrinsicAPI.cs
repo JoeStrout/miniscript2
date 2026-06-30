@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using static System.Runtime.CompilerServices.MethodImplOptions;
-using static MiniScript.Value;
 // H: #include "value.h"
 // CPP: #include "VM.g.h"
 // CPP: #include "Interpreter.g.h"

@@ -162,7 +162,7 @@ inline void GCList::Init(Int32 capacity ) {
 	Computed = Boolean(false);
 }
 inline Int32 GCList::Count() {
-	if (Computed) return (Int32)numeric_val(Items[2]);
+	if (Computed) return (Int32)Value::numeric_val(Items[2]);
 	return (IsNull(Items)) ? 0 : Items.Count();
 }
 inline void GCList::Push(Value v) {
@@ -172,13 +172,13 @@ inline void GCList::Push(Value v) {
 }
 inline Value GCList::Get(Int32 i) {
 	if (Computed) {
-		Int32 len = (Int32)numeric_val(Items[2]);
+		Int32 len = (Int32)Value::numeric_val(Items[2]);
 		if (i < 0) i += len;
 		if ((UInt32)i >= (UInt32)len) return Value::Null;
 		Value incr = Items[1];
-		if (is_null(incr)) return Items[0];
-		Double d = numeric_val(Items[0]) + numeric_val(incr) * i;
-		return (d == (Int32)d) ? make_int((Int32)d) : make_double(d);
+		if (incr.IsNull()) return Items[0];
+		Double d = Value::numeric_val(Items[0]) + Value::numeric_val(incr) * i;
+		return Value(d);
 	}
 	if (i < 0) i += Items.Count();
 	return (UInt32)i < (UInt32)Items.Count() ? Items[i] : Value::Null;

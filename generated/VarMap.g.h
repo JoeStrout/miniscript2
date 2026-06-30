@@ -200,7 +200,7 @@ inline void VarMapBacking::Clear() { return get()->Clear(); }
 inline Int32 VarMapBacking::FindOrderIdx(Value key) { return get()->FindOrderIdx(key); }
 inline Int32 VarMapBackingStorage::FindOrderIdx(Value key) {
 	for (Int32 i = 0; i < _regOrder.Count(); i++) {
-		if (value_equal(_regOrder[i], key)) return i;
+		if (_regOrder[i] == key) return i;
 	}
 	return -1;
 }

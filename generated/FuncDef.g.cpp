@@ -34,11 +34,11 @@ String FuncDefStorage::ToString() {
 	Value defaultVal;
 	for (Int32 i = 0; i < ParamNames.Count(); i++) {
 		if (i > 0) result += ", ";
-		result += as_cstring(ParamNames[i]);
+		result += Value::as_cstring(ParamNames[i]);
 		defaultVal = ParamDefaults[i];
-		if (!is_null(defaultVal)) {
+		if (!defaultVal.IsNull()) {
 			result += "=";
-			result += as_cstring(value_repr(defaultVal, nullptr));
+			result += Value::as_cstring(Value::value_repr(defaultVal, nullptr));
 		}
 	}
 	result += ")";

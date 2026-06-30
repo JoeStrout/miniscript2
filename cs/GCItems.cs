@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using static System.Runtime.CompilerServices.MethodImplOptions;
-using static MiniScript.Value;
 // H: #include "GCInterfaces.g.h"
 // H: #include "value.h"
 // H: #include "VarMap.g.h"
@@ -65,7 +64,7 @@ public struct GCList : IGCItem {
 	// an already-materialized list.  Mutates this struct; caller must write back.
 	public void Materialize() {
 		if (!Computed) return;
-		Int32 len = (Int32)numeric_val(Items[2]);
+		Int32 len = (Int32)Value.numeric_val(Items[2]);
 		List<Value> real = new List<Value>(Math.Max(len, 4));
 		for (Int32 i = 0; i < len; i++) real.Add(Get(i));  // Get still reads meta
 		Items    = real;
@@ -74,7 +73,7 @@ public struct GCList : IGCItem {
 
 	[MethodImpl(AggressiveInlining)]
 	public Int32 Count() {
-		if (Computed) return (Int32)numeric_val(Items[2]);
+		if (Computed) return (Int32)Value.numeric_val(Items[2]);
 		return (Items == null) ? 0 : Items.Count;
 	}
 
@@ -88,13 +87,13 @@ public struct GCList : IGCItem {
 	[MethodImpl(AggressiveInlining)]
 	public Value Get(Int32 i) {
 		if (Computed) {
-			Int32 len = (Int32)numeric_val(Items[2]);
+			Int32 len = (Int32)Value.numeric_val(Items[2]);
 			if (i < 0) i += len;
 			if ((UInt32)i >= (UInt32)len) return Value.Null;
 			Value incr = Items[1];
 			if (incr.IsNull()) return Items[0];
-			Double d = numeric_val(Items[0]) + numeric_val(incr) * i;
-			return (d == (Int32)d) ? new Value((Int32)d) : new Value(d);
+			Double d = Value.numeric_val(Items[0]) + Value.numeric_val(incr) * i;
+			return new Value(d);
 		}
 		if (i < 0) i += Items.Count;
 		return (UInt32)i < (UInt32)Items.Count ? Items[i] : Value.Null;
@@ -128,7 +127,7 @@ public struct GCList : IGCItem {
 
 	public Value Pop() {
 		if (Computed) {
-			Int32 len = (Int32)numeric_val(Items[2]);
+			Int32 len = (Int32)Value.numeric_val(Items[2]);
 			if (len == 0) return Value.Null;
 			Value last = Get(len - 1);
 			Items[2] = new Value(len - 1);

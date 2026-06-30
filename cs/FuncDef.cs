@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using static System.Runtime.CompilerServices.MethodImplOptions;
-using static MiniScript.Value;
 // H: #include "value.h"
 // CPP: #include "StringUtils.g.h"
 // CPP: #include "IntrinsicAPI.g.h"
@@ -78,11 +77,11 @@ public class FuncDef {
 		Value defaultVal;
 		for (Int32 i = 0; i < ParamNames.Count; i++) {
 			if (i > 0) result += ", ";
-			result += as_cstring(ParamNames[i]);
+			result += Value.as_cstring(ParamNames[i]);
 			defaultVal = ParamDefaults[i];
 			if (!defaultVal.IsNull()) {
 				result += "=";
-				result += as_cstring(value_repr(defaultVal, null));
+				result += Value.as_cstring(Value.value_repr(defaultVal, null));
 			}
 		}
 		result += ")";

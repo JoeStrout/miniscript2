@@ -35,13 +35,13 @@ CallInfo::CallInfo(Int32 returnPC,Int32 returnBase,FuncDef returnFunc,Int32 copy
 	OuterVarMap = outerVars;
 }
 Value CallInfo::GetLocalVarMap(List<Value> registers,List<Value> names,int baseIdx,int regCount) {
-	if (is_null(LocalVarMap)) {
+	if (LocalVarMap.IsNull()) {
 		// Create a new VarMap with references to VM's stack and names arrays
 		if (regCount == 0) {
 			// We have no local vars at all!  Make an ordinary map.
-			LocalVarMap = make_map(4);	// This is safe, right?
+			LocalVarMap = Value::make_map(4);	// This is safe, right?
 		} else {
-			LocalVarMap = make_varmap(registers, names, baseIdx, regCount);
+			LocalVarMap = Value::make_varmap(registers, names, baseIdx, regCount);
 		}
 	}
 	return LocalVarMap;
@@ -92,8 +92,8 @@ String VMStorage::FindShortName(Value v) {
 	FuncDef rf = callStack[0].ReturnFunc;
 	Int32 regCount = rf.MaxRegs();
 	for (Int32 i = 0; i < regCount; i++) {
-		if (!is_null(names[i]) && value_identical(stack[i], v) && !value_identical(names[i], v))
-			return to_String(names[i]);
+		if (!names[i].IsNull() && Value::value_identical(stack[i], v) && !Value::value_identical(names[i], v))
+			return Value::to_String(names[i]);
 	}
 	// Fall back to the intrinsic short-name registry (type maps, etc.)
 	return Intrinsic::GetShortName(v);
@@ -135,7 +135,7 @@ void VMStorage::InitVM(Int32 stackSlots,Int32 callSlots) {
 	set_short_name_lookup([](void* vm_ptr, Value v) -> Value {
 		String s = static_cast<VMStorage*>(vm_ptr)->FindShortName(v);
 		if (s.Length() == 0) return Value::Null;
-		return make_string(s.c_str());
+		return Value::make_string(s.c_str());
 	});
 
 	// Wire value.cpp's runtime-error constructor hook (layer 2A) to the
@@ -144,7 +144,7 @@ void VMStorage::InitVM(Int32 stackSlots,Int32 callSlots) {
 	// the C# side.  Falls back to a bare error if there is no active VM.
 	set_runtime_error_maker([](const char* msg) -> Value {
 		VM vm = VMStorage::ActiveVM();
-		if (IsNull(vm)) return make_error(make_string(msg), Value::Null, Value::Null, Value::Null);
+		if (IsNull(vm)) return Value::make_error(Value::make_string(msg), Value::Null, Value::Null, Value::Null);
 		return vm.MakeRuntimeError(String(msg));
 	});
 
@@ -212,18 +212,18 @@ void VMStorage::ManuallyPushCall(Int32 intrinsicCalleeBase,FuncDef importMain) {
 }
 void VMStorage::SetVar(String varName,Value value) {
 	Value targetMap;
-	if (!is_null(ReplGlobals) && callStackTop <= 1) {
+	if (!ReplGlobals.IsNull() && callStackTop <= 1) {
 		targetMap = ReplGlobals;
 	} else {
 		targetMap = GetCurrentLocalVarMap(BaseIndex, CurrentFunction.MaxRegs());
 	}
-	map_set(targetMap, varName, value);
+	Value::map_set(targetMap, varName, value);
 }
 void VMStorage::Reset(List<FuncDef> allFunctions) {
 	Reset(allFunctions, Value::Null);
 }
 void VMStorage::Reset(List<FuncDef> allFunctions,Value replGlobals) {
-	bool partialReset = !is_null(replGlobals);
+	bool partialReset = !replGlobals.IsNull();
 
 	// Locate @main.  All other functions are reachable from @main via its
 	// constant pool (nested-function templates), so the VM keeps no
@@ -281,7 +281,7 @@ void VMStorage::Reset(List<FuncDef> allFunctions,Value replGlobals) {
 			newStack.Add(Value::Null);
 			newNames.Add(Value::Null);
 		}
-		varmap_rebind(ReplGlobals, newStack, newNames);
+		Value::varmap_rebind(ReplGlobals, newStack, newNames);
 		stack = newStack;
 		names = newNames;
 	}
@@ -303,9 +303,9 @@ void VMStorage::RaiseRuntimeError(String message) {
 }
 void VMStorage::FinalizeErrorStackTrace() {
 	_errorStackPending = Boolean(false);
-	if (!is_error(Error)) return;
+	if (!Error.IsError()) return;
 	Value stack = CurrentFunction ? BuildStackTrace() : Value::Null;
-	Int32 idx = value_item_index(Error);
+	Int32 idx = Value::value_item_index(Error);
 	GCError ge = GCManager::Errors.Get(idx);
 	GCManager::Errors.SetFields(idx, ge.Message, ge.Inner, stack, ge.Isa);
 }
@@ -321,17 +321,17 @@ Value VMStorage::MakeRuntimeError(String message) {
 	return ErrorTypes::RuntimeError(message);
 }
 IntrinsicResult VMStorage::RaiseUncaughtError(Value error) {
-	String msg = StringUtils::Format("Uncaught {0}", error_message(error));
+	String msg = StringUtils::Format("Uncaught {0}", Value::error_message(error));
 	RaiseRuntimeError(msg);
 	return IntrinsicResult::Null;
 }
 bool VMStorage::ReportRuntimeError() {
-	if (is_null(Error)) return Boolean(false);
-	String msg = StringUtils::Format("{0}", error_message(Error));
+	if (Error.IsNull()) return Boolean(false);
+	String msg = StringUtils::Format("{0}", Value::error_message(Error));
 	String loc = "";
-	Value stack = error_stack(Error);
-	if (is_list(stack) && list_count(stack) > 0) {
-		loc = StringUtils::Format("{0}", list_get(stack, 0));
+	Value stack = Value::error_stack(Error);
+	if (stack.IsList() && Value::list_count(stack) > 0) {
+		loc = StringUtils::Format("{0}", Value::list_get(stack, 0));
 		// Drop the "(current program) " prefix used for the top-level
 		// script, leaving just "line N" for the common case.
 		String prefix = "(current program) ";
@@ -347,12 +347,12 @@ bool VMStorage::ReportRuntimeError() {
 	return Boolean(true);
 }
 Value VMStorage::BuildStackTrace() {
-	Value result = make_list(8);
+	Value result = Value::make_list(8);
 	Int32 callSitePC = PC - 1;
 	if (callSitePC < 0) callSitePC = 0;
 	String curFile = CurrentFunction.FileName();
 	if (curFile == "") curFile = "(current program)";
-	list_push(result, make_string(StringUtils::Format("{0} line {1}", curFile, CurrentFunction.GetLineNumber(callSitePC))));
+	Value::list_push(result, Value::make_string(StringUtils::Format("{0} line {1}", curFile, CurrentFunction.GetLineNumber(callSitePC))));
 	// callStack[0] is @main's own frame (not a caller), so stop at i=1.
 	for (Int32 i = CallStackDepth() - 1; i >= 1; i--) {
 		CallInfo ci = GetCallStackFrame(i);
@@ -361,9 +361,9 @@ Value VMStorage::BuildStackTrace() {
 		if (callerPC < 0) callerPC = 0;
 		String callerFile = callerFunc.FileName();
 		if (callerFile == "") callerFile = "(current program)";
-		list_push(result, make_string(StringUtils::Format("{0} line {1}", callerFile, callerFunc.GetLineNumber(callerPC))));
+		Value::list_push(result, Value::make_string(StringUtils::Format("{0} line {1}", callerFile, callerFunc.GetLineNumber(callerPC))));
 	}
-	freeze_value(result);
+	Value::freeze_value(result);
 	return result;
 }
 List<FuncDef> VMStorage::GetFunctions() {
@@ -379,11 +379,11 @@ void VMStorage::CollectFunctions(FuncDef func,List<FuncDef> outList) {
 	outList.Add(func);
 	List<Value> consts = func.Constants();
 	for (Int32 i = 0; i < consts.Count(); i++) {
-		if (is_funcref(consts[i])) CollectFunctions(funcref_funcdef(consts[i]), outList);
+		if (consts[i].IsFuncRef()) CollectFunctions(Value::funcref_funcdef(consts[i]), outList);
 	}
 }
 Int32 VMStorage::SelfParamOffset(FuncDef callee) {
-	if (hasPendingContext && callee.ParamNames().Count() > 0 && value_equal(callee.ParamNames()[0], Value::selfString)) {
+	if (hasPendingContext && callee.ParamNames().Count() > 0 && callee.ParamNames()[0] == Value::selfString) {
 		return 1;
 	}
 	return 0;
@@ -415,7 +415,7 @@ Int32 VMStorage::ProcessArguments(Int32 argCount,Int32 selfParam,Int32 startPC,I
 		} else if (argOp == Opcode::ARG_iABC) {
 			// Argument immediate value
 			Int32 immediate = BytecodeUtil::ABCs(argInstruction);
-			argValue = make_int(immediate);
+			argValue = Value(immediate);
 		} else {
 			RaiseRuntimeError("Expected ARG opcode in ARGBLK");
 			return -1;
@@ -466,13 +466,13 @@ void VMStorage::SetupCallFrame(Int32 argCount,Int32 selfParam,Int32 calleeBase,F
 	// Step 6 is handled by the caller (pushing CallInfo, switching frame, etc.)
 }
 Int32 VMStorage::AutoInvokeFuncRef(Value funcRefVal,Int32 resultReg,Int32 returnPC,Int32 baseIndex,FuncDef currentFunc,FuncDef* calleeOut) {
-	FuncDef callee = funcref_funcdef(funcRefVal);
+	FuncDef callee = Value::funcref_funcdef(funcRefVal);
 	if (IsNull(callee)) {
 		RaiseRuntimeError("Auto-invoke: Invalid function reference");
 		return -1;
 	}
 
-	Value outerVars = funcref_outer_vars(funcRefVal);
+	Value outerVars = Value::funcref_outer_vars(funcRefVal);
 
 	Int32 calleeBase = baseIndex + currentFunc.MaxRegs();
 
@@ -597,7 +597,10 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 	// Reusable Value variables (declared outside loop for GC safety in C++)
 	// ToDo: see if we can reduce these to a more reasonable number.
 	Value val;
-	Value valA, valB, valC, valD;
+	Value valA;
+	Value valB;
+	Value valC;
+	Value valD;
 	Value typeMap;
 
 #if VM_USE_COMPUTED_GOTO
@@ -659,7 +662,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				// R[A] = BC (signed 16-bit immediate as integer)
 				Byte a = BytecodeUtil::Au(instruction);
 				short bc = BytecodeUtil::BCs(instruction);
-				localStack[a] = make_int(bc);
+				localStack[a] = Value(bc);
 				VM_NEXT();
 			}
 
@@ -687,7 +690,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				// Check if the source register has the expected name
 				valC = curConstants[c];  // expected name
 				valB = names[baseIndex + b];  // actual name
-				if (value_identical(valC, valB)) {
+				if (Value::value_identical(valC, valB)) {
 					localStack[a] = localStack[b];
 				} else {
 					// Variable not found in current scope, look in outer context
@@ -706,14 +709,14 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				// Check if the source register has the expected name
 				valC = curConstants[c];  // expected name
 				valB = names[baseIndex + b];  // actual name
-				if (value_identical(valC, valB)) {
+				if (Value::value_identical(valC, valB)) {
 					valB = localStack[b];
 				} else {
 					// Variable not found in current scope, look in outer context
 					valB = LookupVariable(valC);
 				}
 
-				if (!is_funcref(valB)) {
+				if (!valB.IsFuncRef()) {
 					// Simple case: value is not a funcref, so just copy it
 					localStack[a] = valB;
 				} else {
@@ -739,11 +742,11 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				// constants[BC], bound with our locals as the closure context.
 				Byte a = BytecodeUtil::Au(instruction);
 				UInt16 constIdx = BytecodeUtil::BCu(instruction);
-				FuncDef func = funcref_funcdef(curConstants[constIdx]);
+				FuncDef func = Value::funcref_funcdef(curConstants[constIdx]);
 
 				// Create function reference with our locals as the closure context
 				val = GetCurrentLocalVarMap(baseIndex, curFuncRaw->MaxRegs);
-				localStack[a] = make_funcref(func, val);
+				localStack[a] = Value::make_funcref(func, val);
 				VM_NEXT();
 			}
 
@@ -756,8 +759,8 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				valC = curConstants[c];
 				names[baseIndex + a] = valC;
 				// In REPL mode, register this variable in the globals VarMap
-				if (baseIndex == 0 && !is_null(ReplGlobals)) {
-					varmap_map_to_register(ReplGlobals, valC, 
+				if (baseIndex == 0 && !ReplGlobals.IsNull()) {
+					Value::varmap_map_to_register(ReplGlobals, valC, 
 						stack,
 						baseIndex + a);
 				}
@@ -777,14 +780,14 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				// `locals` reference earlier in the function).  Without this,
 				// variables declared after the first closure/`locals` use would
 				// be missing from the locals map.
-				if (baseIndex == 0 && !is_null(ReplGlobals)) {
-					varmap_map_to_register(ReplGlobals, valC,
+				if (baseIndex == 0 && !ReplGlobals.IsNull()) {
+					Value::varmap_map_to_register(ReplGlobals, valC,
 						stack,
 						baseIndex + a);
 				} else {
 					CallInfo nameFrame = callStack[callStackTop - 1];
-					if (!is_null(nameFrame.LocalVarMap)) {
-						varmap_map_to_register(nameFrame.LocalVarMap, valC,
+					if (!nameFrame.LocalVarMap.IsNull()) {
+						Value::varmap_map_to_register(nameFrame.LocalVarMap, valC,
 							stack,
 							baseIndex + a);
 					}
@@ -797,7 +800,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				Byte c = BytecodeUtil::Cu(instruction);
-				localStack[a] = value_add(localStack[b], localStack[c], _this);
+				localStack[a] = Value::value_add(localStack[b], localStack[c], _this);
 				VM_NEXT();
 			}
 
@@ -806,7 +809,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				Byte c = BytecodeUtil::Cu(instruction);
-				localStack[a] = value_sub(localStack[b], localStack[c]);
+				localStack[a] = Value::value_sub(localStack[b], localStack[c]);
 				VM_NEXT();
 			}
 
@@ -815,7 +818,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				Byte c = BytecodeUtil::Cu(instruction);
-				localStack[a] = value_mult(localStack[b], localStack[c]);
+				localStack[a] = Value::value_mult(localStack[b], localStack[c]);
 				VM_NEXT();
 			}
 
@@ -824,7 +827,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				Byte c = BytecodeUtil::Cu(instruction);
-				localStack[a] = value_div(localStack[b], localStack[c]);
+				localStack[a] = Value::value_div(localStack[b], localStack[c]);
 				VM_NEXT();
 			}
 
@@ -833,7 +836,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				Byte c = BytecodeUtil::Cu(instruction);
-				localStack[a] = value_mod(localStack[b], localStack[c]);
+				localStack[a] = Value::value_mod(localStack[b], localStack[c]);
 				VM_NEXT();
 			}
 
@@ -842,7 +845,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				Byte c = BytecodeUtil::Cu(instruction);
-				localStack[a] = value_pow(localStack[b], localStack[c]);
+				localStack[a] = Value::value_pow(localStack[b], localStack[c]);
 				VM_NEXT();
 			}
 
@@ -851,7 +854,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				Byte c = BytecodeUtil::Cu(instruction);
-				localStack[a] = value_and(localStack[b], localStack[c]);
+				localStack[a] = Value::value_and(localStack[b], localStack[c]);
 				VM_NEXT();
 			}
 
@@ -860,7 +863,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				Byte c = BytecodeUtil::Cu(instruction);
-				localStack[a] = value_or(localStack[b], localStack[c]);
+				localStack[a] = Value::value_or(localStack[b], localStack[c]);
 				VM_NEXT();
 			}
 
@@ -868,7 +871,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				// R[A] = not R[B] (fuzzy logic: 1 - AbsClamp01(b))
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
-				localStack[a] = value_not(localStack[b]);
+				localStack[a] = Value::value_not(localStack[b]);
 				VM_NEXT();
 			}
 
@@ -876,7 +879,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				// R[A] = make_list(BC)
 				Byte a = BytecodeUtil::Au(instruction);
 				Int16 capacity = BytecodeUtil::BCs(instruction);
-				localStack[a] = make_list(capacity);
+				localStack[a] = Value::make_list(capacity);
 				VM_NEXT();
 			}
 
@@ -884,7 +887,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				// R[A] = make_map(BC)
 				Byte a = BytecodeUtil::Au(instruction);
 				Int16 capacity = BytecodeUtil::BCs(instruction);
-				localStack[a] = make_map(capacity);
+				localStack[a] = Value::make_map(capacity);
 				VM_NEXT();
 			}
 
@@ -892,7 +895,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				// list_push(R[A], R[B])
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
-				list_push(localStack[a], localStack[b]);
+				Value::list_push(localStack[a], localStack[b]);
 				VM_NEXT();
 			}
 
@@ -904,23 +907,23 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				valB = localStack[b];  // container
 				valC = localStack[c];  // index
 
-				if (is_error(valB)) {
+				if (valB.IsError()) {
 					// Address-of on an error is always an lvalue operation; terminate.
 					RaiseRuntimeError("Cannot take reference into an error value");
 					localStack[a] = Value::Null;
 					VM_NEXT();
 				}
-				if (is_list(valB)) {
+				if (valB.IsList()) {
 					// ToDo: add a list_try_get and use it here, like we do with map below
-					localStack[a] = list_get(valB, as_int(valC));
-				} else if (is_map(valB)) {
-					if (!map_lookup(valB, valC, &val)) {
+					localStack[a] = Value::list_get(valB, valC.IntValue());
+				} else if (valB.IsMap()) {
+					if (!Value::map_lookup(valB, valC, &val)) {
 						RaiseRuntimeError(StringUtils::Format("Key Not Found: '{0}' not found in map", valC));
 					}
 					localStack[a] = val;
-				} else if (is_string(valB)) {
-					Int32 idx = as_int(valC);
-					localStack[a] = string_substring(valB, idx, 1);
+				} else if (valB.IsString()) {
+					Int32 idx = valC.IntValue();
+					localStack[a] = Value::string_substring(valB, idx, 1);
 				} else {
 					RaiseRuntimeError(StringUtils::Format("Can't index into {0}", valB));
 					localStack[a] = Value::Null;
@@ -937,14 +940,14 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				valB = localStack[b];  // index
 				valC = localStack[c];  // value
 
-				if (is_error(valA)) {
+				if (valA.IsError()) {
 					RaiseRuntimeError("Cannot assign into an error value");
 					VM_NEXT();
 				}
-				if (is_list(valA)) {
-					list_set(valA, as_int(valB), valC);
-				} else if (is_map(valA)) {
-					map_set(valA, valB, valC);
+				if (valA.IsList()) {
+					Value::list_set(valA, valB.IntValue(), valC);
+				} else if (valA.IsMap()) {
+					Value::map_set(valA, valB, valC);
 				} else {
 					RaiseRuntimeError(StringUtils::Format("Can't set indexed value in {0}", valA));
 				}
@@ -960,20 +963,20 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				valC = localStack[c];
 				valD = localStack[c + 1];
 
-				if (is_error(valB)) { RaiseUncaughtError(valB); localStack[a] = Value::Null; break; }
-				if (is_error(valC)) { RaiseUncaughtError(valC); localStack[a] = Value::Null; break; }
-				if (is_error(valD)) { RaiseUncaughtError(valD); localStack[a] = Value::Null; break; }
+				if (valB.IsError()) { RaiseUncaughtError(valB); localStack[a] = Value::Null; break; }
+				if (valC.IsError()) { RaiseUncaughtError(valC); localStack[a] = Value::Null; break; }
+				if (valD.IsError()) { RaiseUncaughtError(valD); localStack[a] = Value::Null; break; }
 
-				if (is_string(valB)) {
-					Int32 len = string_length(valB);
-					Int32 startIdx = is_null(valC) ? 0 : as_int(valC);
-					Int32 endIdx = is_null(valD) ? len : as_int(valD);
-					localStack[a] = string_slice(valB, startIdx, endIdx);
-				} else if (is_list(valB)) {
-					Int32 len = list_count(valB);
-					Int32 startIdx = is_null(valC) ? 0 : as_int(valC);
-					Int32 endIdx = is_null(valD) ? len : as_int(valD);
-					localStack[a] = list_slice(valB, startIdx, endIdx);
+				if (valB.IsString()) {
+					Int32 len = Value::string_length(valB);
+					Int32 startIdx = valC.IsNull() ? 0 : valC.IntValue();
+					Int32 endIdx = valD.IsNull() ? len : valD.IntValue();
+					localStack[a] = Value::string_slice(valB, startIdx, endIdx);
+				} else if (valB.IsList()) {
+					Int32 len = Value::list_count(valB);
+					Int32 startIdx = valC.IsNull() ? 0 : valC.IntValue();
+					Int32 endIdx = valD.IsNull() ? len : valD.IntValue();
+					localStack[a] = Value::list_slice(valB, startIdx, endIdx);
 				} else {
 					RaiseRuntimeError(StringUtils::Format("Can't slice {0}", valB));
 					localStack[a] = Value::Null;
@@ -1001,7 +1004,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Byte a = BytecodeUtil::Au(instruction);
 				val = names[baseIndex + a];  // saved name
 				names[baseIndex + a] = Value::Null;   // temporarily clear it
-				if (callStackTop > 0 && !is_null(callStack[callStackTop - 1].OuterVarMap)) {
+				if (callStackTop > 0 && callStack[callStackTop - 1].OuterVarMap != Value::Null) {
 					localStack[a] = callStack[callStackTop - 1].OuterVarMap;
 				} else {
 					// No enclosing scope or at global scope: outer == globals
@@ -1034,9 +1037,9 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				Byte c = BytecodeUtil::Cu(instruction);
-				if (is_error(localStack[b])) { localStack[a] = localStack[b]; break; }
-				if (is_error(localStack[c])) { localStack[a] = localStack[c]; break; }
-				localStack[a] = make_int(value_lt(localStack[b], localStack[c]));
+				if (localStack[b].IsError()) { localStack[a] = localStack[b]; break; }
+				if (localStack[c].IsError()) { localStack[a] = localStack[c]; break; }
+				localStack[a] = Value::Truth(Value::value_lt(localStack[b], localStack[c]));
 				VM_NEXT();
 			}
 
@@ -1045,8 +1048,8 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				SByte c = BytecodeUtil::Cs(instruction);
-				if (is_error(localStack[b])) { localStack[a] = localStack[b]; break; }
-				localStack[a] = make_int(value_lt(localStack[b], make_int(c)));
+				if (localStack[b].IsError()) { localStack[a] = localStack[b]; break; }
+				localStack[a] = Value::Truth(Value::value_lt(localStack[b], Value(c)));
 				VM_NEXT();
 			}
 
@@ -1055,8 +1058,8 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Byte a = BytecodeUtil::Au(instruction);
 				SByte b = BytecodeUtil::Bs(instruction);
 				Byte c = BytecodeUtil::Cu(instruction);
-				if (is_error(localStack[c])) { localStack[a] = localStack[c]; break; }
-				localStack[a] = make_int(value_lt(make_int(b), localStack[c]));
+				if (localStack[c].IsError()) { localStack[a] = localStack[c]; break; }
+				localStack[a] = Value::Truth(Value::value_lt(Value(b), localStack[c]));
 				VM_NEXT();
 			}
 
@@ -1065,9 +1068,9 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				Byte c = BytecodeUtil::Cu(instruction);
-				if (is_error(localStack[b])) { localStack[a] = localStack[b]; break; }
-				if (is_error(localStack[c])) { localStack[a] = localStack[c]; break; }
-				localStack[a] = make_int(value_le(localStack[b], localStack[c]));
+				if (localStack[b].IsError()) { localStack[a] = localStack[b]; break; }
+				if (localStack[c].IsError()) { localStack[a] = localStack[c]; break; }
+				localStack[a] = Value::Truth(Value::value_le(localStack[b], localStack[c]));
 				VM_NEXT();
 			}
 
@@ -1076,8 +1079,8 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				SByte c = BytecodeUtil::Cs(instruction);
-				if (is_error(localStack[b])) { localStack[a] = localStack[b]; break; }
-				localStack[a] = make_int(value_le(localStack[b], make_int(c)));
+				if (localStack[b].IsError()) { localStack[a] = localStack[b]; break; }
+				localStack[a] = Value::Truth(Value::value_le(localStack[b], Value(c)));
 				VM_NEXT();
 			}
 
@@ -1086,8 +1089,8 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Byte a = BytecodeUtil::Au(instruction);
 				SByte b = BytecodeUtil::Bs(instruction);
 				Byte c = BytecodeUtil::Cu(instruction);
-				if (is_error(localStack[c])) { localStack[a] = localStack[c]; break; }
-				localStack[a] = make_int(value_le(make_int(b), localStack[c]));
+				if (localStack[c].IsError()) { localStack[a] = localStack[c]; break; }
+				localStack[a] = Value::Truth(Value::value_le(Value(b), localStack[c]));
 				VM_NEXT();
 			}
 
@@ -1097,7 +1100,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Byte b = BytecodeUtil::Bu(instruction);
 				Byte c = BytecodeUtil::Cu(instruction);
 
-				localStack[a] = make_int(value_equal(localStack[b], localStack[c]));
+				localStack[a] = Value::Truth(localStack[b] == localStack[c]);
 				VM_NEXT();
 			}
 
@@ -1107,7 +1110,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Byte b = BytecodeUtil::Bu(instruction);
 				SByte c = BytecodeUtil::Cs(instruction);
 				
-				localStack[a] = make_int(value_equal(localStack[b], make_int(c)));
+				localStack[a] = Value::Truth(localStack[b] == Value(c));
 				VM_NEXT();
 			}
 
@@ -1117,7 +1120,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Byte b = BytecodeUtil::Bu(instruction);
 				Byte c = BytecodeUtil::Cu(instruction);
 
-				localStack[a] = make_int(!value_equal(localStack[b], localStack[c]));
+				localStack[a] = Value::Truth(localStack[b] != localStack[c]);
 				VM_NEXT();
 			}
 
@@ -1127,18 +1130,18 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Byte b = BytecodeUtil::Bu(instruction);
 				SByte c = BytecodeUtil::Cs(instruction);
 				
-				localStack[a] = make_int(!value_equal(localStack[b], make_int(c)));
+				localStack[a] = Value::Truth(localStack[b] != Value(c));
 				VM_NEXT();
 			}
 
 			VM_CASE(BRTRUE_rA_iBC) {
 				Byte a = BytecodeUtil::Au(instruction);
 				Int32 offset = BytecodeUtil::BCs(instruction);
-				if (is_error(localStack[a])) {
+				if (localStack[a].IsError()) {
 					RaiseRuntimeError(StringUtils::Format("Error used in conditional: {0}", localStack[a]));
 					VM_NEXT();
 				}
-				if (is_truthy(localStack[a])){
+				if (localStack[a].BoolValue()){
 					pc += offset;
 				}
 				VM_NEXT();
@@ -1147,11 +1150,11 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 			VM_CASE(BRFALSE_rA_iBC) {
 				Byte a = BytecodeUtil::Au(instruction);
 				Int32 offset = BytecodeUtil::BCs(instruction);
-				if (is_error(localStack[a])) {
+				if (localStack[a].IsError()) {
 					RaiseRuntimeError(StringUtils::Format("Error used in conditional: {0}", localStack[a]));
 					VM_NEXT();
 				}
-				if (!is_truthy(localStack[a])){
+				if (!localStack[a].BoolValue()){
 					pc += offset;
 				}
 				VM_NEXT();
@@ -1163,7 +1166,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				// case before the (throwing) BRTRUE/BRFALSE test.
 				Byte a = BytecodeUtil::Au(instruction);
 				Int32 offset = BytecodeUtil::BCs(instruction);
-				if (is_error(localStack[a])) {
+				if (localStack[a].IsError()) {
 					pc += offset;
 				}
 				VM_NEXT();
@@ -1174,11 +1177,11 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				SByte offset = BytecodeUtil::Cs(instruction);
-				if (is_error(localStack[a]) || is_error(localStack[b])) {
+				if (localStack[a].IsError() || localStack[b].IsError()) {
 					RaiseRuntimeError("Error used in conditional");
 					VM_NEXT();
 				}
-				if (value_lt(localStack[a], localStack[b])){
+				if (Value::value_lt(localStack[a], localStack[b])){
 					pc += offset;
 				}
 				VM_NEXT();
@@ -1189,11 +1192,11 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Byte a = BytecodeUtil::Au(instruction);
 				SByte b = BytecodeUtil::Bs(instruction);
 				SByte offset = BytecodeUtil::Cs(instruction);
-				if (is_error(localStack[a])) {
+				if (localStack[a].IsError()) {
 					RaiseRuntimeError("Error used in conditional");
 					VM_NEXT();
 				}
-				if (value_lt(localStack[a], make_int(b))){
+				if (Value::value_lt(localStack[a], Value(b))){
 					pc += offset;
 				}
 				VM_NEXT();
@@ -1204,11 +1207,11 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				SByte a = BytecodeUtil::As(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				SByte offset = BytecodeUtil::Cs(instruction);
-				if (is_error(localStack[b])) {
+				if (localStack[b].IsError()) {
 					RaiseRuntimeError("Error used in conditional");
 					VM_NEXT();
 				}
-				if (value_lt(make_int(a), localStack[b])){
+				if (Value::value_lt(Value(a), localStack[b])){
 					pc += offset;
 				}
 				VM_NEXT();
@@ -1219,11 +1222,11 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				SByte offset = BytecodeUtil::Cs(instruction);
-				if (is_error(localStack[a]) || is_error(localStack[b])) {
+				if (localStack[a].IsError() || localStack[b].IsError()) {
 					RaiseRuntimeError("Error used in conditional");
 					VM_NEXT();
 				}
-				if (value_le(localStack[a], localStack[b])){
+				if (Value::value_le(localStack[a], localStack[b])){
 					pc += offset;
 				}
 				VM_NEXT();
@@ -1234,11 +1237,11 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Byte a = BytecodeUtil::Au(instruction);
 				SByte b = BytecodeUtil::Bs(instruction);
 				SByte offset = BytecodeUtil::Cs(instruction);
-				if (is_error(localStack[a])) {
+				if (localStack[a].IsError()) {
 					RaiseRuntimeError("Error used in conditional");
 					VM_NEXT();
 				}
-				if (value_le(localStack[a], make_int(b))){
+				if (Value::value_le(localStack[a], Value(b))){
 					pc += offset;
 				}
 				VM_NEXT();
@@ -1249,11 +1252,11 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				SByte a = BytecodeUtil::As(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				SByte offset = BytecodeUtil::Cs(instruction);
-				if (is_error(localStack[b])) {
+				if (localStack[b].IsError()) {
 					RaiseRuntimeError("Error used in conditional");
 					VM_NEXT();
 				}
-				if (value_le(make_int(a), localStack[b])){
+				if (Value::value_le(Value(a), localStack[b])){
 					pc += offset;
 				}
 				VM_NEXT();
@@ -1264,7 +1267,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				SByte offset = BytecodeUtil::Cs(instruction);
-				if (value_equal(localStack[a], localStack[b])){
+				if (localStack[a] == localStack[b]){
 					pc += offset;
 				}
 				VM_NEXT();
@@ -1275,7 +1278,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Byte a = BytecodeUtil::Au(instruction);
 				SByte b = BytecodeUtil::Bs(instruction);
 				SByte offset = BytecodeUtil::Cs(instruction);
-				if (value_equal(localStack[a], make_int(b))){
+				if (localStack[a] == Value(b)){
 					pc += offset;
 				}
 				VM_NEXT();
@@ -1286,7 +1289,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				SByte offset = BytecodeUtil::Cs(instruction);
-				if (!value_equal(localStack[a], localStack[b])){
+				if (localStack[a] != localStack[b]){
 					pc += offset;
 				}
 				VM_NEXT();
@@ -1297,7 +1300,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Byte a = BytecodeUtil::Au(instruction);
 				SByte b = BytecodeUtil::Bs(instruction);
 				SByte offset = BytecodeUtil::Cs(instruction);
-				if (!value_equal(localStack[a], make_int(b))){
+				if (localStack[a] != Value(b)){
 					pc += offset;
 				}
 				VM_NEXT();
@@ -1307,10 +1310,10 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				// if R[A] < R[B] is false, skip next instruction
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
-				if (is_error(localStack[a]) || is_error(localStack[b])) {
+				if (localStack[a].IsError() || localStack[b].IsError()) {
 					RaiseRuntimeError("Error used in conditional"); break;
 				}
-				if (!value_lt(localStack[a], localStack[b])) {
+				if (!Value::value_lt(localStack[a], localStack[b])) {
 					pc++; // Skip next instruction
 				}
 				VM_NEXT();
@@ -1320,8 +1323,8 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				// if R[A] < BC (immediate) is false, skip next instruction
 				Byte a = BytecodeUtil::Au(instruction);
 				short bc = BytecodeUtil::BCs(instruction);
-				if (is_error(localStack[a])) { RaiseRuntimeError("Error used in conditional"); break; }
-				if (!value_lt(localStack[a], make_int(bc))) {
+				if (localStack[a].IsError()) { RaiseRuntimeError("Error used in conditional"); break; }
+				if (!Value::value_lt(localStack[a], Value(bc))) {
 					pc++; // Skip next instruction
 				}
 				VM_NEXT();
@@ -1331,8 +1334,8 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				// if AB (immediate) < R[C] is false, skip next instruction
 				short ab = BytecodeUtil::ABs(instruction);
 				Byte c = BytecodeUtil::Cu(instruction);
-				if (is_error(localStack[c])) { RaiseRuntimeError("Error used in conditional"); break; }
-				if (!value_lt(make_int(ab), localStack[c])) {
+				if (localStack[c].IsError()) { RaiseRuntimeError("Error used in conditional"); break; }
+				if (!Value::value_lt(Value(ab), localStack[c])) {
 					pc++; // Skip next instruction
 				}
 				VM_NEXT();
@@ -1342,10 +1345,10 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				// if R[A] <= R[B] is false, skip next instruction
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
-				if (is_error(localStack[a]) || is_error(localStack[b])) {
+				if (localStack[a].IsError() || localStack[b].IsError()) {
 					RaiseRuntimeError("Error used in conditional"); break;
 				}
-				if (!value_le(localStack[a], localStack[b])) {
+				if (!Value::value_le(localStack[a], localStack[b])) {
 					pc++; // Skip next instruction
 				}
 				VM_NEXT();
@@ -1355,8 +1358,8 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				// if R[A] <= BC (immediate) is false, skip next instruction
 				Byte a = BytecodeUtil::Au(instruction);
 				short bc = BytecodeUtil::BCs(instruction);
-				if (is_error(localStack[a])) { RaiseRuntimeError("Error used in conditional"); break; }
-				if (!value_le(localStack[a], make_int(bc))) {
+				if (localStack[a].IsError()) { RaiseRuntimeError("Error used in conditional"); break; }
+				if (!Value::value_le(localStack[a], Value(bc))) {
 					pc++; // Skip next instruction
 				}
 				VM_NEXT();
@@ -1366,8 +1369,8 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				// if AB (immediate) <= R[C] is false, skip next instruction
 				short ab = BytecodeUtil::ABs(instruction);
 				Byte c = BytecodeUtil::Cu(instruction);
-				if (is_error(localStack[c])) { RaiseRuntimeError("Error used in conditional"); break; }
-				if (!value_le(make_int(ab), localStack[c])) {
+				if (localStack[c].IsError()) { RaiseRuntimeError("Error used in conditional"); break; }
+				if (!Value::value_le(Value(ab), localStack[c])) {
 					pc++; // Skip next instruction
 				}
 				VM_NEXT();
@@ -1377,7 +1380,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				// if R[A] == R[B] is false, skip next instruction
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
-				if (!value_equal(localStack[a], localStack[b])) {
+				if (localStack[a] != localStack[b]) {
 					pc++; // Skip next instruction
 				}
 				VM_NEXT();
@@ -1387,7 +1390,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				// if R[A] == BC (immediate) is false, skip next instruction
 				Byte a = BytecodeUtil::Au(instruction);
 				short bc = BytecodeUtil::BCs(instruction);
-				if (!value_equal(localStack[a], make_int(bc))) {
+				if (localStack[a] != Value(bc)) {
 					pc++; // Skip next instruction
 				}
 				VM_NEXT();
@@ -1397,7 +1400,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				// if R[A] != R[B] is false, skip next instruction
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
-				if (value_equal(localStack[a], localStack[b])) {
+				if (localStack[a] == localStack[b]) {
 					pc++; // Skip next instruction
 				}
 				VM_NEXT();
@@ -1407,7 +1410,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				// if R[A] != BC (immediate) is false, skip next instruction
 				Byte a = BytecodeUtil::Au(instruction);
 				short bc = BytecodeUtil::BCs(instruction);
-				if (value_equal(localStack[a], make_int(bc))) {
+				if (localStack[a] == Value(bc)) {
 					pc++; // Skip next instruction
 				}
 				VM_NEXT();
@@ -1420,22 +1423,22 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				// indices; for maps they encode position via map_iter_next.
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
-				Int32 iter = as_int(localStack[a]);
+				Int32 iter = localStack[a].IntValue();
 				valB = localStack[b];  // collection
 				bool hasMore;
-				if (is_list(valB)) {
+				if (valB.IsList()) {
 					iter++;
-					hasMore = (iter < list_count(valB));
-				} else if (is_map(valB)) {
-					iter = map_iter_next(valB, iter);
-					hasMore = (iter != MAP_ITER_DONE);
-				} else if (is_string(valB)) {
+					hasMore = (iter < Value::list_count(valB));
+				} else if (valB.IsMap()) {
+					iter = Value::map_iter_next(valB, iter);
+					hasMore = (iter != Value::MAP_ITER_DONE);
+				} else if (valB.IsString()) {
 					iter++;
-					hasMore = (iter < string_length(valB));
+					hasMore = (iter < Value::string_length(valB));
 				} else {
 					hasMore = Boolean(false);
 				}
-				localStack[a] = make_int(iter);
+				localStack[a] = Value(iter);
 				if (hasMore) {
 					pc++; // Skip next instruction (the JUMP to end of loop)
 				}
@@ -1466,12 +1469,12 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Byte c = BytecodeUtil::Cu(callInstruction);
 
 				valC = localStack[c];  // func ref
-				if (!is_funcref(valC)) {
+				if (!valC.IsFuncRef()) {
 					RaiseRuntimeError("ARGBLK/CALL: Not a function reference");
 					return Value::Null;
 				}
 
-				FuncDef callee = funcref_funcdef(valC);
+				FuncDef callee = Value::funcref_funcdef(valC);
 				if (IsNull(callee)) {
 					RaiseRuntimeError("ARGBLK/CALL: Invalid function reference");
 					return Value::Null;
@@ -1523,7 +1526,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 					VM_NEXT();
 				}
 
-				val = funcref_outer_vars(valC);
+				val = Value::funcref_outer_vars(valC);
 				callStack[callStackTop] = CallInfo(nextPC, baseIndex, currentFunc, resultReg, val);
 				callStackTop++;
 
@@ -1556,7 +1559,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Byte a = BytecodeUtil::Au(instruction);
 				UInt16 constIdx = BytecodeUtil::BCu(instruction);
 
-				FuncDef callee = funcref_funcdef(curConstants[constIdx]);
+				FuncDef callee = Value::funcref_funcdef(curConstants[constIdx]);
 				if (IsNull(callee)) {
 					RaiseRuntimeError("CALLF: Invalid function reference");
 					VM_NEXT();
@@ -1595,17 +1598,17 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Byte c = BytecodeUtil::Cu(instruction);
 
 				valC = localStack[c];  // func reference
-				if (!is_funcref(valC)) {
+				if (!valC.IsFuncRef()) {
 					RaiseRuntimeError("CALL: Value in register is not a function reference");
 					VM_NEXT();
 				}
 
-				FuncDef callee = funcref_funcdef(valC);
+				FuncDef callee = Value::funcref_funcdef(valC);
 				if (IsNull(callee)) {
 					RaiseRuntimeError("CALL: Invalid function reference");
 					VM_NEXT();
 				}
-				valD = funcref_outer_vars(valC);  // valD: "outer" VarMap of func valC
+				valD = Value::funcref_outer_vars(valC);  // valD: "outer" VarMap of func valC
 
 				// For naked CALL (without ARGBLK): set up parameters with defaults
 				Int32 calleeBase = baseIndex + b;
@@ -1654,8 +1657,8 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				// R[A] = new map with __isa set to R[B]
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
-				val = make_map(2);
-				map_set(val, Value::magicIsA, localStack[b]);
+				val = Value::make_map(2);
+				Value::map_set(val, Value::magicIsA, localStack[b]);
 				localStack[a] = val;
 				VM_NEXT();
 			}
@@ -1673,28 +1676,28 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				valB = localStack[b];  // left-hand side
 				valC = localStack[c];  // right-hand side
 				Int32 isaResult = 0;
-				if (is_null(valB) && is_null(valC)) {
+				if (valB.IsNull() && valC.IsNull()) {
 					isaResult = 1;
-				} else if (value_identical(valB, valC)) {
+				} else if (Value::value_identical(valB, valC)) {
 					isaResult = 1;
-				} else if (is_error(valB)) {
+				} else if (valB.IsError()) {
 					// Error-specific isa rules:
 					//   e isa error   -> 1
 					//   e1 isa e2     -> 1 if e2 is in e1's __isa chain
-					if (value_identical(valC, CoreIntrinsics::ErrorType())) {
+					if (Value::value_identical(valC, CoreIntrinsics::ErrorType())) {
 						isaResult = 1;
-					} else if (is_error(valC) && error_isa_contains(valB, valC)) {
+					} else if (valC.IsError() && Value::error_isa_contains(valB, valC)) {
 						isaResult = 1;
 					}
-					localStack[a] = make_int(isaResult);
+					localStack[a] = Value::Truth(isaResult);
 					break;
-				} else if (is_map(valC)) {
+				} else if (valC.IsMap()) {
 					// Walk valB's __isa chain looking for valC
-					if (is_map(valB)) {
+					if (valB.IsMap()) {
 						val = valB;  // val is "current"; valA (below) is "next" in the __isa chain
 						for (Int32 depth = 0; depth < 256; depth++) {
-							if (!map_try_get(val, Value::magicIsA, &valA)) break;
-							if (value_identical(valA, valC)) {
+							if (!Value::map_try_get(val, Value::magicIsA, &valA)) break;
+							if (Value::value_identical(valA, valC)) {
 								isaResult = 1;
 								break;
 							}
@@ -1703,20 +1706,20 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 					}
 					// If not found via __isa chain, check built-in type maps
 					if (isaResult == 0) {
-						if (is_number(valB) && value_identical(valC, CoreIntrinsics::NumberType())) {
+						if (valB.IsNumber() && Value::value_identical(valC, CoreIntrinsics::NumberType())) {
 							isaResult = 1;
-						} else if (is_string(valB) && value_identical(valC, CoreIntrinsics::StringType())) {
+						} else if (valB.IsString() && Value::value_identical(valC, CoreIntrinsics::StringType())) {
 							isaResult = 1;
-						} else if (is_list(valB) && value_identical(valC, CoreIntrinsics::ListType())) {
+						} else if (valB.IsList() && Value::value_identical(valC, CoreIntrinsics::ListType())) {
 							isaResult = 1;
-						} else if (is_map(valB) && value_identical(valC, CoreIntrinsics::MapType())) {
+						} else if (valB.IsMap() && Value::value_identical(valC, CoreIntrinsics::MapType())) {
 							isaResult = 1;
-						} else if (is_funcref(valB) && value_identical(valC, CoreIntrinsics::FunctionType())) {
+						} else if (valB.IsFuncRef() && Value::value_identical(valC, CoreIntrinsics::FunctionType())) {
 							isaResult = 1;
 						}
 					}
 				}
-				localStack[a] = make_int(isaResult);
+				localStack[a] = Value::Truth(isaResult);
 				VM_NEXT();
 			}
 
@@ -1731,19 +1734,19 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				valC = localStack[c];  // index
 				typeMap = Value::Null;
 				
-				if (is_error(valB)) {
+				if (valB.IsError()) {
 					// Error field access: return field directly for reserved names,
 					// else fall back to ErrorType() for method lookup (e.g., e.err).
 					// Any other key terminates per language spec.
-					if (is_string(valC)) {
-						String keyStr = as_cstring(valC);
-						if (keyStr == "message") { localStack[a] = error_message(valB); hasPendingContext = Boolean(false); break; }
-						if (keyStr == "inner")   { localStack[a] = error_inner(valB);   hasPendingContext = Boolean(false); break; }
-						if (keyStr == "stack")   { localStack[a] = error_stack(valB);   hasPendingContext = Boolean(false); break; }
-						if (keyStr == "__isa")   { localStack[a] = error_isa(valB);     hasPendingContext = Boolean(false); break; }
+					if (valC.IsString()) {
+						String keyStr = Value::as_cstring(valC);
+						if (keyStr == "message") { localStack[a] = Value::error_message(valB); hasPendingContext = Boolean(false); break; }
+						if (keyStr == "inner")   { localStack[a] = Value::error_inner(valB);   hasPendingContext = Boolean(false); break; }
+						if (keyStr == "stack")   { localStack[a] = Value::error_stack(valB);   hasPendingContext = Boolean(false); break; }
+						if (keyStr == "__isa")   { localStack[a] = Value::error_isa(valB);     hasPendingContext = Boolean(false); break; }
 					}
 					typeMap = CoreIntrinsics::ErrorType();
-					if (map_try_get(typeMap, valC, &val)) {
+					if (Value::map_try_get(typeMap, valC, &val)) {
 						localStack[a] = val;
 						pendingSelf = valB;
 						pendingSuper = Value::Null;
@@ -1755,11 +1758,11 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 					localStack[a] = Value::Null;
 					VM_NEXT();
 				}
-				if (is_map(valB)) {
+				if (valB.IsMap()) {
 					// For maps: first do lookup in the map itself, with inheritance
 					// (valD: the "super" value, i.e., __isa of the map in which valC
 					// was actually found.)
-					if (map_lookup_with_origin(valB, valC, &val, &valD)) {
+					if (Value::map_lookup_with_origin(valB, valC, &val, &valD)) {
 						localStack[a] = val;
 						pendingSelf = valB;
 						pendingSuper = valD;
@@ -1768,30 +1771,30 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 					}
 					// ...falling back on the map type map
 					typeMap = CoreIntrinsics::MapType();
-				} else if (is_list(valB)) {
+				} else if (valB.IsList()) {
 					typeMap = CoreIntrinsics::ListType();
-				} else if (is_string(valB)) {
+				} else if (valB.IsString()) {
 					typeMap = CoreIntrinsics::StringType();
-				} else if (is_number(valB)) {
+				} else if (valB.IsNumber()) {
 					typeMap = CoreIntrinsics::NumberType();
 				}
-				if (is_null(typeMap)) {
+				if (typeMap.IsNull()) {
 					// If we didn't get a type map, then user is trying to index
 					// into something not indexable
 					RaiseRuntimeError(StringUtils::Format("Can't index into {0}", valB));
 					localStack[a] = Value::Null;
-				} else if (map_try_get(typeMap, valC, &val)) {
+				} else if (Value::map_try_get(typeMap, valC, &val)) {
 					// found what we're looking for in the type map
 					localStack[a] = val;
 					pendingSelf = valB;
 					pendingSuper = Value::Null;
-				} else if (is_number(valC)) {
+				} else if (valC.IsNumber()) {
 					// try indexing numerically
-					int index = as_int(valC);
-					if (is_list(valB)) {
-						localStack[a] = list_get(valB, index);
-					} else if (is_string(valB)) {
-						localStack[a] = string_substring(valB, index, 1);
+					int index = valC.IntValue();
+					if (valB.IsList()) {
+						localStack[a] = Value::list_get(valB, index);
+					} else if (valB.IsString()) {
+						localStack[a] = Value::string_substring(valB, index, 1);
 					} else {
 						RaiseRuntimeError(StringUtils::Format("Can't index into {0}", valB));
 						localStack[a] = Value::Null;
@@ -1814,31 +1817,31 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				valC = localStack[c];  // index
 				typeMap = Value::Null;
 
-				if (is_map(valB)) {
-					if (map_lookup_with_origin(valB, valC, &val, &valD)) {
+				if (valB.IsMap()) {
+					if (Value::map_lookup_with_origin(valB, valC, &val, &valD)) {
 						localStack[a] = val;
 						hasPendingContext = Boolean(false);
 						VM_NEXT();
 					}
 					typeMap = CoreIntrinsics::MapType();
-				} else if (is_list(valB)) {
+				} else if (valB.IsList()) {
 					typeMap = CoreIntrinsics::ListType();
-				} else if (is_string(valB)) {
+				} else if (valB.IsString()) {
 					typeMap = CoreIntrinsics::StringType();
-				} else if (is_number(valB)) {
+				} else if (valB.IsNumber()) {
 					typeMap = CoreIntrinsics::NumberType();
 				}
-				if (is_null(typeMap)) {
+				if (typeMap.IsNull()) {
 					RaiseRuntimeError(StringUtils::Format("Can't index into {0}", valB));
 					localStack[a] = Value::Null;
-				} else if (map_try_get(typeMap, valC, &val)) {
+				} else if (Value::map_try_get(typeMap, valC, &val)) {
 					localStack[a] = val;
-				} else if (is_number(valC)) {
-					int index = as_int(valC);
-					if (is_list(valB)) {
-						localStack[a] = list_get(valB, index);
-					} else if (is_string(valB)) {
-						localStack[a] = string_substring(valB, index, 1);
+				} else if (valC.IsNumber()) {
+					int index = valC.IntValue();
+					if (valB.IsList()) {
+						localStack[a] = Value::list_get(valB, index);
+					} else if (valB.IsString()) {
+						localStack[a] = Value::string_substring(valB, index, 1);
 					} else {
 						RaiseRuntimeError(StringUtils::Format("Can't index into {0}", valB));
 						localStack[a] = Value::Null;
@@ -1866,7 +1869,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Byte a = BytecodeUtil::Au(instruction);
 				val = localStack[a];
 
-				if (!is_funcref(val) || !hasPendingContext) {
+				if (!val.IsFuncRef() || !hasPendingContext) {
 					// Not a funcref or no context — clear pending state and leave value as-is
 					hasPendingContext = Boolean(false);
 					pendingSelf = Value::Null;
@@ -1897,8 +1900,8 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				// Gather the current execution-context frame's locals VarMap if one exists
 				// (makes closure values survive beyond the function's lifetime).
 				CallInfo frame = callStack[callStackTop - 1];
-				if (!is_null(frame.LocalVarMap)) {
-					varmap_gather(frame.LocalVarMap);
+				if (!frame.LocalVarMap.IsNull()) {
+					Value::varmap_gather(frame.LocalVarMap);
 					frame.LocalVarMap = Value::Null;
 					callStack[callStackTop - 1] = frame;  // write back (CallInfo is a struct)
 				}
@@ -1942,14 +1945,14 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Byte b = BytecodeUtil::Bu(instruction);
 				Byte c = BytecodeUtil::Cu(instruction);
 				valB = localStack[b];  // container
-				Int32 idx = as_int(localStack[c]);
+				Int32 idx = localStack[c].IntValue();
 
-				if (is_list(valB)) {
-					localStack[a] = list_get(valB, idx);
-				} else if (is_map(valB)) {
-					localStack[a] = map_iter_entry(valB, idx);
-				} else if (is_string(valB)) {
-					localStack[a] = string_substring(valB, idx, 1);
+				if (valB.IsList()) {
+					localStack[a] = Value::list_get(valB, idx);
+				} else if (valB.IsMap()) {
+					localStack[a] = Value::map_iter_entry(valB, idx);
+				} else if (valB.IsString()) {
+					localStack[a] = Value::string_substring(valB, idx, 1);
 				} else {
 					localStack[a] = Value::Null;
 				}
@@ -1979,7 +1982,7 @@ FORCE_INLINE void VMStorage::SwitchFrame(const FuncDef& currentFunc, Int32 baseI
 	localStack = stackPtr + baseIndex;
 }
 Value VMStorage::GetGlobalsVarMap() {
-	if (!is_null(ReplGlobals)) return ReplGlobals;
+	if (!ReplGlobals.IsNull()) return ReplGlobals;
 	CallInfo gframe = callStack[0];
 	FuncDef rf = gframe.ReturnFunc;
 	Int32 regCount = rf.MaxRegs();
@@ -1993,9 +1996,9 @@ Value VMStorage::LookupParamByName(String varName) {
 	// by position, which is more efficient than searching by name.
 	// Returns the value if found, or null if not found.
 	FuncDef func = CurrentFunction;
-	Value nameVal = make_string(varName);
+	Value nameVal = Value::make_string(varName);
 	for (Int32 i = 0; i < func.ParamNames().Count(); i++) {
-		if (value_equal(func.ParamNames()[i], nameVal)) {
+		if (func.ParamNames()[i] == nameVal) {
 			return stack[BaseIndex + 1 + i];
 		}
 	}
@@ -2009,13 +2012,13 @@ Value VMStorage::LookupVariable(Value varName) {
 		CallInfo currentFrame = callStack[callStackTop - 1];  // Current frame, not next frame
 		// Check locals VarMap for variables set dynamically (e.g. by the import intrinsic).
 		// This mirrors what user code "locals[varName] = x" does at runtime.
-		if (!is_null(currentFrame.LocalVarMap)) {
-			if (map_try_get(currentFrame.LocalVarMap, varName, &result)) {
+		if (!currentFrame.LocalVarMap.IsNull()) {
+			if (Value::map_try_get(currentFrame.LocalVarMap, varName, &result)) {
 				return result;
 			}
 		}
-		if (!is_null(currentFrame.OuterVarMap)) {
-			if (map_try_get(currentFrame.OuterVarMap, varName, &result)) {
+		if (!currentFrame.OuterVarMap.IsNull()) {
+			if (Value::map_try_get(currentFrame.OuterVarMap, varName, &result)) {
 				return result;
 			}
 		}
@@ -2023,21 +2026,21 @@ Value VMStorage::LookupVariable(Value varName) {
 
 	// Check global variables via VarMap (registers at base 0 in the @main frame)
 	Value globalMap;
-	if (callStackTop > 0 || !is_null(ReplGlobals)) {
+	if (callStackTop > 0 || !ReplGlobals.IsNull()) {
 		globalMap = GetGlobalsVarMap();
-		if (map_try_get(globalMap, varName, &result)) {
+		if (Value::map_try_get(globalMap, varName, &result)) {
 			return result;
 		}
 	}
 
 	// Check intrinsics table
-	String nameStr = as_cstring(varName);
+	String nameStr = Value::as_cstring(varName);
 	if (_intrinsics.TryGetValue(nameStr, &result)) {
 		return result;
 	}
 
 	// self/super return null when not in a method context
-	if (value_equal(varName, Value::selfString) || value_equal(varName, Value::superString)) {
+	if (varName == Value::selfString || varName == Value::superString) {
 		return Value::Null;
 	}
 

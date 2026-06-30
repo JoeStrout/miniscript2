@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using static System.Runtime.CompilerServices.MethodImplOptions;
-using static MiniScript.Value;
 // H: #include "GCInterfaces.g.h"
 // H: #include "GCSet.g.h"
 // CPP: #include "value.h"
@@ -80,7 +79,7 @@ public static class GCManager {
 	public static Value NewString(String s) {
 		Int32 idx = BigStrings.AllocItem();
 		BigStrings.SetData(idx, s);
-		return make_gc(BigStringSet, idx);
+		return Value.make_gc(BigStringSet, idx);
 	}
 
 	// Look up s in the intern table; on miss, allocate a slot in the
@@ -88,18 +87,18 @@ public static class GCManager {
 	public static Value InternString(String s) {
 		Int32 idx;
 		if (_internTable.TryGetValue(s, out idx)) {
-			return make_gc(InternedStringSet, idx);
+			return Value.make_gc(InternedStringSet, idx);
 		}
 		idx = InternedStrings.AllocItem();
 		InternedStrings.SetData(idx, s);
 		_internTable[s] = idx;
-		return make_gc(InternedStringSet, idx);
+		return Value.make_gc(InternedStringSet, idx);
 	}
 
 	public static Value NewList(Int32 capacity = 8) {
 		Int32 idx = Lists.AllocItem();
 		Lists.Init(idx, capacity);
-		return make_gc(ListSet, idx);
+		return Value.make_gc(ListSet, idx);
 	}
 
 	// Create a computed list: element i is baseVal + increment * i, for `length`
@@ -109,43 +108,43 @@ public static class GCManager {
 		GCList item = Lists.Get(idx);
 		item.InitComputed(baseVal, increment, length);
 		Lists.Set(idx, item);
-		return make_gc(ListSet, idx);
+		return Value.make_gc(ListSet, idx);
 	}
 
 	public static Value NewMap(Int32 capacity = 8) {
 		Int32 idx = Maps.AllocItem();
 		Maps.Init(idx, capacity);
-		return make_gc(MapSet, idx);
+		return Value.make_gc(MapSet, idx);
 	}
 
 	public static Value NewError(Value message, Value inner, Value stack, Value isa) {
 		Int32 idx = Errors.AllocItem();
 		Errors.SetFields(idx, message, inner, stack, isa);
-		return make_gc(ErrorSet, idx);
+		return Value.make_gc(ErrorSet, idx);
 	}
 
 	public static Value NewFuncRef(FuncDef func, Value outerVars) {
 		Int32 idx = Functions.AllocItem();
 		Functions.SetFields(idx, func, outerVars);
-		return make_gc(FunctionSet, idx);
+		return Value.make_gc(FunctionSet, idx);
 	}
 
 	public static Value NewHandle(object userData, HandleFinalizer callback) {
 		Int32 idx = Handles.AllocItem();
 		Handles.SetFields(idx, userData, callback);
-		return make_gc(HandleSet, idx);
+		return Value.make_gc(HandleSet, idx);
 	}
 
 	// ── Retain / Release ─────────────────────────────────────────────────────
 
 	public static void Retain(Value v) {
-		if (!is_gc_object(v)) return;
-		DispatchMark(value_gc_set_index(v), value_item_index(v));
+		if (!Value.is_gc_object(v)) return;
+		DispatchMark(Value.value_gc_set_index(v), Value.value_item_index(v));
 	}
 
 	public static void RetainValue(Value v) {
-		if (!is_gc_object(v)) return;
-		DispatchMark(value_gc_set_index(v), value_item_index(v));
+		if (!Value.is_gc_object(v)) return;
+		DispatchMark(Value.value_gc_set_index(v), Value.value_item_index(v));
 	}
 
 	// ── Root set ─────────────────────────────────────────────────────────────
@@ -179,8 +178,8 @@ public static class GCManager {
 
 	[MethodImpl(AggressiveInlining)]
 	public static void Mark(Value v) {
-		if (!is_gc_object(v)) return;
-		DispatchMark(value_gc_set_index(v), value_item_index(v));
+		if (!Value.is_gc_object(v)) return;
+		DispatchMark(Value.value_gc_set_index(v), Value.value_item_index(v));
 	}
 
 	private static void DispatchMark(Int32 setIdx, Int32 itemIdx) {
@@ -269,25 +268,25 @@ public static class GCManager {
 	// ── Convenience accessors ─────────────────────────────────────────────────
 
 	public static GCString GetString(Value v) {
-		if (value_gc_set_index(v) == InternedStringSet) {
-			return InternedStrings.Get(value_item_index(v));
+		if (Value.value_gc_set_index(v) == InternedStringSet) {
+			return InternedStrings.Get(Value.value_item_index(v));
 		}
-		return BigStrings.Get(value_item_index(v));
+		return BigStrings.Get(Value.value_item_index(v));
 	}
 	public static GCList GetList(Value v) {
-		return Lists.Get(value_item_index(v));
+		return Lists.Get(Value.value_item_index(v));
 	}
 	public static GCMap GetMap(Value v) {
-		return Maps.Get(value_item_index(v));
+		return Maps.Get(Value.value_item_index(v));
 	}
 	public static GCError GetError(Value v) {
-		return Errors.Get(value_item_index(v));
+		return Errors.Get(Value.value_item_index(v));
 	}
 	public static GCFunction GetFuncRef(Value v) {
-		return Functions.Get(value_item_index(v));
+		return Functions.Get(Value.value_item_index(v));
 	}
 	public static GCHandle GetHandle(Value v) {
-		return Handles.Get(value_item_index(v));
+		return Handles.Get(Value.value_item_index(v));
 	}
 
 	//*** BEGIN CS_ONLY ***
@@ -297,16 +296,16 @@ public static class GCManager {
 	
 	[MethodImpl(AggressiveInlining)]
 	public static String GetStringContent(Value v) {
-		if (is_tiny_string(v)) {
-			Int32 len = value_tiny_len(v);
+		if (Value.is_tiny_string(v)) {
+			Int32 len = Value.value_tiny_len(v);
 			char[] chars = new Char[len];
-			for (Int32 i = 0; i < len; i++) chars[i] = (char)((value_bits(v) >> (8 * (i + 1))) & 0xFF);
+			for (Int32 i = 0; i < len; i++) chars[i] = (char)((Value.value_bits(v) >> (8 * (i + 1))) & 0xFF);
 			return new String(chars);
 		}
-		if (is_heap_string(v)) {
+		if (Value.is_heap_string(v)) {
 			GCStringSet set;
-			set = (value_gc_set_index(v) == InternedStringSet) ? InternedStrings : BigStrings;
-			String data = set.Get(value_item_index(v)).Data;
+			set = (Value.value_gc_set_index(v) == InternedStringSet) ? InternedStrings : BigStrings;
+			String data = set.Get(Value.value_item_index(v)).Data;
 			return data != null ? data : "";
 		}
 		return "";

@@ -8,7 +8,7 @@ namespace MiniScript {
 Int32 CodeEmitterBaseStorage::AddConstant(Value value) {
 	List<Value> constants = PendingFunc.Constants();
 	for (Int32 i = 0; i < constants.Count(); i++) {
-		if (value_equal(constants[i], value)) return i;
+		if (constants[i] == value) return i;
 	}
 	constants.Add(value);
 	return constants.Count() - 1;

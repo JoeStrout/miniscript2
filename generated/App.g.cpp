@@ -404,7 +404,7 @@ void App::RunInterpreter(Interpreter interp) {
 		}
 	}
 
-	if (is_null(vm.Error())) {
+	if (vm.Error().IsNull()) {
 		if (!quietMode) {
 			IOHelper::Print("\nVM execution complete. Result in r0:");
 			IOHelper::Print(StringUtils::Format("\x1b[1;93m{0}\x1b[0m", result)); // (bold bright yellow)
@@ -417,7 +417,7 @@ String App::GetREPLInput(Interpreter interp) {
 	while (Boolean(true)) {
 		// Build prompt: " _in[N]: " for a fresh line, or a matching-width
 		// continuation prompt whose spaces align with the _in prompt.
-		Int32 idx = list_count(CoreIntrinsics::replInList);
+		Int32 idx = Value::list_count(CoreIntrinsics::replInList);
 		String prompt;
 		if (interp.NeedMoreInput()) {
 			// Width of " _in[N]: " = 8 + digits(N).  Use (3+digits(N)) spaces before "...:".
@@ -506,12 +506,12 @@ void App::HandleHistorySearch(String metaRest) {
 		search = metaRest;
 	}
 
-	Int32 total = list_count(CoreIntrinsics::replInList);
+	Int32 total = Value::list_count(CoreIntrinsics::replInList);
 	// First pass (backward): find the oldest index among the last `count` matches.
 	Int32 remaining = count;
 	Int32 firstIdx = total;
 	for (Int32 i = total - 1; i >= 0 && remaining > 0; i--) {
-		String entry = as_cstring(list_get(CoreIntrinsics::replInList, i));
+		String entry = Value::as_cstring(Value::list_get(CoreIntrinsics::replInList, i));
 		if (!IsNull(search) && entry.IndexOf(search) < 0) continue;
 		remaining--;
 		firstIdx = i;
@@ -519,7 +519,7 @@ void App::HandleHistorySearch(String metaRest) {
 	// Second pass (forward): display in ascending order.
 	Int32 shown = 0;
 	for (Int32 i = firstIdx; i < total && shown < count; i++) {
-		String entry = as_cstring(list_get(CoreIntrinsics::replInList, i));
+		String entry = Value::as_cstring(Value::list_get(CoreIntrinsics::replInList, i));
 		if (!IsNull(search) && entry.IndexOf(search) < 0) continue;
 		IOHelper::Print(StringUtils::Format(" _in[{0}]: {1}", i, entry), TextStyle::Subdued);
 		shown++;
@@ -527,18 +527,18 @@ void App::HandleHistorySearch(String metaRest) {
 	if (shown == 0) IOHelper::Print("(no matching history)", TextStyle::Subdued);
 }
 String App::RecallInput(String indexStr) {
-	Int32 total = list_count(CoreIntrinsics::replInList);
+	Int32 total = Value::list_count(CoreIntrinsics::replInList);
 	if (total == 0) return nullptr;
 	bool negative = indexStr.Length() > 0 && indexStr[0] == '-';
 	Int32 idx = ParseInt(negative ? indexStr.Substring(1) : indexStr);
 	if (idx < 0) return nullptr;
 	if (negative) idx = total - idx;
 	if (idx < 0 || idx >= total) return nullptr;
-	return as_cstring(list_get(CoreIntrinsics::replInList, idx));
+	return Value::as_cstring(Value::list_get(CoreIntrinsics::replInList, idx));
 }
 void App::RunREPL() {
-	CoreIntrinsics::replInList = make_list(0);
-	CoreIntrinsics::replOutList = make_list(0);
+	CoreIntrinsics::replInList = Value::make_list(0);
+	CoreIntrinsics::replOutList = Value::make_list(0);
 
 	Interpreter interp =  Interpreter::New();
 	interp.set_standardOutput([](String s, Boolean) { IOHelper::Print(s, TextStyle::Strong); });
@@ -566,16 +566,16 @@ void App::RunREPL() {
 		// When the interaction completes, record it and display implicit output.
 		// Skip recording if reset was called (it replaces the lists with fresh ones).
 		if (!interp.NeedMoreInput()) {
-			bool wasReset = !value_identical(CoreIntrinsics::replInList, inListBefore);
+			bool wasReset = !Value::value_identical(CoreIntrinsics::replInList, inListBefore);
 			if (!wasReset) {
-				Int32 idx = list_count(CoreIntrinsics::replInList);
+				Int32 idx = Value::list_count(CoreIntrinsics::replInList);
 				implVal = interp.lastImplicitResult();
-				list_push(CoreIntrinsics::replInList, make_string(currentInput));
-				list_push(CoreIntrinsics::replOutList, implVal);
+				Value::list_push(CoreIntrinsics::replInList, Value::make_string(currentInput));
+				Value::list_push(CoreIntrinsics::replOutList, implVal);
 				// Mirror MiniScript 1.x: the global `_` always holds the most
 				// recent implicit REPL result (i.e. _out[-1]).
 				interp.SetGlobalValue("_", implVal);
-				if (!is_null(implVal)) {
+				if (!implVal.IsNull()) {
 					IOHelper::PrintNoCR(StringUtils::Format("_out[{0}]: ", idx), TextStyle::Subdued);
 					IOHelper::Print(StringUtils::Format("{0}", implVal), TextStyle::Strong);
 				}

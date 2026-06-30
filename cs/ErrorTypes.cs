@@ -5,7 +5,6 @@
 // allowing host code to categorize errors by type.
 
 using System;
-using static MiniScript.Value;
 // H: #include "value.h"
 // H: #include "GCManager.g.h"
 // CPP: #include "CS_value_util.h"
@@ -27,25 +26,25 @@ public static class ErrorTypes {
 			_markRootsRegistered = true;
 		}
 		if (compiler.IsNull()) {
-			compiler = make_error(make_string("Compiler Error"), Value.Null, Value.Null, Value.Null);
-			freeze_value(compiler);
+			compiler = Value.make_error(Value.make_string("Compiler Error"), Value.Null, Value.Null, Value.Null);
+			Value.freeze_value(compiler);
 		}
 		if (runtime.IsNull()) {
-			runtime = make_error(make_string("Runtime Error"), Value.Null, Value.Null, Value.Null);
-			freeze_value(runtime);
+			runtime = Value.make_error(Value.make_string("Runtime Error"), Value.Null, Value.Null, Value.Null);
+			Value.freeze_value(runtime);
 		}
 	}
 
 	// Create a compiler error value with the given message.
 	public static Value CompilerError(String msg) {
 		if (compiler.IsNull()) Init();
-		return make_error(make_string(msg), Value.Null, Value.Null, compiler);
+		return Value.make_error(Value.make_string(msg), Value.Null, Value.Null, compiler);
 	}
 
 	// Create a runtime error value with the given message and stack trace.
 	public static Value RuntimeError(String msg, Value stack) {
 		if (runtime.IsNull()) Init();
-		return make_error(make_string(msg), Value.Null, stack, runtime);
+		return Value.make_error(Value.make_string(msg), Value.Null, stack, runtime);
 	}
 
 	// Create a runtime error value with the given message.  Attaches the active
@@ -55,7 +54,7 @@ public static class ErrorTypes {
 	// VM is running (e.g. errors built during setup, before execution).
 	public static Value RuntimeError(String msg) {
 		if (runtime.IsNull()) Init();
-		return make_error(make_string(msg), Value.Null, value_current_stack_trace(), runtime);
+		return Value.make_error(Value.make_string(msg), Value.Null, Value.value_current_stack_trace(), runtime);
 	}
 	
 	// Create a file error value with the given message.
@@ -79,7 +78,7 @@ public static class ErrorTypes {
 	// RuntimeError for now, but can later get a dedicated __isa prototype.
 	public static Value TypeError(String expectedType, Value actualValue) {
 		return RuntimeError("Type error: " + expectedType + " required, but got "
-			+ value_type_name(actualValue));
+			+ Value.value_type_name(actualValue));
 	}
 
 	// GC mark callback to protect our static error prototypes from collection.

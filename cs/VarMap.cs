@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using static System.Runtime.CompilerServices.MethodImplOptions;
-using static MiniScript.Value;
 // H: #include "value.h"
 // CPP: #include "GCManager.g.h"
 
@@ -224,7 +223,7 @@ public class VarMapBacking {
 		Int32 idx = GCManager.Maps.AllocItem();
 		GCManager.Maps.Init(idx, 4);
 		GCManager.Maps.SetVmb(idx, vmb);
-		return make_gc(GCManager.MapSet, idx);
+		return Value.make_gc(GCManager.MapSet, idx);
 	}
 
 	// ── Internal ──────────────────────────────────────────────────────────────

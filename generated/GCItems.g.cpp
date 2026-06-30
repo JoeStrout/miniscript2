@@ -17,13 +17,13 @@ void GCList::InitComputed(Value baseVal,Value increment,Int32 length) {
 	Items =  List<Value>::New(3);
 	Items.Add(baseVal);
 	Items.Add(increment);
-	Items.Add(make_int(length));
+	Items.Add(Value(length));
 	Frozen   = Boolean(false);
 	Computed = Boolean(true);
 }
 void GCList::Materialize() {
 	if (!Computed) return;
-	Int32 len = (Int32)numeric_val(Items[2]);
+	Int32 len = (Int32)Value::numeric_val(Items[2]);
 	List<Value> real =  List<Value>::New(Math::Max(len, 4));
 	for (Int32 i = 0; i < len; i++) real.Add(Get(i));  // Get still reads meta
 	Items    = real;
@@ -39,10 +39,10 @@ void GCList::Insert(Int32 index,Value v) {
 }
 Value GCList::Pop() {
 	if (Computed) {
-		Int32 len = (Int32)numeric_val(Items[2]);
+		Int32 len = (Int32)Value::numeric_val(Items[2]);
 		if (len == 0) return Value::Null;
 		Value last = Get(len - 1);
-		Items[2] = make_int(len - 1);
+		Items[2] = Value(len - 1);
 		return last;
 	}
 	if (IsNull(Items) || Items.Count() == 0) return Value::Null; // ToDo: error
@@ -60,7 +60,7 @@ Value GCList::Pull() {
 Int32 GCList::IndexOf(Value item,Int32 afterIdx) {
 	Int32 n = Count();
 	for (Int32 i = afterIdx + 1; i < n; i++) {
-		if (value_equal(Get(i), item)) return i;
+		if (Get(i) == item) return i;
 	}
 	return -1;
 }

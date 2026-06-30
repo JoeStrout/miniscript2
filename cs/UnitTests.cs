@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using static MiniScript.Value;
 // CPP: #include "CS_value_util.h"
 // CPP: #include "IOHelper.g.h"
 // CPP: #include "StringUtils.g.h"
@@ -233,64 +232,64 @@ public static class UnitTests {
 
 	public static Boolean TestValueMap() {
 		// Test map creation
-		Value map = make_empty_map();
+		Value map = Value.make_empty_map();
 		Boolean basicOk = Assert(map.IsMap(), "Map should be identified as map")
-			&& AssertEqual(map_count(map), 0);
+			&& AssertEqual(Value.map_count(map), 0);
 
 		if (!basicOk) return false;
 
 		// Test insertion and lookup
-		Value key1 = make_string("name");
-		Value value1 = make_string("John");
-		Value key2 = make_string("age");
+		Value key1 = Value.make_string("name");
+		Value value1 = Value.make_string("John");
+		Value key2 = Value.make_string("age");
 		Value value2 = new Value(30.0);
 
-		Boolean insertOk = map_set(map, key1, value1)
-			&& map_set(map, key2, value2)
-			&& AssertEqual(map_count(map), 2);
+		Boolean insertOk = Value.map_set(map, key1, value1)
+			&& Value.map_set(map, key2, value2)
+			&& AssertEqual(Value.map_count(map), 2);
 
 		if (!insertOk) return false;
 
 		// Test lookup
-		Value retrieved1 = map_get(map, key1);
-		Value retrieved2 = map_get(map, key2);
+		Value retrieved1 = Value.map_get(map, key1);
+		Value retrieved2 = Value.map_get(map, key2);
 		Boolean lookupOk = Assert(retrieved1.IsString(), "Retrieved value should be string")
 			&& Assert(retrieved2.IsNumber(), "Retrieved value should be number")
-			&& AssertEqual((int)as_double(retrieved2), 30);
+			&& AssertEqual((int)retrieved2.DoubleValue(), 30);
 
 		if (!lookupOk) return false;
 
 		// Test key existence
-		Boolean hasKeyOk = Assert(map_has_key(map, key1), "Should have key1")
-			&& Assert(map_has_key(map, key2), "Should have key2")
-			&& Assert(!map_has_key(map, make_string("nonexistent")), "Should not have nonexistent key");
+		Boolean hasKeyOk = Assert(Value.map_has_key(map, key1), "Should have key1")
+			&& Assert(Value.map_has_key(map, key2), "Should have key2")
+			&& Assert(!Value.map_has_key(map, Value.make_string("nonexistent")), "Should not have nonexistent key");
 
 		if (!hasKeyOk) return false;
 
 		// Test lookup of nonexistent key
 		// (For now; later: this should invoke error-handling pipeline)
-		Value nonexistent = map_get(map, make_string("missing"));
+		Value nonexistent = Value.map_get(map, Value.make_string("missing"));
 		Boolean nonexistentOk = Assert(nonexistent.IsNull(), "Nonexistent key should return null");
 
 		if (!nonexistentOk) return false;
 
 		// Test removal
-		Boolean removeOk = Assert(map_remove(map, key1), "Should successfully remove existing key")
-			&& AssertEqual(map_count(map), 1)
-			&& Assert(!map_has_key(map, key1), "Should no longer have removed key")
-			&& Assert(map_has_key(map, key2), "Should still have other key")
-			&& Assert(!map_remove(map, key1), "Should return false when removing nonexistent key");
+		Boolean removeOk = Assert(Value.map_remove(map, key1), "Should successfully remove existing key")
+			&& AssertEqual(Value.map_count(map), 1)
+			&& Assert(!Value.map_has_key(map, key1), "Should no longer have removed key")
+			&& Assert(Value.map_has_key(map, key2), "Should still have other key")
+			&& Assert(!Value.map_remove(map, key1), "Should return false when removing nonexistent key");
 
 		if (!removeOk) return false;
 
 		// Test string conversion (runtime C functions)
-		Value singleMap = make_empty_map();
-		map_set(singleMap, "test", new Value(42));
-		Value singleStr = to_string(singleMap, null);
+		Value singleMap = Value.make_empty_map();
+		Value.map_set(singleMap, "test", new Value(42));
+		Value singleStr = Value.to_string(singleMap, null);
 		Boolean singleStrOk = Assert(singleStr.IsString(), "Map toString should return string")
-			&& AssertEqual(as_cstring(singleStr), "{\"test\": 42}");
+			&& AssertEqual(Value.as_cstring(singleStr), "{\"test\": 42}");
 		if (!singleStrOk) return false;
-		String result = as_cstring(to_string(singleMap, null));
+		String result = Value.as_cstring(Value.to_string(singleMap, null));
 		if (!AssertEqual(result, "{\"test\": 42}")) return false;
 
 		// Note: We have successfully implemented and tested both conversion approaches:
@@ -299,8 +298,8 @@ public static class UnitTests {
 		// Both are working correctly in their respective contexts.
 
 		// Test clearing
-		map_clear(map);
-		Boolean clearOk = AssertEqual(map_count(map), 0);
+		Value.map_clear(map);
+		Boolean clearOk = AssertEqual(Value.map_count(map), 0);
 
 		return clearOk;
 	}
@@ -980,13 +979,13 @@ public static class UnitTests {
 		ok = ok && Assert(!h.IsNull(), "handle should not test as null");
 
 		// Keep the handle alive across a GC cycle via retain count; callback must not fire yet.
-		GCManager.Handles.Retain(value_item_index(h));
+		GCManager.Handles.Retain(Value.value_item_index(h));
 		GCManager.CollectGarbage();
 		ok = ok && Assert(_handleFinalizerCallCount == 0,
 			"callback should not fire while handle is still reachable");
 
 		// Release the retain — handle is now unreachable.  Next GC must sweep it.
-		GCManager.Handles.Release(value_item_index(h));
+		GCManager.Handles.Release(Value.value_item_index(h));
 		GCManager.CollectGarbage();
 		ok = ok && Assert(_handleFinalizerCallCount == 1,
 			"callback should fire exactly once when handle is collected");

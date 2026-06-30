@@ -25,10 +25,17 @@
 #include <string.h>
 #include "hashing.h"
 #include <type_traits>
+// NOTE: This pulls the host-side String class (Layer 2B) into this VM-side
+// (Layer 2A) header so that Value can expose String-typed methods (to_String,
+// make_string(String), map_set(String), value_type_name) matching cs/Value.cs.
+// This deliberately inverts the documented 2A/2B layering; layer_defs.h checks
+// are currently disabled.  CS_String.h does not include value.h, so no cycle.
+#include "CS_String.h"
 
 #define CORE_LAYER_2A
 
 namespace MiniScript { struct FuncDef; }
+struct MapIterator;  // defined in value_map.h; returned by Value::map_iterator
 
 // NaN-boxed dynamic Value.  The sole data member `bits` holds the 64-bit
 // payload: for numbers it is the IEEE-754 double bit pattern; for everything
@@ -50,6 +57,8 @@ typedef struct Value {
     // null, Value(1.0) is a number, Value("x") is a string.
     Value() noexcept;                 // null
     Value(double number) noexcept;    // a number
+    Value(int i) noexcept;            // integer (delegates to double; prevents 0→null-ptr ambiguity)
+    Value(unsigned int u) noexcept;   // unsigned integer (delegates to double)
     // The string ctor is explicit: a bare const char* literal must not silently
     // become a Value, or calls like f("x") where f is overloaded on both String
     // and Value (e.g. RaiseRuntimeError) become ambiguous.  Value("x") still works.
@@ -78,12 +87,119 @@ typedef struct Value {
     inline uint32_t     UIntValue()   const noexcept;
     inline bool         BoolValue()   const noexcept;
     inline bool         IsNull()      const noexcept;
+    inline bool         IsNumber()    const noexcept;
+    inline bool         IsString()    const noexcept;
+    inline bool         IsList()      const noexcept;
+    inline bool         IsMap()       const noexcept;
+    inline bool         IsError()     const noexcept;
+    inline bool         IsFuncRef()   const noexcept;
+    inline bool         IsHandle()    const noexcept;
     inline unsigned int Hash()        const noexcept;
 
-    // Truth factories. Note: Truth(double) is just the number ctor: our Value 
-    // is light enough that there is no benefit to MiniScript 1.x's special-casing
-    // of 0 and 1.
-    static Value Truth(bool b);
+    // ── Static methods mirroring the C# Value API (cs/Value.cs) ──────────────
+    // Transpiled code calls these as Value::make_string(...), etc.  These are
+    // the canonical definitions; the matching free functions have been removed.
+    // (String/List/Map-typed operations such as to_String, map_iterator, and
+    // make_varmap deliberately remain free functions, to keep this low-level
+    // header free of the String/List/Map layers — see note below.)
+    static int    value_item_index(Value v);
+    static int    value_gc_set_index(Value v);
+    static bool   is_gc_object(Value v);
+    static Value  make_gc(int gcSet, int itemIdx);
+    static double numeric_val(Value v);
+    static bool   value_identical(Value a, Value b);
+    static double AbsClamp01(double d);
+
+    static Value  value_add(Value a, Value b, void* vm);
+    static Value  value_sub(Value a, Value b);
+    static Value  value_mult(Value a, Value b);
+    static Value  value_div(Value a, Value b);
+    static Value  value_mod(Value a, Value b);
+    static Value  value_pow(Value a, Value b);
+    static Value  value_and(Value a, Value b);
+    static Value  value_or(Value a, Value b);
+    static Value  value_not(Value a);
+    static bool   value_lt(Value a, Value b);
+    static bool   value_le(Value a, Value b);
+
+    // Strings
+    static Value  make_string(const char* str);
+    static Value  make_string(const String& s);
+    static String to_String(Value v);
+    static String value_type_name(Value v);
+    static const char* as_cstring(Value v);
+    static int    string_length(Value v);
+    static int    string_indexOf(Value haystack, Value needle, int start_pos);
+    static Value  string_substring(Value str, int startIndex, int len);
+    static Value  string_slice(Value str, int start, int end);
+    static Value  string_insert(Value str, int index, Value value, void* vm);
+    static Value  string_upper(Value str);
+    static Value  string_lower(Value str);
+    static Value  string_from_code_point(int codePoint);
+    static int    string_code_point(Value str);
+    static Value  string_split_max(Value str, Value delimiter, int maxCount);
+    static Value  string_replace_max(Value source, Value search, Value replacement, int maxCount);
+    static Value  to_string(Value v, void* vm);
+    static Value  to_number(Value v);
+    static Value  value_repr(Value v, void* vm);
+    static Value  value_current_stack_trace();
+
+    // Lists
+    static Value  make_list(int initial_capacity);
+    static int    list_count(Value list_val);
+    static Value  list_get(Value list_val, int index);
+    static void   list_set(Value list_val, int index, Value item);
+    static void   list_push(Value list_val, Value item);
+    static Value  list_pop(Value list_val);
+    static Value  list_pull(Value list_val);
+    static void   list_insert(Value list_val, int index, Value item);
+    static bool   list_remove(Value list_val, int index);
+    static int    list_indexOf(Value list_val, Value item, int afterIdx);
+    static Value  list_slice(Value list_val, int start, int end);
+    static void   list_sort(Value list_val, bool ascending);
+    static void   list_sort_by_key(Value list_val, Value byKey, bool ascending);
+
+    // Maps (map_iterator, make_varmap, varmap_rebind, varmap_map_to_register
+    // still stay free for now — they need MapIterator / List<Value>).
+    static Value  make_map(int initial_capacity);
+    static Value  make_empty_map();
+    static int    map_count(Value map_val);
+    static Value  map_get(Value map_val, Value key);
+    static bool   map_set(Value map_val, Value key, Value value);
+    static bool   map_set(Value map_val, const String& key, Value value);
+    static bool   map_set(Value map_val, const String& key, const String& value);
+    static bool   map_has_key(Value map_val, Value key);
+    static bool   map_try_get(Value map_val, Value key, Value* out_value);
+    static bool   map_remove(Value map_val, Value key);
+    static void   map_clear(Value map_val);
+    static bool   map_lookup(Value map_val, Value key, Value* out_value);
+    static bool   map_lookup_with_origin(Value map_val, Value key, Value* out_value, Value* out_super);
+    static int    map_iter_next(Value map_val, int iter);
+    static Value  map_iter_entry(Value map_val, int iter);
+    static MapIterator map_iterator(Value map_val);
+
+    // VarMaps (take List<Value>, visible via CS_String.h -> CS_List.h)
+    static Value  make_varmap(List<Value> registers, List<Value> names, int firstIndex, int count);
+    static void   varmap_map_to_register(Value map_val, Value var_name, List<Value> registers, int reg_index);
+    static void   varmap_gather(Value map_val);
+    static void   varmap_rebind(Value map_val, List<Value> registers, List<Value> names);
+
+    // Errors / funcrefs / freeze
+    static Value  make_error(Value message, Value inner, Value stack, Value isa);
+    static Value  error_message(Value error);
+    static Value  error_inner(Value error);
+    static Value  error_stack(Value error);
+    static Value  error_isa(Value error);
+    static bool   error_isa_contains(Value error, Value base);
+    static Value  make_funcref(MiniScript::FuncDef func, Value outerVars);
+    static MiniScript::FuncDef funcref_funcdef(Value v);
+    static Value  funcref_outer_vars(Value v);
+    static bool   is_frozen(Value v);
+    static void   freeze_value(Value v);
+    static Value  frozen_copy(Value v);
+
+    // Truth factory: returns Value::one for truthy, Value::zero for falsy.
+    // A single overload on double covers all numeric types (bool, int, float, double).
     static Value Truth(double number);
 
     static Value null;           // DEPRECATED: used in MS 1.x; prefer Null for new code.
@@ -97,6 +213,16 @@ typedef struct Value {
     static Value implicitResult; // "_"
     static Value selfString;     // "self"
     static Value superString;    // "super"
+
+	// Maximum number of elements a list (or characters a string) may hold.
+	// Mirrors Value.MAX_COLLECTION_SIZE in cs/Value.cs.  Operations whose
+	// result would exceed this raise a runtime error instead of attempting a
+	// hopeless allocation.
+	static int MAX_COLLECTION_SIZE;
+
+	// Sentinel returned by map_iter_next when iteration is exhausted.
+	// Mirrors Value.MAP_ITER_DONE in cs/Value.cs (Int32.MinValue).
+	static int MAP_ITER_DONE;
 
   private:
     // Tag type that selects the raw-payload constructor (used only by fromBits).
@@ -124,12 +250,6 @@ static_assert(std::is_standard_layout<Value>::value,
 
 #define TINY_STRING_MAX_LEN 5
 
-// Maximum number of elements a list (or characters a string) may hold.
-// Mirrors ValueHelpers.MAX_COLLECTION_SIZE in cs/Value.cs.  Operations whose
-// result would exceed this raise a runtime error instead of attempting a
-// hopeless allocation.
-#define MAX_COLLECTION_SIZE 0x7FFFFFFF
-
 // ── GCSet indices (IMPORTANT: must match cs/GCManager.cs constants) ────────────
 #define STRING_SET   0
 #define LIST_SET     1
@@ -155,15 +275,11 @@ void value_init_constants(void);
 // ── Accessors used by hot paths ─────────────────────────────────────────
 static inline uint64_t value_bits(Value v)     { return v.bits; }
 static inline int value_tiny_len(Value v)      { return (int)(v.bits & 0xFF); }
-static inline int value_gc_set_index(Value v)  { return (int)((v.bits >> 32) & 0x7); }
-static inline int value_item_index(Value v)    { return (int)(uint32_t)v.bits; }
+inline int Value::value_gc_set_index(Value v)  { return (int)((v.bits >> 32) & 0x7); }
+inline int Value::value_item_index(Value v)    { return (int)(uint32_t)v.bits; }
 
 // ── Type predicates ─────────────────────────────────────────────────────
-static inline bool value_identical(Value a, Value b) { return a == b; }
-
-static inline bool is_null(Value v) {
-    return v == Value::null;
-}
+inline bool Value::value_identical(Value a, Value b) { return a == b; }
 
 static inline bool is_int(Value v) {
     (void)v;
@@ -174,7 +290,7 @@ static inline bool is_tiny_string(Value v) {
     return (v.bits & NANISH_MASK) == TINY_STRING_TAG;
 }
 
-static inline bool is_gc_object(Value v) {
+inline bool Value::is_gc_object(Value v) {
     return (v.bits & NANISH_MASK) == GC_TAG;
 }
 
@@ -182,41 +298,9 @@ static inline bool is_heap_string(Value v) {
     return (v.bits & GC_TYPE_MASK) == STRING_TAG_PATTERN;
 }
 
-static inline bool is_string(Value v) {
-    return is_tiny_string(v) || is_heap_string(v);
-}
-
-static inline bool is_funcref(Value v) {
-    return (v.bits & GC_TYPE_MASK) == FUNCREF_TAG_PATTERN;
-}
-
-static inline bool is_list(Value v) {
-    return (v.bits & GC_TYPE_MASK) == LIST_TAG_PATTERN;
-}
-
-static inline bool is_map(Value v) {
-    return (v.bits & GC_TYPE_MASK) == MAP_TAG_PATTERN;
-}
-
-static inline bool is_error(Value v) {
-    return (v.bits & GC_TYPE_MASK) == ERROR_TAG_PATTERN;
-}
-static inline bool is_handle(Value v) {
-    return (v.bits & GC_TYPE_MASK) == HANDLE_TAG_PATTERN;
-}
-
-static inline bool is_double(Value v) {
-    return (v.bits & NANISH_MASK) < NULL_VALUE;
-}
-
-static inline bool is_number(Value v) { return is_double(v); }
-
-bool is_truthy(Value v);
-
 // ── Forward declarations for runtime functions ──────────────────────────
 extern Value string_sub(Value a, Value b);
 extern Value string_concat(Value a, Value b);
-extern Value make_string(const char* str);
 extern const char* get_string_data_zerocopy(const Value* v_ptr, int* out_len);
 extern int  string_compare(Value a, Value b);
 extern bool string_equals(Value a, Value b);
@@ -224,25 +308,9 @@ extern int  string_length(Value v);
 extern Value string_substring(Value str, int startIndex, int len);
 extern Value list_concat(Value a, Value b);
 extern Value map_concat(Value a, Value b);
-extern Value make_map(int initial_capacity);
-extern Value make_empty_map(void);
-extern int   list_count(Value list_val);
-extern Value list_get(Value list_val, int index);
-extern void  list_push(Value list_val, Value item);
-extern Value make_list(int initial_capacity);
 
-// ── Numeric & null factories (immediate Values, no GC) ──────────────────
-static inline Value make_null(void) { return Value::null; }
-
-static inline Value make_double(double d) {
-    Value v;
-    memcpy(&v, &d, sizeof v);
-    return v;
-}
-
-static inline Value make_int(int32_t i) { return make_double((double)i); }
-
-static inline Value make_gc(int gcSet, int itemIdx) {
+// ── Numeric factory (immediate Value, no GC) ──────────────────────────
+inline Value Value::make_gc(int gcSet, int itemIdx) {
     return Value::fromBits(GC_TAG | ((uint64_t)gcSet << 32) | (uint64_t)(uint32_t)itemIdx);
 }
 
@@ -254,22 +322,15 @@ static inline double as_double(Value v) {
 
 static inline int32_t as_int(Value v) { return (int32_t)as_double(v); }
 
-static inline double numeric_val(Value v) {
-    if (is_double(v)) return as_double(v);
+inline double Value::numeric_val(Value v) {
+    if (v.IsNumber()) return as_double(v);
     return 0.0;
 }
 
 // ── Error / FuncRef accessors (defined in value.cpp) ────────────────────
 // These previously lived as inline pointer-decode helpers; now they
 // dispatch through the GC manager.
-Value make_error(Value message, Value inner, Value stack, Value isa);
-Value error_message(Value error);
-Value error_inner(Value error);
-Value error_stack(Value error);
-Value error_isa(Value error);
-bool  error_isa_contains(Value error, Value base);
 
-Value funcref_outer_vars(Value v);
 
 // ── Tiny string buffer access ───────────────────────────────────────────
 #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
@@ -281,10 +342,8 @@ Value funcref_outer_vars(Value v);
 #endif
 
 // ── Conversion ──────────────────────────────────────────────────────────
+// (to_string / value_repr / to_number are now Value:: static methods.)
 Value code_form(Value v, void* vm, int recursion_limit);
-Value to_string(Value v, void* vm);
-Value value_repr(Value v, void* vm);
-Value to_number(Value v);
 
 // Short-name lookup hook: called by code_form when printing a map/list that
 // might be a known type or named global. Returns a string Value holding the
@@ -309,125 +368,124 @@ Value value_make_runtime_error(const char* message);
 // on the VM layer.
 typedef Value (*StackTraceFn)();
 void set_stack_trace_hook(StackTraceFn fn);
-Value value_current_stack_trace();
+// (value_current_stack_trace is now a Value:: static method.)
 
 // ── Arithmetic ──────────────────────────────────────────────────────────
-static inline Value value_add(Value a, Value b, void* vm) {
-    if (is_error(a)) return a;
-    if (is_error(b)) return b;
-    if (is_double(a) && is_double(b)) {
-        return make_double(as_double(a) + as_double(b));
+inline Value Value::value_add(Value a, Value b, void* vm) {
+    if (a.IsError()) return a;
+    if (b.IsError()) return b;
+    if (a.IsNumber() && b.IsNumber()) {
+        return Value(as_double(a) + as_double(b));
     }
-    if (is_string(a)) {
-        if (is_null(b)) return a;
-        Value bStr = is_string(b) ? b : to_string(b, vm);
+    if (a.IsString()) {
+        if (b.IsNull()) return a;
+        Value bStr = b.IsString() ? b : Value::to_string(b, vm);
         // Overflow-safe check that the concatenation won't exceed the limit.
-        if (string_length(a) > MAX_COLLECTION_SIZE - string_length(bStr)) {
+        if (Value::string_length(a) > Value::MAX_COLLECTION_SIZE - Value::string_length(bStr)) {
             return value_make_runtime_error("string too large (exceeds maximum size)");
         }
         return string_concat(a, bStr);
-    } else if (is_string(b)) {
-        if (is_null(a)) return b;
-        Value aStr = to_string(a, vm);
-        if (string_length(aStr) > MAX_COLLECTION_SIZE - string_length(b)) {
+    } else if (b.IsString()) {
+        if (a.IsNull()) return b;
+        Value aStr = Value::to_string(a, vm);
+        if (Value::string_length(aStr) > Value::MAX_COLLECTION_SIZE - Value::string_length(b)) {
             return value_make_runtime_error("string too large (exceeds maximum size)");
         }
         return string_concat(aStr, b);
     }
-    if (is_list(a) && is_list(b)) {
-        if (list_count(a) > MAX_COLLECTION_SIZE - list_count(b)) {
+    if (a.IsList() && b.IsList()) {
+        if (Value::list_count(a) > Value::MAX_COLLECTION_SIZE - Value::list_count(b)) {
             return value_make_runtime_error("list too large (exceeds maximum size)");
         }
         return list_concat(a, b);
     }
-    if (is_map(a)  && is_map(b))  return map_concat(a, b);
+    if (a.IsMap()  && b.IsMap())  return map_concat(a, b);
     return Value::null;
 }
 
-static inline Value value_sub(Value a, Value b) {
-    if (is_error(a)) return a;
-    if (is_error(b)) return b;
-    if (is_double(a) && is_double(b)) {
-        return make_double(as_double(a) - as_double(b));
+inline Value Value::value_sub(Value a, Value b) {
+    if (a.IsError()) return a;
+    if (b.IsError()) return b;
+    if (a.IsNumber() && b.IsNumber()) {
+        return Value(as_double(a) - as_double(b));
     }
-    if (is_string(a) && is_string(b)) return string_sub(a, b);
+    if (a.IsString() && b.IsString()) return string_sub(a, b);
     return Value::null;
 }
 
-static inline bool value_lt(Value a, Value b) {
-    if (is_double(a) && is_double(b)) return as_double(a) < as_double(b);
-    if (is_string(a) && is_string(b)) return string_compare(a, b) < 0;
+inline bool Value::value_lt(Value a, Value b) {
+    if (a.IsNumber() && b.IsNumber()) return as_double(a) < as_double(b);
+    if (a.IsString() && b.IsString()) return string_compare(a, b) < 0;
     return false;
 }
 
 extern Value value_mult_nonnumeric(Value a, Value b);
-static inline Value value_mult(Value a, Value b) {
-    if (is_error(a)) return a;
-    if (is_error(b)) return b;
-    if (is_double(a) && is_double(b)) {
-        return make_double(as_double(a) * as_double(b));
+inline Value Value::value_mult(Value a, Value b) {
+    if (a.IsError()) return a;
+    if (b.IsError()) return b;
+    if (a.IsNumber() && b.IsNumber()) {
+        return Value(as_double(a) * as_double(b));
     }
     return value_mult_nonnumeric(a, b);
 }
 
-static inline Value value_div(Value a, Value b) {
-    if (is_error(a)) return a;
-    if (is_error(b)) return b;
-    if (is_double(b)) {
-        if (is_double(a)) return make_double(as_double(a) / as_double(b));
-        return value_mult_nonnumeric(a, value_div(make_double(1), b));
+inline Value Value::value_div(Value a, Value b) {
+    if (a.IsError()) return a;
+    if (b.IsError()) return b;
+    if (b.IsNumber()) {
+        if (a.IsNumber()) return Value(as_double(a) / as_double(b));
+        return value_mult_nonnumeric(a, Value::value_div(Value(1.0), b));
     }
     return Value::null;
 }
 
-static inline Value value_mod(Value a, Value b) {
-    if (is_error(a)) return a;
-    if (is_error(b)) return b;
-    if (is_double(a) && is_double(b)) return make_double(fmod(as_double(a), as_double(b)));
+inline Value Value::value_mod(Value a, Value b) {
+    if (a.IsError()) return a;
+    if (b.IsError()) return b;
+    if (a.IsNumber() && b.IsNumber()) return Value(fmod(as_double(a), as_double(b)));
     return Value::null;
 }
 
-static inline Value value_pow(Value a, Value b) {
-    if (is_error(a)) return a;
-    if (is_error(b)) return b;
-    if (is_double(a) && is_double(b)) return make_double(pow(as_double(a), as_double(b)));
+inline Value Value::value_pow(Value a, Value b) {
+    if (a.IsError()) return a;
+    if (b.IsError()) return b;
+    if (a.IsNumber() && b.IsNumber()) return Value(pow(as_double(a), as_double(b)));
     return Value::null;
 }
 
 bool value_equal(Value a, Value b);
-bool value_le(Value a, Value b);
-static inline bool value_gt(Value a, Value b) { return !value_le(a, b); }
-static inline bool value_ge(Value a, Value b) { return !value_lt(a, b); }
+static inline bool value_gt(Value a, Value b) { return !Value::value_le(a, b); }
+static inline bool value_ge(Value a, Value b) { return !Value::value_lt(a, b); }
 int  value_compare(Value a, Value b);
 
 // ── Helpers / fuzzy logic ───────────────────────────────────────────────
 static inline double ToFuzzyBool(Value v) {
-    if (is_double(v)) return as_double(v);
-    return is_truthy(v) ? 1.0 : 0.0;
+    if (v.IsNumber()) return as_double(v);
+    return v.BoolValue() ? 1.0 : 0.0;
 }
 
-static inline double AbsClamp01(double d) {
+inline double Value::AbsClamp01(double d) {
     if (d < 0) d = -d;
     if (d > 1) return 1;
     return d;
 }
 
-static inline Value value_and(Value a, Value b) {
-    if (is_error(a)) return a;
-    if (is_error(b)) return b;
-    return make_double(AbsClamp01(ToFuzzyBool(a) * ToFuzzyBool(b)));
+inline Value Value::value_and(Value a, Value b) {
+    if (a.IsError()) return a;
+    if (b.IsError()) return b;
+    return Value(Value::AbsClamp01(ToFuzzyBool(a) * ToFuzzyBool(b)));
 }
 
-static inline Value value_or(Value a, Value b) {
-    if (is_error(a)) return b;
-    if (is_error(b)) return b;
+inline Value Value::value_or(Value a, Value b) {
+    if (a.IsError()) return b;
+    if (b.IsError()) return b;
     double fA = ToFuzzyBool(a), fB = ToFuzzyBool(b);
-    return make_double(AbsClamp01(fA + fB - fA * fB));
+    return Value(Value::AbsClamp01(fA + fB - fA * fB));
 }
 
-static inline Value value_not(Value a) {
-    if (is_error(a)) return a;
-    return make_double(1.0 - AbsClamp01(ToFuzzyBool(a)));
+inline Value Value::value_not(Value a) {
+    if (a.IsError()) return a;
+    return Value(1.0 - Value::AbsClamp01(ToFuzzyBool(a)));
 }
 
 // ── Bitwise (legacy stubs; retained for compatibility) ──────────────────
@@ -438,9 +496,6 @@ Value value_shl(Value v, int shift);
 
 // ── Hashing & frozen ────────────────────────────────────────────────────
 uint32_t value_hash(Value v);
-bool     is_frozen(Value v);
-void     freeze_value(Value v);
-Value    frozen_copy(Value v);
 
 // Content-aware Hash and equality overloads for Value, used by
 // Dictionary<Value, Value>. Without these, Dictionary would fall back to
@@ -458,29 +513,72 @@ inline bool DictKeyEqual(Value a, Value b) {
 // Defined here, where NULL_VALUE and the make_* helpers are visible.  A default
 // Value is null; Value(1.0) is a number; Value("x") copies the C string.
 inline Value::Value() noexcept : bits(NULL_VALUE) {}
-inline Value::Value(double number) noexcept { *this = make_double(number); }
-inline Value::Value(const char* cString) { *this = make_string(cString); }
+inline Value::Value(double number) noexcept { memcpy(&bits, &number, sizeof bits); }
+inline Value::Value(int i) noexcept { double d = (double)i; memcpy(&bits, &d, sizeof bits); }
+inline Value::Value(unsigned int u) noexcept { double d = (double)u; memcpy(&bits, &d, sizeof bits); }
+inline Value::Value(const char* cString) { *this = Value::make_string(cString); }
 
-// Truthiness factories.  Truth(double) maps 0 -> zero and 1 -> one for free,
-// since make_double(0.0)/make_double(1.0) are exactly Value::zero/Value::one.
-inline Value Value::Truth(bool b)        { return b ? one : zero; }
+// Truth factory: any numeric type converts to double via standard conversion.
+// 0.0 / false → Value::zero, anything else → a number value.
 inline Value Value::Truth(double number) { return Value(number); }
+//inline Value Value::Truth(Boolean b) { return Value((double)b); }
 
 // ── MiniScript 1.x-style convenience accessors (declared in struct Value) ──
-// Out-of-line so they can see is_double/as_double/is_truthy/is_null/value_hash,
-// which are declared earlier in this header.  Each compiles to the same code as
-// the corresponding free-function call, so it is convenience only.
-inline double       Value::DoubleValue() const noexcept { return is_double(*this) ? as_double(*this) : 0.0; }
+// Out-of-line so they can see the tag constants and helper predicates declared
+// earlier in this header.  Each compiles to the same code as the corresponding
+// free-function call, so it is convenience only.
+inline bool Value::IsNull()    const noexcept { return bits == NULL_VALUE; }
+inline bool Value::IsNumber()  const noexcept { return (bits & NANISH_MASK) < NULL_VALUE; }
+inline bool Value::IsString()  const noexcept { return is_tiny_string(*this) || is_heap_string(*this); }
+inline bool Value::IsList()    const noexcept { return (bits & GC_TYPE_MASK) == LIST_TAG_PATTERN; }
+inline bool Value::IsMap()     const noexcept { return (bits & GC_TYPE_MASK) == MAP_TAG_PATTERN; }
+inline bool Value::IsError()   const noexcept { return (bits & GC_TYPE_MASK) == ERROR_TAG_PATTERN; }
+inline bool Value::IsFuncRef() const noexcept { return (bits & GC_TYPE_MASK) == FUNCREF_TAG_PATTERN; }
+inline bool Value::IsHandle()  const noexcept { return (bits & GC_TYPE_MASK) == HANDLE_TAG_PATTERN; }
+inline bool Value::BoolValue() const noexcept {
+    if (IsNull()) return false;
+    if (IsNumber()) return as_double(*this) != 0.0;
+    if (IsString()) return Value::string_length(*this) != 0;
+    if (IsList()) return Value::list_count(*this) != 0;
+    if (IsMap()) return Value::map_count(*this) != 0;
+    return true;
+}
+inline double       Value::DoubleValue() const noexcept { return IsNumber() ? as_double(*this) : 0.0; }
 inline float        Value::FloatValue()  const noexcept { return (float)DoubleValue(); }
 inline int32_t      Value::IntValue()    const noexcept { return (int32_t)DoubleValue(); }
 inline uint32_t     Value::UIntValue()   const noexcept { return (uint32_t)DoubleValue(); }
-inline bool         Value::BoolValue()   const noexcept { return is_truthy(*this); }
-inline bool         Value::IsNull()      const noexcept { return is_null(*this); }
 inline unsigned int Value::Hash()        const noexcept { return value_hash(*this); }
 
 // A funcref Value pairs a FuncDef with an optional captured-variable map.
 // Declared with C++ linkage (FuncDef is a C++ type, defined in FuncDef.g.h).
-Value               make_funcref(MiniScript::FuncDef func, Value outerVars);
-MiniScript::FuncDef funcref_funcdef(Value v);
+
+// ── String-typed Value methods (need the host String class) ──────────────
+// These mirror cs/Value.cs.  Defined inline here since String is now visible.
+inline Value Value::make_string(const String& s) { return Value::make_string(s.c_str()); }
+
+inline bool Value::map_set(Value map_val, const String& key, Value value) {
+    return Value::map_set(map_val, Value::make_string(key), value);
+}
+inline bool Value::map_set(Value map_val, const String& key, const String& value) {
+    return Value::map_set(map_val, Value::make_string(key), Value::make_string(value));
+}
+
+inline String Value::to_String(Value v) {
+    return String(Value::as_cstring(Value::to_string(v, nullptr)));
+}
+
+// Hand-written twin of ValueHelpers.value_type_name (Value.cs is CS_ONLY, so it
+// is not transpiled).  Keep in sync with the C# version.
+inline String Value::value_type_name(Value v) {
+    if (v.IsNumber()) return String("number");
+    if (v.IsString()) return String("string");
+    if (v.IsList()) return String("list");
+    if (v.IsMap()) return String("map");
+    if (v.IsFuncRef()) return String("funcRef");
+    if (v.IsError()) return String("error");
+    if (v.IsHandle()) return String("handle");
+    if (v.IsNull()) return String("null");
+    return String("unknown");
+}
 
 #endif // NANBOX_H

@@ -147,7 +147,7 @@ void CodeGeneratorStorage::EnsureNamed(String varName,Int32 varReg) {
 	for (Int32 i = 0; i < _namedStack.Count(); i++) {
 		if (_namedStack[i] == varName) return;
 	}
-	Int32 nameIdx = _emitter.AddConstant(make_string(varName));
+	Int32 nameIdx = _emitter.AddConstant(Value::make_string(varName));
 	_emitter.EmitAB(Opcode::NAME_rA_kBC, varReg, nameIdx, Interp("use r{} for {}", varReg, varName));
 	_namedStack.Add(varName);
 }
@@ -227,14 +227,14 @@ Int32 CodeGeneratorStorage::Visit(NumberNode node) {
 		_emitter.EmitAB(Opcode::LOAD_rA_iBC, reg, (Int32)value, Interp("r{} = {}", reg, value));
 	} else {
 		// Store in constants and load from there
-		Int32 constIdx = _emitter.AddConstant(make_double(value));
+		Int32 constIdx = _emitter.AddConstant(Value(value));
 		_emitter.EmitAB(Opcode::LOAD_rA_kBC, reg, constIdx, Interp("r{} = {}", reg, value));
 	}
 	return reg;
 }
 Int32 CodeGeneratorStorage::Visit(StringNode node) {
 	Int32 reg = GetTargetOrAlloc();
-	Int32 constIdx = _emitter.AddConstant(make_string(node.Value()));
+	Int32 constIdx = _emitter.AddConstant(Value::make_string(node.Value()));
 	_emitter.EmitAB(Opcode::LOAD_rA_kBC, reg, constIdx, Interp("r{} = \"{}\"", reg, node.Value()));
 	return reg;
 }
@@ -258,7 +258,7 @@ Int32 CodeGeneratorStorage::VisitIdentifier(IdentifierNode node,bool addressOf) 
 	Int32 varReg;
 	if (_variableRegs.TryGetValue(node.Name(), &varReg)) {
 		// Variable found - emit LOADC (load-and-call for implicit function invocation)
-		Int32 nameIdx = _emitter.AddConstant(make_string(node.Name()));
+		Int32 nameIdx = _emitter.AddConstant(Value::make_string(node.Name()));
 		Opcode op = addressOf ? Opcode::LOADV_rA_rB_kC : Opcode::LOADC_rA_rB_kC;
 		String a = addressOf ? "@" : "";
 		_emitter.EmitABC(op, resultReg, varReg, nameIdx,
@@ -267,7 +267,7 @@ Int32 CodeGeneratorStorage::VisitIdentifier(IdentifierNode node,bool addressOf) 
 		// Variable not in local scope — emit LOADC/LOADV referencing r0 with
 		// the variable name. At runtime, the name check on r0 will fail,
 		// triggering LookupVariable to search outer/global scope.
-		Int32 nameIdx = _emitter.AddConstant(make_string(node.Name()));
+		Int32 nameIdx = _emitter.AddConstant(Value::make_string(node.Name()));
 		Opcode op = addressOf ? Opcode::LOADV_rA_rB_kC : Opcode::LOADC_rA_rB_kC;
 		String a = addressOf ? "@" : "";
 		_emitter.EmitABC(op, resultReg, 0, nameIdx,
@@ -281,7 +281,7 @@ Int32 CodeGeneratorStorage::Visit(IdentifierNode node) {
 }
 Int32 CodeGeneratorStorage::Visit(AssignmentNode node) {
 	if (_targetReg > 0) {
-		if (is_null(Error)) Error = ErrorTypes::CompilerError(StringUtils::Format("unexpected target register {0} in assignment", _targetReg));
+		if (Error.IsNull()) Error = ErrorTypes::CompilerError(StringUtils::Format("unexpected target register {0} in assignment", _targetReg));
 	}
 	
 	// Get or allocate register for this variable
@@ -391,7 +391,7 @@ Int32 CodeGeneratorStorage::Visit(UnaryOpNode node) {
 	}
 
 	// Unknown unary operator - move operand to result if needed
-	if (is_null(Error)) Error = ErrorTypes::CompilerError("unknown unary operator");
+	if (Error.IsNull()) Error = ErrorTypes::CompilerError("unknown unary operator");
 	if (operandReg != resultReg) {
 		_emitter.EmitABC(Opcode::LOAD_rA_rB, resultReg, operandReg, 0, "move to target");
 		FreeReg(operandReg);
@@ -591,7 +591,7 @@ Int32 CodeGeneratorStorage::Visit(CallNode node) {
 	// Not a known local — resolve at runtime via LOADV (outer/global/intrinsic).
 	// We use LOADV (not LOADC) to get the funcref without auto-invoking it.
 	Int32 funcReg = AllocReg();
-	Int32 nameIdx = _emitter.AddConstant(make_string(node.Function()));
+	Int32 nameIdx = _emitter.AddConstant(Value::make_string(node.Function()));
 	_emitter.EmitABC(Opcode::LOADV_rA_rB_kC, funcReg, 0, nameIdx,
 		Interp("r{} = @{} (runtime lookup)", funcReg, node.Function()));
 
@@ -730,7 +730,7 @@ Int32 CodeGeneratorStorage::VisitMember(MemberNode node,bool addressOf) {
 	Int32 resultReg = GetTargetOrAlloc();
 	Int32 targetReg = node.Target().Accept(_this);
 	Int32 indexReg = AllocReg();
-	Int32 constIdx = _emitter.AddConstant(make_string(node.Member()));
+	Int32 constIdx = _emitter.AddConstant(Value::make_string(node.Member()));
 	_emitter.EmitAB(Opcode::LOAD_rA_kBC, indexReg, constIdx, Interp("r{} = \"{}\"", indexReg, node.Member()));
 	String comment = Interp("{}.{}", node.Target().ToStr(), node.Member());
 
@@ -1010,7 +1010,7 @@ Int32 CodeGeneratorStorage::Visit(ForNode node) {
 Int32 CodeGeneratorStorage::Visit(BreakNode node) {
 	// Break jumps to the innermost loop's exit label
 	if (_loopExitLabels.Count() == 0) {
-		if (is_null(Error)) Error = ErrorTypes::CompilerError("'break' without open loop block");
+		if (Error.IsNull()) Error = ErrorTypes::CompilerError("'break' without open loop block");
 		_emitter.Emit(Opcode::NOOP, "break outside loop (error)");
 	} else {
 		Int32 exitLabel = _loopExitLabels[_loopExitLabels.Count() - 1];
@@ -1021,7 +1021,7 @@ Int32 CodeGeneratorStorage::Visit(BreakNode node) {
 Int32 CodeGeneratorStorage::Visit(ContinueNode node) {
 	// Continue jumps to the innermost loop's continue label (loop start)
 	if (_loopContinueLabels.Count() == 0) {
-		if (is_null(Error)) Error = ErrorTypes::CompilerError("'continue' without open loop block");
+		if (Error.IsNull()) Error = ErrorTypes::CompilerError("'continue' without open loop block");
 		_emitter.Emit(Opcode::NOOP, "continue outside loop (error)");
 	} else {
 		Int32 continueLabel = _loopContinueLabels[_loopContinueLabels.Count() - 1];
@@ -1033,26 +1033,26 @@ Boolean CodeGeneratorStorage::TryEvaluateConstant(ASTNode node,Value* result) {
 	*result = Value::Null;
 	NumberNode numNode = As<NumberNode, NumberNodeStorage>(node);
 	if (!IsNull(numNode)) {
-		*result = make_double(numNode.Value());
+		*result = Value(numNode.Value());
 		return Boolean(true);
 	}
 	StringNode strNode = As<StringNode, StringNodeStorage>(node);
 	if (!IsNull(strNode)) {
-		*result = make_string(strNode.Value());
+		*result = Value::make_string(strNode.Value());
 		return Boolean(true);
 	}
 	IdentifierNode idNode = As<IdentifierNode, IdentifierNodeStorage>(node);
 	if (!IsNull(idNode)) {
 		if (idNode.Name() == "null") { *result = Value::Null; return Boolean(true); }
-		if (idNode.Name() == "true") { *result = make_double(1); return Boolean(true); }
-		if (idNode.Name() == "false") { *result = make_double(0); return Boolean(true); }
+		if (idNode.Name() == "true") { *result = Value(1); return Boolean(true); }
+		if (idNode.Name() == "false") { *result = Value(0); return Boolean(true); }
 		return Boolean(false);
 	}
 	UnaryOpNode unaryNode = As<UnaryOpNode, UnaryOpNodeStorage>(node);
 	if (!IsNull(unaryNode) && unaryNode.Op() == Op::MINUS) {
 		NumberNode innerNum = As<NumberNode, NumberNodeStorage>(unaryNode.Operand());
 		if (!IsNull(innerNum)) {
-			*result = make_double(-innerNum.Value());
+			*result = Value(-innerNum.Value());
 			return Boolean(true);
 		}
 		return Boolean(false);
@@ -1061,12 +1061,12 @@ Boolean CodeGeneratorStorage::TryEvaluateConstant(ASTNode node,Value* result) {
 	Value elemVal;
 	ListNode listNode = As<ListNode, ListNodeStorage>(node);
 	if (!IsNull(listNode)) {
-		list = make_list(listNode.Elements().Count());
+		list = Value::make_list(listNode.Elements().Count());
 		for (Int32 i = 0; i < listNode.Elements().Count(); i++) {
 			if (!TryEvaluateConstant(listNode.Elements()[i], &elemVal)) return Boolean(false);
-			list_push(list, elemVal);
+			Value::list_push(list, elemVal);
 		}
-		freeze_value(list);
+		Value::freeze_value(list);
 		*result = list;
 		return Boolean(true);
 	}
@@ -1075,13 +1075,13 @@ Boolean CodeGeneratorStorage::TryEvaluateConstant(ASTNode node,Value* result) {
 	Value valVal;
 	MapNode mapNode = As<MapNode, MapNodeStorage>(node);
 	if (!IsNull(mapNode)) {
-		map = make_map(mapNode.Keys().Count());
+		map = Value::make_map(mapNode.Keys().Count());
 		for (Int32 i = 0; i < mapNode.Keys().Count(); i++) {
 			if (!TryEvaluateConstant(mapNode.Keys()[i], &keyVal)) return Boolean(false);
 			if (!TryEvaluateConstant(mapNode.Values()[i], &valVal)) return Boolean(false);
-			map_set(map, keyVal, valVal);
+			Value::map_set(map, keyVal, valVal);
 		}
-		freeze_value(map);
+		Value::freeze_value(map);
 		*result = map;
 		return Boolean(true);
 	}
@@ -1106,7 +1106,7 @@ Int32 CodeGeneratorStorage::Visit(FunctionNode node) {
 		Int32 paramReg = innerGen.AllocReg();  // r1, r2, ...
 		String name = node.ParamNames()[i];
 		innerGen._variableRegs()[name] = paramReg;
-		Int32 nameIdx = innerEmitter.AddConstant(make_string(name));
+		Int32 nameIdx = innerEmitter.AddConstant(Value::make_string(name));
 		innerEmitter.EmitAB(Opcode::NAME_rA_kBC, paramReg, nameIdx, Interp("param {}", name));
 		// Params are named unconditionally at function entry, so reassigning
 		// one in the body needn't re-emit NAME.
@@ -1131,7 +1131,7 @@ Int32 CodeGeneratorStorage::Visit(FunctionNode node) {
 
 	// Compile the function body
 	innerGen.CompileBody(bodyToCompile);
-	if (is_null(Error) && !is_null(innerGen.Error())) Error = innerGen.Error();
+	if (Error.IsNull() && !innerGen.Error().IsNull()) Error = innerGen.Error();
 
 	// Emit implicit RETURN at end of body
 	innerEmitter.Emit(Opcode::RETURN, nullptr);
@@ -1147,13 +1147,13 @@ Int32 CodeGeneratorStorage::Visit(FunctionNode node) {
 	// Set parameter info on the FuncDef
 	Value defaultVal;
 	for (Int32 i = 0; i < node.ParamNames().Count(); i++) {
-		funcDef.ParamNames().Add(make_string(node.ParamNames()[i]));
+		funcDef.ParamNames().Add(Value::make_string(node.ParamNames()[i]));
 		ASTNode defaultNode = node.ParamDefaults()[i];
 		if (!IsNull(defaultNode)) {
 			if (TryEvaluateConstant(defaultNode, &defaultVal)) {
 				funcDef.ParamDefaults().Add(defaultVal);
 			} else {
-				if (is_null(Error)) Error = ErrorTypes::CompilerError(StringUtils::Format("Default value for parameter '{0}' must be a constant", node.ParamNames()[i]));
+				if (Error.IsNull()) Error = ErrorTypes::CompilerError(StringUtils::Format("Default value for parameter '{0}' must be a constant", node.ParamNames()[i]));
 				funcDef.ParamDefaults().Add(Value::Null);
 			}
 		} else {
@@ -1172,7 +1172,7 @@ Int32 CodeGeneratorStorage::Visit(FunctionNode node) {
 
 	// Store a template funcref (no captured outer vars) in this function's
 	// constant pool, and emit FUNCREF to bind it into a closure at runtime.
-	Value funcTemplate = make_funcref(funcDef, Value::Null);
+	Value funcTemplate = Value::make_funcref(funcDef, Value::Null);
 	Int32 templateConst = _emitter.AddConstant(funcTemplate);
 	_emitter.EmitAB(Opcode::FUNCREF_iA_iBC, resultReg, templateConst,
 		Interp("r{} = funcref {}", resultReg, funcName));
@@ -1338,7 +1338,7 @@ Int32 CodeGeneratorStorage::EmitMethodCall(Int32 receiverReg,String methodKey,Li
 
 	// Look up the method using METHFIND (walks __isa chain, sets pending self/super)
 	Int32 keyReg = AllocReg();
-	Int32 constIdx = _emitter.AddConstant(make_string(methodKey));
+	Int32 constIdx = _emitter.AddConstant(Value::make_string(methodKey));
 	_emitter.EmitAB(Opcode::LOAD_rA_kBC, keyReg, constIdx, Interp("r{} = \"{}\"", keyReg, methodKey));
 	Int32 funcReg = AllocReg();
 	_emitter.EmitABC(Opcode::METHFIND_rA_rB_rC, funcReg, receiverReg, keyReg,

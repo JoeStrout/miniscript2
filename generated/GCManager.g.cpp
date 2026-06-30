@@ -43,57 +43,57 @@ void GCManager::Init() {
 Value GCManager::NewString(String s) {
 	Int32 idx = BigStrings.AllocItem();
 	BigStrings.SetData(idx, s);
-	return make_gc(BigStringSet, idx);
+	return Value::make_gc(BigStringSet, idx);
 }
 Value GCManager::InternString(String s) {
 	Int32 idx;
 	if (_internTable.TryGetValue(s, &idx)) {
-		return make_gc(InternedStringSet, idx);
+		return Value::make_gc(InternedStringSet, idx);
 	}
 	idx = InternedStrings.AllocItem();
 	InternedStrings.SetData(idx, s);
 	_internTable[s] = idx;
-	return make_gc(InternedStringSet, idx);
+	return Value::make_gc(InternedStringSet, idx);
 }
 Value GCManager::NewList(Int32 capacity ) {
 	Int32 idx = Lists.AllocItem();
 	Lists.Init(idx, capacity);
-	return make_gc(ListSet, idx);
+	return Value::make_gc(ListSet, idx);
 }
 Value GCManager::NewComputedList(Value baseVal,Value increment,Int32 length) {
 	Int32 idx = Lists.AllocItem();
 	GCList item = Lists.Get(idx);
 	item.InitComputed(baseVal, increment, length);
 	Lists.Set(idx, item);
-	return make_gc(ListSet, idx);
+	return Value::make_gc(ListSet, idx);
 }
 Value GCManager::NewMap(Int32 capacity ) {
 	Int32 idx = Maps.AllocItem();
 	Maps.Init(idx, capacity);
-	return make_gc(MapSet, idx);
+	return Value::make_gc(MapSet, idx);
 }
 Value GCManager::NewError(Value message,Value inner,Value stack,Value isa) {
 	Int32 idx = Errors.AllocItem();
 	Errors.SetFields(idx, message, inner, stack, isa);
-	return make_gc(ErrorSet, idx);
+	return Value::make_gc(ErrorSet, idx);
 }
 Value GCManager::NewFuncRef(FuncDef func,Value outerVars) {
 	Int32 idx = Functions.AllocItem();
 	Functions.SetFields(idx, func, outerVars);
-	return make_gc(FunctionSet, idx);
+	return Value::make_gc(FunctionSet, idx);
 }
 Value GCManager::NewHandle(object userData,HandleFinalizer callback) {
 	Int32 idx = Handles.AllocItem();
 	Handles.SetFields(idx, userData, callback);
-	return make_gc(HandleSet, idx);
+	return Value::make_gc(HandleSet, idx);
 }
 void GCManager::Retain(Value v) {
-	if (!is_gc_object(v)) return;
-	DispatchMark(value_gc_set_index(v), value_item_index(v));
+	if (!Value::is_gc_object(v)) return;
+	DispatchMark(Value::value_gc_set_index(v), Value::value_item_index(v));
 }
 void GCManager::RetainValue(Value v) {
-	if (!is_gc_object(v)) return;
-	DispatchMark(value_gc_set_index(v), value_item_index(v));
+	if (!Value::is_gc_object(v)) return;
+	DispatchMark(Value::value_gc_set_index(v), Value::value_item_index(v));
 }
 void GCManager::AddRoot(Value v) {
 	_roots.Add(v);
@@ -190,25 +190,25 @@ void GCManager::SweepInternTable() {
 	InternedStrings.Sweep();
 }
 GCString GCManager::GetString(Value v) {
-	if (value_gc_set_index(v) == InternedStringSet) {
-		return InternedStrings.Get(value_item_index(v));
+	if (Value::value_gc_set_index(v) == InternedStringSet) {
+		return InternedStrings.Get(Value::value_item_index(v));
 	}
-	return BigStrings.Get(value_item_index(v));
+	return BigStrings.Get(Value::value_item_index(v));
 }
 GCList GCManager::GetList(Value v) {
-	return Lists.Get(value_item_index(v));
+	return Lists.Get(Value::value_item_index(v));
 }
 GCMap GCManager::GetMap(Value v) {
-	return Maps.Get(value_item_index(v));
+	return Maps.Get(Value::value_item_index(v));
 }
 GCError GCManager::GetError(Value v) {
-	return Errors.Get(value_item_index(v));
+	return Errors.Get(Value::value_item_index(v));
 }
 GCFunction GCManager::GetFuncRef(Value v) {
-	return Functions.Get(value_item_index(v));
+	return Functions.Get(Value::value_item_index(v));
 }
 GCHandle GCManager::GetHandle(Value v) {
-	return Handles.Get(value_item_index(v));
+	return Handles.Get(Value::value_item_index(v));
 }
 
 } // end of namespace MiniScript

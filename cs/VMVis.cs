@@ -1,5 +1,4 @@
 using System;
-using static MiniScript.Value;
 // H: #include "VM.g.h"
 // CPP: #include "value.h"
 // CPP: #include "value_list.h"

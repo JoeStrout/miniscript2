@@ -10,6 +10,13 @@ using System.Text;
 
 namespace MiniScript {
 
+public struct MapIterator {
+	public int MapIndex;
+	public int Iter;
+	public Value Key;
+	public Value Val;
+}
+
 // NOTE: Align the TAG MASK constants below with your C value.h.
 // The layout mirrors a NaN-box: 64-bit payload that is either:
 // - a real double (no matching tag), OR
@@ -18,7 +25,7 @@ namespace MiniScript {
 //
 // GCSet assignments (must match GCManager constants):
 //   STRING_SET  = 0  → 0xFFFE_0000_0000_XXXX
-//   LIST_SET    = 1  → 0xFFFE_0001_0000_XXXX
+//   Value.list_SET    = 1  → 0xFFFE_0001_0000_XXXX
 //   MAP_SET     = 2  → 0xFFFE_0002_0000_XXXX
 //   ERROR_SET   = 3  → 0xFFFE_0003_0000_XXXX
 //   FUNCREF_SET = 4  → 0xFFFE_0004_0000_XXXX
@@ -87,7 +94,7 @@ public readonly struct Value {
 		if (IsNull()) return false;
 		if (IsNumber()) return _d != 0.0;
 		if (IsString()) return string_length(this) != 0;
-		if (IsList()) return list_count(this) != 0;
+		if (IsList()) return Value.list_count(this) != 0;
 		if (IsMap()) return map_count(this) != 0;
 		return true;
 	}
@@ -458,10 +465,10 @@ public readonly struct Value {
 			return string_concat(aStr, b);
 		}
 		if (a.IsList() && b.IsList()) {
-			if (list_count(a) > MAX_COLLECTION_SIZE - list_count(b)) {
+			if (Value.list_count(a) > MAX_COLLECTION_SIZE - Value.list_count(b)) {
 				return value_make_runtime_error("list too large (exceeds maximum size)");
 			}
-			return list_concat(a, b);
+			return Value.list_concat(a, b);
 		}
 		if (a.IsMap()  && b.IsMap())  return map_concat(a, b);
 		return Value.Null;
@@ -489,7 +496,7 @@ public readonly struct Value {
 		if (a.IsList() && b.IsNumber()) {
 			double factor = as_double(b);
 			if (double.IsNaN(factor) || double.IsInfinity(factor)) return Value.Null;
-			int len = list_count(a);
+			int len = Value.list_count(a);
 			if (factor <= 0 || len == 0) return make_list(0);
 			if (len * factor > MAX_COLLECTION_SIZE) {
 				return value_make_runtime_error("list too large (exceeds maximum size)");
@@ -499,15 +506,15 @@ public readonly struct Value {
 			// Fast path: a single immutable element repeated a whole number of
 			// times becomes a computed list (null increment => repeat the base).
 			if (len == 1 && extraItems == 0) {
-				Value elem = list_get(a, 0);
+				Value elem = Value.list_get(a, 0);
 				if (elem.IsNumber() || elem.IsString() || elem.IsNull() || is_frozen(elem)) {
 					return GCManager.NewComputedList(elem, Value.Null, fullCopies);
 				}
 			}
 			Value result = make_list(fullCopies * len + extraItems);
 			for (int c = 0; c < fullCopies; c++)
-				for (int i = 0; i < len; i++) list_push(result, list_get(a, i));
-			for (int i = 0; i < extraItems; i++) list_push(result, list_get(a, i));
+				for (int i = 0; i < len; i++) Value.list_push(result, Value.list_get(a, i));
+			for (int i = 0; i < extraItems; i++) Value.list_push(result, Value.list_get(a, i));
 			return result;
 		}
 		return Value.Null;
@@ -591,11 +598,6 @@ public readonly struct Value {
 		return new Value(1.0 - AbsClamp01(ToFuzzyBool(a)));
 	}
 
-	// ==== HASHING ============================================================
-	public static Int32 value_hash(Value v) {
-		return v.GetHashCode();
-	}
-
 	// ==== COMPARISON =========================================================
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool value_identical(Value a, Value b) => a._u == b._u;
@@ -623,10 +625,10 @@ public readonly struct Value {
 		}
 		if (a.IsNull() || b.IsNull()) return a.IsNull() && b.IsNull();
 		if (a.IsList() && b.IsList()) {
-			int countA = list_count(a);
-			if (countA != list_count(b)) return false;
+			int countA = Value.list_count(a);
+			if (countA != Value.list_count(b)) return false;
 			for (int i = 0; i < countA; i++) {
-				if (list_get(a, i) != list_get(b, i)) return false;
+				if (Value.list_get(a, i) != Value.list_get(b, i)) return false;
 			}
 			return true;
 		}
@@ -756,23 +758,23 @@ public readonly struct Value {
 	}
 
 	public static Value list_slice(Value list_val, int start, int end) {
-		int len = list_count(list_val);
+		int len = Value.list_count(list_val);
 		if (start < 0) start += len;
 		if (end < 0)   end   += len;
 		if (start < 0) start = 0;
 		if (end > len) end   = len;
 		if (start >= end) return make_list(0);
 		Value result = make_list(end - start);
-		for (int i = start; i < end; i++) list_push(result, list_get(list_val, i));
+		for (int i = start; i < end; i++) Value.list_push(result, Value.list_get(list_val, i));
 		return result;
 	}
 
 	public static Value list_concat(Value a, Value b) {
-		int lenA = list_count(a);
-		int lenB = list_count(b);
+		int lenA = Value.list_count(a);
+		int lenB = Value.list_count(b);
 		Value result = make_list(lenA + lenB);
-		for (int i = 0; i < lenA; i++) list_push(result, list_get(a, i));
-		for (int i = 0; i < lenB; i++) list_push(result, list_get(b, i));
+		for (int i = 0; i < lenA; i++) Value.list_push(result, Value.list_get(a, i));
+		for (int i = 0; i < lenB; i++) Value.list_push(result, Value.list_get(b, i));
 		return result;
 	}
 
@@ -808,7 +810,7 @@ public readonly struct Value {
 			if (elem.IsMap()) {
 				keys[i] = map_get(elem, byKey);
 			} else if (elem.IsList() && byKey.IsNumber()) {
-				keys[i] = list_get(elem, (int)numeric_val(byKey));
+				keys[i] = Value.list_get(elem, (int)numeric_val(byKey));
 			} else {
 				keys[i] = Value.Null;
 			}
@@ -1109,7 +1111,7 @@ public readonly struct Value {
 			parts = s.Split(new string[] { delim }, StringSplitOptions.None);
 		}
 		Value list = make_list(parts.Length);
-		foreach (string part in parts) list_push(list, make_string(part));
+		foreach (string part in parts) Value.list_push(list, make_string(part));
 		return list;
 	}
 
@@ -1140,10 +1142,10 @@ public readonly struct Value {
 			int count = 0;
 			for (int i = 0; i < s.Length; i++) {
 				if (maxCount > 0 && count >= maxCount - 1) {
-					list_push(list, make_string(s.Substring(i)));
+					Value.list_push(list, make_string(s.Substring(i)));
 					return list;
 				}
-				list_push(list, make_string(s[i].ToString()));
+				Value.list_push(list, make_string(s[i].ToString()));
 				count++;
 			}
 			return list;
@@ -1152,14 +1154,14 @@ public readonly struct Value {
 		while (pos <= s.Length) {
 			int next = s.IndexOf(delim, pos, StringComparison.Ordinal);
 			if (next < 0 || (maxCount > 0 && found >= maxCount - 1)) {
-				list_push(list, make_string(s.Substring(pos)));
+				Value.list_push(list, make_string(s.Substring(pos)));
 				break;
 			}
-			list_push(list, make_string(s.Substring(pos, next - pos)));
+			Value.list_push(list, make_string(s.Substring(pos, next - pos)));
 			pos = next + delim.Length;
 			found++;
 			if (pos > s.Length) break;
-			if (pos == s.Length) { list_push(list, make_string("")); break; }
+			if (pos == s.Length) { Value.list_push(list, make_string("")); break; }
 		}
 		return list;
 	}
@@ -1207,13 +1209,6 @@ public readonly struct Value {
 	}
 
 	// ── Map iterator (struct-based) ───────────────────────────────────────────
-	public struct MapIterator {
-		public int MapIndex;
-		public int Iter;
-		public Value Key;
-		public Value Val;
-	}
-
 	public static MapIterator map_iterator(Value map_val) {
 		MapIterator it = new MapIterator();
 		it.Key = Value.Null;
@@ -1258,6 +1253,9 @@ public readonly struct Value {
 		}
 		return (int)(_u ^ (_u >> 32));
 	}
+	
+	// And Hash, provided for compatibility with 1.0.
+	public int Hash() { return GetHashCode(); }
 }
 
 

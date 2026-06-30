@@ -61,7 +61,24 @@ Dictionary.methods.push MethodInfo.Make("TryGetValue", false, "Boolean")
 Dictionary.methods.push MethodInfo.Make("Remove", false, "Boolean")
 Dictionary.methods.push MethodInfo.Make("Clear")
 
-all = [String, List, Dictionary]
+Value = ClassInfo.Make("Value")
+Value.type = ClassType.STRUCT
+Value.methods.push MethodInfo.Make("IsNull", false, "Boolean")
+Value.methods.push MethodInfo.Make("IsNumber", false, "Boolean")
+Value.methods.push MethodInfo.Make("IsString", false, "Boolean")
+Value.methods.push MethodInfo.Make("IsList", false, "Boolean")
+Value.methods.push MethodInfo.Make("IsMap", false, "Boolean")
+Value.methods.push MethodInfo.Make("IsError", false, "Boolean")
+Value.methods.push MethodInfo.Make("IsFuncRef", false, "Boolean")
+Value.methods.push MethodInfo.Make("IsHandle", false, "Boolean")
+Value.methods.push MethodInfo.Make("DoubleValue", false, "Double")
+Value.methods.push MethodInfo.Make("FloatValue", false, "Float")
+Value.methods.push MethodInfo.Make("IntValue", false, "Int")
+Value.methods.push MethodInfo.Make("UIntValue", false, "UInt")
+Value.methods.push MethodInfo.Make("BoolValue", false, "Boolean")
+Value.methods.push MethodInfo.Make("Hash", false, "UInt")
+
+all = [String, List, Dictionary, Value]
 for cls in all; cls.elsewhere = true; end for
 
 if locals == globals then

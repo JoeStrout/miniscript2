@@ -1,6 +1,5 @@
 //*** BEGIN CS_ONLY ***
 using System;
-using static MiniScript.Value;
 
 namespace MiniScript {
 	// 
@@ -31,7 +30,7 @@ namespace MiniScript {
 		}
 
 		public override string ToString() {
-			string msg = Message.IsString() ? as_cstring(Message) : to_String(Message);
+			string msg = Message.IsString() ? Value.as_cstring(Message) : Value.to_String(Message);
 			return "error: " + msg;
 		}
 	}

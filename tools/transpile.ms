@@ -446,6 +446,7 @@ Transpiler.lookup = function(identifier, context)
 
 	// 0. Look in given context (only), if there is one
 	if context isa ClassInfo then
+		if identifier == "callee" then print "Looking ONLY in " + context.summary
 		return context.lookup(identifier, self.allClasses)
 	end if		
 	
@@ -486,7 +487,7 @@ Transpiler.transformStatement = function(trimmedLine)
 	// non-identifier string.
 	tokens = roughTokenize(trimmedLine)
 	
-	deepDebug = trimmedLine.contains("ReplGlobals");
+	deepDebug = trimmedLine.contains("OuterVarMap");
 	ddprint = function(s); if deepDebug then print "====> " + s; end function
 	summarize = function(obj)
 		if obj == null then return "<null>"
@@ -645,6 +646,10 @@ Transpiler.transformStatement = function(trimmedLine)
 			if curInfo then curInfo = self.lookup(curInfo.type)
 			ddprint "resolved [] in " + summarize(arrayType) + " to: " + summarize(curInfo)
 			arrayType = null
+			if tokens[i].contains(" ") then
+				ddprint "...but cleared that out, because it looks like we have an operator"
+				curInfo = null
+			end if
 			continue
 		else if tokens[i] == "null" then
 			// How we translate null depends on the context...
@@ -666,10 +671,14 @@ Transpiler.transformStatement = function(trimmedLine)
 				// Any other use, just change null to nullptr
 				tokens[i] = "nullptr"
 			end if
+		else if ["=","+","-","*","/"].contains(tokens[i]) then
+			// Operator or other thing that terminates the previous context
+			curInfo = null
 		end if
 		nextInfo = self.lookup(tokens[i], curInfo)
 		if self.curClass then curClassName = self.curClass.name else curClassName = ""
 		ddprint "lookup of " + tokens[i] + ": " + summarize(nextInfo)
+		if tokens[i] == "callee" then print "localVars: " + self.localVars.applied(@summarize)
 		if nextInfo isa VariableInfo and nextInfo.ref then
 			// "reference" (pointer) type -- insert '*'
 			tokens[i] = "*" + tokens[i]

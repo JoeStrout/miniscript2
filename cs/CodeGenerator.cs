@@ -1159,7 +1159,7 @@ public class CodeGenerator : IASTVisitor {
 			list = Value.make_list(listNode.Elements.Count);
 			for (Int32 i = 0; i < listNode.Elements.Count; i++) {
 				if (!TryEvaluateConstant(listNode.Elements[i], out elemVal)) return false;
-				Value.list_push(list, elemVal);
+				list.Push(elemVal);
 			}
 			Value.freeze_value(list);
 			result = list;

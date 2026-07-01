@@ -120,7 +120,7 @@ public static class ShellIntrinsics {
 		if (count < 0) count = 0;
 		_shellArgs = Value.make_list(count);
 		for (Int32 i = startIdx; i < args.Count; i++) {
-			Value.list_push(_shellArgs, Value.make_string(args[i]));
+			_shellArgs.Push(Value.make_string(args[i]));
 		}
 		Value.freeze_value(_shellArgs);
 	}
@@ -972,7 +972,7 @@ public static class ShellIntrinsics {
 			String[] entries = System.IO.Directory.GetFileSystemEntries(path);
 			Value result = Value.make_list(entries.Length);
 			foreach (String entry in entries)
-				Value.list_push(result, Value.make_string(System.IO.Path.GetFileName(entry)));
+				result.Push(Value.make_string(System.IO.Path.GetFileName(entry)));
 			return result;
 		} catch (Exception ex) { return ErrorTypes.FileError("children: " + ex.Message); }
 		//*** END CS_ONLY ***
@@ -987,7 +987,7 @@ public static class ShellIntrinsics {
 			}
 			do {
 				String name(data.cFileName);
-				if (name != "." && name != "..") Value::list_push(result, Value::make_string(name));
+				if (name != "." && name != "..") result.Push(Value::make_string(name));
 			} while (FindNextFile(hFind, &data) != 0);
 			FindClose(hFind);
 		#else
@@ -997,7 +997,7 @@ public static class ShellIntrinsics {
 			}
 			while (struct dirent* entry = readdir(dir)) {
 				String name(entry->d_name);
-				if (name != "." && name != "..") Value::list_push(result, Value::make_string(name));
+				if (name != "." && name != "..") result.Push(Value::make_string(name));
 			}
 			closedir(dir);
 		#endif
@@ -1198,7 +1198,7 @@ public static class ShellIntrinsics {
 		try {
 			String[] lines = System.IO.File.ReadAllLines(path, System.Text.Encoding.UTF8);
 			Value result = Value.make_list(lines.Length);
-			foreach (String line in lines) Value.list_push(result, Value.make_string(line));
+			foreach (String line in lines) result.Push(Value.make_string(line));
 			return result;
 		} catch (Exception ex) { return ErrorTypes.FileError("readLines: " + ex.Message); }
 		//*** END CS_ONLY ***
@@ -1216,14 +1216,14 @@ public static class ShellIntrinsics {
 				if (buf[i] == '\n' || buf[i] == '\r') {
 					String line(buf + start, i - start);
 					if (partial.Length() > 0) { line = partial + line; partial = String(""); }
-					Value::list_push(result, Value::make_string(line));
+					result.Push(Value::make_string(line));
 					if (buf[i] == '\r' && i+1 < (int)n && buf[i+1] == '\n') i++;
 					start = i + 1;
 				}
 			}
 			if (start < (int)n) partial += String(buf + start, n - start);
 		}
-		if (partial.Length() > 0) Value::list_push(result, Value::make_string(partial));
+		if (partial.Length() > 0) result.Push(Value::make_string(partial));
 		fclose(f);
 		return result;
 		*** END CPP_ONLY ***/
@@ -1234,8 +1234,8 @@ public static class ShellIntrinsics {
 		try {
 			System.Collections.Generic.List<String> lineList = new System.Collections.Generic.List<String>();
 			if (lines.IsList()) {
-				Int32 count = Value.list_count(lines);
-				for (Int32 i = 0; i < count; i++) lineList.Add(Value.list_get(lines, i).AsCString());
+				Int32 count = lines.ListCount();
+				for (Int32 i = 0; i < count; i++) lineList.Add(lines.ListGet(i).AsCString());
 			} else {
 				lineList.Add(lines.AsCString());
 			}
@@ -1248,9 +1248,9 @@ public static class ShellIntrinsics {
 		if (!f) return ErrorTypes::FileError("writeLines: cannot open: " + path);
 		Int32 count = 0;
 		if (lines.IsList()) {
-			Int32 n = Value::list_count(lines);
+			Int32 n = lines.ListCount();
 			for (Int32 i = 0; i < n; i++) {
-				String s = Value::list_get(lines, i).AsCString();
+				String s = lines.ListGet(i).AsCString();
 				fputs(s.c_str(), f); fputc('\n', f); count++;
 			}
 		} else {

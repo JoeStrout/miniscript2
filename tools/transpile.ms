@@ -450,8 +450,9 @@ Transpiler.lookup = function(identifier, context)
 		return context.lookup(identifier, self.allClasses)
 	end if		
 	
-	// 1. locals, including curMethod parameters
-	for var in self.localVars
+	// 1. locals, including curMethod parameters (search in reverse order)
+	for i in range(self.localVars.len-1, 0, -1)
+		var = self.localVars[i]
 		if var.name == identifier then return var
 	end for
 	
@@ -487,7 +488,7 @@ Transpiler.transformStatement = function(trimmedLine)
 	// non-identifier string.
 	tokens = roughTokenize(trimmedLine)
 	
-	deepDebug = false //trimmedLine.contains("OuterVarMap");
+	deepDebug = trimmedLine.contains("result.Push");
 	ddprint = function(s); if deepDebug then print "====> " + s; end function
 	summarize = function(obj)
 		if obj == null then return "<null>"
@@ -1455,24 +1456,6 @@ Transpiler.updateStateMETHOD = function
 	   self.match("≤type:w≥ ≤name:w≥ =") or
 	   self.match("≤type:w≥ ≤name:w≥ = ≤expr≥;")) and not isKeyword(self.m.type) then
 		self.localVars.push VariableInfo.Make(self.m.name, self.m.type, Scope.LOCAL)
-		// special case: watch for declarations of type Value, which need GC protection.
-//		if self.m.type == "Value" then
-//			// Also, make sure these are not too indented; Value declarations should always
-//			// be at the root level of a method (especially, never in a loop).
-//			self.assert line.indentation.len < 2 + (self.state == State.LAMBDA), 
-//			   "Value declaration must be at method root"
-//			// And be sure to call GC_PROTECT before the first such
-//			if not self.pushedGCScope then
-//			self.curClass.methodLines.push line.indentation + "GC_PUSH_SCOPE();"
-//				self.pushedGCScope = true;
-//			end if
-//			s = "Value " + self.m.name
-//			if self.m.get("expr") then s += " = " + self.transformStatement(self.m.expr);
-//		s = line.indentation + s + "; GC_PROTECT(&" + self.m.name + ");"
-//			if line.comment then s += " " + line.comment
-//			self.curClass.methodLines.push s
-//			return
-//		end if
 	end if
 	if self.match("≤type:w≥[] ≤name:w≥ = new ≤type2≥[≤count≥];") then
 		self.localVars.push VariableInfo.Make(self.m.name, self.m.type, Scope.LOCAL)

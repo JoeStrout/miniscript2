@@ -163,20 +163,21 @@ typedef struct Value {
     Value         Repr(void* vm = nullptr) const;
     static Value  value_current_stack_trace();
 
-    // Lists
+    // Lists (instance form, mirroring cs/Value.cs)
     static Value  make_list(int initial_capacity);
-    static int    list_count(Value list_val);
-    static Value  list_get(Value list_val, int index);
-    static void   list_set(Value list_val, int index, Value item);
-    static void   list_push(Value list_val, Value item);
-    static Value  list_pop(Value list_val);
-    static Value  list_pull(Value list_val);
-    static void   list_insert(Value list_val, int index, Value item);
-    static bool   list_remove(Value list_val, int index);
-    static int    list_indexOf(Value list_val, Value item, int afterIdx);
-    static Value  list_slice(Value list_val, int start, int end);
-    static void   list_sort(Value list_val, bool ascending);
-    static void   list_sort_by_key(Value list_val, Value byKey, bool ascending);
+    int           ListCount() const;
+    Value         ListGet(int index) const;
+    void          ListSet(int index, Value item) const;
+    void          Push(Value item) const;
+    Value         Pop() const;
+    Value         Pull() const;
+    void          ListInsert(int index, Value item) const;
+    bool          ListRemove(int index) const;
+    int           ListIndexOf(Value item, int afterIdx) const;
+    Value         ListSlice(int start, int end) const;
+    Value         ListConcat(Value b) const;
+    void          Sort(bool ascending) const;
+    void          SortByKey(Value byKey, bool ascending) const;
 
     // Maps
     static Value  make_map(int initial_capacity);
@@ -411,7 +412,7 @@ inline Value Value::value_add(Value a, Value b, void* vm) {
         return string_concat(aStr, b);
     }
     if (a.IsList() && b.IsList()) {
-        if (Value::list_count(a) > Value::MAX_COLLECTION_SIZE - Value::list_count(b)) {
+        if (a.ListCount() > Value::MAX_COLLECTION_SIZE - b.ListCount()) {
             return value_make_runtime_error("list too large (exceeds maximum size)");
         }
         return list_concat(a, b);
@@ -566,7 +567,7 @@ inline bool Value::BoolValue() const noexcept {
     if (IsNull()) return false;
     if (IsNumber()) return AsDouble() != 0.0;
     if (IsString()) return Length() != 0;
-    if (IsList()) return Value::list_count(*this) != 0;
+    if (IsList()) return ListCount() != 0;
     if (IsMap()) return Value::map_count(*this) != 0;
     return true;
 }

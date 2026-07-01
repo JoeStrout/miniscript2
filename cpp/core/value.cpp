@@ -137,7 +137,7 @@ Value value_mult_nonnumeric(Value a, Value b) {
         double factor = b.AsDouble();
         int factorClass = std::fpclassify(factor);
         if (factorClass == FP_NAN || factorClass == FP_INFINITE) return Value::null;
-        int len = Value::list_count(a);
+        int len = a.ListCount();
         if (factor <= 0 || len == 0) return Value::make_list(0);
         if (len * factor > Value::MAX_COLLECTION_SIZE) {
             return value_make_runtime_error("list too large (exceeds maximum size)");
@@ -147,15 +147,15 @@ Value value_mult_nonnumeric(Value a, Value b) {
         // Fast path: a single immutable element repeated a whole number of
         // times becomes a computed list (null increment => repeat the base).
         if (len == 1 && extraItems == 0) {
-            Value elem = Value::list_get(a, 0);
+            Value elem = a.ListGet(0);
             if (elem.IsNumber() || elem.IsString() || elem.IsNull() || Value::is_frozen(elem)) {
                 return GCManager::NewComputedList(elem, Value::null, fullCopies);
             }
         }
         Value result = Value::make_list(fullCopies * len + extraItems);
         for (int c = 0; c < fullCopies; c++)
-            for (int i = 0; i < len; i++) Value::list_push(result, Value::list_get(a, i));
-        for (int i = 0; i < extraItems; i++) Value::list_push(result, Value::list_get(a, i));
+            for (int i = 0; i < len; i++) result.Push(a.ListGet(i));
+        for (int i = 0; i < extraItems; i++) result.Push(a.ListGet(i));
         return result;
     }
     return Value::null;
@@ -216,11 +216,11 @@ bool Value::RecursiveEqual(Value rhs) const {
         Value pa = pair.a, pb = pair.b;
         if (pa.IsList()) {
             if (!pb.IsList()) return false;
-            int aCount = Value::list_count(pa);
-            if (Value::list_count(pb) != aCount) return false;
+            int aCount = pa.ListCount();
+            if (pb.ListCount() != aCount) return false;
             if (pa.RefEquals(pb)) continue;  // same list object: nothing to do
             for (int i = 0; i < aCount; i++) {
-                ValuePair np; np.a = Value::list_get(pa, i); np.b = Value::list_get(pb, i);
+                ValuePair np; np.a = pa.ListGet(i); np.b = pb.ListGet(i);
                 if (!visited_contains(visited, np)) toDo.push_back(np);
             }
         } else if (pa.IsMap()) {

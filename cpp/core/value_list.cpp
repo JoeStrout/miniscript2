@@ -24,7 +24,8 @@ Value make_empty_list(void) {
 
 // ── Access ──────────────────────────────────────────────────────────────
 
-int Value::list_count(Value list_val) {
+int Value::ListCount() const {
+    Value list_val = *this;
     if (!list_val.IsList()) return 0;
     GCList l = GCManager::Lists.Get(list_val.ItemIndex());
     return l.Count();
@@ -37,13 +38,15 @@ int list_capacity(Value list_val) {
     return l.Count();
 }
 
-Value Value::list_get(Value list_val, int index) {
+Value Value::ListGet(int index) const {
+    Value list_val = *this;
     if (!list_val.IsList()) return Value::null;
     GCList l = GCManager::Lists.Get(list_val.ItemIndex());
     return l.Get(index);
 }
 
-void Value::list_set(Value list_val, int index, Value item) {
+void Value::ListSet(int index, Value item) const {
+    Value list_val = *this;
     if (!list_val.IsList()) return;
     int idx = list_val.ItemIndex();
     GCList l = GCManager::Lists.Get(idx);
@@ -53,7 +56,8 @@ void Value::list_set(Value list_val, int index, Value item) {
     if (wasComputed) GCManager::Lists.Set(idx, l);  // write back materialization
 }
 
-void Value::list_push(Value list_val, Value item) {
+void Value::Push(Value item) const {
+    Value list_val = *this;
     if (!list_val.IsList()) return;
     int idx = list_val.ItemIndex();
     GCList l = GCManager::Lists.Get(idx);
@@ -63,7 +67,8 @@ void Value::list_push(Value list_val, Value item) {
     if (wasComputed) GCManager::Lists.Set(idx, l);  // write back materialization
 }
 
-Value Value::list_pop(Value list_val) {
+Value Value::Pop() const {
+    Value list_val = *this;
     if (!list_val.IsList()) return Value::null;
     int idx = list_val.ItemIndex();
     GCList l = GCManager::Lists.Get(idx);
@@ -75,7 +80,8 @@ Value Value::list_pop(Value list_val) {
     return result;
 }
 
-Value Value::list_pull(Value list_val) {
+Value Value::Pull() const {
+    Value list_val = *this;
     if (!list_val.IsList()) return Value::null;
     int idx = list_val.ItemIndex();
     GCList l = GCManager::Lists.Get(idx);
@@ -87,7 +93,8 @@ Value Value::list_pull(Value list_val) {
     return result;
 }
 
-void Value::list_insert(Value list_val, int index, Value item) {
+void Value::ListInsert(int index, Value item) const {
+    Value list_val = *this;
     if (!list_val.IsList()) return;
     int idx = list_val.ItemIndex();
     GCList l = GCManager::Lists.Get(idx);
@@ -97,7 +104,8 @@ void Value::list_insert(Value list_val, int index, Value item) {
     if (wasComputed) GCManager::Lists.Set(idx, l);  // write back materialization
 }
 
-bool Value::list_remove(Value list_val, int index) {
+bool Value::ListRemove(int index) const {
+    Value list_val = *this;
     if (!list_val.IsList()) return false;
     int idx = list_val.ItemIndex();
     GCList l = GCManager::Lists.Get(idx);
@@ -110,14 +118,15 @@ bool Value::list_remove(Value list_val, int index) {
 
 // ── Search ──────────────────────────────────────────────────────────────
 
-int Value::list_indexOf(Value list_val, Value item, int afterIdx) {
+int Value::ListIndexOf(Value item, int afterIdx) const {
+    Value list_val = *this;
     if (!list_val.IsList()) return -1;
     GCList l = GCManager::Lists.Get(list_val.ItemIndex());
     return l.IndexOf(item, afterIdx);
 }
 
 bool list_contains(Value list_val, Value item) {
-    return Value::list_indexOf(list_val, item, -1) >= 0;
+    return list_val.ListIndexOf(item, -1) >= 0;
 }
 
 // ── Utilities ───────────────────────────────────────────────────────────
@@ -141,7 +150,8 @@ Value list_copy(Value list_val) {
     return newList;
 }
 
-Value Value::list_slice(Value list_val, int start, int end) {
+Value Value::ListSlice(int start, int end) const {
+    Value list_val = *this;
     if (!list_val.IsList()) return Value::make_list(0);
     GCList src = GCManager::Lists.Get(list_val.ItemIndex());
     int n = src.Count();
@@ -172,6 +182,10 @@ Value list_concat(Value a, Value b) {
     return result;
 }
 
+// Instance wrapper mirroring cs/Value.cs; the free list_concat above remains
+// the shared implementation used by operator+ (value_add).
+Value Value::ListConcat(Value b) const { return list_concat(*this, b); }
+
 // ── Sorting ─────────────────────────────────────────────────────────────
 
 namespace {
@@ -191,7 +205,8 @@ int compare_values(Value a, Value b) {
 
 } // namespace
 
-void Value::list_sort(Value list_val, bool ascending) {
+void Value::Sort(bool ascending) const {
+    Value list_val = *this;
     if (!list_val.IsList()) return;
     int lidx = list_val.ItemIndex();
     GCList l = GCManager::Lists.Get(lidx);
@@ -214,7 +229,8 @@ void Value::list_sort(Value list_val, bool ascending) {
 
 extern Value map_get(Value map_val, Value key);
 
-void Value::list_sort_by_key(Value list_val, Value byKey, bool ascending) {
+void Value::SortByKey(Value byKey, bool ascending) const {
+    Value list_val = *this;
     if (!list_val.IsList()) return;
     int lidx = list_val.ItemIndex();
     GCList l = GCManager::Lists.Get(lidx);
@@ -231,7 +247,7 @@ void Value::list_sort_by_key(Value list_val, Value byKey, bool ascending) {
         Value e = l.Get(i);
         elems[i] = e;
         if (e.IsMap()) keys[i] = Value::map_get(e, byKey);
-        else if (e.IsList() && byKey.IsNumber()) keys[i] = Value::list_get(e, (int)byKey.NumericVal());
+        else if (e.IsList() && byKey.IsNumber()) keys[i] = e.ListGet((int)byKey.NumericVal());
     }
     std::vector<int> idx((size_t)n, 0);
     for (int i = 0; i < n; i++) idx[i] = i;

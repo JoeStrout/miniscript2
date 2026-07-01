@@ -351,7 +351,7 @@ Value Value::SplitMax(Value delimiter, int maxCount) const {
         int i = 0; int count = 0;
         while (i < slen) {
             if (maxCount > 0 && count >= maxCount - 1) {
-                Value::list_push(list, make_string_n(sdata + i, slen - i));
+                list.Push(make_string_n(sdata + i, slen - i));
                 return list;
             }
             unsigned char c = (unsigned char)sdata[i];
@@ -360,7 +360,7 @@ Value Value::SplitMax(Value delimiter, int maxCount) const {
             else if ((c & 0xF0) == 0xE0) cl = 3;
             else if ((c & 0xF8) == 0xF0) cl = 4;
             if (i + cl > slen) cl = slen - i;
-            Value::list_push(list, make_string_n(sdata + i, cl));
+            list.Push(make_string_n(sdata + i, cl));
             i += cl;
             count++;
         }
@@ -379,15 +379,15 @@ Value Value::SplitMax(Value delimiter, int maxCount) const {
             }
         }
         if (!hit) {
-            Value::list_push(list, make_string_n(sdata + pos, slen - pos));
+            list.Push(make_string_n(sdata + pos, slen - pos));
             break;
         }
         int segLen = (int)(hit - (sdata + pos));
-        Value::list_push(list, make_string_n(sdata + pos, segLen));
+        list.Push(make_string_n(sdata + pos, segLen));
         pos += segLen + dlen;
         found++;
         if (pos > slen) break;
-        if (pos == slen) { Value::list_push(list, Value::emptyString); break; }
+        if (pos == slen) { list.Push(Value::emptyString); break; }
     }
     return list;
 }

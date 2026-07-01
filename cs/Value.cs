@@ -94,7 +94,7 @@ public readonly struct Value {
 		if (IsNull()) return false;
 		if (IsNumber()) return _d != 0.0;
 		if (IsString()) return this.Length() != 0;
-		if (IsList()) return Value.list_count(this) != 0;
+		if (IsList()) return this.ListCount() != 0;
 		if (IsMap()) return map_count(this) != 0;
 		return true;
 	}
@@ -467,10 +467,10 @@ public readonly struct Value {
 			return aStr.StringConcat(b);
 		}
 		if (a.IsList() && b.IsList()) {
-			if (Value.list_count(a) > MAX_COLLECTION_SIZE - Value.list_count(b)) {
+			if (a.ListCount() > MAX_COLLECTION_SIZE - b.ListCount()) {
 				return value_make_runtime_error("list too large (exceeds maximum size)");
 			}
-			return Value.list_concat(a, b);
+			return a.ListConcat(b);
 		}
 		if (a.IsMap()  && b.IsMap())  return map_concat(a, b);
 		return Value.Null;
@@ -498,7 +498,7 @@ public readonly struct Value {
 		if (a.IsList() && b.IsNumber()) {
 			double factor = b.AsDouble();
 			if (double.IsNaN(factor) || double.IsInfinity(factor)) return Value.Null;
-			int len = Value.list_count(a);
+			int len = a.ListCount();
 			if (factor <= 0 || len == 0) return make_list(0);
 			if (len * factor > MAX_COLLECTION_SIZE) {
 				return value_make_runtime_error("list too large (exceeds maximum size)");
@@ -508,15 +508,15 @@ public readonly struct Value {
 			// Fast path: a single immutable element repeated a whole number of
 			// times becomes a computed list (null increment => repeat the base).
 			if (len == 1 && extraItems == 0) {
-				Value elem = Value.list_get(a, 0);
+				Value elem = a.ListGet(0);
 				if (elem.IsNumber() || elem.IsString() || elem.IsNull() || is_frozen(elem)) {
 					return GCManager.NewComputedList(elem, Value.Null, fullCopies);
 				}
 			}
 			Value result = make_list(fullCopies * len + extraItems);
 			for (int c = 0; c < fullCopies; c++)
-				for (int i = 0; i < len; i++) Value.list_push(result, Value.list_get(a, i));
-			for (int i = 0; i < extraItems; i++) Value.list_push(result, Value.list_get(a, i));
+				for (int i = 0; i < len; i++) result.Push(a.ListGet(i));
+			for (int i = 0; i < extraItems; i++) result.Push(a.ListGet(i));
 			return result;
 		}
 		return Value.Null;
@@ -689,11 +689,11 @@ public readonly struct Value {
 			Value pa = pair.a, pb = pair.b;
 			if (pa.IsList()) {
 				if (!pb.IsList()) return false;
-				int aCount = list_count(pa);
-				if (list_count(pb) != aCount) return false;
+				int aCount = pa.ListCount();
+				if (pb.ListCount() != aCount) return false;
 				if (pa.RefEquals(pb)) continue;  // same list object: nothing to do
 				for (int i = 0; i < aCount; i++) {
-					var np = new ValuePair { a = list_get(pa, i), b = list_get(pb, i) };
+					var np = new ValuePair { a = pa.ListGet(i), b = pb.ListGet(i) };
 					if (!visited.Contains(np)) toDo.Push(np);
 				}
 			} else if (pa.IsMap()) {
@@ -720,21 +720,21 @@ public readonly struct Value {
 
 	// ==== LIST OPERATIONS ====================================================
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static int list_count(Value list_val) {
-		if (!list_val.IsList()) return 0;
-		return GCManager.Lists.Get(list_val.ItemIndex()).Count();
+	public int ListCount() {
+		if (!IsList()) return 0;
+		return GCManager.Lists.Get(ItemIndex()).Count();
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value list_get(Value list_val, int index) {
-		if (!list_val.IsList()) return Value.Null;
-		return GCManager.Lists.Get(list_val.ItemIndex()).Get(index);
+	public Value ListGet(int index) {
+		if (!IsList()) return Value.Null;
+		return GCManager.Lists.Get(ItemIndex()).Get(index);
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static void list_set(Value list_val, int index, Value item) {
-		if (!list_val.IsList()) return;
-		int idx = list_val.ItemIndex();
+	public void ListSet(int index, Value item) {
+		if (!IsList()) return;
+		int idx = ItemIndex();
 		GCList list = GCManager.Lists.Get(idx);
 		if (list.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return; }
 		bool wasComputed = list.Computed;
@@ -743,9 +743,9 @@ public readonly struct Value {
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static void list_push(Value list_val, Value item) {
-		if (!list_val.IsList()) return;
-		int idx = list_val.ItemIndex();
+	public void Push(Value item) {
+		if (!IsList()) return;
+		int idx = ItemIndex();
 		GCList list = GCManager.Lists.Get(idx);
 		if (list.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return; }
 		bool wasComputed = list.Computed;
@@ -754,9 +754,9 @@ public readonly struct Value {
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool list_remove(Value list_val, int index) {
-		if (!list_val.IsList()) return false;
-		int idx = list_val.ItemIndex();
+	public bool ListRemove(int index) {
+		if (!IsList()) return false;
+		int idx = ItemIndex();
 		GCList list = GCManager.Lists.Get(idx);
 		if (list.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return false; }
 		bool wasComputed = list.Computed;
@@ -765,9 +765,9 @@ public readonly struct Value {
 		return result;
 	}
 
-	public static void list_insert(Value list_val, int index, Value item) {
-		if (!list_val.IsList()) return;
-		int idx = list_val.ItemIndex();
+	public void ListInsert(int index, Value item) {
+		if (!IsList()) return;
+		int idx = ItemIndex();
 		GCList list = GCManager.Lists.Get(idx);
 		if (list.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return; }
 		bool wasComputed = list.Computed;
@@ -775,9 +775,9 @@ public readonly struct Value {
 		if (wasComputed) GCManager.Lists.Set(idx, list);  // write back materialization
 	}
 
-	public static Value list_pop(Value list_val) {
-		if (!list_val.IsList()) return Value.Null;
-		int idx = list_val.ItemIndex();
+	public Value Pop() {
+		if (!IsList()) return Value.Null;
+		int idx = ItemIndex();
 		GCList list = GCManager.Lists.Get(idx);
 		if (list.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return Value.Null; }
 		bool wasComputed = list.Computed;
@@ -786,9 +786,9 @@ public readonly struct Value {
 		return result;
 	}
 
-	public static Value list_pull(Value list_val) {
-		if (!list_val.IsList()) return Value.Null;
-		int idx = list_val.ItemIndex();
+	public Value Pull() {
+		if (!IsList()) return Value.Null;
+		int idx = ItemIndex();
 		GCList list = GCManager.Lists.Get(idx);
 		if (list.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return Value.Null; }
 		bool wasComputed = list.Computed;
@@ -797,14 +797,14 @@ public readonly struct Value {
 		return result;
 	}
 
-	public static int list_indexOf(Value list_val, Value item, int afterIdx) {
-		if (!list_val.IsList()) return -1;
-		return GCManager.Lists.Get(list_val.ItemIndex()).IndexOf(item, afterIdx);
+	public int ListIndexOf(Value item, int afterIdx) {
+		if (!IsList()) return -1;
+		return GCManager.Lists.Get(ItemIndex()).IndexOf(item, afterIdx);
 	}
 
-	public static void list_sort(Value list_val, bool ascending) {
-		if (!list_val.IsList()) return;
-		int idx = list_val.ItemIndex();
+	public void Sort(bool ascending) {
+		if (!IsList()) return;
+		int idx = ItemIndex();
 		GCList list = GCManager.Lists.Get(idx);
 		if (list.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return; }
 		bool wasComputed = list.Computed;
@@ -813,9 +813,9 @@ public readonly struct Value {
 		if (wasComputed) GCManager.Lists.Set(idx, list);  // write back materialization
 	}
 
-	public static void list_sort_by_key(Value list_val, Value byKey, bool ascending) {
-		if (!list_val.IsList()) return;
-		int idx = list_val.ItemIndex();
+	public void SortByKey(Value byKey, bool ascending) {
+		if (!IsList()) return;
+		int idx = ItemIndex();
 		GCList list = GCManager.Lists.Get(idx);
 		if (list.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return; }
 		bool wasComputed = list.Computed;
@@ -824,24 +824,24 @@ public readonly struct Value {
 		if (wasComputed) GCManager.Lists.Set(idx, list);  // write back materialization
 	}
 
-	public static Value list_slice(Value list_val, int start, int end) {
-		int len = Value.list_count(list_val);
+	public Value ListSlice(int start, int end) {
+		int len = ListCount();
 		if (start < 0) start += len;
 		if (end < 0)   end   += len;
 		if (start < 0) start = 0;
 		if (end > len) end   = len;
 		if (start >= end) return make_list(0);
 		Value result = make_list(end - start);
-		for (int i = start; i < end; i++) Value.list_push(result, Value.list_get(list_val, i));
+		for (int i = start; i < end; i++) result.Push(ListGet(i));
 		return result;
 	}
 
-	public static Value list_concat(Value a, Value b) {
-		int lenA = Value.list_count(a);
-		int lenB = Value.list_count(b);
+	public Value ListConcat(Value b) {
+		int lenA = ListCount();
+		int lenB = b.ListCount();
 		Value result = make_list(lenA + lenB);
-		for (int i = 0; i < lenA; i++) Value.list_push(result, Value.list_get(a, i));
-		for (int i = 0; i < lenB; i++) Value.list_push(result, Value.list_get(b, i));
+		for (int i = 0; i < lenA; i++) result.Push(ListGet(i));
+		for (int i = 0; i < lenB; i++) result.Push(b.ListGet(i));
 		return result;
 	}
 
@@ -877,7 +877,7 @@ public readonly struct Value {
 			if (elem.IsMap()) {
 				keys[i] = map_get(elem, byKey);
 			} else if (elem.IsList() && byKey.IsNumber()) {
-				keys[i] = Value.list_get(elem, (int)byKey.NumericVal());
+				keys[i] = elem.ListGet((int)byKey.NumericVal());
 			} else {
 				keys[i] = Value.Null;
 			}
@@ -1178,7 +1178,7 @@ public readonly struct Value {
 			parts = s.Split(new string[] { delim }, StringSplitOptions.None);
 		}
 		Value list = make_list(parts.Length);
-		foreach (string part in parts) Value.list_push(list, make_string(part));
+		foreach (string part in parts) list.Push(make_string(part));
 		return list;
 	}
 
@@ -1209,10 +1209,10 @@ public readonly struct Value {
 			int count = 0;
 			for (int i = 0; i < s.Length; i++) {
 				if (maxCount > 0 && count >= maxCount - 1) {
-					Value.list_push(list, make_string(s.Substring(i)));
+					list.Push(make_string(s.Substring(i)));
 					return list;
 				}
-				Value.list_push(list, make_string(s[i].ToString()));
+				list.Push(make_string(s[i].ToString()));
 				count++;
 			}
 			return list;
@@ -1221,14 +1221,14 @@ public readonly struct Value {
 		while (pos <= s.Length) {
 			int next = s.IndexOf(delim, pos, StringComparison.Ordinal);
 			if (next < 0 || (maxCount > 0 && found >= maxCount - 1)) {
-				Value.list_push(list, make_string(s.Substring(pos)));
+				list.Push(make_string(s.Substring(pos)));
 				break;
 			}
-			Value.list_push(list, make_string(s.Substring(pos, next - pos)));
+			list.Push(make_string(s.Substring(pos, next - pos)));
 			pos = next + delim.Length;
 			found++;
 			if (pos > s.Length) break;
-			if (pos == s.Length) { Value.list_push(list, make_string("")); break; }
+			if (pos == s.Length) { list.Push(make_string("")); break; }
 		}
 		return list;
 	}

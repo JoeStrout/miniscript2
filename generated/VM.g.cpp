@@ -330,8 +330,8 @@ bool VMStorage::ReportRuntimeError() {
 	String msg = StringUtils::Format("{0}", Value::error_message(Error));
 	String loc = "";
 	Value stack = Value::error_stack(Error);
-	if (stack.IsList() && Value::list_count(stack) > 0) {
-		loc = StringUtils::Format("{0}", Value::list_get(stack, 0));
+	if (stack.IsList() && stack.ListCount() > 0) {
+		loc = StringUtils::Format("{0}", stack.ListGet(0));
 		// Drop the "(current program) " prefix used for the top-level
 		// script, leaving just "line N" for the common case.
 		String prefix = "(current program) ";
@@ -352,7 +352,7 @@ Value VMStorage::BuildStackTrace() {
 	if (callSitePC < 0) callSitePC = 0;
 	String curFile = CurrentFunction.FileName();
 	if (curFile == "") curFile = "(current program)";
-	Value::list_push(result, Value::make_string(StringUtils::Format("{0} line {1}", curFile, CurrentFunction.GetLineNumber(callSitePC))));
+	result.Push(Value::make_string(StringUtils::Format("{0} line {1}", curFile, CurrentFunction.GetLineNumber(callSitePC))));
 	// callStack[0] is @main's own frame (not a caller), so stop at i=1.
 	for (Int32 i = CallStackDepth() - 1; i >= 1; i--) {
 		CallInfo ci = GetCallStackFrame(i);
@@ -361,7 +361,7 @@ Value VMStorage::BuildStackTrace() {
 		if (callerPC < 0) callerPC = 0;
 		String callerFile = callerFunc.FileName();
 		if (callerFile == "") callerFile = "(current program)";
-		Value::list_push(result, Value::make_string(StringUtils::Format("{0} line {1}", callerFile, callerFunc.GetLineNumber(callerPC))));
+		result.Push(Value::make_string(StringUtils::Format("{0} line {1}", callerFile, callerFunc.GetLineNumber(callerPC))));
 	}
 	Value::freeze_value(result);
 	return result;
@@ -892,10 +892,10 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 			}
 
 			VM_CASE(PUSH_rA_rB) {
-				// list_push(R[A], R[B])
+				// R[A].Push(R[B])
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
-				Value::list_push(localStack[a], localStack[b]);
+				localStack[a].Push(localStack[b]);
 				VM_NEXT();
 			}
 
@@ -915,7 +915,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				}
 				if (valB.IsList()) {
 					// ToDo: add a list_try_get and use it here, like we do with map below
-					localStack[a] = Value::list_get(valB, valC.IntValue());
+					localStack[a] = valB.ListGet(valC.IntValue());
 				} else if (valB.IsMap()) {
 					if (!Value::map_lookup(valB, valC, &val)) {
 						RaiseRuntimeError(StringUtils::Format("Key Not Found: '{0}' not found in map", valC));
@@ -945,7 +945,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 					VM_NEXT();
 				}
 				if (valA.IsList()) {
-					Value::list_set(valA, valB.IntValue(), valC);
+					valA.ListSet(valB.IntValue(), valC);
 				} else if (valA.IsMap()) {
 					Value::map_set(valA, valB, valC);
 				} else {
@@ -973,10 +973,10 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 					Int32 endIdx = valD.IsNull() ? len : valD.IntValue();
 					localStack[a] = valB.StringSlice(startIdx, endIdx);
 				} else if (valB.IsList()) {
-					Int32 len = Value::list_count(valB);
+					Int32 len = valB.ListCount();
 					Int32 startIdx = valC.IsNull() ? 0 : valC.IntValue();
 					Int32 endIdx = valD.IsNull() ? len : valD.IntValue();
-					localStack[a] = Value::list_slice(valB, startIdx, endIdx);
+					localStack[a] = valB.ListSlice(startIdx, endIdx);
 				} else {
 					RaiseRuntimeError(StringUtils::Format("Can't slice {0}", valB));
 					localStack[a] = Value::Null;
@@ -1428,7 +1428,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				bool hasMore;
 				if (valB.IsList()) {
 					iter++;
-					hasMore = (iter < Value::list_count(valB));
+					hasMore = (iter < valB.ListCount());
 				} else if (valB.IsMap()) {
 					iter = Value::map_iter_next(valB, iter);
 					hasMore = (iter != Value::MAP_ITER_DONE);
@@ -1792,7 +1792,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 					// try indexing numerically
 					int index = valC.IntValue();
 					if (valB.IsList()) {
-						localStack[a] = Value::list_get(valB, index);
+						localStack[a] = valB.ListGet(index);
 					} else if (valB.IsString()) {
 						localStack[a] = valB.Substring(index, 1);
 					} else {
@@ -1839,7 +1839,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				} else if (valC.IsNumber()) {
 					int index = valC.IntValue();
 					if (valB.IsList()) {
-						localStack[a] = Value::list_get(valB, index);
+						localStack[a] = valB.ListGet(index);
 					} else if (valB.IsString()) {
 						localStack[a] = valB.Substring(index, 1);
 					} else {
@@ -1948,7 +1948,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Int32 idx = localStack[c].IntValue();
 
 				if (valB.IsList()) {
-					localStack[a] = Value::list_get(valB, idx);
+					localStack[a] = valB.ListGet(idx);
 				} else if (valB.IsMap()) {
 					localStack[a] = Value::map_iter_entry(valB, idx);
 				} else if (valB.IsString()) {

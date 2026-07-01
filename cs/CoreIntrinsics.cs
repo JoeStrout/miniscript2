@@ -399,7 +399,7 @@ public static class CoreIntrinsics {
 					pinfo = Value.make_map(2);
 					Value.map_set(pinfo, "name", func.ParamNames[i]);
 					Value.map_set(pinfo, "default", func.ParamDefaults[i]);
-					Value.list_push(parameters, pinfo);
+					parameters.Push(pinfo);
 				}
 				Value.map_set(result, "params", parameters);
 				if (Value.funcref_outer_vars(arg).IsNull()) {
@@ -486,7 +486,7 @@ public static class CoreIntrinsics {
 			if (container.IsError()) return new IntrinsicResult(container);
 			Value result = Value.Null;
 			if (container.IsList()) {
-				result = new Value(Value.list_count(container));
+				result = new Value(container.ListCount());
 			} else if (container.IsString()) {
 				result = new Value(container.Length());
 			} else if (container.IsMap()) {
@@ -504,7 +504,7 @@ public static class CoreIntrinsics {
 			if (container.IsError()) return ctx.vm.RaiseUncaughtError(container);
 			int result = 0;
 			if (container.IsList()) {
-				result = Value.list_remove(container, ctx.GetArg(1).IntValue()) ? 1 : 0;
+				result = container.ListRemove(ctx.GetArg(1).IntValue()) ? 1 : 0;
 			} else if (container.IsMap()) {
 				result = Value.map_remove(container, ctx.GetArg(1)) ? 1 : 0;
 			} else {
@@ -758,7 +758,7 @@ public static class CoreIntrinsics {
 			if (self.IsError()) return ctx.vm.RaiseUncaughtError(self);
 			Value value = ctx.GetArg(1);
 			if (self.IsList()) {
-				Value.list_push(self, value);
+				self.Push(value);
 				return new IntrinsicResult(self);
 			} else if (self.IsMap()) {
 				Value.map_set(self, value, Value.one);
@@ -775,7 +775,7 @@ public static class CoreIntrinsics {
 			if (self.IsError()) return ctx.vm.RaiseUncaughtError(self);
 			Value result = Value.Null;
 			if (self.IsList()) {
-				result = Value.list_pop(self);
+				result = self.Pop();
 			} else if (self.IsMap()) {
 				if (Value.map_count(self) == 0) return new IntrinsicResult(Value.Null);
 				MapIterator iter = Value.map_iterator(self);
@@ -797,7 +797,7 @@ public static class CoreIntrinsics {
 			if (self.IsError()) return ctx.vm.RaiseUncaughtError(self);
 			Value result = Value.Null;
 			if (self.IsList()) {
-				result = Value.list_pull(self);
+				result = self.Pull();
 			} else if (self.IsMap()) {
 				if (Value.map_count(self) == 0) return new IntrinsicResult(Value.Null);
 				MapIterator iter = Value.map_iterator(self);
@@ -822,7 +822,7 @@ public static class CoreIntrinsics {
 			int index = (int)ctx.GetArg(1).NumericVal();
 			Value value = ctx.GetArg(2);
 			if (self.IsList()) {
-				Value.list_insert(self, index, value);
+				self.ListInsert(index, value);
 				return new IntrinsicResult(self);
 			} else if (self.IsString()) {
 				return new IntrinsicResult(self.StringInsert(index, value, ctx.vm));
@@ -846,9 +846,9 @@ public static class CoreIntrinsics {
 				int afterIdx = -1;
 				if (!after.IsNull()) {
 					afterIdx = (int)after.NumericVal();
-					if (afterIdx < -1) afterIdx += Value.list_count(self);
+					if (afterIdx < -1) afterIdx += self.ListCount();
 				}
-				int idx = Value.list_indexOf(self, value, afterIdx);
+				int idx = self.ListIndexOf(value, afterIdx);
 				if (idx >= 0) result = new Value(idx);
 			} else if (self.IsString()) {
 				if (!value.IsString()) return new IntrinsicResult(Value.Null);
@@ -892,11 +892,11 @@ public static class CoreIntrinsics {
 			Value byKey = ctx.GetArg(1);
 			bool ascending = ctx.GetArg(2).BoolValue();
 			if (!self.IsList()) return new IntrinsicResult(ErrorTypes.TypeError("list", self));
-			if (Value.list_count(self) < 2) return new IntrinsicResult(self);
+			if (self.ListCount() < 2) return new IntrinsicResult(self);
 			if (byKey.IsNull()) {
-				Value.list_sort(self, ascending);
+				self.Sort(ascending);
 			} else {
-				Value.list_sort_by_key(self, byKey, ascending);
+				self.SortByKey(byKey, ascending);
 			}
 			return new IntrinsicResult(self);
 		};
@@ -911,12 +911,12 @@ public static class CoreIntrinsics {
 			// CPP: Value iterKey, iterVal;
 			if (self.IsList()) {
 				if (Value.is_frozen(self)) { ctx.vm.RaiseRuntimeError("Attempt to modify a frozen list"); return new IntrinsicResult(Value.Null); }
-				int count = Value.list_count(self);
+				int count = self.ListCount();
 				for (int i = count - 1; i > 0; i--) {
 					int j = (int)(PRNG.Next() * (i + 1));
-					temp = Value.list_get(self, i);
-					Value.list_set(self, i, Value.list_get(self, j));
-					Value.list_set(self, j, temp);
+					temp = self.ListGet(i);
+					self.ListSet(i, self.ListGet(j));
+					self.ListSet(j, temp);
 				}
 			} else if (self.IsMap()) {
 				if (Value.is_frozen(self)) { ctx.vm.RaiseRuntimeError("Attempt to modify a frozen map"); return new IntrinsicResult(Value.Null); }
@@ -955,10 +955,10 @@ public static class CoreIntrinsics {
 			if (!self.IsList()) return new IntrinsicResult(ErrorTypes.TypeError("list", self));
 			Value delim = ctx.GetArg(1);
 			String delimStr = delim.IsNull() ? " " : delim.ToString(null);
-			int count = Value.list_count(self);
+			int count = self.ListCount();
 			List<String> parts = new List<String>(count);
 			for (int i = 0; i < count; i++) {
-				parts.Add(Value.list_get(self, i).ToString(null));
+				parts.Add(self.ListGet(i).ToString(null));
 			}
 			return new IntrinsicResult(Value.make_string(String.Join(delimStr, parts)));
 		};
@@ -992,11 +992,11 @@ public static class CoreIntrinsics {
 			// CPP: Value iterKey, iterVal;
 			int maxCount = maxCountVal.IsNull() ? -1 : (int)maxCountVal.NumericVal();
 			if (self.IsList()) {
-				int count = Value.list_count(self);
+				int count = self.ListCount();
 				int found = 0;
 				for (int i = 0; i < count; i++) {
-					if (Value.list_get(self, i) == oldVal) {
-						Value.list_set(self, i, newVal);
+					if (self.ListGet(i) == oldVal) {
+						self.ListSet(i, newVal);
 						found++;
 						if (maxCount > 0 && found >= maxCount) break;
 					}
@@ -1031,9 +1031,9 @@ public static class CoreIntrinsics {
 			// CPP: Value iterVal;
 			double total = 0;
 			if (self.IsList()) {
-				int count = Value.list_count(self);
+				int count = self.ListCount();
 				for (int i = 0; i < count; i++) {
-					total += Value.list_get(self, i).NumericVal();
+					total += self.ListGet(i).NumericVal();
 				}
 			} else if (self.IsMap()) {
 				MapIterator iter = Value.map_iterator(self);
@@ -1059,9 +1059,9 @@ public static class CoreIntrinsics {
 			if (seq.IsError()) return new IntrinsicResult(seq);
 			int fromIdx = (int)ctx.GetArg(1).NumericVal();
 			if (seq.IsList()) {
-				int count = Value.list_count(seq);
+				int count = seq.ListCount();
 				int toIdx = ctx.GetArg(2).IsNull() ? count : (int)ctx.GetArg(2).NumericVal();
-				return new IntrinsicResult(Value.list_slice(seq, fromIdx, toIdx));
+				return new IntrinsicResult(seq.ListSlice(fromIdx, toIdx));
 			} else if (seq.IsString()) {
 				int slen = seq.Length();
 				int toIdx = ctx.GetArg(2).IsNull() ? slen : (int)ctx.GetArg(2).NumericVal();
@@ -1079,24 +1079,24 @@ public static class CoreIntrinsics {
 			Value result = Value.Null;
 			// CPP: Value iterKey;
 			if (self.IsList()) {
-				int count = Value.list_count(self);
+				int count = self.ListCount();
 				result = Value.make_list(count);
 				for (int i = 0; i < count; i++) {
-					Value.list_push(result, new Value(i));
+					result.Push(new Value(i));
 				}
 				return new IntrinsicResult(result);
 			} else if (self.IsString()) {
 				int slen = self.Length();
 				result = Value.make_list(slen);
 				for (int i = 0; i < slen; i++) {
-					Value.list_push(result, new Value(i));
+					result.Push(new Value(i));
 				}
 				return new IntrinsicResult(result);
 			} else if (self.IsMap()) {
 				result = Value.make_list(Value.map_count(self));
 				MapIterator iter = Value.map_iterator(self);
 				while (Value.map_iterator_next(ref iter)) { // CPP: while (map_iterator_next(&iter, &iterKey, nullptr)) {
-					Value.list_push(result, iter.Key);  // CPP: Value::list_push(result, iterKey);
+					result.Push(iter.Key);  // CPP: result.Push(iterKey);
 				}
 			} else {
 				return new IntrinsicResult(ErrorTypes.TypeError("list, string, or map", self));
@@ -1115,7 +1115,7 @@ public static class CoreIntrinsics {
 			if (self.IsList()) {
 				if (!index.IsNumber()) return new IntrinsicResult(Value.zero);
 				int i = (int)index.NumericVal();
-				int count = Value.list_count(self);
+				int count = self.ListCount();
 				return new IntrinsicResult(Value.Truth(i >= -count && i < count));
 			} else if (self.IsString()) {
 				if (!index.IsNumber()) return new IntrinsicResult(Value.zero);
@@ -1140,13 +1140,13 @@ public static class CoreIntrinsics {
 				result = Value.make_list(Value.map_count(self));
 				MapIterator iter = Value.map_iterator(self);
 				while (Value.map_iterator_next(ref iter)) { // CPP: while (map_iterator_next(&iter, nullptr, &iterVal)) {
-					Value.list_push(result, iter.Val);      // CPP: Value::list_push(result, iterVal);
+					result.Push(iter.Val);      // CPP: result.Push(iterVal);
 				}
 			} else if (self.IsString()) {
 				int slen = self.Length();
 				result = Value.make_list(slen);
 				for (int i = 0; i < slen; i++) {
-					Value.list_push(result, self.Substring(i, 1));
+					result.Push(self.Substring(i, 1));
 				}
 			} else if (!self.IsList()) {
 				// A list returns itself (its values are its elements); any other

@@ -1064,7 +1064,7 @@ Boolean CodeGeneratorStorage::TryEvaluateConstant(ASTNode node,Value* result) {
 		list = Value::make_list(listNode.Elements().Count());
 		for (Int32 i = 0; i < listNode.Elements().Count(); i++) {
 			if (!TryEvaluateConstant(listNode.Elements()[i], &elemVal)) return Boolean(false);
-			Value::list_push(list, elemVal);
+			list.Push(elemVal);
 		}
 		Value::freeze_value(list);
 		*result = list;

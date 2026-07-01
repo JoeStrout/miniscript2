@@ -83,7 +83,7 @@ void ShellIntrinsics::SetShellArgs(List<String> args,Int32 startIdx) {
 	if (count < 0) count = 0;
 	_shellArgs = Value::make_list(count);
 	for (Int32 i = startIdx; i < args.Count(); i++) {
-		Value::list_push(_shellArgs, Value::make_string(args[i]));
+		_shellArgs.Push(Value::make_string(args[i]));
 	}
 	Value::freeze_value(_shellArgs);
 }
@@ -516,7 +516,7 @@ Value ShellIntrinsics::FsChildren(String path) {
 		}
 		do {
 			String name(data.cFileName);
-			if (name != "." && name != "..") Value::list_push(result, Value::make_string(name));
+			if (name != "." && name != "..") result.Push(Value::make_string(name));
 		} while (FindNextFile(hFind, &data) != 0);
 		FindClose(hFind);
 	#else
@@ -526,7 +526,7 @@ Value ShellIntrinsics::FsChildren(String path) {
 		}
 		while (struct dirent* entry = readdir(dir)) {
 			String name(entry->d_name);
-			if (name != "." && name != "..") Value::list_push(result, Value::make_string(name));
+			if (name != "." && name != "..") result.Push(Value::make_string(name));
 		}
 		closedir(dir);
 	#endif
@@ -652,14 +652,14 @@ Value ShellIntrinsics::FsReadLines(String path) {
 			if (buf[i] == '\n' || buf[i] == '\r') {
 				String line(buf + start, i - start);
 				if (partial.Length() > 0) { line = partial + line; partial = String(""); }
-				Value::list_push(result, Value::make_string(line));
+				result.Push(Value::make_string(line));
 				if (buf[i] == '\r' && i+1 < (int)n && buf[i+1] == '\n') i++;
 				start = i + 1;
 			}
 		}
 		if (start < (int)n) partial += String(buf + start, n - start);
 	}
-	if (partial.Length() > 0) Value::list_push(result, Value::make_string(partial));
+	if (partial.Length() > 0) result.Push(Value::make_string(partial));
 	fclose(f);
 	return result;
 }
@@ -668,9 +668,9 @@ Value ShellIntrinsics::FsWriteLines(String path,Value lines) {
 	if (!f) return ErrorTypes::FileError("writeLines: cannot open: " + path);
 	Int32 count = 0;
 	if (lines.IsList()) {
-		Int32 n = Value::list_count(lines);
+		Int32 n = lines.ListCount();
 		for (Int32 i = 0; i < n; i++) {
-			String s = Value::list_get(lines, i).AsCString();
+			String s = lines.ListGet(i).AsCString();
 			fputs(s.c_str(), f); fputc('\n', f); count++;
 		}
 	} else {

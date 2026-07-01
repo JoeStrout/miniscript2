@@ -467,7 +467,7 @@ public struct App {
 		while (true) {
 			// Build prompt: " _in[N]: " for a fresh line, or a matching-width
 			// continuation prompt whose spaces align with the _in prompt.
-			Int32 idx = Value.list_count(CoreIntrinsics.replInList);
+			Int32 idx = CoreIntrinsics.replInList.ListCount();
 			String prompt;
 			if (interp.NeedMoreInput()) {
 				// Width of " _in[N]: " = 8 + digits(N).  Use (3+digits(N)) spaces before "...:".
@@ -566,12 +566,12 @@ public struct App {
 			search = metaRest;
 		}
 
-		Int32 total = Value.list_count(CoreIntrinsics.replInList);
+		Int32 total = CoreIntrinsics.replInList.ListCount();
 		// First pass (backward): find the oldest index among the last `count` matches.
 		Int32 remaining = count;
 		Int32 firstIdx = total;
 		for (Int32 i = total - 1; i >= 0 && remaining > 0; i--) {
-			String entry = Value.list_get(CoreIntrinsics.replInList, i).AsCString();
+			String entry = CoreIntrinsics.replInList.ListGet(i).AsCString();
 			if (search != null && entry.IndexOf(search) < 0) continue;
 			remaining--;
 			firstIdx = i;
@@ -579,7 +579,7 @@ public struct App {
 		// Second pass (forward): display in ascending order.
 		Int32 shown = 0;
 		for (Int32 i = firstIdx; i < total && shown < count; i++) {
-			String entry = Value.list_get(CoreIntrinsics.replInList, i).AsCString();
+			String entry = CoreIntrinsics.replInList.ListGet(i).AsCString();
 			if (search != null && entry.IndexOf(search) < 0) continue;
 			IOHelper.Print(StringUtils.Format(" _in[{0}]: {1}", i, entry), TextStyle.Subdued);
 			shown++;
@@ -590,14 +590,14 @@ public struct App {
 	// Recall a history entry by index string ("5", "-2", etc.).
 	// Returns the source string, or null if the index is out of range.
 	private static String RecallInput(String indexStr) {
-		Int32 total = Value.list_count(CoreIntrinsics.replInList);
+		Int32 total = CoreIntrinsics.replInList.ListCount();
 		if (total == 0) return null;
 		bool negative = indexStr.Length > 0 && indexStr[0] == '-';
 		Int32 idx = ParseInt(negative ? indexStr.Substring(1) : indexStr);
 		if (idx < 0) return null;
 		if (negative) idx = total - idx;
 		if (idx < 0 || idx >= total) return null;
-		return Value.list_get(CoreIntrinsics.replInList, idx).AsCString();
+		return CoreIntrinsics.replInList.ListGet(idx).AsCString();
 	}
 
 	private static void RunREPL() {
@@ -638,10 +638,10 @@ public struct App {
 			if (!interp.NeedMoreInput()) {
 				bool wasReset = !Value.value_identical(CoreIntrinsics.replInList, inListBefore);
 				if (!wasReset) {
-					Int32 idx = Value.list_count(CoreIntrinsics.replInList);
+					Int32 idx = CoreIntrinsics.replInList.ListCount();
 					implVal = interp.lastImplicitResult;
-					Value.list_push(CoreIntrinsics.replInList, Value.make_string(currentInput));
-					Value.list_push(CoreIntrinsics.replOutList, implVal);
+					CoreIntrinsics.replInList.Push(Value.make_string(currentInput));
+					CoreIntrinsics.replOutList.Push(implVal);
 					// Mirror MiniScript 1.x: the global `_` always holds the most
 					// recent implicit REPL result (i.e. _out[-1]).
 					interp.SetGlobalValue("_", implVal);

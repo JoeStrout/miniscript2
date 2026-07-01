@@ -144,7 +144,7 @@ public static class CoreIntrinsics {
 	private static void AddIntrinsicToMap(Value map, String methodName) {
 		Intrinsic intr = Intrinsic.GetByName(methodName);
 		if (intr != null) {
-			Value.map_set(map, methodName, intr.GetFunc());
+			map.MapSet(methodName, intr.GetFunc());
 		} else {
 			IOHelper.Print(StringUtils.Format("Intrinsic not found: {0}", methodName));
 		}
@@ -262,7 +262,7 @@ public static class CoreIntrinsics {
 		if (_errorType.IsNull()) {
 			_errorType = Value.make_map(4);
 			if (_errorErrIntr != null) {
-				Value.map_set(_errorType, "err", _errorErrIntr.GetFunc());
+				_errorType.MapSet("err", _errorErrIntr.GetFunc());
 			}
 			Intrinsic.AddShortName(_errorType, "error");
 		}
@@ -383,35 +383,35 @@ public static class CoreIntrinsics {
 			Value result = Value.make_map(8);
 			Value parameters = Value.Null;
 			Value pinfo = Value.Null;
-			Value.map_set(result, "type", arg.TypeName());
+			result.MapSet("type", arg.TypeName());
 			if (arg.IsList()) {
 				Boolean computed = GCManager.Lists.Get(arg.ItemIndex()).Computed;
-				Value.map_set(result, "computed", Value.Truth(computed));
-				Value.map_set(result, "frozen", Value.Truth(Value.is_frozen(arg)));
+				result.MapSet("computed", Value.Truth(computed));
+				result.MapSet("frozen", Value.Truth(Value.is_frozen(arg)));
 			} else if (arg.IsMap()) {
-				Value.map_set(result, "frozen", Value.Truth(Value.is_frozen(arg)));
+				result.MapSet("frozen", Value.Truth(Value.is_frozen(arg)));
 			} else if (arg.IsFuncRef()) {
 				FuncDef func = Value.funcref_funcdef(arg);
-				Value.map_set(result, "name", func.Name);
-				Value.map_set(result, "note", func.Note);
+				result.MapSet("name", func.Name);
+				result.MapSet("note", func.Note);
 				parameters = Value.make_list(func.ParamNames.Count);
 				for (int i=0; i < func.ParamNames.Count; i++) {
 					pinfo = Value.make_map(2);
-					Value.map_set(pinfo, "name", func.ParamNames[i]);
-					Value.map_set(pinfo, "default", func.ParamDefaults[i]);
+					pinfo.MapSet("name", func.ParamNames[i]);
+					pinfo.MapSet("default", func.ParamDefaults[i]);
 					parameters.Push(pinfo);
 				}
-				Value.map_set(result, "params", parameters);
+				result.MapSet("params", parameters);
 				if (Value.funcref_outer_vars(arg).IsNull()) {
-					Value.map_set(result, "closure", Value.zero);
+					result.MapSet("closure", Value.zero);
 				} else {
-					Value.map_set(result, "closure", Value.one);
+					result.MapSet("closure", Value.one);
 				}
 			} else if (arg.IsError()) {
-				Value.map_set(result, "message", Value.error_message(arg));
-				Value.map_set(result, "inner", Value.error_inner(arg));
-				Value.map_set(result, "stack", Value.error_stack(arg));
-				Value.map_set(result, "isa", Value.error_isa(arg));
+				result.MapSet("message", Value.error_message(arg));
+				result.MapSet("inner", Value.error_inner(arg));
+				result.MapSet("stack", Value.error_stack(arg));
+				result.MapSet("isa", Value.error_isa(arg));
 			}
 			Value.freeze_value(result);
 			return new IntrinsicResult(result);
@@ -490,7 +490,7 @@ public static class CoreIntrinsics {
 			} else if (container.IsString()) {
 				result = new Value(container.Length());
 			} else if (container.IsMap()) {
-				result = new Value(Value.map_count(container));
+				result = new Value(container.MapCount());
 			}
 			return new IntrinsicResult(result);
 		};
@@ -506,7 +506,7 @@ public static class CoreIntrinsics {
 			if (container.IsList()) {
 				result = container.ListRemove(ctx.GetArg(1).IntValue()) ? 1 : 0;
 			} else if (container.IsMap()) {
-				result = Value.map_remove(container, ctx.GetArg(1)) ? 1 : 0;
+				result = container.MapRemove(ctx.GetArg(1)) ? 1 : 0;
 			} else {
 				return new IntrinsicResult(ErrorTypes.TypeError("list or map", container));
 			}
@@ -761,7 +761,7 @@ public static class CoreIntrinsics {
 				self.Push(value);
 				return new IntrinsicResult(self);
 			} else if (self.IsMap()) {
-				Value.map_set(self, value, Value.one);
+				self.MapSet(value, Value.one);
 				return new IntrinsicResult(self);
 			}
 			return new IntrinsicResult(ErrorTypes.TypeError("list or map", self));
@@ -777,11 +777,11 @@ public static class CoreIntrinsics {
 			if (self.IsList()) {
 				result = self.Pop();
 			} else if (self.IsMap()) {
-				if (Value.map_count(self) == 0) return new IntrinsicResult(Value.Null);
-				MapIterator iter = Value.map_iterator(self);
+				if (self.MapCount() == 0) return new IntrinsicResult(Value.Null);
+				MapIterator iter = self.Iterator();
 				if (Value.map_iterator_next(ref iter)) { // CPP: if (map_iterator_next(&iter, &result, nullptr)) {
 					result = iter.Key;             // CPP: // remove key that was found
-					Value.map_remove(self, result);
+					self.MapRemove(result);
 				}
 			} else {
 				return new IntrinsicResult(ErrorTypes.TypeError("list or map", self));
@@ -799,11 +799,11 @@ public static class CoreIntrinsics {
 			if (self.IsList()) {
 				result = self.Pull();
 			} else if (self.IsMap()) {
-				if (Value.map_count(self) == 0) return new IntrinsicResult(Value.Null);
-				MapIterator iter = Value.map_iterator(self);
+				if (self.MapCount() == 0) return new IntrinsicResult(Value.Null);
+				MapIterator iter = self.Iterator();
 				if (Value.map_iterator_next(ref iter)) { // CPP: if (map_iterator_next(&iter, &result, nullptr)) {
 					result = iter.Key;             // CPP: // remove key that was found
-					Value.map_remove(self, result);
+					self.MapRemove(result);
 				}
 			} else {
 				return new IntrinsicResult(ErrorTypes.TypeError("list or map", self));
@@ -862,7 +862,7 @@ public static class CoreIntrinsics {
 			} else if (self.IsMap()) {
 				// Find key where value matches
 				bool pastAfter = after.IsNull();
-				MapIterator iter = Value.map_iterator(self);
+				MapIterator iter = self.Iterator();
 				while (Value.map_iterator_next(ref iter)) { // CPP: while (map_iterator_next(&iter, &iterKey, &iterVal)) {
 					if (!pastAfter) {
 						if (iter.Key == after) { // CPP: if (iterKey == after) {
@@ -921,10 +921,10 @@ public static class CoreIntrinsics {
 			} else if (self.IsMap()) {
 				if (Value.is_frozen(self)) { ctx.vm.RaiseRuntimeError("Attempt to modify a frozen map"); return new IntrinsicResult(Value.Null); }
 				// Collect keys and values
-				int count = Value.map_count(self);
+				int count = self.MapCount();
 				List<Value> keys = new List<Value>(count);
 				List<Value> vals = new List<Value>(count);
-				MapIterator iter = Value.map_iterator(self);
+				MapIterator iter = self.Iterator();
 				while (Value.map_iterator_next(ref iter)) { // CPP: while (map_iterator_next(&iter, &iterKey, &iterVal)) {
 					keys.Add(iter.Key);               // CPP: vals.Add(iterKey);
 					vals.Add(iter.Val);               // CPP: vals.Add(iterVal);
@@ -937,7 +937,7 @@ public static class CoreIntrinsics {
 					vals[j] = temp;
 				}
 				for (int i = 0; i < count; i++) {
-					Value.map_set(self, keys[i], vals[i]);
+					self.MapSet(keys[i], vals[i]);
 				}
 			} else {
 				return new IntrinsicResult(ErrorTypes.TypeError("list or map", self));
@@ -1005,7 +1005,7 @@ public static class CoreIntrinsics {
 			} else if (self.IsMap()) {
 				// Collect keys whose values match
 				List<Value> keysToChange = new List<Value>();
-				MapIterator iter = Value.map_iterator(self);
+				MapIterator iter = self.Iterator();
 				while (Value.map_iterator_next(ref iter)) { // CPP: while (map_iterator_next(&iter, &iterKey, &iterVal)) {
 					if (iter.Val == oldVal) { // CPP: if (iterVal == oldVal) {
 						keysToChange.Add(iter.Key);  // CPP: keysToChange.Add(iterKey);
@@ -1013,7 +1013,7 @@ public static class CoreIntrinsics {
 					}
 				}
 				for (int i = 0; i < keysToChange.Count; i++) {
-					Value.map_set(self, keysToChange[i], newVal);
+					self.MapSet(keysToChange[i], newVal);
 				}
 				return new IntrinsicResult(self);
 			} else if (self.IsString()) {
@@ -1036,7 +1036,7 @@ public static class CoreIntrinsics {
 					total += self.ListGet(i).NumericVal();
 				}
 			} else if (self.IsMap()) {
-				MapIterator iter = Value.map_iterator(self);
+				MapIterator iter = self.Iterator();
 				while (Value.map_iterator_next(ref iter)) { // CPP: while (map_iterator_next(&iter, nullptr, &iterVal)) {
 					total += iter.Val.NumericVal();   // CPP: total += iterVal.NumericVal();
 				}
@@ -1093,8 +1093,8 @@ public static class CoreIntrinsics {
 				}
 				return new IntrinsicResult(result);
 			} else if (self.IsMap()) {
-				result = Value.make_list(Value.map_count(self));
-				MapIterator iter = Value.map_iterator(self);
+				result = Value.make_list(self.MapCount());
+				MapIterator iter = self.Iterator();
 				while (Value.map_iterator_next(ref iter)) { // CPP: while (map_iterator_next(&iter, &iterKey, nullptr)) {
 					result.Push(iter.Key);  // CPP: result.Push(iterKey);
 				}
@@ -1123,7 +1123,7 @@ public static class CoreIntrinsics {
 				int slen = self.Length();
 				return new IntrinsicResult(Value.Truth(i >= -slen && i < slen));
 			} else if (self.IsMap()) {
-				return new IntrinsicResult(Value.Truth(Value.map_has_key(self, index)));
+				return new IntrinsicResult(Value.Truth(self.HasKey(index)));
 			}
 			return new IntrinsicResult(ErrorTypes.TypeError("list, string, or map", self));
 		};
@@ -1137,8 +1137,8 @@ public static class CoreIntrinsics {
 			Value result = self;
 			// CPP: Value iterVal;
 			if (self.IsMap()) {
-				result = Value.make_list(Value.map_count(self));
-				MapIterator iter = Value.map_iterator(self);
+				result = Value.make_list(self.MapCount());
+				MapIterator iter = self.Iterator();
 				while (Value.map_iterator_next(ref iter)) { // CPP: while (map_iterator_next(&iter, nullptr, &iterVal)) {
 					result.Push(iter.Val);      // CPP: result.Push(iterVal);
 				}
@@ -1436,12 +1436,12 @@ public static class CoreIntrinsics {
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			if (_versionMap.IsNull()) {
 				_versionMap = Value.make_map(6);
-				Value.map_set(_versionMap, "miniscript", "2.0");
-				Value.map_set(_versionMap, "buildDate", BuildDate());
-				Value.map_set(_versionMap, "platform", PlatformName());
-				Value.map_set(_versionMap, "host", hostVersion);
-				Value.map_set(_versionMap, "hostName", hostName);
-				Value.map_set(_versionMap, "hostInfo", hostInfo);
+				_versionMap.MapSet("miniscript", "2.0");
+				_versionMap.MapSet("buildDate", BuildDate());
+				_versionMap.MapSet("platform", PlatformName());
+				_versionMap.MapSet("host", hostVersion);
+				_versionMap.MapSet("hostName", hostName);
+				_versionMap.MapSet("hostInfo", hostInfo);
 				Value.freeze_value(_versionMap);
 			}
 			return new IntrinsicResult(_versionMap);
@@ -1473,13 +1473,13 @@ public static class CoreIntrinsics {
 			int errors         = GCManager.Errors.LiveCount();
 			int functions      = GCManager.Functions.LiveCount();
 			int total = bigStrings + internedStrings + lists + maps + errors + functions;
-			Value.map_set(result, "bigStrings",      new Value(bigStrings));
-			Value.map_set(result, "internedStrings", new Value(internedStrings));
-			Value.map_set(result, "lists",           new Value(lists));
-			Value.map_set(result, "maps",            new Value(maps));
-			Value.map_set(result, "errors",          new Value(errors));
-			Value.map_set(result, "functions",       new Value(functions));
-			Value.map_set(result, "total",           new Value(total));
+			result.MapSet("bigStrings",      new Value(bigStrings));
+			result.MapSet("internedStrings", new Value(internedStrings));
+			result.MapSet("lists",           new Value(lists));
+			result.MapSet("maps",            new Value(maps));
+			result.MapSet("errors",          new Value(errors));
+			result.MapSet("functions",       new Value(functions));
+			result.MapSet("total",           new Value(total));
 			Value.freeze_value(result);
 			return new IntrinsicResult(result);
 		};
@@ -1505,7 +1505,7 @@ public static class CoreIntrinsics {
 			for (Int32 i = 0; i < count; i++) {
 				Intrinsic intr = Intrinsic.GetByIndex(i);
 				if (intr == null || intr.Name == null || intr.Name.Length == 0) continue;
-				Value.map_set(_intrinsicsMap, intr.Name, intr.GetFunc());
+				_intrinsicsMap.MapSet(intr.Name, intr.GetFunc());
 			}
 			Value.freeze_value(_intrinsicsMap);
 		}
@@ -1516,8 +1516,8 @@ public static class CoreIntrinsics {
 	public static Value GCMap() {
 		if (_gcMap.IsNull()) {
 			_gcMap = Value.make_map(2);
-			if (_gcCollectIntr != null) Value.map_set(_gcMap, "collect", _gcCollectIntr.GetFunc());
-			if (_gcStatsIntr != null) Value.map_set(_gcMap, "stats", _gcStatsIntr.GetFunc());
+			if (_gcCollectIntr != null) _gcMap.MapSet("collect", _gcCollectIntr.GetFunc());
+			if (_gcStatsIntr != null) _gcMap.MapSet("stats", _gcStatsIntr.GetFunc());
 			Value.freeze_value(_gcMap);
 		}
 		return _gcMap;

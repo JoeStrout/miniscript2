@@ -1079,7 +1079,7 @@ Boolean CodeGeneratorStorage::TryEvaluateConstant(ASTNode node,Value* result) {
 		for (Int32 i = 0; i < mapNode.Keys().Count(); i++) {
 			if (!TryEvaluateConstant(mapNode.Keys()[i], &keyVal)) return Boolean(false);
 			if (!TryEvaluateConstant(mapNode.Values()[i], &valVal)) return Boolean(false);
-			Value::map_set(map, keyVal, valVal);
+			map.MapSet(keyVal, valVal);
 		}
 		Value::freeze_value(map);
 		*result = map;

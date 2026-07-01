@@ -468,7 +468,7 @@ public class Interpreter {
 		// global variable.  If a global VarMap doesn't exist yet (e.g. no REPL
 		// entry has run), there is nothing to set.
 		if (_replGlobals.IsNull()) return;
-		Value.map_set(_replGlobals, varName, value);
+		_replGlobals.MapSet(varName, value);
 	}
 
 	// 

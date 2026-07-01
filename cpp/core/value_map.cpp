@@ -26,7 +26,8 @@ Value Value::make_empty_map(void) {
 
 // ── Access ──────────────────────────────────────────────────────────────
 
-int Value::map_count(Value map_val) {
+int Value::MapCount() const {
+    Value map_val = *this;
     if (!map_val.IsMap()) return 0;
     GCMap m = GCManager::Maps.Get(map_val.ItemIndex());
     return m.Count();
@@ -40,7 +41,8 @@ int map_capacity(Value map_val) {
     return m.Count() * 2;
 }
 
-Value Value::map_get(Value map_val, Value key) {
+Value Value::MapGet(Value key) const {
+    Value map_val = *this;
     if (!map_val.IsMap()) return Value::null;
     GCMap m = GCManager::Maps.Get(map_val.ItemIndex());
     Value out;
@@ -48,7 +50,8 @@ Value Value::map_get(Value map_val, Value key) {
     return Value::null;
 }
 
-bool Value::map_try_get(Value map_val, Value key, Value* out_value) {
+bool Value::TryGet(Value key, Value* out_value) const {
+    Value map_val = *this;
     if (!map_val.IsMap()) { if (out_value) *out_value = Value::null; return false; }
     GCMap m = GCManager::Maps.Get(map_val.ItemIndex());
     Value out;
@@ -58,7 +61,8 @@ bool Value::map_try_get(Value map_val, Value key, Value* out_value) {
 }
 
 // Walks the __isa chain.
-bool Value::map_lookup(Value map_val, Value key, Value* out_value) {
+bool Value::Lookup(Value key, Value* out_value) const {
+    Value map_val = *this;
     Value current = map_val;
     for (int depth = 0; depth < 256; depth++) {
         if (!current.IsMap()) { if (out_value) *out_value = Value::null; return false; }
@@ -73,7 +77,8 @@ bool Value::map_lookup(Value map_val, Value key, Value* out_value) {
     return false;
 }
 
-bool Value::map_lookup_with_origin(Value map_val, Value key, Value* out_value, Value* out_super) {
+bool Value::LookupWithOrigin(Value key, Value* out_value, Value* out_super) const {
+    Value map_val = *this;
     Value current = map_val;
     for (int depth = 0; depth < 256; depth++) {
         if (!current.IsMap()) {
@@ -103,7 +108,8 @@ bool Value::map_lookup_with_origin(Value map_val, Value key, Value* out_value, V
     return false;
 }
 
-bool Value::map_set(Value map_val, Value key, Value value) {
+bool Value::MapSet(Value key, Value value) const {
+    Value map_val = *this;
     if (!map_val.IsMap()) return false;
     GCMap m = GCManager::Maps.Get(map_val.ItemIndex());
     if (m.Frozen) { vm_raise_runtime_error("Attempt to modify a frozen map"); return false; }
@@ -111,14 +117,16 @@ bool Value::map_set(Value map_val, Value key, Value value) {
     return true;
 }
 
-bool Value::map_remove(Value map_val, Value key) {
+bool Value::MapRemove(Value key) const {
+    Value map_val = *this;
     if (!map_val.IsMap()) return false;
     GCMap m = GCManager::Maps.Get(map_val.ItemIndex());
     if (m.Frozen) { vm_raise_runtime_error("Attempt to modify a frozen map"); return false; }
     return m.Remove(key);
 }
 
-bool Value::map_has_key(Value map_val, Value key) {
+bool Value::HasKey(Value key) const {
+    Value map_val = *this;
     if (!map_val.IsMap()) return false;
     GCMap m = GCManager::Maps.Get(map_val.ItemIndex());
     Value v;
@@ -127,7 +135,8 @@ bool Value::map_has_key(Value map_val, Value key) {
 
 // ── Utilities ───────────────────────────────────────────────────────────
 
-void Value::map_clear(Value map_val) {
+void Value::Clear() const {
+    Value map_val = *this;
     if (!map_val.IsMap()) return;
     GCMap m = GCManager::Maps.Get(map_val.ItemIndex());
     if (m.Frozen) { vm_raise_runtime_error("Attempt to modify a frozen map"); return; }
@@ -160,13 +169,18 @@ Value map_concat(Value a, Value b) {
     return result;
 }
 
+// Instance wrapper mirroring cs/Value.cs; the free map_concat above remains the
+// shared implementation used by operator+ (value_add).
+Value Value::MapConcat(Value b) const { return map_concat(*this, b); }
+
 bool  map_needs_expansion(Value /*map_val*/) { return false; }
 bool  map_expand_capacity(Value /*map_val*/) { return true; }
 Value map_with_expanded_capacity(Value m)    { return m; }
 
 // ── Iteration (legacy struct-based) ─────────────────────────────────────
 
-MapIterator Value::map_iterator(Value map_val) {
+MapIterator Value::Iterator() const {
+    Value map_val = *this;
     MapIterator it;
     if (map_val.IsMap()) {
         it.map_idx = map_val.ItemIndex();
@@ -193,15 +207,16 @@ bool map_iterator_next(MapIterator* iter, Value* out_key, Value* out_value) {
     return true;
 }
 
-Value map_nth_entry(Value map_val, int n) {
+Value Value::NthEntry(int n) const {
+    Value map_val = *this;
     if (!map_val.IsMap()) return Value::null;
     GCMap m = GCManager::Maps.Get(map_val.ItemIndex());
     int count = 0;
     for (int i = m.NextEntry(-1); i != -1; i = m.NextEntry(i)) {
         if (count == n) {
             Value entry = Value::make_map(4);
-            Value::map_set(entry, Value::make_string("key"),   m.KeyAt(i));
-            Value::map_set(entry, Value::make_string("value"), m.ValueAt(i));
+            entry.MapSet(Value::make_string("key"),   m.KeyAt(i));
+            entry.MapSet(Value::make_string("value"), m.ValueAt(i));
             return entry;
         }
         count++;
@@ -211,19 +226,21 @@ Value map_nth_entry(Value map_val, int n) {
 
 // ── New iterator interface ──────────────────────────────────────────────
 
-int Value::map_iter_next(Value map_val, int iter) {
+int Value::IterNext(int iter) const {
+    Value map_val = *this;
     if (!map_val.IsMap() || iter == Value::MAP_ITER_DONE) return Value::MAP_ITER_DONE;
     GCMap m = GCManager::Maps.Get(map_val.ItemIndex());
     int next = m.NextEntry(iter);
     return next < 0 ? Value::MAP_ITER_DONE : next;
 }
 
-Value Value::map_iter_entry(Value map_val, int iter) {
+Value Value::IterEntry(int iter) const {
+    Value map_val = *this;
     if (!map_val.IsMap() || iter == Value::MAP_ITER_DONE) return Value::null;
     GCMap m = GCManager::Maps.Get(map_val.ItemIndex());
     Value entry = Value::make_map(4);
-    Value::map_set(entry, Value::make_string("key"),   m.KeyAt(iter));
-    Value::map_set(entry, Value::make_string("value"), m.ValueAt(iter));
+    entry.MapSet(Value::make_string("key"),   m.KeyAt(iter));
+    entry.MapSet(Value::make_string("value"), m.ValueAt(iter));
     return entry;
 }
 

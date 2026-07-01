@@ -93,9 +93,9 @@ public readonly struct Value {
 	public bool BoolValue() {
 		if (IsNull()) return false;
 		if (IsNumber()) return _d != 0.0;
-		if (IsString()) return this.Length() != 0;
-		if (IsList()) return this.ListCount() != 0;
-		if (IsMap()) return map_count(this) != 0;
+		if (IsString()) return Length() != 0;
+		if (IsList()) return ListCount() != 0;
+		if (IsMap()) return MapCount() != 0;
 		return true;
 	}
 
@@ -472,7 +472,7 @@ public readonly struct Value {
 			}
 			return a.ListConcat(b);
 		}
-		if (a.IsMap()  && b.IsMap())  return map_concat(a, b);
+		if (a.IsMap()  && b.IsMap())  return a.MapConcat(b);
 		return Value.Null;
 	}
 
@@ -875,7 +875,7 @@ public readonly struct Value {
 		for (int i = 0; i < count; i++) {
 			Value elem = list.Get(i);
 			if (elem.IsMap()) {
-				keys[i] = map_get(elem, byKey);
+				keys[i] = elem.MapGet(byKey);
 			} else if (elem.IsList() && byKey.IsNumber()) {
 				keys[i] = elem.ListGet((int)byKey.NumericVal());
 			} else {
@@ -904,27 +904,27 @@ public readonly struct Value {
 	}
 
 	// ==== MAP OPERATIONS =====================================================
-	public static int map_count(Value map_val) {
-		if (!map_val.IsMap()) return 0;
-		return GCManager.Maps.Get(map_val.ItemIndex()).Count();
+	public int MapCount() {
+		if (!IsMap()) return 0;
+		return GCManager.Maps.Get(ItemIndex()).Count();
 	}
 
-	public static Value map_get(Value map_val, Value key) {
-		if (!map_val.IsMap()) return Value.Null;
-		GCManager.Maps.Get(map_val.ItemIndex()).TryGet(key, out Value result);
+	public Value MapGet(Value key) {
+		if (!IsMap()) return Value.Null;
+		GCManager.Maps.Get(ItemIndex()).TryGet(key, out Value result);
 		return result;
 	}
 
-	public static bool map_try_get(Value map_val, Value key, out Value value) {
+	public bool TryGet(Value key, out Value value) {
 		value = Value.Null;
-		if (!map_val.IsMap()) return false;
-		return GCManager.Maps.Get(map_val.ItemIndex()).TryGet(key, out value);
+		if (!IsMap()) return false;
+		return GCManager.Maps.Get(ItemIndex()).TryGet(key, out value);
 	}
 
-	public static bool map_lookup(Value map_val, Value key, out Value value) {
+	public bool Lookup(Value key, out Value value) {
 		value = Value.Null;
 		Value isaKey = Value.magicIsA;
-		Value current = map_val;
+		Value current = this;
 		for (Int32 depth = 0; depth < 256; depth++) {
 			if (!current.IsMap()) return false;
 			GCMap m = GCManager.Maps.Get(current.ItemIndex());
@@ -935,11 +935,11 @@ public readonly struct Value {
 		return false;
 	}
 
-	public static bool map_lookup_with_origin(Value map_val, Value key, out Value value, out Value superVal) {
+	public bool LookupWithOrigin(Value key, out Value value, out Value superVal) {
 		value    = Value.Null;
 		superVal = Value.Null;
 		Value isaKey = Value.magicIsA;
-		Value current = map_val;
+		Value current = this;
 		for (Int32 depth = 0; depth < 256; depth++) {
 			if (!current.IsMap()) return false;
 			GCMap m = GCManager.Maps.Get(current.ItemIndex());
@@ -953,44 +953,44 @@ public readonly struct Value {
 		return false;
 	}
 
-	public static bool map_set(Value map_val, Value key, Value value) {
-		if (!map_val.IsMap()) return false;
-		GCMap m = GCManager.Maps.Get(map_val.ItemIndex());
+	public bool MapSet(Value key, Value value) {
+		if (!IsMap()) return false;
+		GCMap m = GCManager.Maps.Get(ItemIndex());
 		if (m.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen map"); return false; }
 		m.Set(key, value);
 		return true;
 	}
-	public static bool map_set(Value map_val, string key, Value value) => map_set(map_val, make_string(key), value);
-	public static bool map_set(Value map_val, string key, string value) => map_set(map_val, make_string(key), make_string(value));
+	public bool MapSet(string key, Value value) => MapSet(make_string(key), value);
+	public bool MapSet(string key, string value) => MapSet(make_string(key), make_string(value));
 
-	public static bool map_remove(Value map_val, Value key) {
-		if (!map_val.IsMap()) return false;
-		GCMap m = GCManager.Maps.Get(map_val.ItemIndex());
+	public bool MapRemove(Value key) {
+		if (!IsMap()) return false;
+		GCMap m = GCManager.Maps.Get(ItemIndex());
 		if (m.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen map"); return false; }
 		return m.Remove(key);
 	}
 
-	public static bool map_has_key(Value map_val, Value key) {
-		if (!map_val.IsMap()) return false;
-		return GCManager.Maps.Get(map_val.ItemIndex()).HasKey(key);
+	public bool HasKey(Value key) {
+		if (!IsMap()) return false;
+		return GCManager.Maps.Get(ItemIndex()).HasKey(key);
 	}
 
-	public static void map_clear(Value map_val) {
-		if (!map_val.IsMap()) return;
-		GCMap m = GCManager.Maps.Get(map_val.ItemIndex());
+	public void Clear() {
+		if (!IsMap()) return;
+		GCMap m = GCManager.Maps.Get(ItemIndex());
 		if (m.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen map"); return; }
 		m.Clear();
 	}
 
-	public static Value map_nth_entry(Value map_val, int n) {
-		if (!map_val.IsMap()) return Value.Null;
-		GCMap m = GCManager.Maps.Get(map_val.ItemIndex());
+	public Value NthEntry(int n) {
+		if (!IsMap()) return Value.Null;
+		GCMap m = GCManager.Maps.Get(ItemIndex());
 		int count = 0;
 		for (int iter = m.NextEntry(-1); iter != -1; iter = m.NextEntry(iter)) {
 			if (count == n) {
 				Value result = make_map(4);
-				map_set(result, "key",   m.KeyAt(iter));
-				map_set(result, "value", m.ValueAt(iter));
+				result.MapSet("key",   m.KeyAt(iter));
+				result.MapSet("value", m.ValueAt(iter));
 				return result;
 			}
 			count++;
@@ -1002,20 +1002,20 @@ public readonly struct Value {
 	// iter = -1: not started.  iter < -1: VarMap register entry index (see GCMap).
 	// iter >= 0: hash-table slot.  MAP_ITER_DONE: exhausted.
 
-	public static int map_iter_next(Value map_val, int iter) {
-		if (!map_val.IsMap() || iter == MAP_ITER_DONE) return MAP_ITER_DONE;
-		int next = GCManager.Maps.Get(map_val.ItemIndex()).NextEntry(iter);
+	public int IterNext(int iter) {
+		if (!IsMap() || iter == MAP_ITER_DONE) return MAP_ITER_DONE;
+		int next = GCManager.Maps.Get(ItemIndex()).NextEntry(iter);
 		return next == -1 ? MAP_ITER_DONE : next;
 	}
 
-	public static Value map_iter_entry(Value map_val, int iter) {
-		if (!map_val.IsMap() || iter == MAP_ITER_DONE) return Value.Null;
-		GCMap m = GCManager.Maps.Get(map_val.ItemIndex());
+	public Value IterEntry(int iter) {
+		if (!IsMap() || iter == MAP_ITER_DONE) return Value.Null;
+		GCMap m = GCManager.Maps.Get(ItemIndex());
 		Value key = m.KeyAt(iter);
 		Value val = m.ValueAt(iter);
 		Value result = make_map(4);
-		map_set(result, "key",   key);
-		map_set(result, "value", val);
+		result.MapSet("key",   key);
+		result.MapSet("value", val);
 		return result;
 	}
 
@@ -1108,17 +1108,18 @@ public readonly struct Value {
 	}
 
 	// ==== MAP CONCAT =========================================================
-	public static Value map_concat(Value a, Value b) {
+	public Value MapConcat(Value b) {
+		Value a = this;
 		Value result = make_map(0);
 		if (a.IsMap()) {
 			GCMap mapA = GCManager.Maps.Get(a.ItemIndex());
 			for (int iter = mapA.NextEntry(-1); iter != -1; iter = mapA.NextEntry(iter))
-				map_set(result, mapA.KeyAt(iter), mapA.ValueAt(iter));
+				result.MapSet(mapA.KeyAt(iter), mapA.ValueAt(iter));
 		}
 		if (b.IsMap()) {
 			GCMap mapB = GCManager.Maps.Get(b.ItemIndex());
 			for (int iter = mapB.NextEntry(-1); iter != -1; iter = mapB.NextEntry(iter))
-				map_set(result, mapB.KeyAt(iter), mapB.ValueAt(iter));
+				result.MapSet(mapB.KeyAt(iter), mapB.ValueAt(iter));
 		}
 		return result;
 	}
@@ -1276,12 +1277,12 @@ public readonly struct Value {
 	}
 
 	// ── Map iterator (struct-based) ───────────────────────────────────────────
-	public static MapIterator map_iterator(Value map_val) {
+	public MapIterator Iterator() {
 		MapIterator it = new MapIterator();
 		it.Key = Value.Null;
 		it.Val = Value.Null;
-		if (map_val.IsMap()) {
-			it.MapIndex = map_val.ItemIndex();
+		if (IsMap()) {
+			it.MapIndex = ItemIndex();
 			it.Iter     = -1;
 		} else {
 			it.MapIndex = -1;

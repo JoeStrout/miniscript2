@@ -217,7 +217,7 @@ void VMStorage::SetVar(String varName,Value value) {
 	} else {
 		targetMap = GetCurrentLocalVarMap(BaseIndex, CurrentFunction.MaxRegs());
 	}
-	Value::map_set(targetMap, varName, value);
+	targetMap.MapSet(varName, value);
 }
 void VMStorage::Reset(List<FuncDef> allFunctions) {
 	Reset(allFunctions, Value::Null);
@@ -917,7 +917,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 					// ToDo: add a list_try_get and use it here, like we do with map below
 					localStack[a] = valB.ListGet(valC.IntValue());
 				} else if (valB.IsMap()) {
-					if (!Value::map_lookup(valB, valC, &val)) {
+					if (!valB.Lookup(valC, &val)) {
 						RaiseRuntimeError(StringUtils::Format("Key Not Found: '{0}' not found in map", valC));
 					}
 					localStack[a] = val;
@@ -947,7 +947,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				if (valA.IsList()) {
 					valA.ListSet(valB.IntValue(), valC);
 				} else if (valA.IsMap()) {
-					Value::map_set(valA, valB, valC);
+					valA.MapSet(valB, valC);
 				} else {
 					RaiseRuntimeError(StringUtils::Format("Can't set indexed value in {0}", valA));
 				}
@@ -1430,7 +1430,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 					iter++;
 					hasMore = (iter < valB.ListCount());
 				} else if (valB.IsMap()) {
-					iter = Value::map_iter_next(valB, iter);
+					iter = valB.IterNext(iter);
 					hasMore = (iter != Value::MAP_ITER_DONE);
 				} else if (valB.IsString()) {
 					iter++;
@@ -1658,7 +1658,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				val = Value::make_map(2);
-				Value::map_set(val, Value::magicIsA, localStack[b]);
+				val.MapSet(Value::magicIsA, localStack[b]);
 				localStack[a] = val;
 				VM_NEXT();
 			}
@@ -1696,7 +1696,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 					if (valB.IsMap()) {
 						val = valB;  // val is "current"; valA (below) is "next" in the __isa chain
 						for (Int32 depth = 0; depth < 256; depth++) {
-							if (!Value::map_try_get(val, Value::magicIsA, &valA)) break;
+							if (!val.TryGet(Value::magicIsA, &valA)) break;
 							if (Value::value_identical(valA, valC)) {
 								isaResult = 1;
 								break;
@@ -1746,7 +1746,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 						if (keyStr == "__isa")   { localStack[a] = Value::error_isa(valB);     hasPendingContext = Boolean(false); break; }
 					}
 					typeMap = CoreIntrinsics::ErrorType();
-					if (Value::map_try_get(typeMap, valC, &val)) {
+					if (typeMap.TryGet(valC, &val)) {
 						localStack[a] = val;
 						pendingSelf = valB;
 						pendingSuper = Value::Null;
@@ -1762,7 +1762,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 					// For maps: first do lookup in the map itself, with inheritance
 					// (valD: the "super" value, i.e., __isa of the map in which valC
 					// was actually found.)
-					if (Value::map_lookup_with_origin(valB, valC, &val, &valD)) {
+					if (valB.LookupWithOrigin(valC, &val, &valD)) {
 						localStack[a] = val;
 						pendingSelf = valB;
 						pendingSuper = valD;
@@ -1783,7 +1783,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 					// into something not indexable
 					RaiseRuntimeError(StringUtils::Format("Can't index into {0}", valB));
 					localStack[a] = Value::Null;
-				} else if (Value::map_try_get(typeMap, valC, &val)) {
+				} else if (typeMap.TryGet(valC, &val)) {
 					// found what we're looking for in the type map
 					localStack[a] = val;
 					pendingSelf = valB;
@@ -1818,7 +1818,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				typeMap = Value::Null;
 
 				if (valB.IsMap()) {
-					if (Value::map_lookup_with_origin(valB, valC, &val, &valD)) {
+					if (valB.LookupWithOrigin(valC, &val, &valD)) {
 						localStack[a] = val;
 						hasPendingContext = Boolean(false);
 						VM_NEXT();
@@ -1834,7 +1834,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				if (typeMap.IsNull()) {
 					RaiseRuntimeError(StringUtils::Format("Can't index into {0}", valB));
 					localStack[a] = Value::Null;
-				} else if (Value::map_try_get(typeMap, valC, &val)) {
+				} else if (typeMap.TryGet(valC, &val)) {
 					localStack[a] = val;
 				} else if (valC.IsNumber()) {
 					int index = valC.IntValue();
@@ -1950,7 +1950,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				if (valB.IsList()) {
 					localStack[a] = valB.ListGet(idx);
 				} else if (valB.IsMap()) {
-					localStack[a] = Value::map_iter_entry(valB, idx);
+					localStack[a] = valB.IterEntry(idx);
 				} else if (valB.IsString()) {
 					localStack[a] = valB.Substring(idx, 1);
 				} else {
@@ -2013,12 +2013,12 @@ Value VMStorage::LookupVariable(Value varName) {
 		// Check locals VarMap for variables set dynamically (e.g. by the import intrinsic).
 		// This mirrors what user code "locals[varName] = x" does at runtime.
 		if (!currentFrame.LocalVarMap.IsNull()) {
-			if (Value::map_try_get(currentFrame.LocalVarMap, varName, &result)) {
+			if (currentFrame.LocalVarMap.TryGet(varName, &result)) {
 				return result;
 			}
 		}
 		if (!currentFrame.OuterVarMap.IsNull()) {
-			if (Value::map_try_get(currentFrame.OuterVarMap, varName, &result)) {
+			if (currentFrame.OuterVarMap.TryGet(varName, &result)) {
 				return result;
 			}
 		}
@@ -2028,7 +2028,7 @@ Value VMStorage::LookupVariable(Value varName) {
 	Value globalMap;
 	if (callStackTop > 0 || !ReplGlobals.IsNull()) {
 		globalMap = GetGlobalsVarMap();
-		if (Value::map_try_get(globalMap, varName, &result)) {
+		if (globalMap.TryGet(varName, &result)) {
 			return result;
 		}
 	}

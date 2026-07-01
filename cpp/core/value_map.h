@@ -33,9 +33,8 @@ struct MapIterator {
     int iter;             // current iteration cursor; matches map_iter_next encoding
 };
 
-// map_iterator is now a Value:: static method (returns MapIterator).
+// map_iterator is now Value::Iterator(); map_nth_entry is now Value::NthEntry().
 bool        map_iterator_next(MapIterator* iter, Value* out_key, Value* out_value);
-Value       map_nth_entry(Value map_val, int n);
 
 // New iterator interface (matches C# / generated code).
 //   -1 = not started

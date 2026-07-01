@@ -234,7 +234,7 @@ public static class UnitTests {
 		// Test map creation
 		Value map = Value.make_empty_map();
 		Boolean basicOk = Assert(map.IsMap(), "Map should be identified as map")
-			&& AssertEqual(Value.map_count(map), 0);
+			&& AssertEqual(map.MapCount(), 0);
 
 		if (!basicOk) return false;
 
@@ -244,15 +244,15 @@ public static class UnitTests {
 		Value key2 = Value.make_string("age");
 		Value value2 = new Value(30.0);
 
-		Boolean insertOk = Value.map_set(map, key1, value1)
-			&& Value.map_set(map, key2, value2)
-			&& AssertEqual(Value.map_count(map), 2);
+		Boolean insertOk = map.MapSet(key1, value1)
+			&& map.MapSet(key2, value2)
+			&& AssertEqual(map.MapCount(), 2);
 
 		if (!insertOk) return false;
 
 		// Test lookup
-		Value retrieved1 = Value.map_get(map, key1);
-		Value retrieved2 = Value.map_get(map, key2);
+		Value retrieved1 = map.MapGet(key1);
+		Value retrieved2 = map.MapGet(key2);
 		Boolean lookupOk = Assert(retrieved1.IsString(), "Retrieved value should be string")
 			&& Assert(retrieved2.IsNumber(), "Retrieved value should be number")
 			&& AssertEqual((int)retrieved2.DoubleValue(), 30);
@@ -260,31 +260,31 @@ public static class UnitTests {
 		if (!lookupOk) return false;
 
 		// Test key existence
-		Boolean hasKeyOk = Assert(Value.map_has_key(map, key1), "Should have key1")
-			&& Assert(Value.map_has_key(map, key2), "Should have key2")
-			&& Assert(!Value.map_has_key(map, Value.make_string("nonexistent")), "Should not have nonexistent key");
+		Boolean hasKeyOk = Assert(map.HasKey(key1), "Should have key1")
+			&& Assert(map.HasKey(key2), "Should have key2")
+			&& Assert(!map.HasKey(Value.make_string("nonexistent")), "Should not have nonexistent key");
 
 		if (!hasKeyOk) return false;
 
 		// Test lookup of nonexistent key
 		// (For now; later: this should invoke error-handling pipeline)
-		Value nonexistent = Value.map_get(map, Value.make_string("missing"));
+		Value nonexistent = map.MapGet(Value.make_string("missing"));
 		Boolean nonexistentOk = Assert(nonexistent.IsNull(), "Nonexistent key should return null");
 
 		if (!nonexistentOk) return false;
 
 		// Test removal
-		Boolean removeOk = Assert(Value.map_remove(map, key1), "Should successfully remove existing key")
-			&& AssertEqual(Value.map_count(map), 1)
-			&& Assert(!Value.map_has_key(map, key1), "Should no longer have removed key")
-			&& Assert(Value.map_has_key(map, key2), "Should still have other key")
-			&& Assert(!Value.map_remove(map, key1), "Should return false when removing nonexistent key");
+		Boolean removeOk = Assert(map.MapRemove(key1), "Should successfully remove existing key")
+			&& AssertEqual(map.MapCount(), 1)
+			&& Assert(!map.HasKey(key1), "Should no longer have removed key")
+			&& Assert(map.HasKey(key2), "Should still have other key")
+			&& Assert(!map.MapRemove(key1), "Should return false when removing nonexistent key");
 
 		if (!removeOk) return false;
 
 		// Test string conversion (runtime C functions)
 		Value singleMap = Value.make_empty_map();
-		Value.map_set(singleMap, "test", new Value(42));
+		singleMap.MapSet("test", new Value(42));
 		Value singleStr = singleMap.ToStringValue(null);
 		Boolean singleStrOk = Assert(singleStr.IsString(), "Map toString should return string")
 			&& AssertEqual(singleStr.AsCString(), "{\"test\": 42}");
@@ -298,8 +298,8 @@ public static class UnitTests {
 		// Both are working correctly in their respective contexts.
 
 		// Test clearing
-		Value.map_clear(map);
-		Boolean clearOk = AssertEqual(Value.map_count(map), 0);
+		map.Clear();
+		Boolean clearOk = AssertEqual(map.MapCount(), 0);
 
 		return clearOk;
 	}

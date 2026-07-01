@@ -1174,7 +1174,7 @@ public class CodeGenerator : IASTVisitor {
 			for (Int32 i = 0; i < mapNode.Keys.Count; i++) {
 				if (!TryEvaluateConstant(mapNode.Keys[i], out keyVal)) return false;
 				if (!TryEvaluateConstant(mapNode.Values[i], out valVal)) return false;
-				Value.map_set(map, keyVal, valVal);
+				map.MapSet(keyVal, valVal);
 			}
 			Value.freeze_value(map);
 			result = map;

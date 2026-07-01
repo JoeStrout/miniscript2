@@ -227,7 +227,6 @@ void Value::Sort(bool ascending) const {
     if (wasComputed) GCManager::Lists.Set(lidx, l);  // write back materialization
 }
 
-extern Value map_get(Value map_val, Value key);
 
 void Value::SortByKey(Value byKey, bool ascending) const {
     Value list_val = *this;
@@ -246,7 +245,7 @@ void Value::SortByKey(Value byKey, bool ascending) const {
     for (int i = 0; i < n; i++) {
         Value e = l.Get(i);
         elems[i] = e;
-        if (e.IsMap()) keys[i] = Value::map_get(e, byKey);
+        if (e.IsMap()) keys[i] = e.MapGet(byKey);
         else if (e.IsList() && byKey.IsNumber()) keys[i] = e.ListGet((int)byKey.NumericVal());
     }
     std::vector<int> idx((size_t)n, 0);

@@ -179,23 +179,25 @@ typedef struct Value {
     void          Sort(bool ascending) const;
     void          SortByKey(Value byKey, bool ascending) const;
 
-    // Maps
+    // Maps (instance form, mirroring cs/Value.cs)
     static Value  make_map(int initial_capacity);
     static Value  make_empty_map();
-    static int    map_count(Value map_val);
-    static Value  map_get(Value map_val, Value key);
-    static bool   map_set(Value map_val, Value key, Value value);
-    static bool   map_set(Value map_val, const String& key, Value value);
-    static bool   map_set(Value map_val, const String& key, const String& value);
-    static bool   map_has_key(Value map_val, Value key);
-    static bool   map_try_get(Value map_val, Value key, Value* out_value);
-    static bool   map_remove(Value map_val, Value key);
-    static void   map_clear(Value map_val);
-    static bool   map_lookup(Value map_val, Value key, Value* out_value);
-    static bool   map_lookup_with_origin(Value map_val, Value key, Value* out_value, Value* out_super);
-    static int    map_iter_next(Value map_val, int iter);
-    static Value  map_iter_entry(Value map_val, int iter);
-    static MapIterator map_iterator(Value map_val);
+    int           MapCount() const;
+    Value         MapGet(Value key) const;
+    bool          MapSet(Value key, Value value) const;
+    bool          MapSet(const String& key, Value value) const;
+    bool          MapSet(const String& key, const String& value) const;
+    bool          HasKey(Value key) const;
+    bool          TryGet(Value key, Value* out_value) const;
+    bool          MapRemove(Value key) const;
+    void          Clear() const;
+    bool          Lookup(Value key, Value* out_value) const;
+    bool          LookupWithOrigin(Value key, Value* out_value, Value* out_super) const;
+    Value         MapConcat(Value b) const;
+    Value         NthEntry(int n) const;
+    int           IterNext(int iter) const;
+    Value         IterEntry(int iter) const;
+    MapIterator   Iterator() const;
 
     // VarMaps (take List<Value>, visible via CS_String.h -> CS_List.h)
     static Value  make_varmap(List<Value> registers, List<Value> names, int firstIndex, int count);
@@ -568,7 +570,7 @@ inline bool Value::BoolValue() const noexcept {
     if (IsNumber()) return AsDouble() != 0.0;
     if (IsString()) return Length() != 0;
     if (IsList()) return ListCount() != 0;
-    if (IsMap()) return Value::map_count(*this) != 0;
+    if (IsMap()) return MapCount() != 0;
     return true;
 }
 inline double       Value::DoubleValue() const noexcept { return IsNumber() ? AsDouble() : 0.0; }
@@ -584,11 +586,11 @@ inline unsigned int Value::Hash()        const noexcept { return value_hash(*thi
 // These mirror cs/Value.cs.  Defined inline here since String is now visible.
 inline Value Value::make_string(const String& s) { return Value::make_string(s.c_str()); }
 
-inline bool Value::map_set(Value map_val, const String& key, Value value) {
-    return Value::map_set(map_val, Value::make_string(key), value);
+inline bool Value::MapSet(const String& key, Value value) const {
+    return MapSet(Value::make_string(key), value);
 }
-inline bool Value::map_set(Value map_val, const String& key, const String& value) {
-    return Value::map_set(map_val, Value::make_string(key), Value::make_string(value));
+inline bool Value::MapSet(const String& key, const String& value) const {
+    return MapSet(Value::make_string(key), Value::make_string(value));
 }
 
 inline String Value::ToString(void* vm) const {

@@ -68,22 +68,22 @@ Value Value::make_error(Value message, Value inner, Value stack, Value isa) {
 
 Value Value::error_message(Value v) {
     if (!v.IsError()) return Value::null;
-    return GCManager::Errors.Get(Value::value_item_index(v)).Message;
+    return GCManager::Errors.Get(v.ItemIndex()).Message;
 }
 
 Value Value::error_inner(Value v) {
     if (!v.IsError()) return Value::null;
-    return GCManager::Errors.Get(Value::value_item_index(v)).Inner;
+    return GCManager::Errors.Get(v.ItemIndex()).Inner;
 }
 
 Value Value::error_stack(Value v) {
     if (!v.IsError()) return Value::null;
-    return GCManager::Errors.Get(Value::value_item_index(v)).Stack;
+    return GCManager::Errors.Get(v.ItemIndex()).Stack;
 }
 
 Value Value::error_isa(Value v) {
     if (!v.IsError()) return Value::null;
-    return GCManager::Errors.Get(Value::value_item_index(v)).Isa;
+    return GCManager::Errors.Get(v.ItemIndex()).Isa;
 }
 
 bool Value::error_isa_contains(Value error, Value base) {
@@ -92,7 +92,7 @@ bool Value::error_isa_contains(Value error, Value base) {
         if (current.IsNull()) return false;
         if (Value::value_identical(current, base)) return true;
         if (!current.IsError()) return false;
-        current = GCManager::Errors.Get(Value::value_item_index(current)).Isa;
+        current = GCManager::Errors.Get(current.ItemIndex()).Isa;
     }
     return false;
 }
@@ -106,20 +106,20 @@ Value Value::make_funcref(MiniScript::FuncDef func, Value outerVars) {
 
 MiniScript::FuncDef Value::funcref_funcdef(Value v) {
     if (!v.IsFuncRef()) return MiniScript::FuncDef();
-    return GCManager::Functions.Get(Value::value_item_index(v)).Func;
+    return GCManager::Functions.Get(v.ItemIndex()).Func;
 }
 
 
 Value Value::funcref_outer_vars(Value v) {
     if (!v.IsFuncRef()) return Value::null;
-    return GCManager::Functions.Get(Value::value_item_index(v)).OuterVars;
+    return GCManager::Functions.Get(v.ItemIndex()).OuterVars;
 }
 
 // ── Arithmetic helpers ──────────────────────────────────────────────────
 
 Value value_mult_nonnumeric(Value a, Value b) {
     if (a.IsString() && b.IsNumber()) {
-        double factor = as_double(b);
+        double factor = b.AsDouble();
         int factorClass = std::fpclassify(factor);
         if (factorClass == FP_NAN || factorClass == FP_INFINITE) return Value::null;
         if (factor <= 0) return Value::emptyString;
@@ -134,7 +134,7 @@ Value value_mult_nonnumeric(Value a, Value b) {
         return result;
     }
     if (a.IsList() && b.IsNumber()) {
-        double factor = as_double(b);
+        double factor = b.AsDouble();
         int factorClass = std::fpclassify(factor);
         if (factorClass == FP_NAN || factorClass == FP_INFINITE) return Value::null;
         int len = Value::list_count(a);
@@ -167,7 +167,7 @@ Value value_mult_nonnumeric(Value a, Value b) {
 // iteratively so that reference cycles cannot recurse forever.
 static bool value_equal_scalar(Value a, Value b) {
     if (a.RefEquals(b)) return true;
-    if (a.IsNumber() && b.IsNumber()) return as_double(a) == as_double(b);
+    if (a.IsNumber() && b.IsNumber()) return a.AsDouble() == b.AsDouble();
     if (a.IsString() && b.IsString()) return string_equals(a, b);
     if (a.IsNull()   && b.IsNull())   return true;
     // Same-type non-container reference values compare by identity; since
@@ -225,8 +225,8 @@ bool Value::RecursiveEqual(Value rhs) const {
             }
         } else if (pa.IsMap()) {
             if (!pb.IsMap()) return false;
-            GCMap mA = GCManager::Maps.Get(Value::value_item_index(pa));
-            GCMap mB = GCManager::Maps.Get(Value::value_item_index(pb));
+            GCMap mA = GCManager::Maps.Get(pa.ItemIndex());
+            GCMap mB = GCManager::Maps.Get(pb.ItemIndex());
             if (mA.Count() != mB.Count()) return false;
             if (pa.RefEquals(pb)) continue;  // same map object: nothing to do
             for (int i = mA.NextEntry(-1); i != -1; i = mA.NextEntry(i)) {
@@ -246,7 +246,7 @@ bool Value::RecursiveEqual(Value rhs) const {
 
 int value_compare(Value a, Value b) {
     if (a.IsNumber() && b.IsNumber()) {
-        double da = Value::numeric_val(a), db = Value::numeric_val(b);
+        double da = a.NumericVal(), db = b.NumericVal();
         if (da < db) return -1;
         if (da > db) return 1;
         return 0;
@@ -260,16 +260,16 @@ int value_compare(Value a, Value b) {
 // ── Bitwise ops (cast to int64, operate, cast back to double) ────────────
 
 Value value_xor(Value a, Value b) {
-    return Value((double)((int64_t)as_double(a) ^ (int64_t)as_double(b)));
+    return Value((double)((int64_t)a.AsDouble() ^ (int64_t)b.AsDouble()));
 }
 Value value_unary(Value a) {
-    return Value((double)(~(int64_t)as_double(a)));
+    return Value((double)(~(int64_t)a.AsDouble()));
 }
 Value value_shr(Value v, int shift) {
-    return Value((double)((int64_t)as_double(v) >> shift));
+    return Value((double)((int64_t)v.AsDouble() >> shift));
 }
 Value value_shl(Value v, int shift) {
-    return Value((double)((int64_t)as_double(v) << shift));
+    return Value((double)((int64_t)v.AsDouble() << shift));
 }
 
 // ── code_form / to_string / to_number ───────────────────────────────────
@@ -370,7 +370,7 @@ Value code_form(Value v, void* vm, int recursion_limit) {
     char buf[32];
 
     if (v.IsNull())   return Value::make_string("null");
-    if (v.IsNumber()) { format_double(as_double(v), buf); return Value::make_string(buf); }
+    if (v.IsNumber()) { format_double(v.AsDouble(), buf); return Value::make_string(buf); }
     if (v.IsString()) return quote_string(v);
 
     if (v.IsList()) {
@@ -379,7 +379,7 @@ Value code_form(Value v, void* vm, int recursion_limit) {
             Value sn = find_short_name(vm, v);
             if (!sn.IsNull()) return sn;
         }
-        GCList list = GCManager::Lists.Get(Value::value_item_index(v));
+        GCList list = GCManager::Lists.Get(v.ItemIndex());
         int listCount = list.Count();
         Value result = Value::make_string("[");
         for (int i = 0; i < listCount; i++) {
@@ -398,7 +398,7 @@ Value code_form(Value v, void* vm, int recursion_limit) {
             Value sn = find_short_name(vm, v);
             if (!sn.IsNull()) return sn;
         }
-        GCMap m = GCManager::Maps.Get(Value::value_item_index(v));
+        GCMap m = GCManager::Maps.Get(v.ItemIndex());
         if (m.Count() == 0) return Value::make_string("{}");
         Value result = Value::make_string("{");
         bool first = true;
@@ -463,7 +463,7 @@ Value Value::to_number(Value v) {
 
 
 uint32_t value_hash(Value v) {
-    if (is_heap_string(v)) return get_string_hash(v);
+    if (v.IsHeapString()) return get_string_hash(v);
     if (v.IsList())        return list_hash(v);
     if (v.IsMap())         return map_hash(v);
     return uint64_hash(v.bits);
@@ -472,14 +472,14 @@ uint32_t value_hash(Value v) {
 // ── Frozen ──────────────────────────────────────────────────────────────
 
 bool Value::is_frozen(Value v) {
-    if (v.IsList()) return GCManager::Lists.Get(Value::value_item_index(v)).Frozen;
-    if (v.IsMap())  return GCManager::Maps.Get(Value::value_item_index(v)).Frozen;
+    if (v.IsList()) return GCManager::Lists.Get(v.ItemIndex()).Frozen;
+    if (v.IsMap())  return GCManager::Maps.Get(v.ItemIndex()).Frozen;
     return false;
 }
 
 void Value::freeze_value(Value v) {
     if (v.IsList()) {
-        int32_t idx = Value::value_item_index(v);
+        int32_t idx = v.ItemIndex();
         GCList l = GCManager::Lists.Get(idx);
         if (l.Frozen) return;
         GCManager::Lists.SetFrozen(idx, true);
@@ -492,7 +492,7 @@ void Value::freeze_value(Value v) {
             for (int i = 0; i < n; i++) Value::freeze_value(l.Get(i));
         }
     } else if (v.IsMap()) {
-        int32_t idx = Value::value_item_index(v);
+        int32_t idx = v.ItemIndex();
         GCMap m = GCManager::Maps.Get(idx);
         if (m.Frozen) return;
         GCManager::Maps.SetFrozen(idx, true);
@@ -505,11 +505,11 @@ void Value::freeze_value(Value v) {
 
 Value Value::frozen_copy(Value v) {
     if (v.IsList()) {
-        GCList src = GCManager::Lists.Get(Value::value_item_index(v));
+        GCList src = GCManager::Lists.Get(v.ItemIndex());
         if (src.Frozen) return v;
         int srcCount = src.Count();
         Value newList = Value::make_list(srcCount);
-        int32_t dstIdx = Value::value_item_index(newList);
+        int32_t dstIdx = newList.ItemIndex();
         GCList dst = GCManager::Lists.Get(dstIdx);
         GCManager::Lists.SetFrozen(dstIdx, true);
         for (int i = 0; i < srcCount; i++)
@@ -517,10 +517,10 @@ Value Value::frozen_copy(Value v) {
         return newList;
     }
     if (v.IsMap()) {
-        GCMap src = GCManager::Maps.Get(Value::value_item_index(v));
+        GCMap src = GCManager::Maps.Get(v.ItemIndex());
         if (src.Frozen) return v;
         Value newMap = Value::make_map(src.Count());
-        int32_t dstIdx = Value::value_item_index(newMap);
+        int32_t dstIdx = newMap.ItemIndex();
         GCMap dst = GCManager::Maps.Get(dstIdx);
         GCManager::Maps.SetFrozen(dstIdx, true);
         for (int i = src.NextEntry(-1); i != -1; i = src.NextEntry(i))

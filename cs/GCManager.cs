@@ -138,13 +138,13 @@ public static class GCManager {
 	// ── Retain / Release ─────────────────────────────────────────────────────
 
 	public static void Retain(Value v) {
-		if (!Value.is_gc_object(v)) return;
-		DispatchMark(Value.value_gc_set_index(v), Value.value_item_index(v));
+		if (!v.IsGCObject()) return;
+		DispatchMark(v.GCSetIndex(), v.ItemIndex());
 	}
 
 	public static void RetainValue(Value v) {
-		if (!Value.is_gc_object(v)) return;
-		DispatchMark(Value.value_gc_set_index(v), Value.value_item_index(v));
+		if (!v.IsGCObject()) return;
+		DispatchMark(v.GCSetIndex(), v.ItemIndex());
 	}
 
 	// ── Root set ─────────────────────────────────────────────────────────────
@@ -178,8 +178,8 @@ public static class GCManager {
 
 	[MethodImpl(AggressiveInlining)]
 	public static void Mark(Value v) {
-		if (!Value.is_gc_object(v)) return;
-		DispatchMark(Value.value_gc_set_index(v), Value.value_item_index(v));
+		if (!v.IsGCObject()) return;
+		DispatchMark(v.GCSetIndex(), v.ItemIndex());
 	}
 
 	private static void DispatchMark(Int32 setIdx, Int32 itemIdx) {
@@ -268,25 +268,25 @@ public static class GCManager {
 	// ── Convenience accessors ─────────────────────────────────────────────────
 
 	public static GCString GetString(Value v) {
-		if (Value.value_gc_set_index(v) == InternedStringSet) {
-			return InternedStrings.Get(Value.value_item_index(v));
+		if (v.GCSetIndex() == InternedStringSet) {
+			return InternedStrings.Get(v.ItemIndex());
 		}
-		return BigStrings.Get(Value.value_item_index(v));
+		return BigStrings.Get(v.ItemIndex());
 	}
 	public static GCList GetList(Value v) {
-		return Lists.Get(Value.value_item_index(v));
+		return Lists.Get(v.ItemIndex());
 	}
 	public static GCMap GetMap(Value v) {
-		return Maps.Get(Value.value_item_index(v));
+		return Maps.Get(v.ItemIndex());
 	}
 	public static GCError GetError(Value v) {
-		return Errors.Get(Value.value_item_index(v));
+		return Errors.Get(v.ItemIndex());
 	}
 	public static GCFunction GetFuncRef(Value v) {
-		return Functions.Get(Value.value_item_index(v));
+		return Functions.Get(v.ItemIndex());
 	}
 	public static GCHandle GetHandle(Value v) {
-		return Handles.Get(Value.value_item_index(v));
+		return Handles.Get(v.ItemIndex());
 	}
 
 	//*** BEGIN CS_ONLY ***
@@ -296,16 +296,16 @@ public static class GCManager {
 	
 	[MethodImpl(AggressiveInlining)]
 	public static String GetStringContent(Value v) {
-		if (Value.is_tiny_string(v)) {
-			Int32 len = Value.value_tiny_len(v);
+		if (v.IsTinyString()) {
+			Int32 len = v.TinyLen();
 			char[] chars = new Char[len];
-			for (Int32 i = 0; i < len; i++) chars[i] = (char)((Value.value_bits(v) >> (8 * (i + 1))) & 0xFF);
+			for (Int32 i = 0; i < len; i++) chars[i] = (char)((v.Bits() >> (8 * (i + 1))) & 0xFF);
 			return new String(chars);
 		}
-		if (Value.is_heap_string(v)) {
+		if (v.IsHeapString()) {
 			GCStringSet set;
-			set = (Value.value_gc_set_index(v) == InternedStringSet) ? InternedStrings : BigStrings;
-			String data = set.Get(Value.value_item_index(v)).Data;
+			set = (v.GCSetIndex() == InternedStringSet) ? InternedStrings : BigStrings;
+			String data = set.Get(v.ItemIndex()).Data;
 			return data != null ? data : "";
 		}
 		return "";

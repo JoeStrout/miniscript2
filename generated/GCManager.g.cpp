@@ -88,12 +88,12 @@ Value GCManager::NewHandle(object userData,HandleFinalizer callback) {
 	return Value::make_gc(HandleSet, idx);
 }
 void GCManager::Retain(Value v) {
-	if (!Value::is_gc_object(v)) return;
-	DispatchMark(Value::value_gc_set_index(v), Value::value_item_index(v));
+	if (!v.IsGCObject()) return;
+	DispatchMark(v.GCSetIndex(), v.ItemIndex());
 }
 void GCManager::RetainValue(Value v) {
-	if (!Value::is_gc_object(v)) return;
-	DispatchMark(Value::value_gc_set_index(v), Value::value_item_index(v));
+	if (!v.IsGCObject()) return;
+	DispatchMark(v.GCSetIndex(), v.ItemIndex());
 }
 void GCManager::AddRoot(Value v) {
 	_roots.Add(v);
@@ -190,25 +190,25 @@ void GCManager::SweepInternTable() {
 	InternedStrings.Sweep();
 }
 GCString GCManager::GetString(Value v) {
-	if (Value::value_gc_set_index(v) == InternedStringSet) {
-		return InternedStrings.Get(Value::value_item_index(v));
+	if (v.GCSetIndex() == InternedStringSet) {
+		return InternedStrings.Get(v.ItemIndex());
 	}
-	return BigStrings.Get(Value::value_item_index(v));
+	return BigStrings.Get(v.ItemIndex());
 }
 GCList GCManager::GetList(Value v) {
-	return Lists.Get(Value::value_item_index(v));
+	return Lists.Get(v.ItemIndex());
 }
 GCMap GCManager::GetMap(Value v) {
-	return Maps.Get(Value::value_item_index(v));
+	return Maps.Get(v.ItemIndex());
 }
 GCError GCManager::GetError(Value v) {
-	return Errors.Get(Value::value_item_index(v));
+	return Errors.Get(v.ItemIndex());
 }
 GCFunction GCManager::GetFuncRef(Value v) {
-	return Functions.Get(Value::value_item_index(v));
+	return Functions.Get(v.ItemIndex());
 }
 GCHandle GCManager::GetHandle(Value v) {
-	return Handles.Get(Value::value_item_index(v));
+	return Handles.Get(v.ItemIndex());
 }
 
 } // end of namespace MiniScript

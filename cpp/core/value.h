@@ -112,17 +112,24 @@ typedef struct Value {
     inline bool         IsHandle()    const noexcept;
     inline unsigned int Hash()        const noexcept;
 
+    // ── Accessors & predicates (instance form, mirroring cs/Value.cs) ────────
+    inline uint64_t     Bits()        const noexcept;
+    inline int          GCSetIndex()  const noexcept;
+    inline int          ItemIndex()   const noexcept;
+    inline int          TinyLen()     const noexcept;
+    inline bool         IsTinyString()const noexcept;
+    inline bool         IsGCObject()  const noexcept;
+    inline bool         IsHeapString()const noexcept;
+    inline bool         IsInt()       const noexcept;
+    inline int          AsInt()       const noexcept;
+    inline double       AsDouble()    const noexcept;
+    inline double       NumericVal()  const noexcept;
+    String              TypeName()    const;
+
     // ── Static methods mirroring the C# Value API (cs/Value.cs) ──────────────
     // Transpiled code calls these as Value::make_string(...), etc.  These are
     // the canonical definitions; the matching free functions have been removed.
-    // (String/List/Map-typed operations such as to_String, map_iterator, and
-    // make_varmap deliberately remain free functions, to keep this low-level
-    // header free of the String/List/Map layers — see note below.)
-    static int    value_item_index(Value v);
-    static int    value_gc_set_index(Value v);
-    static bool   is_gc_object(Value v);
     static Value  make_gc(int gcSet, int itemIdx);
-    static double numeric_val(Value v);
     static bool   value_identical(Value a, Value b);
     static double AbsClamp01(double d);
 
@@ -135,7 +142,6 @@ typedef struct Value {
     static Value  make_string(const char* str);
     static Value  make_string(const String& s);
     static String to_String(Value v);
-    static String value_type_name(Value v);
     static const char* as_cstring(Value v);
     static int    string_length(Value v);
     static int    string_indexOf(Value haystack, Value needle, int start_pos);
@@ -168,8 +174,7 @@ typedef struct Value {
     static void   list_sort(Value list_val, bool ascending);
     static void   list_sort_by_key(Value list_val, Value byKey, bool ascending);
 
-    // Maps (map_iterator, make_varmap, varmap_rebind, varmap_map_to_register
-    // still stay free for now — they need MapIterator / List<Value>).
+    // Maps
     static Value  make_map(int initial_capacity);
     static Value  make_empty_map();
     static int    map_count(Value map_val);
@@ -282,29 +287,28 @@ static_assert(std::is_standard_layout<Value>::value,
 void value_init_constants(void);
 
 // ── Accessors used by hot paths ─────────────────────────────────────────
-static inline uint64_t value_bits(Value v)     { return v.bits; }
-static inline int value_tiny_len(Value v)      { return (int)(v.bits & 0xFF); }
-inline int Value::value_gc_set_index(Value v)  { return (int)((v.bits >> 32) & 0x7); }
-inline int Value::value_item_index(Value v)    { return (int)(uint32_t)v.bits; }
+inline uint64_t Value::Bits()       const noexcept { return bits; }
+inline int Value::TinyLen()         const noexcept { return (int)(bits & 0xFF); }
+inline int Value::GCSetIndex()      const noexcept { return (int)((bits >> 32) & 0x7); }
+inline int Value::ItemIndex()       const noexcept { return (int)(uint32_t)bits; }
 
 // ── Type predicates ─────────────────────────────────────────────────────
 inline bool Value::value_identical(Value a, Value b) { return a.RefEquals(b); }
 
-static inline bool is_int(Value v) {
-    (void)v;
+inline bool Value::IsInt() const noexcept {
     return false;  // legacy stub: int is no longer a separate type
 }
 
-static inline bool is_tiny_string(Value v) {
-    return (v.bits & NANISH_MASK) == TINY_STRING_TAG;
+inline bool Value::IsTinyString() const noexcept {
+    return (bits & NANISH_MASK) == TINY_STRING_TAG;
 }
 
-inline bool Value::is_gc_object(Value v) {
-    return (v.bits & NANISH_MASK) == GC_TAG;
+inline bool Value::IsGCObject() const noexcept {
+    return (bits & NANISH_MASK) == GC_TAG;
 }
 
-static inline bool is_heap_string(Value v) {
-    return (v.bits & GC_TYPE_MASK) == STRING_TAG_PATTERN;
+inline bool Value::IsHeapString() const noexcept {
+    return (bits & GC_TYPE_MASK) == STRING_TAG_PATTERN;
 }
 
 // ── Forward declarations for runtime functions ──────────────────────────
@@ -323,16 +327,16 @@ inline Value Value::make_gc(int gcSet, int itemIdx) {
     return Value::fromBits(GC_TAG | ((uint64_t)gcSet << 32) | (uint64_t)(uint32_t)itemIdx);
 }
 
-static inline double as_double(Value v) {
+inline double Value::AsDouble() const noexcept {
     double d;
-    memcpy(&d, &v, sizeof d);
+    memcpy(&d, this, sizeof d);
     return d;
 }
 
-static inline int32_t as_int(Value v) { return (int32_t)as_double(v); }
+inline int Value::AsInt() const noexcept { return (int32_t)AsDouble(); }
 
-inline double Value::numeric_val(Value v) {
-    if (v.IsNumber()) return as_double(v);
+inline double Value::NumericVal() const noexcept {
+    if (IsNumber()) return AsDouble();
     return 0.0;
 }
 
@@ -384,7 +388,7 @@ inline Value Value::value_add(Value a, Value b, void* vm) {
     if (a.IsError()) return a;
     if (b.IsError()) return b;
     if (a.IsNumber() && b.IsNumber()) {
-        return Value(as_double(a) + as_double(b));
+        return Value(a.AsDouble() + b.AsDouble());
     }
     if (a.IsString()) {
         if (b.IsNull()) return a;
@@ -416,19 +420,19 @@ inline Value operator-(Value a, Value b) {
     if (a.IsError()) return a;
     if (b.IsError()) return b;
     if (a.IsNumber() && b.IsNumber()) {
-        return Value(as_double(a) - as_double(b));
+        return Value(a.AsDouble() - b.AsDouble());
     }
     if (a.IsString() && b.IsString()) return string_sub(a, b);
     return Value::null;
 }
 
 inline bool operator<(Value a, Value b) {
-    if (a.IsNumber() && b.IsNumber()) return as_double(a) < as_double(b);
+    if (a.IsNumber() && b.IsNumber()) return a.AsDouble() < b.AsDouble();
     if (a.IsString() && b.IsString()) return string_compare(a, b) < 0;
     return false;
 }
 inline bool operator<=(Value a, Value b) {
-    if (a.IsNumber() && b.IsNumber()) return as_double(a) <= as_double(b);
+    if (a.IsNumber() && b.IsNumber()) return a.AsDouble() <= b.AsDouble();
     if (a.IsString() && b.IsString()) return string_compare(a, b) <= 0;
     return false;
 }
@@ -440,7 +444,7 @@ inline Value operator*(Value a, Value b) {
     if (a.IsError()) return a;
     if (b.IsError()) return b;
     if (a.IsNumber() && b.IsNumber()) {
-        return Value(as_double(a) * as_double(b));
+        return Value(a.AsDouble() * b.AsDouble());
     }
     return value_mult_nonnumeric(a, b);
 }
@@ -449,7 +453,7 @@ inline Value operator/(Value a, Value b) {
     if (a.IsError()) return a;
     if (b.IsError()) return b;
     if (b.IsNumber()) {
-        if (a.IsNumber()) return Value(as_double(a) / as_double(b));
+        if (a.IsNumber()) return Value(a.AsDouble() / b.AsDouble());
         return value_mult_nonnumeric(a, Value(1.0) / b);
     }
     return Value::null;
@@ -458,14 +462,14 @@ inline Value operator/(Value a, Value b) {
 inline Value operator%(Value a, Value b) {
     if (a.IsError()) return a;
     if (b.IsError()) return b;
-    if (a.IsNumber() && b.IsNumber()) return Value(fmod(as_double(a), as_double(b)));
+    if (a.IsNumber() && b.IsNumber()) return Value(fmod(a.AsDouble(), b.AsDouble()));
     return Value::null;
 }
 
 inline Value Value::value_pow(Value a, Value b) {
     if (a.IsError()) return a;
     if (b.IsError()) return b;
-    if (a.IsNumber() && b.IsNumber()) return Value(pow(as_double(a), as_double(b)));
+    if (a.IsNumber() && b.IsNumber()) return Value(pow(a.AsDouble(), b.AsDouble()));
     return Value::null;
 }
 
@@ -479,7 +483,7 @@ inline bool Value::operator!=(Value other) const { return !RecursiveEqual(other)
 
 // ── Helpers / fuzzy logic ───────────────────────────────────────────────
 static inline double ToFuzzyBool(Value v) {
-    if (v.IsNumber()) return as_double(v);
+    if (v.IsNumber()) return v.AsDouble();
     return v.BoolValue() ? 1.0 : 0.0;
 }
 
@@ -548,7 +552,7 @@ inline Value Value::Truth(double number) { return Value(number); }
 // free-function call, so it is convenience only.
 inline bool Value::IsNull()    const noexcept { return bits == NULL_VALUE; }
 inline bool Value::IsNumber()  const noexcept { return (bits & NANISH_MASK) < NULL_VALUE; }
-inline bool Value::IsString()  const noexcept { return is_tiny_string(*this) || is_heap_string(*this); }
+inline bool Value::IsString()  const noexcept { return IsTinyString() || IsHeapString(); }
 inline bool Value::IsList()    const noexcept { return (bits & GC_TYPE_MASK) == LIST_TAG_PATTERN; }
 inline bool Value::IsMap()     const noexcept { return (bits & GC_TYPE_MASK) == MAP_TAG_PATTERN; }
 inline bool Value::IsError()   const noexcept { return (bits & GC_TYPE_MASK) == ERROR_TAG_PATTERN; }
@@ -556,13 +560,13 @@ inline bool Value::IsFuncRef() const noexcept { return (bits & GC_TYPE_MASK) == 
 inline bool Value::IsHandle()  const noexcept { return (bits & GC_TYPE_MASK) == HANDLE_TAG_PATTERN; }
 inline bool Value::BoolValue() const noexcept {
     if (IsNull()) return false;
-    if (IsNumber()) return as_double(*this) != 0.0;
+    if (IsNumber()) return AsDouble() != 0.0;
     if (IsString()) return Value::string_length(*this) != 0;
     if (IsList()) return Value::list_count(*this) != 0;
     if (IsMap()) return Value::map_count(*this) != 0;
     return true;
 }
-inline double       Value::DoubleValue() const noexcept { return IsNumber() ? as_double(*this) : 0.0; }
+inline double       Value::DoubleValue() const noexcept { return IsNumber() ? AsDouble() : 0.0; }
 inline float        Value::FloatValue()  const noexcept { return (float)DoubleValue(); }
 inline int32_t      Value::IntValue()    const noexcept { return (int32_t)DoubleValue(); }
 inline uint32_t     Value::UIntValue()   const noexcept { return (uint32_t)DoubleValue(); }
@@ -586,17 +590,17 @@ inline String Value::to_String(Value v) {
     return String(Value::as_cstring(Value::to_string(v, nullptr)));
 }
 
-// Hand-written twin of ValueHelpers.value_type_name (Value.cs is CS_ONLY, so it
+// Hand-written twin of Value.TypeName (Value.cs is CS_ONLY, so it
 // is not transpiled).  Keep in sync with the C# version.
-inline String Value::value_type_name(Value v) {
-    if (v.IsNumber()) return String("number");
-    if (v.IsString()) return String("string");
-    if (v.IsList()) return String("list");
-    if (v.IsMap()) return String("map");
-    if (v.IsFuncRef()) return String("funcRef");
-    if (v.IsError()) return String("error");
-    if (v.IsHandle()) return String("handle");
-    if (v.IsNull()) return String("null");
+inline String Value::TypeName() const {
+    if (IsNumber()) return String("number");
+    if (IsString()) return String("string");
+    if (IsList()) return String("list");
+    if (IsMap()) return String("map");
+    if (IsFuncRef()) return String("funcRef");
+    if (IsError()) return String("error");
+    if (IsHandle()) return String("handle");
+    if (IsNull()) return String("null");
     return String("unknown");
 }
 

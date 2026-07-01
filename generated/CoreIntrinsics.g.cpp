@@ -95,7 +95,7 @@ String CoreIntrinsics::hostName = "";
 String CoreIntrinsics::hostInfo = "";
 String CoreIntrinsics::hostVersion = "";
 Value CoreIntrinsics::RequireNumber(Value v,double* result) {
-	if (v.IsNumber()) { *result = Value::numeric_val(v); return Value::Null; }
+	if (v.IsNumber()) { *result = v.NumericVal(); return Value::Null; }
 	if (v.IsString()) {
 		if (StringUtils::TryParseDouble(Value::as_cstring(v), &*result)) return Value::Null;
 		*result = 0.0;
@@ -312,9 +312,9 @@ void CoreIntrinsics::Init() {
 		Value result = Value::make_map(8);
 		Value parameters = Value::Null;
 		Value pinfo = Value::Null;
-		Value::map_set(result, "type", Value::value_type_name(arg));
+		Value::map_set(result, "type", arg.TypeName());
 		if (arg.IsList()) {
-			Boolean computed = GCManager::Lists.Get(Value::value_item_index(arg)).Computed;
+			Boolean computed = GCManager::Lists.Get(arg.ItemIndex()).Computed;
 			Value::map_set(result, "computed", Value::Truth(computed));
 			Value::map_set(result, "frozen", Value::Truth(Value::is_frozen(arg)));
 		} else if (arg.IsMap()) {
@@ -748,7 +748,7 @@ void CoreIntrinsics::Init() {
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value self = ctx.GetArg(0);
 		if (self.IsError()) return ctx.vm.RaiseUncaughtError(self);
-		int index = (int)Value::numeric_val(ctx.GetArg(1));
+		int index = (int)ctx.GetArg(1).NumericVal();
 		Value value = ctx.GetArg(2);
 		if (self.IsList()) {
 			Value::list_insert(self, index, value);
@@ -774,7 +774,7 @@ void CoreIntrinsics::Init() {
 		if (self.IsList()) {
 			int afterIdx = -1;
 			if (!after.IsNull()) {
-				afterIdx = (int)Value::numeric_val(after);
+				afterIdx = (int)after.NumericVal();
 				if (afterIdx < -1) afterIdx += Value::list_count(self);
 			}
 			int idx = Value::list_indexOf(self, value, afterIdx);
@@ -783,7 +783,7 @@ void CoreIntrinsics::Init() {
 			if (!value.IsString()) return IntrinsicResult(Value::Null);
 			int afterIdx = -1;
 			if (!after.IsNull()) {
-				afterIdx = (int)Value::numeric_val(after);
+				afterIdx = (int)after.NumericVal();
 				if (afterIdx < -1) afterIdx += Value::string_length(self);
 			}
 			int idx = Value::string_indexOf(self, value, afterIdx + 1);
@@ -902,7 +902,7 @@ void CoreIntrinsics::Init() {
 		if (self.IsError()) return IntrinsicResult(self);
 		if (!self.IsString()) return IntrinsicResult(ErrorTypes::TypeError("string", self));
 		Value delim = ctx.GetArg(1);
-		int maxCount = (int)Value::numeric_val(ctx.GetArg(2));
+		int maxCount = (int)ctx.GetArg(2).NumericVal();
 		return IntrinsicResult(Value::string_split_max(self, delim, maxCount));
 	});
 
@@ -919,7 +919,7 @@ void CoreIntrinsics::Init() {
 		Value newVal = ctx.GetArg(2);
 		Value maxCountVal = ctx.GetArg(3);
 		Value iterKey, iterVal;
-		int maxCount = maxCountVal.IsNull() ? -1 : (int)Value::numeric_val(maxCountVal);
+		int maxCount = maxCountVal.IsNull() ? -1 : (int)maxCountVal.NumericVal();
 		if (self.IsList()) {
 			int count = Value::list_count(self);
 			int found = 0;
@@ -962,12 +962,12 @@ void CoreIntrinsics::Init() {
 		if (self.IsList()) {
 			int count = Value::list_count(self);
 			for (int i = 0; i < count; i++) {
-				total += Value::numeric_val(Value::list_get(self, i));
+				total += Value::list_get(self, i).NumericVal();
 			}
 		} else if (self.IsMap()) {
 			MapIterator iter = Value::map_iterator(self);
 			while (map_iterator_next(&iter, nullptr, &iterVal)) {
-				total += Value::numeric_val(iterVal);
+				total += iterVal.NumericVal();
 			}
 		} else {
 			return IntrinsicResult(Value::zero);
@@ -986,14 +986,14 @@ void CoreIntrinsics::Init() {
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value seq = ctx.GetArg(0);
 		if (seq.IsError()) return IntrinsicResult(seq);
-		int fromIdx = (int)Value::numeric_val(ctx.GetArg(1));
+		int fromIdx = (int)ctx.GetArg(1).NumericVal();
 		if (seq.IsList()) {
 			int count = Value::list_count(seq);
-			int toIdx = ctx.GetArg(2).IsNull() ? count : (int)Value::numeric_val(ctx.GetArg(2));
+			int toIdx = ctx.GetArg(2).IsNull() ? count : (int)ctx.GetArg(2).NumericVal();
 			return IntrinsicResult(Value::list_slice(seq, fromIdx, toIdx));
 		} else if (seq.IsString()) {
 			int slen = Value::string_length(seq);
-			int toIdx = ctx.GetArg(2).IsNull() ? slen : (int)Value::numeric_val(ctx.GetArg(2));
+			int toIdx = ctx.GetArg(2).IsNull() ? slen : (int)ctx.GetArg(2).NumericVal();
 			return IntrinsicResult(Value::string_slice(seq, fromIdx, toIdx));
 		}
 		return IntrinsicResult(ErrorTypes::TypeError("list or string", seq));
@@ -1043,12 +1043,12 @@ void CoreIntrinsics::Init() {
 		Value index = ctx.GetArg(1);
 		if (self.IsList()) {
 			if (!index.IsNumber()) return IntrinsicResult(Value::zero);
-			int i = (int)Value::numeric_val(index);
+			int i = (int)index.NumericVal();
 			int count = Value::list_count(self);
 			return IntrinsicResult(Value::Truth(i >= -count && i < count));
 		} else if (self.IsString()) {
 			if (!index.IsNumber()) return IntrinsicResult(Value::zero);
-			int i = (int)Value::numeric_val(index);
+			int i = (int)index.NumericVal();
 			int slen = Value::string_length(self);
 			return IntrinsicResult(Value::Truth(i >= -slen && i < slen));
 		} else if (self.IsMap()) {
@@ -1204,11 +1204,11 @@ void CoreIntrinsics::Init() {
 			// Fresh call: calculate end time and return as partial result
 			vSeconds = ctx.GetArg(0);
 			if (vSeconds.IsError()) return ctx.vm.RaiseUncaughtError(vSeconds);
-			double interval = Value::numeric_val(vSeconds);
+			double interval = vSeconds.NumericVal();
 			return IntrinsicResult(Value(now + interval), Boolean(false));
 		} else {
 			// Continuation: check if we've waited long enough
-			if (now > Value::numeric_val(partialResult.result)) return IntrinsicResult::Null;
+			if (now > partialResult.result.NumericVal()) return IntrinsicResult::Null;
 			return partialResult;
 		}
 	});

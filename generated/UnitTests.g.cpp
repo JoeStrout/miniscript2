@@ -942,13 +942,13 @@ Boolean UnitTests::TestGCHandle() {
 	ok = ok && Assert(!h.IsNull(), "handle should not test as null");
 
 	// Keep the handle alive across a GC cycle via retain count; callback must not fire yet.
-	GCManager::Handles.Retain(Value::value_item_index(h));
+	GCManager::Handles.Retain(h.ItemIndex());
 	GCManager::CollectGarbage();
 	ok = ok && Assert(_handleFinalizerCallCount == 0,
 		"callback should not fire while handle is still reachable");
 
 	// Release the retain — handle is now unreachable.  Next GC must sweep it.
-	GCManager::Handles.Release(Value::value_item_index(h));
+	GCManager::Handles.Release(h.ItemIndex());
 	GCManager::CollectGarbage();
 	ok = ok && Assert(_handleFinalizerCallCount == 1,
 		"callback should fire exactly once when handle is collected");

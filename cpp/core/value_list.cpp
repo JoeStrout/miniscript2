@@ -26,26 +26,26 @@ Value make_empty_list(void) {
 
 int Value::list_count(Value list_val) {
     if (!list_val.IsList()) return 0;
-    GCList l = GCManager::Lists.Get(Value::value_item_index(list_val));
+    GCList l = GCManager::Lists.Get(list_val.ItemIndex());
     return l.Count();
 }
 
 int list_capacity(Value list_val) {
     if (!list_val.IsList()) return 0;
-    GCList l = GCManager::Lists.Get(Value::value_item_index(list_val));
+    GCList l = GCManager::Lists.Get(list_val.ItemIndex());
     // No capacity accessor through the public API; report the element count.
     return l.Count();
 }
 
 Value Value::list_get(Value list_val, int index) {
     if (!list_val.IsList()) return Value::null;
-    GCList l = GCManager::Lists.Get(Value::value_item_index(list_val));
+    GCList l = GCManager::Lists.Get(list_val.ItemIndex());
     return l.Get(index);
 }
 
 void Value::list_set(Value list_val, int index, Value item) {
     if (!list_val.IsList()) return;
-    int idx = Value::value_item_index(list_val);
+    int idx = list_val.ItemIndex();
     GCList l = GCManager::Lists.Get(idx);
     if (l.Frozen) { vm_raise_runtime_error("Attempt to modify a frozen list"); return; }
     bool wasComputed = l.Computed;
@@ -55,7 +55,7 @@ void Value::list_set(Value list_val, int index, Value item) {
 
 void Value::list_push(Value list_val, Value item) {
     if (!list_val.IsList()) return;
-    int idx = Value::value_item_index(list_val);
+    int idx = list_val.ItemIndex();
     GCList l = GCManager::Lists.Get(idx);
     if (l.Frozen) { vm_raise_runtime_error("Attempt to modify a frozen list"); return; }
     bool wasComputed = l.Computed;
@@ -65,7 +65,7 @@ void Value::list_push(Value list_val, Value item) {
 
 Value Value::list_pop(Value list_val) {
     if (!list_val.IsList()) return Value::null;
-    int idx = Value::value_item_index(list_val);
+    int idx = list_val.ItemIndex();
     GCList l = GCManager::Lists.Get(idx);
     if (l.Count() == 0) return Value::null;
     if (l.Frozen) { vm_raise_runtime_error("Attempt to modify a frozen list"); return Value::null; }
@@ -77,7 +77,7 @@ Value Value::list_pop(Value list_val) {
 
 Value Value::list_pull(Value list_val) {
     if (!list_val.IsList()) return Value::null;
-    int idx = Value::value_item_index(list_val);
+    int idx = list_val.ItemIndex();
     GCList l = GCManager::Lists.Get(idx);
     if (l.Count() == 0) return Value::null;
     if (l.Frozen) { vm_raise_runtime_error("Attempt to modify a frozen list"); return Value::null; }
@@ -89,7 +89,7 @@ Value Value::list_pull(Value list_val) {
 
 void Value::list_insert(Value list_val, int index, Value item) {
     if (!list_val.IsList()) return;
-    int idx = Value::value_item_index(list_val);
+    int idx = list_val.ItemIndex();
     GCList l = GCManager::Lists.Get(idx);
     if (l.Frozen) { vm_raise_runtime_error("Attempt to modify a frozen list"); return; }
     bool wasComputed = l.Computed;
@@ -99,7 +99,7 @@ void Value::list_insert(Value list_val, int index, Value item) {
 
 bool Value::list_remove(Value list_val, int index) {
     if (!list_val.IsList()) return false;
-    int idx = Value::value_item_index(list_val);
+    int idx = list_val.ItemIndex();
     GCList l = GCManager::Lists.Get(idx);
     if (l.Frozen) { vm_raise_runtime_error("Attempt to modify a frozen list"); return false; }
     bool wasComputed = l.Computed;
@@ -112,7 +112,7 @@ bool Value::list_remove(Value list_val, int index) {
 
 int Value::list_indexOf(Value list_val, Value item, int afterIdx) {
     if (!list_val.IsList()) return -1;
-    GCList l = GCManager::Lists.Get(Value::value_item_index(list_val));
+    GCList l = GCManager::Lists.Get(list_val.ItemIndex());
     return l.IndexOf(item, afterIdx);
 }
 
@@ -124,7 +124,7 @@ bool list_contains(Value list_val, Value item) {
 
 void list_clear(Value list_val) {
     if (!list_val.IsList()) return;
-    int idx = Value::value_item_index(list_val);
+    int idx = list_val.ItemIndex();
     GCList l = GCManager::Lists.Get(idx);
     if (l.Frozen) { vm_raise_runtime_error("Attempt to modify a frozen list"); return; }
     l.Init();                       // replace with a fresh, empty (materialized) list
@@ -133,17 +133,17 @@ void list_clear(Value list_val) {
 
 Value list_copy(Value list_val) {
     if (!list_val.IsList()) return Value::null;
-    GCList src = GCManager::Lists.Get(Value::value_item_index(list_val));
+    GCList src = GCManager::Lists.Get(list_val.ItemIndex());
     int n = src.Count();
     Value newList = Value::make_list(n);
-    GCList dst = GCManager::Lists.Get(Value::value_item_index(newList));
+    GCList dst = GCManager::Lists.Get(newList.ItemIndex());
     for (int i = 0; i < n; i++) dst.Push(src.Get(i));
     return newList;
 }
 
 Value Value::list_slice(Value list_val, int start, int end) {
     if (!list_val.IsList()) return Value::make_list(0);
-    GCList src = GCManager::Lists.Get(Value::value_item_index(list_val));
+    GCList src = GCManager::Lists.Get(list_val.ItemIndex());
     int n = src.Count();
     if (start < 0) start += n;
     if (end   < 0) end   += n;
@@ -151,22 +151,22 @@ Value Value::list_slice(Value list_val, int start, int end) {
     if (end > n) end = n;
     if (start >= end) return Value::make_list(0);
     Value newList = Value::make_list(end - start);
-    GCList dst = GCManager::Lists.Get(Value::value_item_index(newList));
+    GCList dst = GCManager::Lists.Get(newList.ItemIndex());
     for (int i = start; i < end; i++) dst.Push(src.Get(i));
     return newList;
 }
 
 Value list_concat(Value a, Value b) {
-    int na = a.IsList() ? GCManager::Lists.Get(Value::value_item_index(a)).Count() : 0;
-    int nb = b.IsList() ? GCManager::Lists.Get(Value::value_item_index(b)).Count() : 0;
+    int na = a.IsList() ? GCManager::Lists.Get(a.ItemIndex()).Count() : 0;
+    int nb = b.IsList() ? GCManager::Lists.Get(b.ItemIndex()).Count() : 0;
     Value result = Value::make_list(na + nb);
-    GCList dst = GCManager::Lists.Get(Value::value_item_index(result));
+    GCList dst = GCManager::Lists.Get(result.ItemIndex());
     if (a.IsList()) {
-        GCList la = GCManager::Lists.Get(Value::value_item_index(a));
+        GCList la = GCManager::Lists.Get(a.ItemIndex());
         for (int i = 0; i < na; i++) dst.Push(la.Get(i));
     }
     if (b.IsList()) {
-        GCList lb = GCManager::Lists.Get(Value::value_item_index(b));
+        GCList lb = GCManager::Lists.Get(b.ItemIndex());
         for (int i = 0; i < nb; i++) dst.Push(lb.Get(i));
     }
     return result;
@@ -178,7 +178,7 @@ namespace {
 
 int compare_values(Value a, Value b) {
     if (a.IsNumber() && b.IsNumber()) {
-        double da = Value::numeric_val(a), db = Value::numeric_val(b);
+        double da = a.NumericVal(), db = b.NumericVal();
         if (da < db) return -1;
         if (da > db) return 1;
         return 0;
@@ -193,7 +193,7 @@ int compare_values(Value a, Value b) {
 
 void Value::list_sort(Value list_val, bool ascending) {
     if (!list_val.IsList()) return;
-    int lidx = Value::value_item_index(list_val);
+    int lidx = list_val.ItemIndex();
     GCList l = GCManager::Lists.Get(lidx);
     if (l.Frozen) { vm_raise_runtime_error("Attempt to modify a frozen list"); return; }
     bool wasComputed = l.Computed;
@@ -216,7 +216,7 @@ extern Value map_get(Value map_val, Value key);
 
 void Value::list_sort_by_key(Value list_val, Value byKey, bool ascending) {
     if (!list_val.IsList()) return;
-    int lidx = Value::value_item_index(list_val);
+    int lidx = list_val.ItemIndex();
     GCList l = GCManager::Lists.Get(lidx);
     if (l.Frozen) { vm_raise_runtime_error("Attempt to modify a frozen list"); return; }
     bool wasComputed = l.Computed;
@@ -231,7 +231,7 @@ void Value::list_sort_by_key(Value list_val, Value byKey, bool ascending) {
         Value e = l.Get(i);
         elems[i] = e;
         if (e.IsMap()) keys[i] = Value::map_get(e, byKey);
-        else if (e.IsList() && byKey.IsNumber()) keys[i] = Value::list_get(e, (int)Value::numeric_val(byKey));
+        else if (e.IsList() && byKey.IsNumber()) keys[i] = Value::list_get(e, (int)byKey.NumericVal());
     }
     std::vector<int> idx((size_t)n, 0);
     for (int i = 0; i < n; i++) idx[i] = i;

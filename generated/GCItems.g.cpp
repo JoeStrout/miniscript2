@@ -23,7 +23,7 @@ void GCList::InitComputed(Value baseVal,Value increment,Int32 length) {
 }
 void GCList::Materialize() {
 	if (!Computed) return;
-	Int32 len = (Int32)Value::numeric_val(Items[2]);
+	Int32 len = (Int32)Items[2].NumericVal();
 	List<Value> real =  List<Value>::New(Math::Max(len, 4));
 	for (Int32 i = 0; i < len; i++) real.Add(Get(i));  // Get still reads meta
 	Items    = real;
@@ -39,7 +39,7 @@ void GCList::Insert(Int32 index,Value v) {
 }
 Value GCList::Pop() {
 	if (Computed) {
-		Int32 len = (Int32)Value::numeric_val(Items[2]);
+		Int32 len = (Int32)Items[2].NumericVal();
 		if (len == 0) return Value::Null;
 		Value last = Get(len - 1);
 		Items[2] = Value(len - 1);

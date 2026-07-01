@@ -28,7 +28,7 @@ namespace {
 
 // Get the raw StringStorage* for a heap-string Value (borrowed; do not free).
 const StringStorage* heap_string_storage(Value v) {
-    GCString s = GCManager::BigStrings.Get(Value::value_item_index(v));
+    GCString s = GCManager::BigStrings.Get(v.ItemIndex());
     return s.Data.getStorageRaw();
 }
 
@@ -56,7 +56,7 @@ class TempStorage {
     bool _owned = false;
 public:
     explicit TempStorage(Value v) {
-        if (is_tiny_string(v)) {
+        if (v.IsTinyString()) {
             int len = (int)(v.bits & 0xFF);
             if (len > 0) {
                 StringStorage* fresh = ss_createWithLength(len, std::malloc);
@@ -68,7 +68,7 @@ public:
                 _owned = true;
             }
             // len == 0 → leave _ss == nullptr (StringStorage's empty-string convention)
-        } else if (is_heap_string(v)) {
+        } else if (v.IsHeapString()) {
             _ss = heap_string_storage(v);
             _owned = false;
         }
@@ -111,28 +111,28 @@ Value make_string_n(const char* str, int len) {
 
 const char* Value::as_cstring(Value v) {
     static thread_local char tiny_scratch[TINY_STRING_MAX_LEN + 1];
-    if (is_tiny_string(v)) {
+    if (v.IsTinyString()) {
         int len = (int)(v.bits & 0xFF);
         for (int i = 0; i < len; i++)
             tiny_scratch[i] = (char)((v.bits >> (8 * (i + 1))) & 0xFF);
         tiny_scratch[len] = '\0';
         return tiny_scratch;
     }
-    if (is_heap_string(v)) {
+    if (v.IsHeapString()) {
         return ss_getCString(heap_string_storage(v));
     }
     return "";
 }
 
 int string_lengthB(Value v) {
-    if (is_tiny_string(v)) return (int)(v.bits & 0xFF);
-    if (is_heap_string(v))
+    if (v.IsTinyString()) return (int)(v.bits & 0xFF);
+    if (v.IsHeapString())
         return ss_lengthB(heap_string_storage(v));
     return 0;
 }
 
 int Value::string_length(Value v) {
-    if (is_tiny_string(v)) {
+    if (v.IsTinyString()) {
         int lenB = (int)(v.bits & 0xFF);
         if (lenB == 0) return 0;
         char buf[TINY_STRING_MAX_LEN + 1];
@@ -140,19 +140,19 @@ int Value::string_length(Value v) {
             buf[i] = (char)((v.bits >> (8 * (i + 1))) & 0xFF);
         return UTF8CharacterCount((const unsigned char*)buf, lenB);
     }
-    if (is_heap_string(v))
+    if (v.IsHeapString())
         return ss_lengthC(heap_string_storage(v));
     return 0;
 }
 
 const char* get_string_data_zerocopy(const Value* v_ptr, int* out_len) {
     Value v = *v_ptr;
-    if (is_tiny_string(v)) {
+    if (v.IsTinyString()) {
         const char* data = GET_VALUE_DATA_PTR_CONST(v_ptr);
         *out_len = (int)(unsigned char)data[0];
         return data + 1;
     }
-    if (is_heap_string(v)) {
+    if (v.IsHeapString()) {
         const StringStorage* ss = heap_string_storage(v);
         *out_len = ss_lengthB(ss);
         return ss_getCString(ss);
@@ -163,7 +163,7 @@ const char* get_string_data_zerocopy(const Value* v_ptr, int* out_len) {
 
 const char* get_string_data_nullterm(const Value* v_ptr, char* tiny_buffer) {
     Value v = *v_ptr;
-    if (is_tiny_string(v)) {
+    if (v.IsTinyString()) {
         const char* data = GET_VALUE_DATA_PTR_CONST(v_ptr);
         int len = (int)(unsigned char)data[0];
         if (len < TINY_STRING_MAX_LEN) return data + 1;
@@ -171,7 +171,7 @@ const char* get_string_data_nullterm(const Value* v_ptr, char* tiny_buffer) {
         tiny_buffer[len] = '\0';
         return tiny_buffer;
     }
-    if (is_heap_string(v))
+    if (v.IsHeapString())
         return ss_getCString(heap_string_storage(v));
     return nullptr;
 }
@@ -181,7 +181,7 @@ const char* get_string_data_nullterm(const Value* v_ptr, char* tiny_buffer) {
 bool string_equals(Value a, Value b) {
     if (!a.IsString() || !b.IsString()) return false;
     if (a.RefEquals(b)) return true;  // identical bits → equal (interning makes this common)
-    if (is_tiny_string(a) && is_tiny_string(b)) return false;
+    if (a.IsTinyString() && b.IsTinyString()) return false;
     TempStorage ta(a), tb(b);
     return ss_equals(ta, tb);
 }
@@ -433,14 +433,14 @@ Value Value::string_replace_max(Value source, Value search, Value replacement, i
 // string_hash(const char*, int) lives in hashing.c.
 
 uint32_t get_string_hash(Value v) {
-    if (is_tiny_string(v)) {
+    if (v.IsTinyString()) {
         char buf[TINY_STRING_MAX_LEN + 1];
         int len = (int)(v.bits & 0xFF);
         for (int i = 0; i < len; i++)
             buf[i] = (char)((v.bits >> (8 * (i + 1))) & 0xFF);
         return string_hash(buf, len);
     }
-    if (is_heap_string(v))
+    if (v.IsHeapString())
         return ss_hash(const_cast<StringStorage*>(heap_string_storage(v)));
     return 0;
 }

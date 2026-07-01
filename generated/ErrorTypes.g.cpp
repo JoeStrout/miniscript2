@@ -43,7 +43,7 @@ Value ErrorTypes::FormatError(String msg) {
 }
 Value ErrorTypes::TypeError(String expectedType,Value actualValue) {
 	return RuntimeError("Type error: " + expectedType + " required, but got "
-		+ Value::value_type_name(actualValue));
+		+ actualValue.TypeName());
 }
 void ErrorTypes::MarkRoots(object user_data) {
 	GCManager::Mark(compiler);

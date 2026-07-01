@@ -28,13 +28,13 @@ Value Value::make_empty_map(void) {
 
 int Value::map_count(Value map_val) {
     if (!map_val.IsMap()) return 0;
-    GCMap m = GCManager::Maps.Get(Value::value_item_index(map_val));
+    GCMap m = GCManager::Maps.Get(map_val.ItemIndex());
     return m.Count();
 }
 
 int map_capacity(Value map_val) {
     if (!map_val.IsMap()) return 0;
-    GCMap m = GCManager::Maps.Get(Value::value_item_index(map_val));
+    GCMap m = GCManager::Maps.Get(map_val.ItemIndex());
     // Best-effort: GCMap exposes size only via Count(). Return Count*2 as a
     // proxy since the underlying table maintains 50% load.
     return m.Count() * 2;
@@ -42,7 +42,7 @@ int map_capacity(Value map_val) {
 
 Value Value::map_get(Value map_val, Value key) {
     if (!map_val.IsMap()) return Value::null;
-    GCMap m = GCManager::Maps.Get(Value::value_item_index(map_val));
+    GCMap m = GCManager::Maps.Get(map_val.ItemIndex());
     Value out;
     if (m.TryGet(key, &out)) return out;
     return Value::null;
@@ -50,7 +50,7 @@ Value Value::map_get(Value map_val, Value key) {
 
 bool Value::map_try_get(Value map_val, Value key, Value* out_value) {
     if (!map_val.IsMap()) { if (out_value) *out_value = Value::null; return false; }
-    GCMap m = GCManager::Maps.Get(Value::value_item_index(map_val));
+    GCMap m = GCManager::Maps.Get(map_val.ItemIndex());
     Value out;
     bool ok = m.TryGet(key, &out);
     if (out_value) *out_value = ok ? out : Value::null;
@@ -62,7 +62,7 @@ bool Value::map_lookup(Value map_val, Value key, Value* out_value) {
     Value current = map_val;
     for (int depth = 0; depth < 256; depth++) {
         if (!current.IsMap()) { if (out_value) *out_value = Value::null; return false; }
-        GCMap m = GCManager::Maps.Get(Value::value_item_index(current));
+        GCMap m = GCManager::Maps.Get(current.ItemIndex());
         Value v;
         if (m.TryGet(key, &v)) { if (out_value) *out_value = v; return true; }
         Value isa;
@@ -81,7 +81,7 @@ bool Value::map_lookup_with_origin(Value map_val, Value key, Value* out_value, V
             if (out_super) *out_super = Value::null;
             return false;
         }
-        GCMap m = GCManager::Maps.Get(Value::value_item_index(current));
+        GCMap m = GCManager::Maps.Get(current.ItemIndex());
         Value v;
         if (m.TryGet(key, &v)) {
             Value isa;
@@ -105,7 +105,7 @@ bool Value::map_lookup_with_origin(Value map_val, Value key, Value* out_value, V
 
 bool Value::map_set(Value map_val, Value key, Value value) {
     if (!map_val.IsMap()) return false;
-    GCMap m = GCManager::Maps.Get(Value::value_item_index(map_val));
+    GCMap m = GCManager::Maps.Get(map_val.ItemIndex());
     if (m.Frozen) { vm_raise_runtime_error("Attempt to modify a frozen map"); return false; }
     m.Set(key, value);
     return true;
@@ -113,14 +113,14 @@ bool Value::map_set(Value map_val, Value key, Value value) {
 
 bool Value::map_remove(Value map_val, Value key) {
     if (!map_val.IsMap()) return false;
-    GCMap m = GCManager::Maps.Get(Value::value_item_index(map_val));
+    GCMap m = GCManager::Maps.Get(map_val.ItemIndex());
     if (m.Frozen) { vm_raise_runtime_error("Attempt to modify a frozen map"); return false; }
     return m.Remove(key);
 }
 
 bool Value::map_has_key(Value map_val, Value key) {
     if (!map_val.IsMap()) return false;
-    GCMap m = GCManager::Maps.Get(Value::value_item_index(map_val));
+    GCMap m = GCManager::Maps.Get(map_val.ItemIndex());
     Value v;
     return m.TryGet(key, &v);
 }
@@ -129,16 +129,16 @@ bool Value::map_has_key(Value map_val, Value key) {
 
 void Value::map_clear(Value map_val) {
     if (!map_val.IsMap()) return;
-    GCMap m = GCManager::Maps.Get(Value::value_item_index(map_val));
+    GCMap m = GCManager::Maps.Get(map_val.ItemIndex());
     if (m.Frozen) { vm_raise_runtime_error("Attempt to modify a frozen map"); return; }
     m.Clear();
 }
 
 Value map_copy(Value map_val) {
     if (!map_val.IsMap()) return Value::null;
-    GCMap src = GCManager::Maps.Get(Value::value_item_index(map_val));
+    GCMap src = GCManager::Maps.Get(map_val.ItemIndex());
     Value newMap = Value::make_map(src.Count());
-    GCMap dst = GCManager::Maps.Get(Value::value_item_index(newMap));
+    GCMap dst = GCManager::Maps.Get(newMap.ItemIndex());
     for (int i = src.NextEntry(-1); i != -1; i = src.NextEntry(i))
         dst.Set(src.KeyAt(i), src.ValueAt(i));
     return newMap;
@@ -146,14 +146,14 @@ Value map_copy(Value map_val) {
 
 Value map_concat(Value a, Value b) {
     Value result = Value::make_empty_map();
-    GCMap dst = GCManager::Maps.Get(Value::value_item_index(result));
+    GCMap dst = GCManager::Maps.Get(result.ItemIndex());
     if (a.IsMap()) {
-        GCMap la = GCManager::Maps.Get(Value::value_item_index(a));
+        GCMap la = GCManager::Maps.Get(a.ItemIndex());
         for (int i = la.NextEntry(-1); i != -1; i = la.NextEntry(i))
             dst.Set(la.KeyAt(i), la.ValueAt(i));
     }
     if (b.IsMap()) {
-        GCMap lb = GCManager::Maps.Get(Value::value_item_index(b));
+        GCMap lb = GCManager::Maps.Get(b.ItemIndex());
         for (int i = lb.NextEntry(-1); i != -1; i = lb.NextEntry(i))
             dst.Set(lb.KeyAt(i), lb.ValueAt(i));
     }
@@ -169,7 +169,7 @@ Value map_with_expanded_capacity(Value m)    { return m; }
 MapIterator Value::map_iterator(Value map_val) {
     MapIterator it;
     if (map_val.IsMap()) {
-        it.map_idx = Value::value_item_index(map_val);
+        it.map_idx = map_val.ItemIndex();
         it.iter    = -1;
     } else {
         it.map_idx = -1;
@@ -195,7 +195,7 @@ bool map_iterator_next(MapIterator* iter, Value* out_key, Value* out_value) {
 
 Value map_nth_entry(Value map_val, int n) {
     if (!map_val.IsMap()) return Value::null;
-    GCMap m = GCManager::Maps.Get(Value::value_item_index(map_val));
+    GCMap m = GCManager::Maps.Get(map_val.ItemIndex());
     int count = 0;
     for (int i = m.NextEntry(-1); i != -1; i = m.NextEntry(i)) {
         if (count == n) {
@@ -213,14 +213,14 @@ Value map_nth_entry(Value map_val, int n) {
 
 int Value::map_iter_next(Value map_val, int iter) {
     if (!map_val.IsMap() || iter == Value::MAP_ITER_DONE) return Value::MAP_ITER_DONE;
-    GCMap m = GCManager::Maps.Get(Value::value_item_index(map_val));
+    GCMap m = GCManager::Maps.Get(map_val.ItemIndex());
     int next = m.NextEntry(iter);
     return next < 0 ? Value::MAP_ITER_DONE : next;
 }
 
 Value Value::map_iter_entry(Value map_val, int iter) {
     if (!map_val.IsMap() || iter == Value::MAP_ITER_DONE) return Value::null;
-    GCMap m = GCManager::Maps.Get(Value::value_item_index(map_val));
+    GCMap m = GCManager::Maps.Get(map_val.ItemIndex());
     Value entry = Value::make_map(4);
     Value::map_set(entry, Value::make_string("key"),   m.KeyAt(iter));
     Value::map_set(entry, Value::make_string("value"), m.ValueAt(iter));
@@ -251,21 +251,21 @@ Value Value::make_varmap(List<Value> registers, List<Value> names, int firstInde
 
 void Value::varmap_map_to_register(Value map_val, Value var_name, List<Value> registers, int reg_index) {
     if (!map_val.IsMap()) return;
-    int32_t idx = Value::value_item_index(map_val);
+    int32_t idx = map_val.ItemIndex();
     GCMap m = GCManager::Maps.Get(idx);
     if (!vmb_is_null(m._vmb)) m._vmb.MapToRegister(idx, var_name, registers, reg_index);
 }
 
 void Value::varmap_gather(Value map_val) {
     if (!map_val.IsMap()) return;
-    int32_t idx = Value::value_item_index(map_val);
+    int32_t idx = map_val.ItemIndex();
     GCMap m = GCManager::Maps.Get(idx);
     if (!vmb_is_null(m._vmb)) m._vmb.Gather(idx);
 }
 
 void Value::varmap_rebind(Value map_val, List<Value> registers, List<Value> names) {
     if (!map_val.IsMap()) return;
-    int32_t idx = Value::value_item_index(map_val);
+    int32_t idx = map_val.ItemIndex();
     GCMap m = GCManager::Maps.Get(idx);
     if (!vmb_is_null(m._vmb)) m._vmb.Rebind(idx, registers, names);
 }

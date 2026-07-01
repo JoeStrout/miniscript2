@@ -449,7 +449,7 @@ public class VM {
 		_errorStackPending = false;
 		if (!Error.IsError()) return;
 		Value stack = CurrentFunction ? BuildStackTrace() : Value.Null;
-		Int32 idx = Value.value_item_index(Error);
+		Int32 idx = Error.ItemIndex();
 		GCError ge = GCManager.Errors.Get(idx);
 		GCManager.Errors.SetFields(idx, ge.Message, ge.Inner, stack, ge.Isa);
 	}

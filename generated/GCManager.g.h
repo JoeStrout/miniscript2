@@ -129,8 +129,8 @@ class GCManager {
 // INLINE METHODS
 
 inline void GCManager::Mark(Value v) {
-	if (!Value::is_gc_object(v)) return;
-	DispatchMark(Value::value_gc_set_index(v), Value::value_item_index(v));
+	if (!v.IsGCObject()) return;
+	DispatchMark(v.GCSetIndex(), v.ItemIndex());
 }
 
 } // end of namespace MiniScript

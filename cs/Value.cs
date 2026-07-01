@@ -78,7 +78,7 @@ public readonly struct Value {
 	// ==== MS1 INSTANCE PREDICATES ============================================
 	[MethodImpl(MethodImplOptions.AggressiveInlining)] public bool IsNull()    => _u == NULL_VALUE;
 	[MethodImpl(MethodImplOptions.AggressiveInlining)] public bool IsNumber()  => (_u & NANISH_MASK) < NULL_VALUE;
-	[MethodImpl(MethodImplOptions.AggressiveInlining)] public bool IsString()  => is_tiny_string(this) || is_heap_string(this);
+	[MethodImpl(MethodImplOptions.AggressiveInlining)] public bool IsString()  => IsTinyString() || IsHeapString();
 	[MethodImpl(MethodImplOptions.AggressiveInlining)] public bool IsList()    => (_u & GC_TYPE_MASK) == (GC_TAG | ((ulong)GCManager.ListSet     << 32));
 	[MethodImpl(MethodImplOptions.AggressiveInlining)] public bool IsMap()     => (_u & GC_TYPE_MASK) == (GC_TAG | ((ulong)GCManager.MapSet      << 32));
 	[MethodImpl(MethodImplOptions.AggressiveInlining)] public bool IsError()   => (_u & GC_TYPE_MASK) == (GC_TAG | ((ulong)GCManager.ErrorSet    << 32));
@@ -105,21 +105,21 @@ public readonly struct Value {
 
 	// ==== RAW BIT ACCESS =====================================================
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static ulong value_bits(Value v) => v._u;
+	public ulong Bits() => _u;
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static int value_gc_set_index(Value v) => (int)((v._u >> 32) & 0x7);
+	public int GCSetIndex() => (int)((_u >> 32) & 0x7);
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static int value_item_index(Value v) => (int)v._u;
+	public int ItemIndex() => (int)_u;
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static int value_tiny_len(Value v) => (int)(v._u & 0xFF);
+	public int TinyLen() => (int)(_u & 0xFF);
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static void value_tiny_copy_to(Value v, Span<byte> dst) {
-		int len = value_tiny_len(v);
-		for (int i = 0; i < len; i++) dst[i] = (byte)((v._u >> (8 * (i + 1))) & 0xFF);
+	public void TinyCopyTo(Span<byte> dst) {
+		int len = TinyLen();
+		for (int i = 0; i < len; i++) dst[i] = (byte)((_u >> (8 * (i + 1))) & 0xFF);
 	}
 
 	// ==== VALUE CREATION =====================================================
@@ -163,13 +163,13 @@ public readonly struct Value {
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static FuncDef funcref_funcdef(Value v) {
 		if (!v.IsFuncRef()) return null;
-		return GCManager.Functions.Get(value_item_index(v)).Func;
+		return GCManager.Functions.Get(v.ItemIndex()).Func;
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value funcref_outer_vars(Value v) {
 		if (!v.IsFuncRef()) return Value.Null;
-		return GCManager.Functions.Get(value_item_index(v)).OuterVars;
+		return GCManager.Functions.Get(v.ItemIndex()).OuterVars;
 	}
 
 	// ==== ERROR OPERATIONS ===================================================
@@ -185,85 +185,85 @@ public readonly struct Value {
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value error_message(Value v) {
 		if (!v.IsError()) return Value.Null;
-		return GCManager.Errors.Get(value_item_index(v)).Message;
+		return GCManager.Errors.Get(v.ItemIndex()).Message;
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value error_inner(Value v) {
 		if (!v.IsError()) return Value.Null;
-		return GCManager.Errors.Get(value_item_index(v)).Inner;
+		return GCManager.Errors.Get(v.ItemIndex()).Inner;
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value error_stack(Value v) {
 		if (!v.IsError()) return Value.Null;
-		return GCManager.Errors.Get(value_item_index(v)).Stack;
+		return GCManager.Errors.Get(v.ItemIndex()).Stack;
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value error_isa(Value v) {
 		if (!v.IsError()) return Value.Null;
-		return GCManager.Errors.Get(value_item_index(v)).Isa;
+		return GCManager.Errors.Get(v.ItemIndex()).Isa;
 	}
 
 	public static bool error_isa_contains(Value err, Value target) {
 		if (!err.IsError()) return false;
-		Value current = GCManager.Errors.Get(value_item_index(err)).Isa;
+		Value current = GCManager.Errors.Get(err.ItemIndex()).Isa;
 		for (int depth = 0; depth < 256; depth++) {
 			if (current.IsNull()) return false;
 			if (value_identical(current, target)) return true;
 			if (!current.IsError()) return false;
-			current = GCManager.Errors.Get(value_item_index(current)).Isa;
+			current = GCManager.Errors.Get(current.ItemIndex()).Isa;
 		}
 		return false;
 	}
 
 	// ==== TYPE PREDICATES ====================================================
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool is_int(Value v) => false;
+	public bool IsInt() => false;
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool is_tiny_string(Value v) => (v._u & NANISH_MASK) == TINY_STRING_TAG;
+	public bool IsTinyString() => (_u & NANISH_MASK) == TINY_STRING_TAG;
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool is_gc_object(Value v) => (v._u & NANISH_MASK) == GC_TAG;
+	public bool IsGCObject() => (_u & NANISH_MASK) == GC_TAG;
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool is_heap_string(Value v) {
-		ulong masked = v._u & GC_TYPE_MASK;
+	public bool IsHeapString() {
+		ulong masked = _u & GC_TYPE_MASK;
 		return masked == (GC_TAG | ((ulong)GCManager.BigStringSet      << 32))
 		    || masked == (GC_TAG | ((ulong)GCManager.InternedStringSet << 32));
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool is_interned_string(Value v) =>
-		(v._u & GC_TYPE_MASK) == (GC_TAG | ((ulong)GCManager.InternedStringSet << 32));
+	public bool IsInternedString() =>
+		(_u & GC_TYPE_MASK) == (GC_TAG | ((ulong)GCManager.InternedStringSet << 32));
 
 	// ==== NUMERIC ACCESSORS ==================================================
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static int as_int(Value v) => (int)as_double(v);
+	public int AsInt() => (int)AsDouble();
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static double as_double(Value v) => v._d;
+	public double AsDouble() => _d;
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static double numeric_val(Value v) {
-		if (v.IsNumber()) return as_double(v);
-		if (v.IsError()) VM.ActiveVM().RaiseUncaughtError(v);
+	public double NumericVal() {
+		if (IsNumber()) return AsDouble();
+		if (IsError()) VM.ActiveVM().RaiseUncaughtError(this);
 		return 0.0;
 	}
 
-	// Return a human-readable name for the type of v, matching the names used
+	// Return a human-readable name for this value's type, matching the names used
 	// by the `info` intrinsic and the core type maps.
-	public static String value_type_name(Value v) {
-		if (v.IsNumber()) return "number";
-		if (v.IsString()) return "string";
-		if (v.IsList()) return "list";
-		if (v.IsMap()) return "map";
-		if (v.IsFuncRef()) return "funcRef";
-		if (v.IsError()) return "error";
-		if (v.IsHandle()) return "handle";
-		if (v.IsNull()) return "null";
+	public String TypeName() {
+		if (IsNumber()) return "number";
+		if (IsString()) return "string";
+		if (IsList()) return "list";
+		if (IsMap()) return "map";
+		if (IsFuncRef()) return "funcRef";
+		if (IsError()) return "error";
+		if (IsHandle()) return "handle";
+		if (IsNull()) return "null";
 		return "unknown";
 	}
 
@@ -276,17 +276,17 @@ public readonly struct Value {
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	internal static string GetStringValue(Value val) {
-		if (is_tiny_string(val)) {
-			int len = value_tiny_len(val);
+		if (val.IsTinyString()) {
+			int len = val.TinyLen();
 			if (len == 0) return "";
 			Span<byte> bytes = stackalloc byte[5];
 			for (int i = 0; i < len; i++) bytes[i] = (byte)((val._u >> (8 * (i + 1))) & 0xFF);
 			return Encoding.UTF8.GetString(bytes.Slice(0, len));
 		}
-		if (is_heap_string(val)) {
-			GCStringSet set = (value_gc_set_index(val) == GCManager.InternedStringSet)
+		if (val.IsHeapString()) {
+			GCStringSet set = (val.GCSetIndex() == GCManager.InternedStringSet)
 				? GCManager.InternedStrings : GCManager.BigStrings;
-			return set.Get(value_item_index(val)).Data ?? "";
+			return set.Get(val.ItemIndex()).Data ?? "";
 		}
 		return "";
 	}
@@ -341,7 +341,7 @@ public readonly struct Value {
 	public static string code_form(Value v, VM vm = null, int recursionLimit = -1) {
 		if (v.IsNull()) return "null";
 		if (v.IsNumber()) {
-			double value = as_double(v);
+			double value = v.AsDouble();
 			if (double.IsNaN(value)) return "NaN";
 			if (double.IsPositiveInfinity(value)) return "Inf";
 			if (double.IsNegativeInfinity(value)) return "-Inf";
@@ -374,7 +374,7 @@ public readonly struct Value {
 				string shortName = vm.FindShortName(v);
 				if (shortName != null) return shortName;
 			}
-			GCList list = GCManager.Lists.Get(value_item_index(v));
+			GCList list = GCManager.Lists.Get(v.ItemIndex());
 			int listCount = list.Count();
 			var strs = new string[listCount];
 			for (int i = 0; i < listCount; i++) {
@@ -389,7 +389,7 @@ public readonly struct Value {
 				string shortName = vm.FindShortName(v);
 				if (shortName != null) return shortName;
 			}
-			GCMap map = GCManager.Maps.Get(value_item_index(v));
+			GCMap map = GCManager.Maps.Get(v.ItemIndex());
 			var strs = new List<string>(map.Count());
 			for (int iter = map.NextEntry(-1); iter != -1; iter = map.NextEntry(iter)) {
 				Value key = map.KeyAt(iter);
@@ -402,14 +402,14 @@ public readonly struct Value {
 			return "{" + String.Join(", ", strs) + "}";
 		}
 		if (v.IsFuncRef()) {
-			GCFunction fr = GCManager.Functions.Get(value_item_index(v));
+			GCFunction fr = GCManager.Functions.Get(v.ItemIndex());
 			if (fr.Func == null) return "<funcref?>";
 			return fr.OuterVars.IsNull()
 				? StringUtils.Format("FuncRef({0})", fr.Func.Name)
 				: StringUtils.Format("FuncRef({0}, closure)", fr.Func.Name);
 		}
 		if (v.IsError()) {
-			GCError err = GCManager.Errors.Get(value_item_index(v));
+			GCError err = GCManager.Errors.Get(v.ItemIndex());
 			string msg = err.Message.IsString() ? as_cstring(err.Message) : to_String(err.Message, vm);
 			return "error: " + msg;
 		}
@@ -447,7 +447,7 @@ public readonly struct Value {
 	public static Value value_add(Value a, Value b, VM vm = null) {
 		if (a.IsError()) return a;
 		if (b.IsError()) return b;
-		if (a.IsNumber() && b.IsNumber()) return new Value(as_double(a) + as_double(b));
+		if (a.IsNumber() && b.IsNumber()) return new Value(a.AsDouble() + b.AsDouble());
 		if (a.IsString()) {
 			if (b.IsNull()) return a;
 			Value bStr = b.IsString() ? b : make_string(to_String(b, vm));
@@ -478,9 +478,9 @@ public readonly struct Value {
 	public static Value operator *(Value a, Value b) {
 		if (a.IsError()) return a;
 		if (b.IsError()) return b;
-		if (a.IsNumber() && b.IsNumber()) return new Value(as_double(a) * as_double(b));
+		if (a.IsNumber() && b.IsNumber()) return new Value(a.AsDouble() * b.AsDouble());
 		if (a.IsString() && b.IsNumber()) {
-			double factor = as_double(b);
+			double factor = b.AsDouble();
 			if (double.IsNaN(factor) || double.IsInfinity(factor)) return Value.Null;
 			if (factor <= 0) return Value.emptyString;
 			if (string_length(a) * factor > MAX_COLLECTION_SIZE) {
@@ -494,7 +494,7 @@ public readonly struct Value {
 			return result;
 		}
 		if (a.IsList() && b.IsNumber()) {
-			double factor = as_double(b);
+			double factor = b.AsDouble();
 			if (double.IsNaN(factor) || double.IsInfinity(factor)) return Value.Null;
 			int len = Value.list_count(a);
 			if (factor <= 0 || len == 0) return make_list(0);
@@ -524,10 +524,10 @@ public readonly struct Value {
 	public static Value operator /(Value a, Value b) {
 		if (a.IsError()) return a;
 		if (b.IsError()) return b;
-		if (a.IsNumber() && b.IsNumber()) return new Value(as_double(a) / as_double(b));
+		if (a.IsNumber() && b.IsNumber()) return new Value(a.AsDouble() / b.AsDouble());
 		if (a.IsString() && b.IsNumber()) return a * (new Value(1.0) / b);
 		if (a.IsList() && b.IsNumber()) {
-			double db = as_double(b);
+			double db = b.AsDouble();
 			if (db == 0 || double.IsNaN(db) || double.IsInfinity(db)) return Value.Null;
 			return a * (new Value(1.0) / b);
 		}
@@ -538,14 +538,14 @@ public readonly struct Value {
 	public static Value operator %(Value a, Value b) {
 		if (a.IsError()) return a;
 		if (b.IsError()) return b;
-		if (a.IsNumber() && b.IsNumber()) return new Value(as_double(a) % as_double(b));
+		if (a.IsNumber() && b.IsNumber()) return new Value(a.AsDouble() % b.AsDouble());
 		return Value.Null;
 	}
 
 	public static Value value_pow(Value a, Value b) {
 		if (a.IsError()) return a;
 		if (b.IsError()) return b;
-		if (a.IsNumber() && b.IsNumber()) return new Value(Math.Pow(as_double(a), as_double(b)));
+		if (a.IsNumber() && b.IsNumber()) return new Value(Math.Pow(a.AsDouble(), b.AsDouble()));
 		return Value.Null;
 	}
 
@@ -553,7 +553,7 @@ public readonly struct Value {
 	public static Value operator -(Value a, Value b) {
 		if (a.IsError()) return a;
 		if (b.IsError()) return b;
-		if (a.IsNumber() && b.IsNumber()) return new Value(as_double(a) - as_double(b));
+		if (a.IsNumber() && b.IsNumber()) return new Value(a.AsDouble() - b.AsDouble());
 		if (a.IsString() && b.IsString()) {
 			string sa = as_cstring(a);
 			string sb = as_cstring(b);
@@ -567,7 +567,7 @@ public readonly struct Value {
 	// ==== FUZZY LOGIC ========================================================
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Double ToFuzzyBool(Value v) {
-		if (v.IsNumber()) return as_double(v);
+		if (v.IsNumber()) return v.AsDouble();
 		return v.BoolValue() ? 1.0 : 0.0;
 	}
 
@@ -611,7 +611,7 @@ public readonly struct Value {
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool operator <(Value a, Value b) {
-		if (a.IsNumber() && b.IsNumber()) return as_double(a) < as_double(b);
+		if (a.IsNumber() && b.IsNumber()) return a.AsDouble() < b.AsDouble();
 		if (a.IsString() && b.IsString()) return string_compare(a, b) < 0;
 		return false;
 	}
@@ -621,7 +621,7 @@ public readonly struct Value {
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool operator <=(Value a, Value b) {
-		if (a.IsNumber() && b.IsNumber()) return as_double(a) <= as_double(b);
+		if (a.IsNumber() && b.IsNumber()) return a.AsDouble() <= b.AsDouble();
 		if (a.IsString() && b.IsString()) return string_compare(a, b) <= 0;
 		return false;
 	}
@@ -640,9 +640,9 @@ public readonly struct Value {
 	// identity.  Lists and maps are NOT handled here -- RecursiveEqual walks them.
 	private static bool ScalarEqual(Value a, Value b) {
 		if (a.RefEquals(b)) return true;
-		if (a.IsNumber() && b.IsNumber()) return as_double(a) == as_double(b);
+		if (a.IsNumber() && b.IsNumber()) return a.AsDouble() == b.AsDouble();
 		// Two tiny strings with differing bits already differ in content.
-		if (is_tiny_string(a) && is_tiny_string(b)) return false;
+		if (a.IsTinyString() && b.IsTinyString()) return false;
 		if (a.IsString() && b.IsString())
 			return string.Equals(as_cstring(a), as_cstring(b), StringComparison.Ordinal);
 		if (a.IsNull() && b.IsNull()) return true;
@@ -696,8 +696,8 @@ public readonly struct Value {
 				}
 			} else if (pa.IsMap()) {
 				if (!pb.IsMap()) return false;
-				GCMap mapA = GCManager.Maps.Get(value_item_index(pa));
-				GCMap mapB = GCManager.Maps.Get(value_item_index(pb));
+				GCMap mapA = GCManager.Maps.Get(pa.ItemIndex());
+				GCMap mapB = GCManager.Maps.Get(pb.ItemIndex());
 				if (mapA.Count() != mapB.Count()) return false;
 				if (pa.RefEquals(pb)) continue;  // same map object: nothing to do
 				for (int iter = mapA.NextEntry(-1); iter != -1; iter = mapA.NextEntry(iter)) {
@@ -720,19 +720,19 @@ public readonly struct Value {
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static int list_count(Value list_val) {
 		if (!list_val.IsList()) return 0;
-		return GCManager.Lists.Get(value_item_index(list_val)).Count();
+		return GCManager.Lists.Get(list_val.ItemIndex()).Count();
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value list_get(Value list_val, int index) {
 		if (!list_val.IsList()) return Value.Null;
-		return GCManager.Lists.Get(value_item_index(list_val)).Get(index);
+		return GCManager.Lists.Get(list_val.ItemIndex()).Get(index);
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static void list_set(Value list_val, int index, Value item) {
 		if (!list_val.IsList()) return;
-		int idx = value_item_index(list_val);
+		int idx = list_val.ItemIndex();
 		GCList list = GCManager.Lists.Get(idx);
 		if (list.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return; }
 		bool wasComputed = list.Computed;
@@ -743,7 +743,7 @@ public readonly struct Value {
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static void list_push(Value list_val, Value item) {
 		if (!list_val.IsList()) return;
-		int idx = value_item_index(list_val);
+		int idx = list_val.ItemIndex();
 		GCList list = GCManager.Lists.Get(idx);
 		if (list.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return; }
 		bool wasComputed = list.Computed;
@@ -754,7 +754,7 @@ public readonly struct Value {
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool list_remove(Value list_val, int index) {
 		if (!list_val.IsList()) return false;
-		int idx = value_item_index(list_val);
+		int idx = list_val.ItemIndex();
 		GCList list = GCManager.Lists.Get(idx);
 		if (list.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return false; }
 		bool wasComputed = list.Computed;
@@ -765,7 +765,7 @@ public readonly struct Value {
 
 	public static void list_insert(Value list_val, int index, Value item) {
 		if (!list_val.IsList()) return;
-		int idx = value_item_index(list_val);
+		int idx = list_val.ItemIndex();
 		GCList list = GCManager.Lists.Get(idx);
 		if (list.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return; }
 		bool wasComputed = list.Computed;
@@ -775,7 +775,7 @@ public readonly struct Value {
 
 	public static Value list_pop(Value list_val) {
 		if (!list_val.IsList()) return Value.Null;
-		int idx = value_item_index(list_val);
+		int idx = list_val.ItemIndex();
 		GCList list = GCManager.Lists.Get(idx);
 		if (list.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return Value.Null; }
 		bool wasComputed = list.Computed;
@@ -786,7 +786,7 @@ public readonly struct Value {
 
 	public static Value list_pull(Value list_val) {
 		if (!list_val.IsList()) return Value.Null;
-		int idx = value_item_index(list_val);
+		int idx = list_val.ItemIndex();
 		GCList list = GCManager.Lists.Get(idx);
 		if (list.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return Value.Null; }
 		bool wasComputed = list.Computed;
@@ -797,12 +797,12 @@ public readonly struct Value {
 
 	public static int list_indexOf(Value list_val, Value item, int afterIdx) {
 		if (!list_val.IsList()) return -1;
-		return GCManager.Lists.Get(value_item_index(list_val)).IndexOf(item, afterIdx);
+		return GCManager.Lists.Get(list_val.ItemIndex()).IndexOf(item, afterIdx);
 	}
 
 	public static void list_sort(Value list_val, bool ascending) {
 		if (!list_val.IsList()) return;
-		int idx = value_item_index(list_val);
+		int idx = list_val.ItemIndex();
 		GCList list = GCManager.Lists.Get(idx);
 		if (list.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return; }
 		bool wasComputed = list.Computed;
@@ -813,7 +813,7 @@ public readonly struct Value {
 
 	public static void list_sort_by_key(Value list_val, Value byKey, bool ascending) {
 		if (!list_val.IsList()) return;
-		int idx = value_item_index(list_val);
+		int idx = list_val.ItemIndex();
 		GCList list = GCManager.Lists.Get(idx);
 		if (list.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen list"); return; }
 		bool wasComputed = list.Computed;
@@ -852,7 +852,7 @@ public readonly struct Value {
 		Array.Sort(tmp, (a, b) => {
 			int cmp;
 			if (a.IsNumber() && b.IsNumber()) {
-				cmp = numeric_val(a).CompareTo(numeric_val(b));
+				cmp = a.NumericVal().CompareTo(b.NumericVal());
 			} else if (a.IsString() && b.IsString()) {
 				cmp = string_compare(a, b);
 			} else {
@@ -875,7 +875,7 @@ public readonly struct Value {
 			if (elem.IsMap()) {
 				keys[i] = map_get(elem, byKey);
 			} else if (elem.IsList() && byKey.IsNumber()) {
-				keys[i] = Value.list_get(elem, (int)numeric_val(byKey));
+				keys[i] = Value.list_get(elem, (int)byKey.NumericVal());
 			} else {
 				keys[i] = Value.Null;
 			}
@@ -886,7 +886,7 @@ public readonly struct Value {
 			Value ka = keys[ia]; Value kb = keys[ib];
 			int cmp;
 			if (ka.IsNumber() && kb.IsNumber()) {
-				cmp = numeric_val(ka).CompareTo(numeric_val(kb));
+				cmp = ka.NumericVal().CompareTo(kb.NumericVal());
 			} else if (ka.IsString() && kb.IsString()) {
 				cmp = string_compare(ka, kb);
 			} else {
@@ -904,19 +904,19 @@ public readonly struct Value {
 	// ==== MAP OPERATIONS =====================================================
 	public static int map_count(Value map_val) {
 		if (!map_val.IsMap()) return 0;
-		return GCManager.Maps.Get(value_item_index(map_val)).Count();
+		return GCManager.Maps.Get(map_val.ItemIndex()).Count();
 	}
 
 	public static Value map_get(Value map_val, Value key) {
 		if (!map_val.IsMap()) return Value.Null;
-		GCManager.Maps.Get(value_item_index(map_val)).TryGet(key, out Value result);
+		GCManager.Maps.Get(map_val.ItemIndex()).TryGet(key, out Value result);
 		return result;
 	}
 
 	public static bool map_try_get(Value map_val, Value key, out Value value) {
 		value = Value.Null;
 		if (!map_val.IsMap()) return false;
-		return GCManager.Maps.Get(value_item_index(map_val)).TryGet(key, out value);
+		return GCManager.Maps.Get(map_val.ItemIndex()).TryGet(key, out value);
 	}
 
 	public static bool map_lookup(Value map_val, Value key, out Value value) {
@@ -925,7 +925,7 @@ public readonly struct Value {
 		Value current = map_val;
 		for (Int32 depth = 0; depth < 256; depth++) {
 			if (!current.IsMap()) return false;
-			GCMap m = GCManager.Maps.Get(value_item_index(current));
+			GCMap m = GCManager.Maps.Get(current.ItemIndex());
 			if (m.TryGet(key, out value)) return true;
 			if (!m.TryGet(isaKey, out Value isa)) return false;
 			current = isa;
@@ -940,7 +940,7 @@ public readonly struct Value {
 		Value current = map_val;
 		for (Int32 depth = 0; depth < 256; depth++) {
 			if (!current.IsMap()) return false;
-			GCMap m = GCManager.Maps.Get(value_item_index(current));
+			GCMap m = GCManager.Maps.Get(current.ItemIndex());
 			if (m.TryGet(key, out value)) {
 				m.TryGet(isaKey, out superVal);
 				return true;
@@ -953,7 +953,7 @@ public readonly struct Value {
 
 	public static bool map_set(Value map_val, Value key, Value value) {
 		if (!map_val.IsMap()) return false;
-		GCMap m = GCManager.Maps.Get(value_item_index(map_val));
+		GCMap m = GCManager.Maps.Get(map_val.ItemIndex());
 		if (m.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen map"); return false; }
 		m.Set(key, value);
 		return true;
@@ -963,26 +963,26 @@ public readonly struct Value {
 
 	public static bool map_remove(Value map_val, Value key) {
 		if (!map_val.IsMap()) return false;
-		GCMap m = GCManager.Maps.Get(value_item_index(map_val));
+		GCMap m = GCManager.Maps.Get(map_val.ItemIndex());
 		if (m.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen map"); return false; }
 		return m.Remove(key);
 	}
 
 	public static bool map_has_key(Value map_val, Value key) {
 		if (!map_val.IsMap()) return false;
-		return GCManager.Maps.Get(value_item_index(map_val)).HasKey(key);
+		return GCManager.Maps.Get(map_val.ItemIndex()).HasKey(key);
 	}
 
 	public static void map_clear(Value map_val) {
 		if (!map_val.IsMap()) return;
-		GCMap m = GCManager.Maps.Get(value_item_index(map_val));
+		GCMap m = GCManager.Maps.Get(map_val.ItemIndex());
 		if (m.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen map"); return; }
 		m.Clear();
 	}
 
 	public static Value map_nth_entry(Value map_val, int n) {
 		if (!map_val.IsMap()) return Value.Null;
-		GCMap m = GCManager.Maps.Get(value_item_index(map_val));
+		GCMap m = GCManager.Maps.Get(map_val.ItemIndex());
 		int count = 0;
 		for (int iter = m.NextEntry(-1); iter != -1; iter = m.NextEntry(iter)) {
 			if (count == n) {
@@ -1002,13 +1002,13 @@ public readonly struct Value {
 
 	public static int map_iter_next(Value map_val, int iter) {
 		if (!map_val.IsMap() || iter == MAP_ITER_DONE) return MAP_ITER_DONE;
-		int next = GCManager.Maps.Get(value_item_index(map_val)).NextEntry(iter);
+		int next = GCManager.Maps.Get(map_val.ItemIndex()).NextEntry(iter);
 		return next == -1 ? MAP_ITER_DONE : next;
 	}
 
 	public static Value map_iter_entry(Value map_val, int iter) {
 		if (!map_val.IsMap() || iter == MAP_ITER_DONE) return Value.Null;
-		GCMap m = GCManager.Maps.Get(value_item_index(map_val));
+		GCMap m = GCManager.Maps.Get(map_val.ItemIndex());
 		Value key = m.KeyAt(iter);
 		Value val = m.ValueAt(iter);
 		Value result = make_map(4);
@@ -1024,35 +1024,35 @@ public readonly struct Value {
 
 	public static void varmap_gather(Value map_val) {
 		if (!map_val.IsMap()) return;
-		Int32 idx = value_item_index(map_val);
+		Int32 idx = map_val.ItemIndex();
 		VarMapBacking vmb = GCManager.Maps.Get(idx)._vmb;
 		if (vmb != null) vmb.Gather(idx);
 	}
 
 	public static void varmap_rebind(Value map_val, List<Value> registers, List<Value> names) {
 		if (!map_val.IsMap()) return;
-		Int32 idx = value_item_index(map_val);
+		Int32 idx = map_val.ItemIndex();
 		VarMapBacking vmb = GCManager.Maps.Get(idx)._vmb;
 		if (vmb != null) vmb.Rebind(idx, registers, names);
 	}
 
 	public static void varmap_map_to_register(Value map_val, Value varName, List<Value> registers, int regIndex) {
 		if (!map_val.IsMap()) return;
-		Int32 idx = value_item_index(map_val);
+		Int32 idx = map_val.ItemIndex();
 		GCMap m = GCManager.Maps.Get(idx);
 		if (m._vmb != null) m._vmb.MapToRegister(idx, varName, registers, regIndex);
 	}
 
 	// ==== FREEZE OPERATIONS ==================================================
 	public static bool is_frozen(Value v) {
-		if (v.IsList()) return GCManager.Lists.Get(value_item_index(v)).Frozen;
-		if (v.IsMap())  return GCManager.Maps.Get(value_item_index(v)).Frozen;
+		if (v.IsList()) return GCManager.Lists.Get(v.ItemIndex()).Frozen;
+		if (v.IsMap())  return GCManager.Maps.Get(v.ItemIndex()).Frozen;
 		return false;
 	}
 
 	public static void freeze_value(Value v) {
 		if (v.IsList()) {
-			Int32 idx = value_item_index(v);
+			Int32 idx = v.ItemIndex();
 			GCList list = GCManager.Lists.Get(idx);
 			if (list.Frozen) return;
 			GCManager.Lists.SetFrozen(idx, true);
@@ -1065,7 +1065,7 @@ public readonly struct Value {
 				for (int i = 0; i < n; i++) freeze_value(list.Get(i));
 			}
 		} else if (v.IsMap()) {
-			Int32 idx = value_item_index(v);
+			Int32 idx = v.ItemIndex();
 			GCMap map = GCManager.Maps.Get(idx);
 			if (map.Frozen) return;
 			GCManager.Maps.SetFrozen(idx, true);
@@ -1078,21 +1078,21 @@ public readonly struct Value {
 
 	public static Value frozen_copy(Value v) {
 		if (v.IsList()) {
-			GCList src = GCManager.Lists.Get(value_item_index(v));
+			GCList src = GCManager.Lists.Get(v.ItemIndex());
 			if (src.Frozen) return v;
 			int srcCount = src.Count();
 			Value newList = make_list(srcCount);
-			Int32 dstIdx = value_item_index(newList);
+			Int32 dstIdx = newList.ItemIndex();
 			GCList dst = GCManager.Lists.Get(dstIdx);
 			GCManager.Lists.SetFrozen(dstIdx, true);
 			for (int i = 0; i < srcCount; i++) dst.Push(frozen_copy(src.Get(i)));
 			return newList;
 		}
 		if (v.IsMap()) {
-			GCMap src = GCManager.Maps.Get(value_item_index(v));
+			GCMap src = GCManager.Maps.Get(v.ItemIndex());
 			if (src.Frozen) return v;
 			Value newMap = make_map(src.Count());
-			Int32 dstIdx = value_item_index(newMap);
+			Int32 dstIdx = newMap.ItemIndex();
 			GCMap dst = GCManager.Maps.Get(dstIdx);
 			GCManager.Maps.SetFrozen(dstIdx, true);
 			for (int iter = src.NextEntry(-1); iter != -1; iter = src.NextEntry(iter)) {
@@ -1109,12 +1109,12 @@ public readonly struct Value {
 	public static Value map_concat(Value a, Value b) {
 		Value result = make_map(0);
 		if (a.IsMap()) {
-			GCMap mapA = GCManager.Maps.Get(value_item_index(a));
+			GCMap mapA = GCManager.Maps.Get(a.ItemIndex());
 			for (int iter = mapA.NextEntry(-1); iter != -1; iter = mapA.NextEntry(iter))
 				map_set(result, mapA.KeyAt(iter), mapA.ValueAt(iter));
 		}
 		if (b.IsMap()) {
-			GCMap mapB = GCManager.Maps.Get(value_item_index(b));
+			GCMap mapB = GCManager.Maps.Get(b.ItemIndex());
 			for (int iter = mapB.NextEntry(-1); iter != -1; iter = mapB.NextEntry(iter))
 				map_set(result, mapB.KeyAt(iter), mapB.ValueAt(iter));
 		}
@@ -1279,7 +1279,7 @@ public readonly struct Value {
 		it.Key = Value.Null;
 		it.Val = Value.Null;
 		if (map_val.IsMap()) {
-			it.MapIndex = value_item_index(map_val);
+			it.MapIndex = map_val.ItemIndex();
 			it.Iter     = -1;
 		} else {
 			it.MapIndex = -1;

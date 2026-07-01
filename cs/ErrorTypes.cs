@@ -78,7 +78,7 @@ public static class ErrorTypes {
 	// RuntimeError for now, but can later get a dedicated __isa prototype.
 	public static Value TypeError(String expectedType, Value actualValue) {
 		return RuntimeError("Type error: " + expectedType + " required, but got "
-			+ Value.value_type_name(actualValue));
+			+ actualValue.TypeName());
 	}
 
 	// GC mark callback to protect our static error prototypes from collection.

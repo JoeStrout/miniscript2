@@ -61,36 +61,40 @@ void value_init_constants(void) {
 Value Value::make_error(Value message, Value inner, Value stack, Value isa) {
     if (stack.IsNull()) {
         stack = Value::make_list(0);
-        Value::freeze_value(stack);
+        stack.Freeze();
     }
     return GCManager::NewError(message, inner, stack, isa);
 }
 
-Value Value::error_message(Value v) {
+Value Value::Message() const {
+    Value v = *this;
     if (!v.IsError()) return Value::null;
     return GCManager::Errors.Get(v.ItemIndex()).Message;
 }
 
-Value Value::error_inner(Value v) {
+Value Value::Inner() const {
+    Value v = *this;
     if (!v.IsError()) return Value::null;
     return GCManager::Errors.Get(v.ItemIndex()).Inner;
 }
 
-Value Value::error_stack(Value v) {
+Value Value::Stack() const {
+    Value v = *this;
     if (!v.IsError()) return Value::null;
     return GCManager::Errors.Get(v.ItemIndex()).Stack;
 }
 
-Value Value::error_isa(Value v) {
+Value Value::Isa() const {
+    Value v = *this;
     if (!v.IsError()) return Value::null;
     return GCManager::Errors.Get(v.ItemIndex()).Isa;
 }
 
-bool Value::error_isa_contains(Value error, Value base) {
-    Value current = error;
+bool Value::IsaContains(Value base) const {
+    Value current = *this;
     for (int depth = 0; depth < 256; depth++) {
         if (current.IsNull()) return false;
-        if (Value::value_identical(current, base)) return true;
+        if (current.RefEquals(base)) return true;
         if (!current.IsError()) return false;
         current = GCManager::Errors.Get(current.ItemIndex()).Isa;
     }
@@ -104,13 +108,15 @@ Value Value::make_funcref(MiniScript::FuncDef func, Value outerVars) {
     return GCManager::NewFuncRef(func, outerVars);
 }
 
-MiniScript::FuncDef Value::funcref_funcdef(Value v) {
+MiniScript::FuncDef Value::FunctionDef() const {
+    Value v = *this;
     if (!v.IsFuncRef()) return MiniScript::FuncDef();
     return GCManager::Functions.Get(v.ItemIndex()).Func;
 }
 
 
-Value Value::funcref_outer_vars(Value v) {
+Value Value::OuterVars() const {
+    Value v = *this;
     if (!v.IsFuncRef()) return Value::null;
     return GCManager::Functions.Get(v.ItemIndex()).OuterVars;
 }
@@ -148,7 +154,7 @@ Value value_mult_nonnumeric(Value a, Value b) {
         // times becomes a computed list (null increment => repeat the base).
         if (len == 1 && extraItems == 0) {
             Value elem = a.ListGet(0);
-            if (elem.IsNumber() || elem.IsString() || elem.IsNull() || Value::is_frozen(elem)) {
+            if (elem.IsNumber() || elem.IsString() || elem.IsNull() || elem.IsFrozen()) {
                 return GCManager::NewComputedList(elem, Value::null, fullCopies);
             }
         }
@@ -419,8 +425,8 @@ Value code_form(Value v, void* vm, int recursion_limit) {
     }
 
     if (v.IsFuncRef()) {
-        MiniScript::FuncDef fn = Value::funcref_funcdef(v);
-        Value outer = Value::funcref_outer_vars(v);
+        MiniScript::FuncDef fn = v.FunctionDef();
+        Value outer = v.OuterVars();
         if (!outer.IsNull())
             std::snprintf(buf, sizeof buf, "FuncRef(%s, closure)", fn.Name().c_str());
         else
@@ -429,7 +435,7 @@ Value code_form(Value v, void* vm, int recursion_limit) {
     }
 
     if (v.IsError()) {
-        Value msg = Value::error_message(v);
+        Value msg = v.Message();
         if (msg.IsString()) return string_concat(Value::make_string("error: "), msg);
         return Value::make_string("error");
     }
@@ -474,13 +480,15 @@ uint32_t value_hash(Value v) {
 
 // ── Frozen ──────────────────────────────────────────────────────────────
 
-bool Value::is_frozen(Value v) {
+bool Value::IsFrozen() const {
+    Value v = *this;
     if (v.IsList()) return GCManager::Lists.Get(v.ItemIndex()).Frozen;
     if (v.IsMap())  return GCManager::Maps.Get(v.ItemIndex()).Frozen;
     return false;
 }
 
-void Value::freeze_value(Value v) {
+void Value::Freeze() const {
+    Value v = *this;
     if (v.IsList()) {
         int32_t idx = v.ItemIndex();
         GCList l = GCManager::Lists.Get(idx);
@@ -489,10 +497,10 @@ void Value::freeze_value(Value v) {
         if (l.Computed) {
             // Computed-list elements derive from an immutable base; freezing
             // the base covers them all without materializing the list.
-            Value::freeze_value(l.Get(0));
+            l.Get(0).Freeze();
         } else {
             int n = l.Count();
-            for (int i = 0; i < n; i++) Value::freeze_value(l.Get(i));
+            for (int i = 0; i < n; i++) l.Get(i).Freeze();
         }
     } else if (v.IsMap()) {
         int32_t idx = v.ItemIndex();
@@ -500,13 +508,14 @@ void Value::freeze_value(Value v) {
         if (m.Frozen) return;
         GCManager::Maps.SetFrozen(idx, true);
         for (int i = m.NextEntry(-1); i != -1; i = m.NextEntry(i)) {
-            Value::freeze_value(m.KeyAt(i));
-            Value::freeze_value(m.ValueAt(i));
+            m.KeyAt(i).Freeze();
+            m.ValueAt(i).Freeze();
         }
     }
 }
 
-Value Value::frozen_copy(Value v) {
+Value Value::FrozenCopy() const {
+    Value v = *this;
     if (v.IsList()) {
         GCList src = GCManager::Lists.Get(v.ItemIndex());
         if (src.Frozen) return v;
@@ -516,7 +525,7 @@ Value Value::frozen_copy(Value v) {
         GCList dst = GCManager::Lists.Get(dstIdx);
         GCManager::Lists.SetFrozen(dstIdx, true);
         for (int i = 0; i < srcCount; i++)
-            dst.Push(Value::frozen_copy(src.Get(i)));
+            dst.Push(src.Get(i).FrozenCopy());
         return newList;
     }
     if (v.IsMap()) {
@@ -527,7 +536,7 @@ Value Value::frozen_copy(Value v) {
         GCMap dst = GCManager::Maps.Get(dstIdx);
         GCManager::Maps.SetFrozen(dstIdx, true);
         for (int i = src.NextEntry(-1); i != -1; i = src.NextEntry(i))
-            dst.Set(Value::frozen_copy(src.KeyAt(i)), Value::frozen_copy(src.ValueAt(i)));
+            dst.Set(src.KeyAt(i).FrozenCopy(), src.ValueAt(i).FrozenCopy());
         return newMap;
     }
     return v;

@@ -195,7 +195,7 @@ public class VM {
 		FuncDef rf = callStack[0].ReturnFunc;
 		Int32 regCount = rf.MaxRegs;
 		for (Int32 i = 0; i < regCount; i++) {
-			if (!names[i].IsNull() && Value.value_identical(stack[i], v) && !Value.value_identical(names[i], v))
+			if (!names[i].IsNull() && stack[i].RefEquals(v) && !names[i].RefEquals(v))
 				return names[i].ToString(null);
 		}
 		// Fall back to the intrinsic short-name registry (type maps, etc.)
@@ -416,7 +416,7 @@ public class VM {
 				newStack.Add(Value.Null);
 				newNames.Add(Value.Null);
 			}
-			Value.varmap_rebind(ReplGlobals, newStack, newNames);
+			ReplGlobals.Rebind(newStack, newNames);
 			stack = newStack;
 			names = newNames;
 		}
@@ -482,7 +482,7 @@ public class VM {
 	// to use it in an operation that doesn't tolerate errors.
 	// Returns IntrinsicResult.Null for convenience.
 	public IntrinsicResult RaiseUncaughtError(Value error) {
-		String msg = StringUtils.Format("Uncaught {0}", Value.error_message(error));
+		String msg = StringUtils.Format("Uncaught {0}", error.Message());
 		RaiseRuntimeError(msg);
 		return IntrinsicResult.Null;
 	}
@@ -491,9 +491,9 @@ public class VM {
 	// Returns false if there is no error.
 	public bool ReportRuntimeError() {
 		if (Error.IsNull()) return false;
-		String msg = StringUtils.Format("{0}", Value.error_message(Error));
+		String msg = StringUtils.Format("{0}", Error.Message());
 		String loc = "";
-		Value stack = Value.error_stack(Error);
+		Value stack = Error.Stack();
 		if (stack.IsList() && stack.ListCount() > 0) {
 			loc = StringUtils.Format("{0}", stack.ListGet(0));
 			// Drop the "(current program) " prefix used for the top-level
@@ -532,7 +532,7 @@ public class VM {
 			if (callerFile == "") callerFile = "(current program)";
 			result.Push(Value.make_string(StringUtils.Format("{0} line {1}", callerFile, callerFunc.GetLineNumber(callerPC))));
 		}
-		Value.freeze_value(result);
+		result.Freeze();
 		return result;
 	}
 
@@ -552,7 +552,7 @@ public class VM {
 		outList.Add(func);
 		List<Value> consts = func.Constants;
 		for (Int32 i = 0; i < consts.Count; i++) {
-			if (consts[i].IsFuncRef()) CollectFunctions(Value.funcref_funcdef(consts[i]), outList);
+			if (consts[i].IsFuncRef()) CollectFunctions(consts[i].FunctionDef(), outList);
 		}
 	}
 
@@ -663,13 +663,13 @@ public class VM {
 	//     local execution state (pc, baseIndex, curFunc, etc.).
 	// On error, calls RaiseRuntimeError and returns -1.
 	private Int32 AutoInvokeFuncRef(Value funcRefVal, Int32 resultReg, Int32 returnPC, Int32 baseIndex, FuncDef currentFunc, ref FuncDef calleeOut) {
-		FuncDef callee = Value.funcref_funcdef(funcRefVal);
+		FuncDef callee = funcRefVal.FunctionDef();
 		if (callee == null) {
 			RaiseRuntimeError("Auto-invoke: Invalid function reference");
 			return -1;
 		}
 
-		Value outerVars = Value.funcref_outer_vars(funcRefVal);
+		Value outerVars = funcRefVal.OuterVars();
 
 		Int32 calleeBase = baseIndex + currentFunc.MaxRegs;
 
@@ -896,7 +896,7 @@ public class VM {
 					// Check if the source register has the expected name
 					valC = curConstants[c];  // expected name
 					valB = names[baseIndex + b];  // actual name
-					if (Value.value_identical(valC, valB)) {
+					if (valC.RefEquals(valB)) {
 						localStack[a] = localStack[b];
 					} else {
 						// Variable not found in current scope, look in outer context
@@ -915,7 +915,7 @@ public class VM {
 					// Check if the source register has the expected name
 					valC = curConstants[c];  // expected name
 					valB = names[baseIndex + b];  // actual name
-					if (Value.value_identical(valC, valB)) {
+					if (valC.RefEquals(valB)) {
 						valB = localStack[b];
 					} else {
 						// Variable not found in current scope, look in outer context
@@ -949,7 +949,7 @@ public class VM {
 					// constants[BC], bound with our locals as the closure context.
 					Byte a = BytecodeUtil.Au(instruction);
 					UInt16 constIdx = BytecodeUtil.BCu(instruction);
-					FuncDef func = Value.funcref_funcdef(curConstants[constIdx]);
+					FuncDef func = curConstants[constIdx].FunctionDef();
 
 					// Create function reference with our locals as the closure context
 					val = GetCurrentLocalVarMap(baseIndex, curFunc.MaxRegs); // CPP: val = GetCurrentLocalVarMap(baseIndex, curFuncRaw->MaxRegs);
@@ -967,7 +967,7 @@ public class VM {
 					names[baseIndex + a] = valC;
 					// In REPL mode, register this variable in the globals VarMap
 					if (baseIndex == 0 && !ReplGlobals.IsNull()) {
-						Value.varmap_map_to_register(ReplGlobals, valC, 
+						ReplGlobals.MapToRegister(valC, 
 							stack,
 							baseIndex + a);
 					}
@@ -988,13 +988,13 @@ public class VM {
 					// variables declared after the first closure/`locals` use would
 					// be missing from the locals map.
 					if (baseIndex == 0 && !ReplGlobals.IsNull()) {
-						Value.varmap_map_to_register(ReplGlobals, valC,
+						ReplGlobals.MapToRegister(valC,
 							stack,
 							baseIndex + a);
 					} else {
 						CallInfo nameFrame = callStack[callStackTop - 1];
 						if (!nameFrame.LocalVarMap.IsNull()) {
-							Value.varmap_map_to_register(nameFrame.LocalVarMap, valC,
+							nameFrame.LocalVarMap.MapToRegister(valC,
 								stack,
 								baseIndex + a);
 						}
@@ -1007,7 +1007,7 @@ public class VM {
 					Byte a = BytecodeUtil.Au(instruction);
 					Byte b = BytecodeUtil.Bu(instruction);
 					Byte c = BytecodeUtil.Cu(instruction);
-					localStack[a] = Value.value_add(localStack[b], localStack[c], this);
+					localStack[a] = localStack[b].Add(localStack[c], this);
 					break;
 				}
 
@@ -1052,7 +1052,7 @@ public class VM {
 					Byte a = BytecodeUtil.Au(instruction);
 					Byte b = BytecodeUtil.Bu(instruction);
 					Byte c = BytecodeUtil.Cu(instruction);
-					localStack[a] = Value.value_pow(localStack[b], localStack[c]);
+					localStack[a] = localStack[b].Pow(localStack[c]);
 					break; // CPP: VM_NEXT();
 				}
 
@@ -1061,7 +1061,7 @@ public class VM {
 					Byte a = BytecodeUtil.Au(instruction);
 					Byte b = BytecodeUtil.Bu(instruction);
 					Byte c = BytecodeUtil.Cu(instruction);
-					localStack[a] = Value.value_and(localStack[b], localStack[c]);
+					localStack[a] = localStack[b].And(localStack[c]);
 					break; // CPP: VM_NEXT();
 				}
 
@@ -1070,7 +1070,7 @@ public class VM {
 					Byte a = BytecodeUtil.Au(instruction);
 					Byte b = BytecodeUtil.Bu(instruction);
 					Byte c = BytecodeUtil.Cu(instruction);
-					localStack[a] = Value.value_or(localStack[b], localStack[c]);
+					localStack[a] = localStack[b].Or(localStack[c]);
 					break; // CPP: VM_NEXT();
 				}
 
@@ -1681,7 +1681,7 @@ public class VM {
 						return Value.Null;
 					}
 
-					FuncDef callee = Value.funcref_funcdef(valC);
+					FuncDef callee = valC.FunctionDef();
 					if (callee == null) {
 						RaiseRuntimeError("ARGBLK/CALL: Invalid function reference");
 						return Value.Null;
@@ -1734,7 +1734,7 @@ public class VM {
 						break;
 					}
 
-					val = Value.funcref_outer_vars(valC);
+					val = valC.OuterVars();
 					callStack[callStackTop] = new CallInfo(nextPC, baseIndex, currentFunc, resultReg, val);
 					callStackTop++;
 
@@ -1768,7 +1768,7 @@ public class VM {
 					Byte a = BytecodeUtil.Au(instruction);
 					UInt16 constIdx = BytecodeUtil.BCu(instruction);
 
-					FuncDef callee = Value.funcref_funcdef(curConstants[constIdx]);
+					FuncDef callee = curConstants[constIdx].FunctionDef();
 					if (callee == null) {
 						RaiseRuntimeError("CALLF: Invalid function reference");
 						break;
@@ -1813,12 +1813,12 @@ public class VM {
 						break;
 					}
 
-					FuncDef callee = Value.funcref_funcdef(valC);
+					FuncDef callee = valC.FunctionDef();
 					if (callee == null) {
 						RaiseRuntimeError("CALL: Invalid function reference");
 						break;
 					}
-					valD = Value.funcref_outer_vars(valC);  // valD: "outer" VarMap of func valC
+					valD = valC.OuterVars();  // valD: "outer" VarMap of func valC
 
 					// For naked CALL (without ARGBLK): set up parameters with defaults
 					Int32 calleeBase = baseIndex + b;
@@ -1890,15 +1890,15 @@ public class VM {
 					Int32 isaResult = 0;
 					if (valB.IsNull() && valC.IsNull()) {
 						isaResult = 1;
-					} else if (Value.value_identical(valB, valC)) {
+					} else if (valB.RefEquals(valC)) {
 						isaResult = 1;
 					} else if (valB.IsError()) {
 						// Error-specific isa rules:
 						//   e isa error   -> 1
 						//   e1 isa e2     -> 1 if e2 is in e1's __isa chain
-						if (Value.value_identical(valC, CoreIntrinsics.ErrorType())) {
+						if (valC.RefEquals(CoreIntrinsics.ErrorType())) {
 							isaResult = 1;
-						} else if (valC.IsError() && Value.error_isa_contains(valB, valC)) {
+						} else if (valC.IsError() && valB.IsaContains(valC)) {
 							isaResult = 1;
 						}
 						localStack[a] = Value.Truth(isaResult);
@@ -1909,7 +1909,7 @@ public class VM {
 							val = valB;  // val is "current"; valA (below) is "next" in the __isa chain
 							for (Int32 depth = 0; depth < 256; depth++) {
 								if (!val.TryGet(Value.magicIsA, out valA)) break;
-								if (Value.value_identical(valA, valC)) {
+								if (valA.RefEquals(valC)) {
 									isaResult = 1;
 									break;
 								}
@@ -1918,15 +1918,15 @@ public class VM {
 						}
 						// If not found via __isa chain, check built-in type maps
 						if (isaResult == 0) {
-							if (valB.IsNumber() && Value.value_identical(valC, CoreIntrinsics.NumberType())) {
+							if (valB.IsNumber() && valC.RefEquals(CoreIntrinsics.NumberType())) {
 								isaResult = 1;
-							} else if (valB.IsString() && Value.value_identical(valC, CoreIntrinsics.StringType())) {
+							} else if (valB.IsString() && valC.RefEquals(CoreIntrinsics.StringType())) {
 								isaResult = 1;
-							} else if (valB.IsList() && Value.value_identical(valC, CoreIntrinsics.ListType())) {
+							} else if (valB.IsList() && valC.RefEquals(CoreIntrinsics.ListType())) {
 								isaResult = 1;
-							} else if (valB.IsMap() && Value.value_identical(valC, CoreIntrinsics.MapType())) {
+							} else if (valB.IsMap() && valC.RefEquals(CoreIntrinsics.MapType())) {
 								isaResult = 1;
-							} else if (valB.IsFuncRef() && Value.value_identical(valC, CoreIntrinsics.FunctionType())) {
+							} else if (valB.IsFuncRef() && valC.RefEquals(CoreIntrinsics.FunctionType())) {
 								isaResult = 1;
 							}
 						}
@@ -1952,10 +1952,10 @@ public class VM {
 						// Any other key terminates per language spec.
 						if (valC.IsString()) {
 							String keyStr = valC.AsCString();
-							if (keyStr == "message") { localStack[a] = Value.error_message(valB); hasPendingContext = false; break; }
-							if (keyStr == "inner")   { localStack[a] = Value.error_inner(valB);   hasPendingContext = false; break; }
-							if (keyStr == "stack")   { localStack[a] = Value.error_stack(valB);   hasPendingContext = false; break; }
-							if (keyStr == "__isa")   { localStack[a] = Value.error_isa(valB);     hasPendingContext = false; break; }
+							if (keyStr == "message") { localStack[a] = valB.Message(); hasPendingContext = false; break; }
+							if (keyStr == "inner")   { localStack[a] = valB.Inner();   hasPendingContext = false; break; }
+							if (keyStr == "stack")   { localStack[a] = valB.Stack();   hasPendingContext = false; break; }
+							if (keyStr == "__isa")   { localStack[a] = valB.Isa();     hasPendingContext = false; break; }
 						}
 						typeMap = CoreIntrinsics.ErrorType();
 						if (typeMap.TryGet(valC, out val)) {
@@ -2114,7 +2114,7 @@ public class VM {
 					// (makes closure values survive beyond the function's lifetime).
 					CallInfo frame = callStack[callStackTop - 1];
 					if (!frame.LocalVarMap.IsNull()) {
-						Value.varmap_gather(frame.LocalVarMap);
+						frame.LocalVarMap.Gather();
 						frame.LocalVarMap = Value.Null;
 						callStack[callStackTop - 1] = frame;  // write back (CallInfo is a struct)
 					}

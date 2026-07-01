@@ -266,21 +266,24 @@ Value Value::make_varmap(List<Value> registers, List<Value> names, int firstInde
     return VarMapBacking::NewVarMap(registers, names, firstIndex, firstIndex + count - 1);
 }
 
-void Value::varmap_map_to_register(Value map_val, Value var_name, List<Value> registers, int reg_index) {
+void Value::MapToRegister(Value var_name, List<Value> registers, int reg_index) const {
+    Value map_val = *this;
     if (!map_val.IsMap()) return;
     int32_t idx = map_val.ItemIndex();
     GCMap m = GCManager::Maps.Get(idx);
     if (!vmb_is_null(m._vmb)) m._vmb.MapToRegister(idx, var_name, registers, reg_index);
 }
 
-void Value::varmap_gather(Value map_val) {
+void Value::Gather() const {
+    Value map_val = *this;
     if (!map_val.IsMap()) return;
     int32_t idx = map_val.ItemIndex();
     GCMap m = GCManager::Maps.Get(idx);
     if (!vmb_is_null(m._vmb)) m._vmb.Gather(idx);
 }
 
-void Value::varmap_rebind(Value map_val, List<Value> registers, List<Value> names) {
+void Value::Rebind(List<Value> registers, List<Value> names) const {
+    Value map_val = *this;
     if (!map_val.IsMap()) return;
     int32_t idx = map_val.ItemIndex();
     GCMap m = GCManager::Maps.Get(idx);

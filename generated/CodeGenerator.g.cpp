@@ -1066,7 +1066,7 @@ Boolean CodeGeneratorStorage::TryEvaluateConstant(ASTNode node,Value* result) {
 			if (!TryEvaluateConstant(listNode.Elements()[i], &elemVal)) return Boolean(false);
 			list.Push(elemVal);
 		}
-		Value::freeze_value(list);
+		list.Freeze();
 		*result = list;
 		return Boolean(true);
 	}
@@ -1081,7 +1081,7 @@ Boolean CodeGeneratorStorage::TryEvaluateConstant(ASTNode node,Value* result) {
 			if (!TryEvaluateConstant(mapNode.Values()[i], &valVal)) return Boolean(false);
 			map.MapSet(keyVal, valVal);
 		}
-		Value::freeze_value(map);
+		map.Freeze();
 		*result = map;
 		return Boolean(true);
 	}

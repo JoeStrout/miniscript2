@@ -295,11 +295,11 @@ void CoreIntrinsics::Init() {
 		for (int depth = 0; depth < 256; depth++) {
 			if (current.IsNull()) break;
 			if (!current.IsError()) break;
-			if (Value::value_identical(current, newErr)) {
+			if (current.RefEquals(newErr)) {
 				ctx.vm.RaiseRuntimeError("err: __isa chain would form a cycle");
 				return IntrinsicResult::Null;
 			}
-			current = Value::error_isa(current);
+			current = current.Isa();
 		}
 		return IntrinsicResult(newErr);
 	});
@@ -316,11 +316,11 @@ void CoreIntrinsics::Init() {
 		if (arg.IsList()) {
 			Boolean computed = GCManager::Lists.Get(arg.ItemIndex()).Computed;
 			result.MapSet("computed", Value::Truth(computed));
-			result.MapSet("frozen", Value::Truth(Value::is_frozen(arg)));
+			result.MapSet("frozen", Value::Truth(arg.IsFrozen()));
 		} else if (arg.IsMap()) {
-			result.MapSet("frozen", Value::Truth(Value::is_frozen(arg)));
+			result.MapSet("frozen", Value::Truth(arg.IsFrozen()));
 		} else if (arg.IsFuncRef()) {
-			FuncDef func = Value::funcref_funcdef(arg);
+			FuncDef func = arg.FunctionDef();
 			result.MapSet("name", func.Name());
 			result.MapSet("note", func.Note());
 			parameters = Value::make_list(func.ParamNames().Count());
@@ -331,18 +331,18 @@ void CoreIntrinsics::Init() {
 				parameters.Push(pinfo);
 			}
 			result.MapSet("params", parameters);
-			if (Value::funcref_outer_vars(arg).IsNull()) {
+			if (arg.OuterVars().IsNull()) {
 				result.MapSet("closure", Value::zero);
 			} else {
 				result.MapSet("closure", Value::one);
 			}
 		} else if (arg.IsError()) {
-			result.MapSet("message", Value::error_message(arg));
-			result.MapSet("inner", Value::error_inner(arg));
-			result.MapSet("stack", Value::error_stack(arg));
-			result.MapSet("isa", Value::error_isa(arg));
+			result.MapSet("message", arg.Message());
+			result.MapSet("inner", arg.Inner());
+			result.MapSet("stack", arg.Stack());
+			result.MapSet("isa", arg.Isa());
 		}
-		Value::freeze_value(result);
+		result.Freeze();
 		return IntrinsicResult(result);
 	});
 
@@ -448,7 +448,7 @@ void CoreIntrinsics::Init() {
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value v = ctx.GetArg(0);
 		if (v.IsError()) return ctx.vm.RaiseUncaughtError(v);
-		Value::freeze_value(v);
+		v.Freeze();
 		return IntrinsicResult(Value::Null);
 	});
 
@@ -458,7 +458,7 @@ void CoreIntrinsics::Init() {
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value v = ctx.GetArg(0);
 		if (v.IsError()) return IntrinsicResult(v);
-		return IntrinsicResult(Value::Truth(Value::is_frozen(v)));
+		return IntrinsicResult(Value::Truth(v.IsFrozen()));
 	});
 
 	// frozenCopy(x)
@@ -467,7 +467,7 @@ void CoreIntrinsics::Init() {
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value v = ctx.GetArg(0);
 		if (v.IsError()) return IntrinsicResult(v);
-		return IntrinsicResult(Value::frozen_copy(v));
+		return IntrinsicResult(v.FrozenCopy());
 	});
 
 	// abs(x=0)
@@ -839,7 +839,7 @@ void CoreIntrinsics::Init() {
 		Value temp;
 		Value iterKey, iterVal;
 		if (self.IsList()) {
-			if (Value::is_frozen(self)) { ctx.vm.RaiseRuntimeError("Attempt to modify a frozen list"); return IntrinsicResult(Value::Null); }
+			if (self.IsFrozen()) { ctx.vm.RaiseRuntimeError("Attempt to modify a frozen list"); return IntrinsicResult(Value::Null); }
 			int count = self.ListCount();
 			for (int i = count - 1; i > 0; i--) {
 				int j = (int)(PRNG::Next() * (i + 1));
@@ -848,7 +848,7 @@ void CoreIntrinsics::Init() {
 				self.ListSet(j, temp);
 			}
 		} else if (self.IsMap()) {
-			if (Value::is_frozen(self)) { ctx.vm.RaiseRuntimeError("Attempt to modify a frozen map"); return IntrinsicResult(Value::Null); }
+			if (self.IsFrozen()) { ctx.vm.RaiseRuntimeError("Attempt to modify a frozen map"); return IntrinsicResult(Value::Null); }
 			// Collect keys and values
 			int count = self.MapCount();
 			List<Value> keys =  List<Value>::New(count);
@@ -1357,7 +1357,7 @@ void CoreIntrinsics::Init() {
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value a = ctx.GetArg(0);
 		Value b = ctx.GetArg(1);
-		return IntrinsicResult(Value::Truth(Value::value_identical(a, b)));
+		return IntrinsicResult(Value::Truth(a.RefEquals(b)));
 	});
 
 	// version
@@ -1371,7 +1371,7 @@ void CoreIntrinsics::Init() {
 			_versionMap.MapSet("host", hostVersion);
 			_versionMap.MapSet("hostName", hostName);
 			_versionMap.MapSet("hostInfo", hostInfo);
-			Value::freeze_value(_versionMap);
+			_versionMap.Freeze();
 		}
 		return IntrinsicResult(_versionMap);
 	});
@@ -1409,7 +1409,7 @@ void CoreIntrinsics::Init() {
 		result.MapSet("errors",          Value(errors));
 		result.MapSet("functions",       Value(functions));
 		result.MapSet("total",           Value(total));
-		Value::freeze_value(result);
+		result.Freeze();
 		return IntrinsicResult(result);
 	});
 
@@ -1435,7 +1435,7 @@ Value CoreIntrinsics::IntrinsicsMap() {
 			if (IsNull(intr) || IsNull(intr.Name()) || intr.Name().Length() == 0) continue;
 			_intrinsicsMap.MapSet(intr.Name(), intr.GetFunc());
 		}
-		Value::freeze_value(_intrinsicsMap);
+		_intrinsicsMap.Freeze();
 	}
 	return _intrinsicsMap;
 }
@@ -1445,7 +1445,7 @@ Value CoreIntrinsics::GCMap() {
 		_gcMap = Value::make_map(2);
 		if (!IsNull(_gcCollectIntr)) _gcMap.MapSet("collect", _gcCollectIntr.GetFunc());
 		if (!IsNull(_gcStatsIntr)) _gcMap.MapSet("stats", _gcStatsIntr.GetFunc());
-		Value::freeze_value(_gcMap);
+		_gcMap.Freeze();
 	}
 	return _gcMap;
 }

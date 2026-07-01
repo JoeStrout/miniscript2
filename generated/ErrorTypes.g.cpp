@@ -16,11 +16,11 @@ void ErrorTypes::Init() {
 	}
 	if (compiler.IsNull()) {
 		compiler = Value::make_error(Value::make_string("Compiler Error"), Value::Null, Value::Null, Value::Null);
-		Value::freeze_value(compiler);
+		compiler.Freeze();
 	}
 	if (runtime.IsNull()) {
 		runtime = Value::make_error(Value::make_string("Runtime Error"), Value::Null, Value::Null, Value::Null);
-		Value::freeze_value(runtime);
+		runtime.Freeze();
 	}
 }
 Value ErrorTypes::CompilerError(String msg) {

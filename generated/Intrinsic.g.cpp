@@ -21,7 +21,7 @@ void IntrinsicStorage::ClearShortNames() {
 }
 String IntrinsicStorage::GetShortName(Value v) {
 	for (Int32 i = 0; i < _shortNameKeys.Count(); i++) {
-		if (Value::value_identical(_shortNameKeys[i], v)) return _shortNameVals[i];
+		if (_shortNameKeys[i].RefEquals(v)) return _shortNameVals[i];
 	}
 	return nullptr;
 }

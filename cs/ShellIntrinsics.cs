@@ -122,7 +122,7 @@ public static class ShellIntrinsics {
 		for (Int32 i = startIdx; i < args.Count; i++) {
 			_shellArgs.Push(Value.make_string(args[i]));
 		}
-		Value.freeze_value(_shellArgs);
+		_shellArgs.Freeze();
 	}
 
 	// Build and cache the environment-variable map.

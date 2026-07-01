@@ -1161,7 +1161,7 @@ public class CodeGenerator : IASTVisitor {
 				if (!TryEvaluateConstant(listNode.Elements[i], out elemVal)) return false;
 				list.Push(elemVal);
 			}
-			Value.freeze_value(list);
+			list.Freeze();
 			result = list;
 			return true;
 		}
@@ -1176,7 +1176,7 @@ public class CodeGenerator : IASTVisitor {
 				if (!TryEvaluateConstant(mapNode.Values[i], out valVal)) return false;
 				map.MapSet(keyVal, valVal);
 			}
-			Value.freeze_value(map);
+			map.Freeze();
 			result = map;
 			return true;
 		}

@@ -566,7 +566,7 @@ void App::RunREPL() {
 		// When the interaction completes, record it and display implicit output.
 		// Skip recording if reset was called (it replaces the lists with fresh ones).
 		if (!interp.NeedMoreInput()) {
-			bool wasReset = !Value::value_identical(CoreIntrinsics::replInList, inListBefore);
+			bool wasReset = !CoreIntrinsics::replInList.RefEquals(inListBefore);
 			if (!wasReset) {
 				Int32 idx = CoreIntrinsics::replInList.ListCount();
 				implVal = interp.lastImplicitResult();

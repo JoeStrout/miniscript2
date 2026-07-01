@@ -130,13 +130,13 @@ typedef struct Value {
     // Transpiled code calls these as Value::make_string(...), etc.  These are
     // the canonical definitions; the matching free functions have been removed.
     static Value  make_gc(int gcSet, int itemIdx);
-    static bool   value_identical(Value a, Value b);
     static double AbsClamp01(double d);
 
-    static Value  value_add(Value a, Value b, void* vm);
-    static Value  value_pow(Value a, Value b);
-    static Value  value_and(Value a, Value b);
-    static Value  value_or(Value a, Value b);
+    double        ToFuzzyBool() const;
+    Value         Add(Value b, void* vm = nullptr) const;
+    Value         Pow(Value b) const;
+    Value         And(Value b) const;
+    Value         Or(Value b) const;
 
     // Strings (instance form, mirroring cs/Value.cs)
     static Value  make_string(const char* str);
@@ -201,23 +201,23 @@ typedef struct Value {
 
     // VarMaps (take List<Value>, visible via CS_String.h -> CS_List.h)
     static Value  make_varmap(List<Value> registers, List<Value> names, int firstIndex, int count);
-    static void   varmap_map_to_register(Value map_val, Value var_name, List<Value> registers, int reg_index);
-    static void   varmap_gather(Value map_val);
-    static void   varmap_rebind(Value map_val, List<Value> registers, List<Value> names);
+    void          MapToRegister(Value var_name, List<Value> registers, int reg_index) const;
+    void          Gather() const;
+    void          Rebind(List<Value> registers, List<Value> names) const;
 
-    // Errors / funcrefs / freeze
+    // Errors / funcrefs / freeze (instance form, mirroring cs/Value.cs)
     static Value  make_error(Value message, Value inner, Value stack, Value isa);
-    static Value  error_message(Value error);
-    static Value  error_inner(Value error);
-    static Value  error_stack(Value error);
-    static Value  error_isa(Value error);
-    static bool   error_isa_contains(Value error, Value base);
+    Value         Message() const;
+    Value         Inner() const;
+    Value         Stack() const;
+    Value         Isa() const;
+    bool          IsaContains(Value base) const;
     static Value  make_funcref(MiniScript::FuncDef func, Value outerVars);
-    static MiniScript::FuncDef funcref_funcdef(Value v);
-    static Value  funcref_outer_vars(Value v);
-    static bool   is_frozen(Value v);
-    static void   freeze_value(Value v);
-    static Value  frozen_copy(Value v);
+    MiniScript::FuncDef FunctionDef() const;
+    Value         OuterVars() const;
+    bool          IsFrozen() const;
+    void          Freeze() const;
+    Value         FrozenCopy() const;
 
     // Truth factory: returns Value::one for truthy, Value::zero for falsy.
     // A single overload on double covers all numeric types (bool, int, float, double).
@@ -300,7 +300,6 @@ inline int Value::GCSetIndex()      const noexcept { return (int)((bits >> 32) &
 inline int Value::ItemIndex()       const noexcept { return (int)(uint32_t)bits; }
 
 // ── Type predicates ─────────────────────────────────────────────────────
-inline bool Value::value_identical(Value a, Value b) { return a.RefEquals(b); }
 
 inline bool Value::IsInt() const noexcept {
     return false;  // legacy stub: int is no longer a separate type
@@ -391,7 +390,8 @@ void set_stack_trace_hook(StackTraceFn fn);
 // (value_current_stack_trace is now a Value:: static method.)
 
 // ── Arithmetic ──────────────────────────────────────────────────────────
-inline Value Value::value_add(Value a, Value b, void* vm) {
+inline Value Value::Add(Value b, void* vm) const {
+    Value a = *this;
     if (a.IsError()) return a;
     if (b.IsError()) return b;
     if (a.IsNumber() && b.IsNumber()) {
@@ -473,7 +473,8 @@ inline Value operator%(Value a, Value b) {
     return Value::null;
 }
 
-inline Value Value::value_pow(Value a, Value b) {
+inline Value Value::Pow(Value b) const {
+    Value a = *this;
     if (a.IsError()) return a;
     if (b.IsError()) return b;
     if (a.IsNumber() && b.IsNumber()) return Value(pow(a.AsDouble(), b.AsDouble()));
@@ -489,9 +490,9 @@ inline bool Value::operator==(Value other) const { return RecursiveEqual(other);
 inline bool Value::operator!=(Value other) const { return !RecursiveEqual(other); }
 
 // ── Helpers / fuzzy logic ───────────────────────────────────────────────
-static inline double ToFuzzyBool(Value v) {
-    if (v.IsNumber()) return v.AsDouble();
-    return v.BoolValue() ? 1.0 : 0.0;
+inline double Value::ToFuzzyBool() const {
+    if (IsNumber()) return AsDouble();
+    return BoolValue() ? 1.0 : 0.0;
 }
 
 inline double Value::AbsClamp01(double d) {
@@ -500,22 +501,24 @@ inline double Value::AbsClamp01(double d) {
     return d;
 }
 
-inline Value Value::value_and(Value a, Value b) {
+inline Value Value::And(Value b) const {
+    Value a = *this;
     if (a.IsError()) return a;
     if (b.IsError()) return b;
-    return Value(Value::AbsClamp01(ToFuzzyBool(a) * ToFuzzyBool(b)));
+    return Value(Value::AbsClamp01(a.ToFuzzyBool() * b.ToFuzzyBool()));
 }
 
-inline Value Value::value_or(Value a, Value b) {
+inline Value Value::Or(Value b) const {
+    Value a = *this;
     if (a.IsError()) return b;
     if (b.IsError()) return b;
-    double fA = ToFuzzyBool(a), fB = ToFuzzyBool(b);
+    double fA = a.ToFuzzyBool(), fB = b.ToFuzzyBool();
     return Value(Value::AbsClamp01(fA + fB - fA * fB));
 }
 
 inline Value operator!(Value a) {
     if (a.IsError()) return a;
-    return Value(1.0 - Value::AbsClamp01(ToFuzzyBool(a)));
+    return Value(1.0 - Value::AbsClamp01(a.ToFuzzyBool()));
 }
 
 // ── Bitwise (legacy stubs; retained for compatibility) ──────────────────

@@ -85,7 +85,7 @@ void ShellIntrinsics::SetShellArgs(List<String> args,Int32 startIdx) {
 	for (Int32 i = startIdx; i < args.Count(); i++) {
 		_shellArgs.Push(Value::make_string(args[i]));
 	}
-	Value::freeze_value(_shellArgs);
+	_shellArgs.Freeze();
 }
 Value ShellIntrinsics::GetEnvMap() {
 	if (!_envMap.IsNull()) return _envMap;

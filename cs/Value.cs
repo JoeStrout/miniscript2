@@ -161,15 +161,15 @@ public readonly struct Value {
 	public static Value make_funcref(FuncDef func, Value outerVars) => GCManager.NewFuncRef(func, outerVars);
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static FuncDef funcref_funcdef(Value v) {
-		if (!v.IsFuncRef()) return null;
-		return GCManager.Functions.Get(v.ItemIndex()).Func;
+	public FuncDef FunctionDef() {
+		if (!IsFuncRef()) return null;
+		return GCManager.Functions.Get(ItemIndex()).Func;
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value funcref_outer_vars(Value v) {
-		if (!v.IsFuncRef()) return Value.Null;
-		return GCManager.Functions.Get(v.ItemIndex()).OuterVars;
+	public Value OuterVars() {
+		if (!IsFuncRef()) return Value.Null;
+		return GCManager.Functions.Get(ItemIndex()).OuterVars;
 	}
 
 	// ==== ERROR OPERATIONS ===================================================
@@ -177,41 +177,41 @@ public readonly struct Value {
 	public static Value make_error(Value message, Value inner, Value stack, Value isa) {
 		if (stack.IsNull()) {
 			stack = make_list(0);
-			freeze_value(stack);
+			stack.Freeze();
 		}
 		return GCManager.NewError(message, inner, stack, isa);
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value error_message(Value v) {
-		if (!v.IsError()) return Value.Null;
-		return GCManager.Errors.Get(v.ItemIndex()).Message;
+	public Value Message() {
+		if (!IsError()) return Value.Null;
+		return GCManager.Errors.Get(ItemIndex()).Message;
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value error_inner(Value v) {
-		if (!v.IsError()) return Value.Null;
-		return GCManager.Errors.Get(v.ItemIndex()).Inner;
+	public Value Inner() {
+		if (!IsError()) return Value.Null;
+		return GCManager.Errors.Get(ItemIndex()).Inner;
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value error_stack(Value v) {
-		if (!v.IsError()) return Value.Null;
-		return GCManager.Errors.Get(v.ItemIndex()).Stack;
+	public Value Stack() {
+		if (!IsError()) return Value.Null;
+		return GCManager.Errors.Get(ItemIndex()).Stack;
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value error_isa(Value v) {
-		if (!v.IsError()) return Value.Null;
-		return GCManager.Errors.Get(v.ItemIndex()).Isa;
+	public Value Isa() {
+		if (!IsError()) return Value.Null;
+		return GCManager.Errors.Get(ItemIndex()).Isa;
 	}
 
-	public static bool error_isa_contains(Value err, Value target) {
-		if (!err.IsError()) return false;
-		Value current = GCManager.Errors.Get(err.ItemIndex()).Isa;
+	public bool IsaContains(Value target) {
+		if (!IsError()) return false;
+		Value current = GCManager.Errors.Get(ItemIndex()).Isa;
 		for (int depth = 0; depth < 256; depth++) {
 			if (current.IsNull()) return false;
-			if (value_identical(current, target)) return true;
+			if (current.RefEquals(target)) return true;
 			if (!current.IsError()) return false;
 			current = GCManager.Errors.Get(current.ItemIndex()).Isa;
 		}
@@ -446,7 +446,8 @@ public readonly struct Value {
 
 	// ==== ARITHMETIC =========================================================
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value value_add(Value a, Value b, VM vm = null) {
+	public Value Add(Value b, VM vm = null) {
+		Value a = this;
 		if (a.IsError()) return a;
 		if (b.IsError()) return b;
 		if (a.IsNumber() && b.IsNumber()) return new Value(a.AsDouble() + b.AsDouble());
@@ -509,7 +510,7 @@ public readonly struct Value {
 			// times becomes a computed list (null increment => repeat the base).
 			if (len == 1 && extraItems == 0) {
 				Value elem = a.ListGet(0);
-				if (elem.IsNumber() || elem.IsString() || elem.IsNull() || is_frozen(elem)) {
+				if (elem.IsNumber() || elem.IsString() || elem.IsNull() || elem.IsFrozen()) {
 					return GCManager.NewComputedList(elem, Value.Null, fullCopies);
 				}
 			}
@@ -544,7 +545,8 @@ public readonly struct Value {
 		return Value.Null;
 	}
 
-	public static Value value_pow(Value a, Value b) {
+	public Value Pow(Value b) {
+		Value a = this;
 		if (a.IsError()) return a;
 		if (b.IsError()) return b;
 		if (a.IsNumber() && b.IsNumber()) return new Value(Math.Pow(a.AsDouble(), b.AsDouble()));
@@ -568,9 +570,9 @@ public readonly struct Value {
 
 	// ==== FUZZY LOGIC ========================================================
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Double ToFuzzyBool(Value v) {
-		if (v.IsNumber()) return v.AsDouble();
-		return v.BoolValue() ? 1.0 : 0.0;
+	public Double ToFuzzyBool() {
+		if (IsNumber()) return AsDouble();
+		return BoolValue() ? 1.0 : 0.0;
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -580,24 +582,26 @@ public readonly struct Value {
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value value_and(Value a, Value b) {
+	public Value And(Value b) {
+		Value a = this;
 		if (a.IsError()) return a;
 		if (b.IsError()) return b;
-		return new Value(AbsClamp01(ToFuzzyBool(a) * ToFuzzyBool(b)));
+		return new Value(AbsClamp01(a.ToFuzzyBool() * b.ToFuzzyBool()));
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value value_or(Value a, Value b) {
+	public Value Or(Value b) {
+		Value a = this;
 		if (a.IsError()) return b;
 		if (b.IsError()) return b;
-		double fA = ToFuzzyBool(a), fB = ToFuzzyBool(b);
+		double fA = a.ToFuzzyBool(), fB = b.ToFuzzyBool();
 		return new Value(AbsClamp01(fA + fB - fA * fB));
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Value operator !(Value a) {
 		if (a.IsError()) return a;
-		return new Value(1.0 - AbsClamp01(ToFuzzyBool(a)));
+		return new Value(1.0 - AbsClamp01(a.ToFuzzyBool()));
 	}
 
 	// ==== COMPARISON =========================================================
@@ -607,9 +611,6 @@ public readonly struct Value {
 	// Instance method, mirroring MiniScript 1.x.
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public bool RefEquals(Value rhs) => _u == rhs._u;
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static bool value_identical(Value a, Value b) => a.RefEquals(b);
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool operator <(Value a, Value b) {
@@ -1024,74 +1025,75 @@ public readonly struct Value {
 		return VarMapBacking.NewVarMap(registers, names, baseIdx, baseIdx + count - 1);
 	}
 
-	public static void varmap_gather(Value map_val) {
-		if (!map_val.IsMap()) return;
-		Int32 idx = map_val.ItemIndex();
+	public void Gather() {
+		if (!IsMap()) return;
+		Int32 idx = ItemIndex();
 		VarMapBacking vmb = GCManager.Maps.Get(idx)._vmb;
 		if (vmb != null) vmb.Gather(idx);
 	}
 
-	public static void varmap_rebind(Value map_val, List<Value> registers, List<Value> names) {
-		if (!map_val.IsMap()) return;
-		Int32 idx = map_val.ItemIndex();
+	public void Rebind(List<Value> registers, List<Value> names) {
+		if (!IsMap()) return;
+		Int32 idx = ItemIndex();
 		VarMapBacking vmb = GCManager.Maps.Get(idx)._vmb;
 		if (vmb != null) vmb.Rebind(idx, registers, names);
 	}
 
-	public static void varmap_map_to_register(Value map_val, Value varName, List<Value> registers, int regIndex) {
-		if (!map_val.IsMap()) return;
-		Int32 idx = map_val.ItemIndex();
+	public void MapToRegister(Value varName, List<Value> registers, int regIndex) {
+		if (!IsMap()) return;
+		Int32 idx = ItemIndex();
 		GCMap m = GCManager.Maps.Get(idx);
 		if (m._vmb != null) m._vmb.MapToRegister(idx, varName, registers, regIndex);
 	}
 
 	// ==== FREEZE OPERATIONS ==================================================
-	public static bool is_frozen(Value v) {
-		if (v.IsList()) return GCManager.Lists.Get(v.ItemIndex()).Frozen;
-		if (v.IsMap())  return GCManager.Maps.Get(v.ItemIndex()).Frozen;
+	public bool IsFrozen() {
+		if (IsList()) return GCManager.Lists.Get(ItemIndex()).Frozen;
+		if (IsMap())  return GCManager.Maps.Get(ItemIndex()).Frozen;
 		return false;
 	}
 
-	public static void freeze_value(Value v) {
-		if (v.IsList()) {
-			Int32 idx = v.ItemIndex();
+	public void Freeze() {
+		if (IsList()) {
+			Int32 idx = ItemIndex();
 			GCList list = GCManager.Lists.Get(idx);
 			if (list.Frozen) return;
 			GCManager.Lists.SetFrozen(idx, true);
 			if (list.Computed) {
 				// Computed-list elements derive from an immutable base; freezing
 				// the base covers them all without materializing the list.
-				freeze_value(list.Get(0));
+				list.Get(0).Freeze();
 			} else {
 				int n = list.Count();
-				for (int i = 0; i < n; i++) freeze_value(list.Get(i));
+				for (int i = 0; i < n; i++) list.Get(i).Freeze();
 			}
-		} else if (v.IsMap()) {
-			Int32 idx = v.ItemIndex();
+		} else if (IsMap()) {
+			Int32 idx = ItemIndex();
 			GCMap map = GCManager.Maps.Get(idx);
 			if (map.Frozen) return;
 			GCManager.Maps.SetFrozen(idx, true);
 			for (int iter = map.NextEntry(-1); iter != -1; iter = map.NextEntry(iter)) {
-				freeze_value(map.KeyAt(iter));
-				freeze_value(map.ValueAt(iter));
+				map.KeyAt(iter).Freeze();
+				map.ValueAt(iter).Freeze();
 			}
 		}
 	}
 
-	public static Value frozen_copy(Value v) {
-		if (v.IsList()) {
-			GCList src = GCManager.Lists.Get(v.ItemIndex());
+	public Value FrozenCopy() {
+		Value v = this;
+		if (IsList()) {
+			GCList src = GCManager.Lists.Get(ItemIndex());
 			if (src.Frozen) return v;
 			int srcCount = src.Count();
 			Value newList = make_list(srcCount);
 			Int32 dstIdx = newList.ItemIndex();
 			GCList dst = GCManager.Lists.Get(dstIdx);
 			GCManager.Lists.SetFrozen(dstIdx, true);
-			for (int i = 0; i < srcCount; i++) dst.Push(frozen_copy(src.Get(i)));
+			for (int i = 0; i < srcCount; i++) dst.Push(src.Get(i).FrozenCopy());
 			return newList;
 		}
-		if (v.IsMap()) {
-			GCMap src = GCManager.Maps.Get(v.ItemIndex());
+		if (IsMap()) {
+			GCMap src = GCManager.Maps.Get(ItemIndex());
 			if (src.Frozen) return v;
 			Value newMap = make_map(src.Count());
 			Int32 dstIdx = newMap.ItemIndex();
@@ -1100,7 +1102,7 @@ public readonly struct Value {
 			for (int iter = src.NextEntry(-1); iter != -1; iter = src.NextEntry(iter)) {
 				Value key = src.KeyAt(iter);
 				Value val = src.ValueAt(iter);
-				dst.Set(frozen_copy(key), frozen_copy(val));
+				dst.Set(key.FrozenCopy(), val.FrozenCopy());
 			}
 			return newMap;
 		}

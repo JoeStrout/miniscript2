@@ -852,7 +852,7 @@ public class Assembler {
 	private Int32 AddConstant(Value value) {
 		// First look for an existing content that is the same value
 		for (Int32 i = 0; i < Current.Constants.Count; i++) {
-			if (Value.value_identical(Current.Constants[i], value)) return i;
+			if (Current.Constants[i].RefEquals(value)) return i;
 		}
 		
 		// Failing that, add it to the table

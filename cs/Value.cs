@@ -93,7 +93,7 @@ public readonly struct Value {
 	public bool BoolValue() {
 		if (IsNull()) return false;
 		if (IsNumber()) return _d != 0.0;
-		if (IsString()) return string_length(this) != 0;
+		if (IsString()) return this.Length() != 0;
 		if (IsList()) return Value.list_count(this) != 0;
 		if (IsMap()) return map_count(this) != 0;
 		return true;
@@ -269,47 +269,49 @@ public readonly struct Value {
 
 	// ==== STRING ACCESSORS ===================================================
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static String as_cstring(Value v) {
-		if (!v.IsString()) return "";
-		return GetStringValue(v);
+	public String AsCString() {
+		if (!IsString()) return "";
+		return GetStringValue();
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	internal static string GetStringValue(Value val) {
-		if (val.IsTinyString()) {
-			int len = val.TinyLen();
+	internal string GetStringValue() {
+		if (IsTinyString()) {
+			int len = TinyLen();
 			if (len == 0) return "";
 			Span<byte> bytes = stackalloc byte[5];
-			for (int i = 0; i < len; i++) bytes[i] = (byte)((val._u >> (8 * (i + 1))) & 0xFF);
+			for (int i = 0; i < len; i++) bytes[i] = (byte)((_u >> (8 * (i + 1))) & 0xFF);
 			return Encoding.UTF8.GetString(bytes.Slice(0, len));
 		}
-		if (val.IsHeapString()) {
-			GCStringSet set = (val.GCSetIndex() == GCManager.InternedStringSet)
+		if (IsHeapString()) {
+			GCStringSet set = (GCSetIndex() == GCManager.InternedStringSet)
 				? GCManager.InternedStrings : GCManager.BigStrings;
-			return set.Get(val.ItemIndex()).Data ?? "";
+			return set.Get(ItemIndex()).Data ?? "";
 		}
 		return "";
 	}
 
 	// ==== CONVERSION =========================================================
 
-	// Returns the string representation of v as a C# string.
-	// For a Value that is already a string this returns its content.
-	// For other types this calls code_form with a recursion limit of 3.
+	// Returns the string representation of this value as a C# string.
+	// For a value that is already a string this returns its content.
+	// For other types this calls CodeForm with a recursion limit of 3.
+	// (No default vm argument: the parameterless ToString() override below would
+	// otherwise be ambiguous with a ToString(vm=null) call.)
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static String to_String(Value v, VM vm = null) {
-		if (v.IsString()) return as_cstring(v);
-		return code_form(v, vm, 3);
+	public String ToString(VM vm) {
+		if (IsString()) return AsCString();
+		return CodeForm(vm, 3);
 	}
 
-	// Returns v converted to a string Value.
+	// Returns this value converted to a string Value.
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value to_string(Value a, VM vm = null) {
-		if (a.IsString()) return a;
-		return make_string(code_form(a, vm, 3));
+	public Value ToStringValue(VM vm = null) {
+		if (IsString()) return this;
+		return make_string(CodeForm(vm, 3));
 	}
 
-	public static Value value_repr(Value v, VM vm = null) => make_string(code_form(v, vm));
+	public Value Repr(VM vm = null) => make_string(CodeForm(vm));
 
 	// Format a double as the shortest decimal string in scientific notation that
 	// round-trips back to the same value, with the exponent normalized to at
@@ -337,11 +339,11 @@ public readonly struct Value {
 		return s;
 	}
 
-	// Returns the printable/code representation of v as a C# string.
-	public static string code_form(Value v, VM vm = null, int recursionLimit = -1) {
-		if (v.IsNull()) return "null";
-		if (v.IsNumber()) {
-			double value = v.AsDouble();
+	// Returns the printable/code representation of this value as a C# string.
+	public string CodeForm(VM vm = null, int recursionLimit = -1) {
+		if (IsNull()) return "null";
+		if (IsNumber()) {
+			double value = AsDouble();
 			if (double.IsNaN(value)) return "NaN";
 			if (double.IsPositiveInfinity(value)) return "Inf";
 			if (double.IsNegativeInfinity(value)) return "-Inf";
@@ -363,61 +365,61 @@ public readonly struct Value {
 				return result;
 			}
 		}
-		if (v.IsString()) {
-			String s = as_cstring(v);
+		if (IsString()) {
+			String s = AsCString();
 			s = s.Replace("\"", "\"\"");
 			return "\"" + s + "\"";
 		}
-		if (v.IsList()) {
+		if (IsList()) {
 			if (recursionLimit == 0) return "[...]";
 			if (recursionLimit > 0 && recursionLimit < 3 && vm != null) {
-				string shortName = vm.FindShortName(v);
+				string shortName = vm.FindShortName(this);
 				if (shortName != null) return shortName;
 			}
-			GCList list = GCManager.Lists.Get(v.ItemIndex());
+			GCList list = GCManager.Lists.Get(ItemIndex());
 			int listCount = list.Count();
 			var strs = new string[listCount];
 			for (int i = 0; i < listCount; i++) {
 				Value val_i = list.Get(i);
-				strs[i] = val_i.IsNull() ? "null" : code_form(val_i, vm, recursionLimit - 1);
+				strs[i] = val_i.IsNull() ? "null" : val_i.CodeForm(vm, recursionLimit - 1);
 			}
 			return "[" + string.Join(", ", strs) + "]";
 		}
-		if (v.IsMap()) {
+		if (IsMap()) {
 			if (recursionLimit == 0) return "{...}";
 			if (recursionLimit > 0 && recursionLimit < 3 && vm != null) {
-				string shortName = vm.FindShortName(v);
+				string shortName = vm.FindShortName(this);
 				if (shortName != null) return shortName;
 			}
-			GCMap map = GCManager.Maps.Get(v.ItemIndex());
+			GCMap map = GCManager.Maps.Get(ItemIndex());
 			var strs = new List<string>(map.Count());
 			for (int iter = map.NextEntry(-1); iter != -1; iter = map.NextEntry(iter)) {
 				Value key = map.KeyAt(iter);
 				Value val = map.ValueAt(iter);
 				int nextRecurLimit = recursionLimit - 1;
 				if (key == Value.magicIsA) nextRecurLimit = 1;
-				strs.Add(string.Format("{0}: {1}", code_form(key, vm, nextRecurLimit),
-					val.IsNull() ? "null" : code_form(val, vm, nextRecurLimit)));
+				strs.Add(string.Format("{0}: {1}", key.CodeForm(vm, nextRecurLimit),
+					val.IsNull() ? "null" : val.CodeForm(vm, nextRecurLimit)));
 			}
 			return "{" + String.Join(", ", strs) + "}";
 		}
-		if (v.IsFuncRef()) {
-			GCFunction fr = GCManager.Functions.Get(v.ItemIndex());
+		if (IsFuncRef()) {
+			GCFunction fr = GCManager.Functions.Get(ItemIndex());
 			if (fr.Func == null) return "<funcref?>";
 			return fr.OuterVars.IsNull()
 				? StringUtils.Format("FuncRef({0})", fr.Func.Name)
 				: StringUtils.Format("FuncRef({0}, closure)", fr.Func.Name);
 		}
-		if (v.IsError()) {
-			GCError err = GCManager.Errors.Get(v.ItemIndex());
-			string msg = err.Message.IsString() ? as_cstring(err.Message) : to_String(err.Message, vm);
+		if (IsError()) {
+			GCError err = GCManager.Errors.Get(ItemIndex());
+			string msg = err.Message.IsString() ? err.Message.AsCString() : err.Message.ToString(vm);
 			return "error: " + msg;
 		}
 		return "<value>";
 	}
 
-	public static Value to_number(Value a) {
-		try { return new Value(double.Parse(to_String(a), CultureInfo.InvariantCulture)); }
+	public Value ToNumber() {
+		try { return new Value(double.Parse(ToString(null), CultureInfo.InvariantCulture)); }
 		catch { return Value.zero; }
 	}
 
@@ -450,19 +452,19 @@ public readonly struct Value {
 		if (a.IsNumber() && b.IsNumber()) return new Value(a.AsDouble() + b.AsDouble());
 		if (a.IsString()) {
 			if (b.IsNull()) return a;
-			Value bStr = b.IsString() ? b : make_string(to_String(b, vm));
+			Value bStr = b.IsString() ? b : make_string(b.ToString(vm));
 			// Overflow-safe check that the concatenation won't exceed the limit.
-			if (string_length(a) > MAX_COLLECTION_SIZE - string_length(bStr)) {
+			if (a.Length() > MAX_COLLECTION_SIZE - bStr.Length()) {
 				return value_make_runtime_error("string too large (exceeds maximum size)");
 			}
-			return string_concat(a, bStr);
+			return a.StringConcat(bStr);
 		} else if (b.IsString()) {
 			if (a.IsNull()) return b;
-			Value aStr = make_string(to_String(a, vm));
-			if (string_length(aStr) > MAX_COLLECTION_SIZE - string_length(b)) {
+			Value aStr = make_string(a.ToString(vm));
+			if (aStr.Length() > MAX_COLLECTION_SIZE - b.Length()) {
 				return value_make_runtime_error("string too large (exceeds maximum size)");
 			}
-			return string_concat(aStr, b);
+			return aStr.StringConcat(b);
 		}
 		if (a.IsList() && b.IsList()) {
 			if (Value.list_count(a) > MAX_COLLECTION_SIZE - Value.list_count(b)) {
@@ -483,14 +485,14 @@ public readonly struct Value {
 			double factor = b.AsDouble();
 			if (double.IsNaN(factor) || double.IsInfinity(factor)) return Value.Null;
 			if (factor <= 0) return Value.emptyString;
-			if (string_length(a) * factor > MAX_COLLECTION_SIZE) {
+			if (a.Length() * factor > MAX_COLLECTION_SIZE) {
 				return value_make_runtime_error("string too large (exceeds maximum size)");
 			}
 			int repeats = (int)factor;
 			Value result = Value.emptyString;
-			for (int i = 0; i < repeats; i++) result = string_concat(result, a);
-			int extraChars = (int)(string_length(a) * (factor - repeats));
-			if (extraChars > 0) result = string_concat(result, string_substring(a, 0, extraChars));
+			for (int i = 0; i < repeats; i++) result = result.StringConcat(a);
+			int extraChars = (int)(a.Length() * (factor - repeats));
+			if (extraChars > 0) result = result.StringConcat(a.Substring(0, extraChars));
 			return result;
 		}
 		if (a.IsList() && b.IsNumber()) {
@@ -555,8 +557,8 @@ public readonly struct Value {
 		if (b.IsError()) return b;
 		if (a.IsNumber() && b.IsNumber()) return new Value(a.AsDouble() - b.AsDouble());
 		if (a.IsString() && b.IsString()) {
-			string sa = as_cstring(a);
-			string sb = as_cstring(b);
+			string sa = a.AsCString();
+			string sb = b.AsCString();
 			if (sb.Length > 0 && sa.EndsWith(sb))
 				return make_string(sa.Substring(0, sa.Length - sb.Length));
 			return a;
@@ -612,7 +614,7 @@ public readonly struct Value {
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool operator <(Value a, Value b) {
 		if (a.IsNumber() && b.IsNumber()) return a.AsDouble() < b.AsDouble();
-		if (a.IsString() && b.IsString()) return string_compare(a, b) < 0;
+		if (a.IsString() && b.IsString()) return a.Compare(b) < 0;
 		return false;
 	}
 
@@ -622,7 +624,7 @@ public readonly struct Value {
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static bool operator <=(Value a, Value b) {
 		if (a.IsNumber() && b.IsNumber()) return a.AsDouble() <= b.AsDouble();
-		if (a.IsString() && b.IsString()) return string_compare(a, b) <= 0;
+		if (a.IsString() && b.IsString()) return a.Compare(b) <= 0;
 		return false;
 	}
 
@@ -644,7 +646,7 @@ public readonly struct Value {
 		// Two tiny strings with differing bits already differ in content.
 		if (a.IsTinyString() && b.IsTinyString()) return false;
 		if (a.IsString() && b.IsString())
-			return string.Equals(as_cstring(a), as_cstring(b), StringComparison.Ordinal);
+			return string.Equals(a.AsCString(), b.AsCString(), StringComparison.Ordinal);
 		if (a.IsNull() && b.IsNull()) return true;
 		// Same-type non-container reference values compare by identity; RefEquals
 		// already failed above, so two distinct such values are not equal.
@@ -854,7 +856,7 @@ public readonly struct Value {
 			if (a.IsNumber() && b.IsNumber()) {
 				cmp = a.NumericVal().CompareTo(b.NumericVal());
 			} else if (a.IsString() && b.IsString()) {
-				cmp = string_compare(a, b);
+				cmp = a.Compare(b);
 			} else {
 				int ta = a.IsNumber() ? 0 : a.IsString() ? 1 : 2;
 				int tb = b.IsNumber() ? 0 : b.IsString() ? 1 : 2;
@@ -888,7 +890,7 @@ public readonly struct Value {
 			if (ka.IsNumber() && kb.IsNumber()) {
 				cmp = ka.NumericVal().CompareTo(kb.NumericVal());
 			} else if (ka.IsString() && kb.IsString()) {
-				cmp = string_compare(ka, kb);
+				cmp = ka.Compare(kb);
 			} else {
 				int ta = ka.IsNumber() ? 0 : ka.IsString() ? 1 : 2;
 				int tb = kb.IsNumber() ? 0 : kb.IsString() ? 1 : 2;
@@ -1123,26 +1125,26 @@ public readonly struct Value {
 
 	// ==== STRING OPERATIONS ==================================================
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static int string_length(Value v) {
-		if (!v.IsString()) return 0;
-		return GetStringValue(v).Length;
+	public int Length() {
+		if (!IsString()) return 0;
+		return GetStringValue().Length;
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static int string_indexOf(Value haystack, Value needle, int start_pos) {
-		if (!haystack.IsString() || !needle.IsString()) return -1;
-		return GetStringValue(haystack).IndexOf(GetStringValue(needle), start_pos, StringComparison.Ordinal);
+	public int StringIndexOf(Value needle, int start_pos) {
+		if (!IsString() || !needle.IsString()) return -1;
+		return GetStringValue().IndexOf(needle.GetStringValue(), start_pos, StringComparison.Ordinal);
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value string_substring(Value str, int startIndex, int len) {
-		string s = GetStringValue(str);
+	public Value Substring(int startIndex, int len) {
+		string s = GetStringValue();
 		if (startIndex < 0) startIndex += s.Length;
 		return make_string(s.Substring(startIndex, len));
 	}
 
-	public static Value string_slice(Value str, int start, int end) {
-		string s = GetStringValue(str);
+	public Value StringSlice(int start, int end) {
+		string s = GetStringValue();
 		int len = s.Length;
 		if (start < 0) start += len;
 		if (end   < 0) end   += len;
@@ -1153,21 +1155,21 @@ public readonly struct Value {
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static Value string_concat(Value a, Value b) {
-		if (!a.IsString() || !b.IsString()) return Value.Null;
-		return make_string(GetStringValue(a) + GetStringValue(b));
+	public Value StringConcat(Value b) {
+		if (!IsString() || !b.IsString()) return Value.Null;
+		return make_string(GetStringValue() + b.GetStringValue());
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static int string_compare(Value a, Value b) {
-		if (!a.IsString() || !b.IsString()) return 0;
-		return string.Compare(GetStringValue(a), GetStringValue(b), StringComparison.Ordinal);
+	public int Compare(Value b) {
+		if (!IsString() || !b.IsString()) return 0;
+		return string.Compare(GetStringValue(), b.GetStringValue(), StringComparison.Ordinal);
 	}
 
-	public static Value string_split(Value str, Value delimiter) {
-		if (!str.IsString() || !delimiter.IsString()) return Value.Null;
-		string s = GetStringValue(str);
-		string delim = GetStringValue(delimiter);
+	public Value Split(Value delimiter) {
+		if (!IsString() || !delimiter.IsString()) return Value.Null;
+		string s = GetStringValue();
+		string delim = delimiter.GetStringValue();
 		string[] parts;
 		if (delim == "") {
 			parts = new string[s.Length];
@@ -1180,28 +1182,28 @@ public readonly struct Value {
 		return list;
 	}
 
-	public static Value string_replace(Value str, Value from, Value to) {
-		if (!str.IsString() || !from.IsString() || !to.IsString()) return Value.Null;
-		string s = GetStringValue(str);
-		string fromStr = GetStringValue(from);
-		if (fromStr == "" || !s.Contains(fromStr)) return str;
-		return make_string(s.Replace(fromStr, GetStringValue(to)));
+	public Value Replace(Value from, Value to) {
+		if (!IsString() || !from.IsString() || !to.IsString()) return Value.Null;
+		string s = GetStringValue();
+		string fromStr = from.GetStringValue();
+		if (fromStr == "" || !s.Contains(fromStr)) return this;
+		return make_string(s.Replace(fromStr, to.GetStringValue()));
 	}
 
-	public static Value string_insert(Value str, int index, Value value, VM vm = null) {
-		if (!str.IsString()) return str;
-		string s = GetStringValue(str);
-		string insertStr = to_String(value, vm);
+	public Value StringInsert(int index, Value value, VM vm = null) {
+		if (!IsString()) return this;
+		string s = GetStringValue();
+		string insertStr = value.ToString(vm);
 		if (index < 0) index += s.Length + 1;
 		if (index < 0) index = 0;
 		if (index > s.Length) index = s.Length;
 		return make_string(s.Insert(index, insertStr));
 	}
 
-	public static Value string_split_max(Value str, Value delimiter, int maxCount) {
-		if (!str.IsString() || !delimiter.IsString()) return Value.Null;
-		string s = GetStringValue(str);
-		string delim = GetStringValue(delimiter);
+	public Value SplitMax(Value delimiter, int maxCount) {
+		if (!IsString() || !delimiter.IsString()) return Value.Null;
+		string s = GetStringValue();
+		string delim = delimiter.GetStringValue();
 		Value list = make_list(8);
 		if (delim == "") {
 			int count = 0;
@@ -1231,12 +1233,12 @@ public readonly struct Value {
 		return list;
 	}
 
-	public static Value string_replace_max(Value str, Value from, Value to, int maxCount) {
-		if (!str.IsString() || !from.IsString() || !to.IsString()) return Value.Null;
-		string s = GetStringValue(str);
-		string fromStr = GetStringValue(from);
-		string toStr   = GetStringValue(to);
-		if (fromStr == "") return str;
+	public Value ReplaceMax(Value from, Value to, int maxCount) {
+		if (!IsString() || !from.IsString() || !to.IsString()) return Value.Null;
+		string s = GetStringValue();
+		string fromStr = from.GetStringValue();
+		string toStr   = to.GetStringValue();
+		if (fromStr == "") return this;
 		int pos = 0; int count = 0;
 		var sb = new System.Text.StringBuilder();
 		while (pos < s.Length) {
@@ -1253,22 +1255,22 @@ public readonly struct Value {
 		return make_string(sb.ToString());
 	}
 
-	public static Value string_upper(Value str) {
-		if (!str.IsString()) return str;
-		return make_string(GetStringValue(str).ToUpper());
+	public Value Upper() {
+		if (!IsString()) return this;
+		return make_string(GetStringValue().ToUpper());
 	}
 
-	public static Value string_lower(Value str) {
-		if (!str.IsString()) return str;
-		return make_string(GetStringValue(str).ToLower());
+	public Value Lower() {
+		if (!IsString()) return this;
+		return make_string(GetStringValue().ToLower());
 	}
 
 	public static Value string_from_code_point(int codePoint) =>
 		make_string(char.ConvertFromUtf32(codePoint));
 
-	public static int string_code_point(Value str) {
-		if (!str.IsString()) return 0;
-		string s = GetStringValue(str);
+	public int CodePoint() {
+		if (!IsString()) return 0;
+		string s = GetStringValue();
 		if (s.Length == 0) return 0;
 		return char.ConvertToUtf32(s, 0);
 	}
@@ -1300,8 +1302,8 @@ public readonly struct Value {
 	}
 
 	// ==== OVERRIDES ==========================================================
-	[Obsolete("Use to_String(v, vm) instead")]
-	public override string ToString() => to_String(this);
+	[Obsolete("Use ToString(vm) instead")]
+	public override string ToString() => ToString(null);
 
 	// Equals/GetHashCode embody the same semantics as MiniScript ==, so that
 	// Dictionary<Value, Value> hashes/compares keys correctly. In particular,

@@ -138,25 +138,29 @@ typedef struct Value {
     static Value  value_and(Value a, Value b);
     static Value  value_or(Value a, Value b);
 
-    // Strings
+    // Strings (instance form, mirroring cs/Value.cs)
     static Value  make_string(const char* str);
     static Value  make_string(const String& s);
-    static String to_String(Value v);
-    static const char* as_cstring(Value v);
-    static int    string_length(Value v);
-    static int    string_indexOf(Value haystack, Value needle, int start_pos);
-    static Value  string_substring(Value str, int startIndex, int len);
-    static Value  string_slice(Value str, int start, int end);
-    static Value  string_insert(Value str, int index, Value value, void* vm);
-    static Value  string_upper(Value str);
-    static Value  string_lower(Value str);
+    String        ToString(void* vm = nullptr) const;
+    const char*   AsCString() const;
+    int           Length() const;
+    int           StringIndexOf(Value needle, int start_pos) const;
+    Value         Substring(int startIndex, int len) const;
+    Value         StringSlice(int start, int end) const;
+    Value         StringConcat(Value b) const;
+    int           Compare(Value b) const;
+    Value         Split(Value delimiter) const;
+    Value         Replace(Value from, Value to) const;
+    Value         StringInsert(int index, Value value, void* vm = nullptr) const;
+    Value         Upper() const;
+    Value         Lower() const;
     static Value  string_from_code_point(int codePoint);
-    static int    string_code_point(Value str);
-    static Value  string_split_max(Value str, Value delimiter, int maxCount);
-    static Value  string_replace_max(Value source, Value search, Value replacement, int maxCount);
-    static Value  to_string(Value v, void* vm);
-    static Value  to_number(Value v);
-    static Value  value_repr(Value v, void* vm);
+    int           CodePoint() const;
+    Value         SplitMax(Value delimiter, int maxCount) const;
+    Value         ReplaceMax(Value search, Value replacement, int maxCount) const;
+    Value         ToStringValue(void* vm = nullptr) const;
+    Value         ToNumber() const;
+    Value         Repr(void* vm = nullptr) const;
     static Value  value_current_stack_trace();
 
     // Lists
@@ -392,16 +396,16 @@ inline Value Value::value_add(Value a, Value b, void* vm) {
     }
     if (a.IsString()) {
         if (b.IsNull()) return a;
-        Value bStr = b.IsString() ? b : Value::to_string(b, vm);
+        Value bStr = b.IsString() ? b : b.ToStringValue(vm);
         // Overflow-safe check that the concatenation won't exceed the limit.
-        if (Value::string_length(a) > Value::MAX_COLLECTION_SIZE - Value::string_length(bStr)) {
+        if (a.Length() > Value::MAX_COLLECTION_SIZE - bStr.Length()) {
             return value_make_runtime_error("string too large (exceeds maximum size)");
         }
         return string_concat(a, bStr);
     } else if (b.IsString()) {
         if (a.IsNull()) return b;
-        Value aStr = Value::to_string(a, vm);
-        if (Value::string_length(aStr) > Value::MAX_COLLECTION_SIZE - Value::string_length(b)) {
+        Value aStr = a.ToStringValue(vm);
+        if (aStr.Length() > Value::MAX_COLLECTION_SIZE - b.Length()) {
             return value_make_runtime_error("string too large (exceeds maximum size)");
         }
         return string_concat(aStr, b);
@@ -561,7 +565,7 @@ inline bool Value::IsHandle()  const noexcept { return (bits & GC_TYPE_MASK) == 
 inline bool Value::BoolValue() const noexcept {
     if (IsNull()) return false;
     if (IsNumber()) return AsDouble() != 0.0;
-    if (IsString()) return Value::string_length(*this) != 0;
+    if (IsString()) return Length() != 0;
     if (IsList()) return Value::list_count(*this) != 0;
     if (IsMap()) return Value::map_count(*this) != 0;
     return true;
@@ -586,8 +590,8 @@ inline bool Value::map_set(Value map_val, const String& key, const String& value
     return Value::map_set(map_val, Value::make_string(key), Value::make_string(value));
 }
 
-inline String Value::to_String(Value v) {
-    return String(Value::as_cstring(Value::to_string(v, nullptr)));
+inline String Value::ToString(void* vm) const {
+    return String(ToStringValue(vm).AsCString());
 }
 
 // Hand-written twin of Value.TypeName (Value.cs is CS_ONLY, so it

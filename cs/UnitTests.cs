@@ -285,11 +285,11 @@ public static class UnitTests {
 		// Test string conversion (runtime C functions)
 		Value singleMap = Value.make_empty_map();
 		Value.map_set(singleMap, "test", new Value(42));
-		Value singleStr = Value.to_string(singleMap, null);
+		Value singleStr = singleMap.ToStringValue(null);
 		Boolean singleStrOk = Assert(singleStr.IsString(), "Map toString should return string")
-			&& AssertEqual(Value.as_cstring(singleStr), "{\"test\": 42}");
+			&& AssertEqual(singleStr.AsCString(), "{\"test\": 42}");
 		if (!singleStrOk) return false;
-		String result = Value.as_cstring(Value.to_string(singleMap, null));
+		String result = singleMap.ToStringValue(null).AsCString();
 		if (!AssertEqual(result, "{\"test\": 42}")) return false;
 
 		// Note: We have successfully implemented and tested both conversion approaches:

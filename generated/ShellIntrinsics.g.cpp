@@ -119,8 +119,8 @@ void ShellIntrinsics::SyncEnvMap() {
 	MapIterator iter = Value::map_iterator(_envMap);
 	Value iterKey, iterVal;
 	while (map_iterator_next(&iter, &iterKey, &iterVal)) {
-		String key = Value::as_cstring(iterKey);
-		String val = Value::as_cstring(iterVal);
+		String key = iterKey.AsCString();
+		String val = iterVal.AsCString();
 		#ifdef _WIN32
 			_putenv_s(key.c_str(), val.c_str());
 		#else
@@ -215,7 +215,7 @@ String ShellIntrinsics::ExpandVariables(String path) {
 		if (p1 < 0) break;
 		varName = path.Substring(p0 + 2, p1 - p0 - 2);
 		String repl = "";
-		if (Value::map_try_get(envMap, Value::make_string(varName), &varVal)) repl = Value::as_cstring(varVal);
+		if (Value::map_try_get(envMap, Value::make_string(varName), &varVal)) repl = varVal.AsCString();
 		path = path.Substring(0, p0) + repl + path.Substring(p1 + 1);
 		p0 = path.IndexOf("${");
 	}
@@ -232,7 +232,7 @@ String ShellIntrinsics::ExpandVariables(String path) {
 		if (p1 > p0 + 1) {
 			varName = path.Substring(p0 + 1, p1 - p0 - 1);
 			String repl = "";
-			if (Value::map_try_get(envMap, Value::make_string(varName), &varVal)) repl = Value::as_cstring(varVal);
+			if (Value::map_try_get(envMap, Value::make_string(varName), &varVal)) repl = varVal.AsCString();
 			path = path.Substring(0, p0) + repl + path.Substring(p1);
 			p0 = path.IndexOf("$");
 		} else {
@@ -670,11 +670,11 @@ Value ShellIntrinsics::FsWriteLines(String path,Value lines) {
 	if (lines.IsList()) {
 		Int32 n = Value::list_count(lines);
 		for (Int32 i = 0; i < n; i++) {
-			String s = Value::as_cstring(Value::list_get(lines, i));
+			String s = Value::list_get(lines, i).AsCString();
 			fputs(s.c_str(), f); fputc('\n', f); count++;
 		}
 	} else {
-		String s = Value::as_cstring(lines);
+		String s = lines.AsCString();
 		fputs(s.c_str(), f); fputc('\n', f); count = 1;
 	}
 	fclose(f);
@@ -1111,7 +1111,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 		Int32 off = (Int32)ctx.GetArg(1).DoubleValue();
 		if (off < 0) off += len;
 		if (off < 0 || off > len) return IntrinsicResult(ErrorTypes::FileError("index out of bounds"));
-		Int32 written = RawSetUTF8(hv, off, Value::to_String(ctx.GetArg(2)));
+		Int32 written = RawSetUTF8(hv, off, ctx.GetArg(2).ToString(nullptr));
 		return IntrinsicResult(Value((Double)written));
 	});
 	_rdKeys.Add("setUtf8");
@@ -1149,7 +1149,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 		Value hv = Value::Null;
 		Value::map_try_get(self, Value::make_string("_handle"), &hv);
 		if (!IsFileHandleOpen(hv)) return IntrinsicResult(ErrorTypes::FileError("file is not open"));
-		Int32 n = WriteToFile(hv, Value::to_String(ctx.GetArg(1)));
+		Int32 n = WriteToFile(hv, ctx.GetArg(1).ToString(nullptr));
 		return IntrinsicResult(Value((Double)n));
 	});
 	_fhKeys.Add("write");
@@ -1162,7 +1162,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 		Value hv = Value::Null;
 		Value::map_try_get(self, Value::make_string("_handle"), &hv);
 		if (!IsFileHandleOpen(hv)) return IntrinsicResult(ErrorTypes::FileError("file is not open"));
-		Int32 n = WriteToFile(hv, Value::to_String(ctx.GetArg(1)) + "\n");
+		Int32 n = WriteToFile(hv, ctx.GetArg(1).ToString(nullptr) + "\n");
 		return IntrinsicResult(Value((Double)n));
 	});
 	_fhKeys.Add("writeLine");
@@ -1237,7 +1237,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	f = Intrinsic::Create("");
 	f.AddParam("path", Value::emptyString);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
-		String path = Value::to_String(ctx.GetArg(0));
+		String path = ctx.GetArg(0).ToString(nullptr);
 		if (!FsSetDir(path)) return IntrinsicResult(ErrorTypes::FileError("setdir: could not change directory to: " + path));
 		return IntrinsicResult::Null;
 	});
@@ -1246,21 +1246,21 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	f = Intrinsic::Create("");
 	f.AddParam("path", Value::emptyString);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
-		return IntrinsicResult(FsChildren(Value::to_String(ctx.GetArg(0))));
+		return IntrinsicResult(FsChildren(ctx.GetArg(0).ToString(nullptr)));
 	});
 	_fmKeys.Add("children");
 
 	f = Intrinsic::Create("");
 	f.AddParam("path", Value::emptyString);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
-		return IntrinsicResult(Value::make_string(FsBasename(Value::to_String(ctx.GetArg(0)))));
+		return IntrinsicResult(Value::make_string(FsBasename(ctx.GetArg(0).ToString(nullptr))));
 	});
 	_fmKeys.Add("name");
 
 	f = Intrinsic::Create("");
 	f.AddParam("path", Value::emptyString);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
-		return IntrinsicResult(Value::make_string(FsDirname(Value::to_String(ctx.GetArg(0)))));
+		return IntrinsicResult(Value::make_string(FsDirname(ctx.GetArg(0).ToString(nullptr))));
 	});
 	_fmKeys.Add("parent");
 
@@ -1268,21 +1268,21 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	f.AddParam("parentPath", Value::emptyString);
 	f.AddParam("childName", Value::emptyString);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
-		return IntrinsicResult(Value::make_string(FsChild(Value::to_String(ctx.GetArg(0)), Value::to_String(ctx.GetArg(1)))));
+		return IntrinsicResult(Value::make_string(FsChild(ctx.GetArg(0).ToString(nullptr), ctx.GetArg(1).ToString(nullptr))));
 	});
 	_fmKeys.Add("child");
 
 	f = Intrinsic::Create("");
 	f.AddParam("path", Value::emptyString);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
-		return IntrinsicResult(Value(FsExists(Value::to_String(ctx.GetArg(0))) ? 1.0 : 0.0));
+		return IntrinsicResult(Value(FsExists(ctx.GetArg(0).ToString(nullptr)) ? 1.0 : 0.0));
 	});
 	_fmKeys.Add("exists");
 
 	f = Intrinsic::Create("");
 	f.AddParam("path", Value::emptyString);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
-		Value info = FsInfo(Value::to_String(ctx.GetArg(0)));
+		Value info = FsInfo(ctx.GetArg(0).ToString(nullptr));
 		return IntrinsicResult(info.IsNull() ? Value::Null : info);
 	});
 	_fmKeys.Add("info");
@@ -1290,7 +1290,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	f = Intrinsic::Create("");
 	f.AddParam("path", Value::emptyString);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
-		String path = Value::to_String(ctx.GetArg(0));
+		String path = ctx.GetArg(0).ToString(nullptr);
 		if (!FsMakeDir(path)) return IntrinsicResult(ErrorTypes::FileError("makedir: could not create directory: " + path));
 		return IntrinsicResult::Null;
 	});
@@ -1300,8 +1300,8 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	f.AddParam("oldPath", Value::emptyString);
 	f.AddParam("newPath", Value::emptyString);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
-		String oldPath = Value::to_String(ctx.GetArg(0));
-		String newPath = Value::to_String(ctx.GetArg(1));
+		String oldPath = ctx.GetArg(0).ToString(nullptr);
+		String newPath = ctx.GetArg(1).ToString(nullptr);
 		if (!FsMove(oldPath, newPath)) return IntrinsicResult(ErrorTypes::FileError("move: could not move " + oldPath + " to " + newPath));
 		return IntrinsicResult::Null;
 	});
@@ -1311,8 +1311,8 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	f.AddParam("oldPath", Value::emptyString);
 	f.AddParam("newPath", Value::emptyString);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
-		String oldPath = Value::to_String(ctx.GetArg(0));
-		String newPath = Value::to_String(ctx.GetArg(1));
+		String oldPath = ctx.GetArg(0).ToString(nullptr);
+		String newPath = ctx.GetArg(1).ToString(nullptr);
 		if (!FsCopy(oldPath, newPath)) return IntrinsicResult(ErrorTypes::FileError("copy: could not copy " + oldPath + " to " + newPath));
 		return IntrinsicResult::Null;
 	});
@@ -1321,7 +1321,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	f = Intrinsic::Create("");
 	f.AddParam("path", Value::emptyString);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
-		String path = Value::to_String(ctx.GetArg(0));
+		String path = ctx.GetArg(0).ToString(nullptr);
 		if (!FsDelete(path)) return IntrinsicResult(ErrorTypes::FileError("delete: could not delete: " + path));
 		return IntrinsicResult::Null;
 	});
@@ -1330,7 +1330,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	f = Intrinsic::Create("");
 	f.AddParam("path", Value::emptyString);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
-		Value v = FsReadLines(Value::to_String(ctx.GetArg(0)));
+		Value v = FsReadLines(ctx.GetArg(0).ToString(nullptr));
 		return IntrinsicResult(v);
 	});
 	_fmKeys.Add("readLines");
@@ -1339,7 +1339,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	f.AddParam("path", Value::emptyString);
 	f.AddParam("lines", Value::Null);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
-		Value v = FsWriteLines(Value::to_String(ctx.GetArg(0)), ctx.GetArg(1));
+		Value v = FsWriteLines(ctx.GetArg(0).ToString(nullptr), ctx.GetArg(1));
 		return IntrinsicResult(v);
 	});
 	_fmKeys.Add("writeLines");
@@ -1347,7 +1347,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	f = Intrinsic::Create("");
 	f.AddParam("path", Value::emptyString);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
-		return IntrinsicResult(FsLoadRaw(Value::to_String(ctx.GetArg(0))));
+		return IntrinsicResult(FsLoadRaw(ctx.GetArg(0).ToString(nullptr)));
 	});
 	_fmKeys.Add("loadRaw");
 
@@ -1355,7 +1355,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	f.AddParam("path", Value::emptyString);
 	f.AddParam("data", Value::Null);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
-		Value r = FsSaveRaw(Value::to_String(ctx.GetArg(0)), ctx.GetArg(1));
+		Value r = FsSaveRaw(ctx.GetArg(0).ToString(nullptr), ctx.GetArg(1));
 		return IntrinsicResult(r);
 	});
 	_fmKeys.Add("saveRaw");
@@ -1365,8 +1365,8 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	f.AddParam("path", Value::emptyString);
 	f.AddParam("mode", Value::make_string("r+"));
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
-		String path = Value::to_String(ctx.GetArg(0));
-		String mode = Value::to_String(ctx.GetArg(1));
+		String path = ctx.GetArg(0).ToString(nullptr);
+		String mode = ctx.GetArg(1).ToString(nullptr);
 		Value hv = MakeFileHandle(path, mode);
 		if (hv.IsNull()) return IntrinsicResult(ErrorTypes::FileError("open: could not open: " + path));
 		Value instance = Value::make_map(4);
@@ -1508,7 +1508,7 @@ void ShellIntrinsics::Init() {
 		}
 		Value cmdArg = ctx.GetArg(0);
 		if (cmdArg.IsError()) return IntrinsicResult(cmdArg);
-		String cmd = Value::to_String(cmdArg);
+		String cmd = cmdArg.ToString(nullptr);
 		if (!_envMap.IsNull()) {
 			SyncEnvMap();
 		}
@@ -1534,8 +1534,8 @@ void ShellIntrinsics::Init() {
 		} else if (date.IsNumber()) {
 			return IntrinsicResult(date);
 		} else {
-			if (!DateTimeUtils::TryParseDate(Value::to_String(date), &t)) {
-				return IntrinsicResult(ErrorTypes::FormatError(StringUtils::Format("'{0}' is not a valid date", Value::to_String(date))));
+			if (!DateTimeUtils::TryParseDate(date.ToString(nullptr), &t)) {
+				return IntrinsicResult(ErrorTypes::FormatError(StringUtils::Format("'{0}' is not a valid date", date.ToString(nullptr))));
 			}
 		}
 		return IntrinsicResult(Value(t - DateTimeEpoch()));
@@ -1554,15 +1554,15 @@ void ShellIntrinsics::Init() {
 		if (format.IsError()) return IntrinsicResult(format);
 		String formatStr;
 		if (format.IsNull()) formatStr = "yyyy-MM-dd HH:mm:ss";
-		else formatStr = Value::to_String(format);
+		else formatStr = format.ToString(nullptr);
 		Double d;
 		if (date.IsNull()) {
 			d = NowSeconds();
 		} else if (date.IsNumber()) {
 			d = date.DoubleValue() + DateTimeEpoch();
 		} else {
-			if (!DateTimeUtils::TryParseDate(Value::to_String(date), &d)) {
-				return IntrinsicResult(ErrorTypes::FormatError(StringUtils::Format("'{0}' is not a valid date", Value::to_String(date))));
+			if (!DateTimeUtils::TryParseDate(date.ToString(nullptr), &d)) {
+				return IntrinsicResult(ErrorTypes::FormatError(StringUtils::Format("'{0}' is not a valid date", date.ToString(nullptr))));
 			}
 		}
 		String formatted;
@@ -1584,7 +1584,7 @@ void ShellIntrinsics::Init() {
 			// Phase 2: the module finished running.  Store its locals map
 			// under the library name in the caller's scope, and also return
 			// it as the result value (for the `foo = import("foo")` form).
-			String lib = Value::as_cstring(partialResult.result);
+			String lib = partialResult.result.AsCString();
 			Value importedValues = ctx.vm.ManualCallResult;
 			ctx.vm.SetVar(lib, importedValues);
 			return IntrinsicResult(importedValues, Boolean(true));
@@ -1592,7 +1592,7 @@ void ShellIntrinsics::Init() {
 		// Phase 1: find, parse, compile, and push the module.
 		Value libnameArg = ctx.GetArg(0);
 		if (libnameArg.IsError()) return IntrinsicResult(libnameArg);
-		String libname = Value::to_String(libnameArg);
+		String libname = libnameArg.ToString(nullptr);
 		if (libname.Length() == 0) {
 			return IntrinsicResult(ErrorTypes::FileError("import: no library name given"));
 		}
@@ -1602,7 +1602,7 @@ void ShellIntrinsics::Init() {
 		if (!Value::map_try_get(GetEnvMap(), Value::make_string("MS_IMPORT_PATH"), &pathVal) || pathVal.IsNull()) {
 			searchPath = "$MS_SCRIPT_DIR:$MS_SCRIPT_DIR/lib:$MS_EXE_DIR/lib";
 		} else {
-			searchPath = Value::as_cstring(pathVal);
+			searchPath = pathVal.AsCString();
 		}
 		List<String> libDirs = SplitOn(searchPath, ":");
 		// Find and read the module source file.

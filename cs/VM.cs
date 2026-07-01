@@ -196,7 +196,7 @@ public class VM {
 		Int32 regCount = rf.MaxRegs;
 		for (Int32 i = 0; i < regCount; i++) {
 			if (!names[i].IsNull() && Value.value_identical(stack[i], v) && !Value.value_identical(names[i], v))
-				return Value.to_String(names[i]);
+				return names[i].ToString(null);
 		}
 		// Fall back to the intrinsic short-name registry (type maps, etc.)
 		return Intrinsic.GetShortName(v);
@@ -1130,7 +1130,7 @@ public class VM {
 						localStack[a] = val;
 					} else if (valB.IsString()) {
 						Int32 idx = valC.IntValue();
-						localStack[a] = Value.string_substring(valB, idx, 1);
+						localStack[a] = valB.Substring(idx, 1);
 					} else {
 						RaiseRuntimeError(StringUtils.Format("Can't index into {0}", valB));
 						localStack[a] = Value.Null;
@@ -1175,10 +1175,10 @@ public class VM {
 					if (valD.IsError()) { RaiseUncaughtError(valD); localStack[a] = Value.Null; break; }
 
 					if (valB.IsString()) {
-						Int32 len = Value.string_length(valB);
+						Int32 len = valB.Length();
 						Int32 startIdx = valC.IsNull() ? 0 : valC.IntValue();
 						Int32 endIdx = valD.IsNull() ? len : valD.IntValue();
-						localStack[a] = Value.string_slice(valB, startIdx, endIdx);
+						localStack[a] = valB.StringSlice(startIdx, endIdx);
 					} else if (valB.IsList()) {
 						Int32 len = Value.list_count(valB);
 						Int32 startIdx = valC.IsNull() ? 0 : valC.IntValue();
@@ -1641,7 +1641,7 @@ public class VM {
 						hasMore = (iter != Value.MAP_ITER_DONE);
 					} else if (valB.IsString()) {
 						iter++;
-						hasMore = (iter < Value.string_length(valB));
+						hasMore = (iter < valB.Length());
 					} else {
 						hasMore = false;
 					}
@@ -1951,7 +1951,7 @@ public class VM {
 						// else fall back to ErrorType() for method lookup (e.g., e.err).
 						// Any other key terminates per language spec.
 						if (valC.IsString()) {
-							String keyStr = Value.as_cstring(valC);
+							String keyStr = valC.AsCString();
 							if (keyStr == "message") { localStack[a] = Value.error_message(valB); hasPendingContext = false; break; }
 							if (keyStr == "inner")   { localStack[a] = Value.error_inner(valB);   hasPendingContext = false; break; }
 							if (keyStr == "stack")   { localStack[a] = Value.error_stack(valB);   hasPendingContext = false; break; }
@@ -2006,7 +2006,7 @@ public class VM {
 						if (valB.IsList()) {
 							localStack[a] = Value.list_get(valB, index);
 						} else if (valB.IsString()) {
-							localStack[a] = Value.string_substring(valB, index, 1);
+							localStack[a] = valB.Substring(index, 1);
 						} else {
 							RaiseRuntimeError(StringUtils.Format("Can't index into {0}", valB));
 							localStack[a] = Value.Null;
@@ -2053,7 +2053,7 @@ public class VM {
 						if (valB.IsList()) {
 							localStack[a] = Value.list_get(valB, index);
 						} else if (valB.IsString()) {
-							localStack[a] = Value.string_substring(valB, index, 1);
+							localStack[a] = valB.Substring(index, 1);
 						} else {
 							RaiseRuntimeError(StringUtils.Format("Can't index into {0}", valB));
 							localStack[a] = Value.Null;
@@ -2166,7 +2166,7 @@ public class VM {
 					} else if (valB.IsMap()) {
 						localStack[a] = Value.map_iter_entry(valB, idx);
 					} else if (valB.IsString()) {
-						localStack[a] = Value.string_substring(valB, idx, 1);
+						localStack[a] = valB.Substring(idx, 1);
 					} else {
 						localStack[a] = Value.Null;
 					}
@@ -2321,7 +2321,7 @@ public class VM {
 		}
 
 		// Check intrinsics table
-		String nameStr = Value.as_cstring(varName);
+		String nameStr = varName.AsCString();
 		if (_intrinsics.TryGetValue(nameStr, out result)) {
 			return result;
 		}

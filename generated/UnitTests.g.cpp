@@ -271,11 +271,11 @@ Boolean UnitTests::TestValueMap() {
 	// Test string conversion (runtime C functions)
 	Value singleMap = Value::make_empty_map();
 	Value::map_set(singleMap, "test", Value(42));
-	Value singleStr = Value::to_string(singleMap, nullptr);
+	Value singleStr = singleMap.ToStringValue(nullptr);
 	Boolean singleStrOk = Assert(singleStr.IsString(), "Map toString should return string")
-		&& AssertEqual(Value::as_cstring(singleStr), "{\"test\": 42}");
+		&& AssertEqual(singleStr.AsCString(), "{\"test\": 42}");
 	if (!singleStrOk) return Boolean(false);
-	String result = Value::as_cstring(Value::to_string(singleMap, nullptr));
+	String result = singleMap.ToStringValue(nullptr).AsCString();
 	if (!AssertEqual(result, "{\"test\": 42}")) return Boolean(false);
 
 	// Note: We have successfully implemented and tested both conversion approaches:

@@ -179,8 +179,8 @@ public static class ShellIntrinsics {
 		MapIterator iter = Value.map_iterator(_envMap);
 		// CPP: Value iterKey, iterVal;
 		while (Value.map_iterator_next(ref iter)) { // CPP: while (map_iterator_next(&iter, &iterKey, &iterVal)) {
-			String key = Value.as_cstring(iter.Key); // CPP: String key = Value::as_cstring(iterKey);
-			String val = Value.as_cstring(iter.Val); // CPP: String val = Value::as_cstring(iterVal);
+			String key = iter.Key.AsCString(); // CPP: String key = iterKey.AsCString();
+			String val = iter.Val.AsCString(); // CPP: String val = iterVal.AsCString();
 			//*** BEGIN CS_ONLY ***
 			System.Environment.SetEnvironmentVariable(key, val);
 			//*** END CS_ONLY ***
@@ -346,7 +346,7 @@ public static class ShellIntrinsics {
 			if (p1 < 0) break;
 			varName = path.Substring(p0 + 2, p1 - p0 - 2);
 			String repl = "";
-			if (Value.map_try_get(envMap, Value.make_string(varName), out varVal)) repl = Value.as_cstring(varVal);
+			if (Value.map_try_get(envMap, Value.make_string(varName), out varVal)) repl = varVal.AsCString();
 			path = path.Substring(0, p0) + repl + path.Substring(p1 + 1);
 			p0 = path.IndexOf("${");
 		}
@@ -363,7 +363,7 @@ public static class ShellIntrinsics {
 			if (p1 > p0 + 1) {
 				varName = path.Substring(p0 + 1, p1 - p0 - 1);
 				String repl = "";
-				if (Value.map_try_get(envMap, Value.make_string(varName), out varVal)) repl = Value.as_cstring(varVal);
+				if (Value.map_try_get(envMap, Value.make_string(varName), out varVal)) repl = varVal.AsCString();
 				path = path.Substring(0, p0) + repl + path.Substring(p1);
 				p0 = path.IndexOf("$");
 			} else {
@@ -1235,9 +1235,9 @@ public static class ShellIntrinsics {
 			System.Collections.Generic.List<String> lineList = new System.Collections.Generic.List<String>();
 			if (lines.IsList()) {
 				Int32 count = Value.list_count(lines);
-				for (Int32 i = 0; i < count; i++) lineList.Add(Value.as_cstring(Value.list_get(lines, i)));
+				for (Int32 i = 0; i < count; i++) lineList.Add(Value.list_get(lines, i).AsCString());
 			} else {
-				lineList.Add(Value.as_cstring(lines));
+				lineList.Add(lines.AsCString());
 			}
 			System.IO.File.WriteAllLines(path, lineList, System.Text.Encoding.UTF8);
 			return new Value((Double)lineList.Count);
@@ -1250,11 +1250,11 @@ public static class ShellIntrinsics {
 		if (lines.IsList()) {
 			Int32 n = Value::list_count(lines);
 			for (Int32 i = 0; i < n; i++) {
-				String s = Value::as_cstring(Value::list_get(lines, i));
+				String s = Value::list_get(lines, i).AsCString();
 				fputs(s.c_str(), f); fputc('\n', f); count++;
 			}
 		} else {
-			String s = Value::as_cstring(lines);
+			String s = lines.AsCString();
 			fputs(s.c_str(), f); fputc('\n', f); count = 1;
 		}
 		fclose(f);
@@ -1727,7 +1727,7 @@ public static class ShellIntrinsics {
 			Int32 off = (Int32)ctx.GetArg(1).DoubleValue();
 			if (off < 0) off += len;
 			if (off < 0 || off > len) return new IntrinsicResult(ErrorTypes.FileError("index out of bounds"));
-			Int32 written = RawSetUTF8(hv, off, Value.to_String(ctx.GetArg(2)));
+			Int32 written = RawSetUTF8(hv, off, ctx.GetArg(2).ToString(null));
 			return new IntrinsicResult(new Value((Double)written));
 		};
 		_rdKeys.Add("setUtf8");
@@ -1765,7 +1765,7 @@ public static class ShellIntrinsics {
 			Value hv = Value.Null;
 			Value.map_try_get(self, Value.make_string("_handle"), out hv);
 			if (!IsFileHandleOpen(hv)) return new IntrinsicResult(ErrorTypes.FileError("file is not open"));
-			Int32 n = WriteToFile(hv, Value.to_String(ctx.GetArg(1)));
+			Int32 n = WriteToFile(hv, ctx.GetArg(1).ToString(null));
 			return new IntrinsicResult(new Value((Double)n));
 		};
 		_fhKeys.Add("write");
@@ -1778,7 +1778,7 @@ public static class ShellIntrinsics {
 			Value hv = Value.Null;
 			Value.map_try_get(self, Value.make_string("_handle"), out hv);
 			if (!IsFileHandleOpen(hv)) return new IntrinsicResult(ErrorTypes.FileError("file is not open"));
-			Int32 n = WriteToFile(hv, Value.to_String(ctx.GetArg(1)) + "\n");
+			Int32 n = WriteToFile(hv, ctx.GetArg(1).ToString(null) + "\n");
 			return new IntrinsicResult(new Value((Double)n));
 		};
 		_fhKeys.Add("writeLine");
@@ -1853,7 +1853,7 @@ public static class ShellIntrinsics {
 		f = Intrinsic.Create("");
 		f.AddParam("path", Value.emptyString);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
-			String path = Value.to_String(ctx.GetArg(0));
+			String path = ctx.GetArg(0).ToString(null);
 			if (!FsSetDir(path)) return new IntrinsicResult(ErrorTypes.FileError("setdir: could not change directory to: " + path));
 			return IntrinsicResult.Null;
 		};
@@ -1862,21 +1862,21 @@ public static class ShellIntrinsics {
 		f = Intrinsic.Create("");
 		f.AddParam("path", Value.emptyString);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
-			return new IntrinsicResult(FsChildren(Value.to_String(ctx.GetArg(0))));
+			return new IntrinsicResult(FsChildren(ctx.GetArg(0).ToString(null)));
 		};
 		_fmKeys.Add("children");
 
 		f = Intrinsic.Create("");
 		f.AddParam("path", Value.emptyString);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
-			return new IntrinsicResult(Value.make_string(FsBasename(Value.to_String(ctx.GetArg(0)))));
+			return new IntrinsicResult(Value.make_string(FsBasename(ctx.GetArg(0).ToString(null))));
 		};
 		_fmKeys.Add("name");
 
 		f = Intrinsic.Create("");
 		f.AddParam("path", Value.emptyString);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
-			return new IntrinsicResult(Value.make_string(FsDirname(Value.to_String(ctx.GetArg(0)))));
+			return new IntrinsicResult(Value.make_string(FsDirname(ctx.GetArg(0).ToString(null))));
 		};
 		_fmKeys.Add("parent");
 
@@ -1884,21 +1884,21 @@ public static class ShellIntrinsics {
 		f.AddParam("parentPath", Value.emptyString);
 		f.AddParam("childName", Value.emptyString);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
-			return new IntrinsicResult(Value.make_string(FsChild(Value.to_String(ctx.GetArg(0)), Value.to_String(ctx.GetArg(1)))));
+			return new IntrinsicResult(Value.make_string(FsChild(ctx.GetArg(0).ToString(null), ctx.GetArg(1).ToString(null))));
 		};
 		_fmKeys.Add("child");
 
 		f = Intrinsic.Create("");
 		f.AddParam("path", Value.emptyString);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
-			return new IntrinsicResult(new Value(FsExists(Value.to_String(ctx.GetArg(0))) ? 1.0 : 0.0));
+			return new IntrinsicResult(new Value(FsExists(ctx.GetArg(0).ToString(null)) ? 1.0 : 0.0));
 		};
 		_fmKeys.Add("exists");
 
 		f = Intrinsic.Create("");
 		f.AddParam("path", Value.emptyString);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
-			Value info = FsInfo(Value.to_String(ctx.GetArg(0)));
+			Value info = FsInfo(ctx.GetArg(0).ToString(null));
 			return new IntrinsicResult(info.IsNull() ? Value.Null : info);
 		};
 		_fmKeys.Add("info");
@@ -1906,7 +1906,7 @@ public static class ShellIntrinsics {
 		f = Intrinsic.Create("");
 		f.AddParam("path", Value.emptyString);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
-			String path = Value.to_String(ctx.GetArg(0));
+			String path = ctx.GetArg(0).ToString(null);
 			if (!FsMakeDir(path)) return new IntrinsicResult(ErrorTypes.FileError("makedir: could not create directory: " + path));
 			return IntrinsicResult.Null;
 		};
@@ -1916,8 +1916,8 @@ public static class ShellIntrinsics {
 		f.AddParam("oldPath", Value.emptyString);
 		f.AddParam("newPath", Value.emptyString);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
-			String oldPath = Value.to_String(ctx.GetArg(0));
-			String newPath = Value.to_String(ctx.GetArg(1));
+			String oldPath = ctx.GetArg(0).ToString(null);
+			String newPath = ctx.GetArg(1).ToString(null);
 			if (!FsMove(oldPath, newPath)) return new IntrinsicResult(ErrorTypes.FileError("move: could not move " + oldPath + " to " + newPath));
 			return IntrinsicResult.Null;
 		};
@@ -1927,8 +1927,8 @@ public static class ShellIntrinsics {
 		f.AddParam("oldPath", Value.emptyString);
 		f.AddParam("newPath", Value.emptyString);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
-			String oldPath = Value.to_String(ctx.GetArg(0));
-			String newPath = Value.to_String(ctx.GetArg(1));
+			String oldPath = ctx.GetArg(0).ToString(null);
+			String newPath = ctx.GetArg(1).ToString(null);
 			if (!FsCopy(oldPath, newPath)) return new IntrinsicResult(ErrorTypes.FileError("copy: could not copy " + oldPath + " to " + newPath));
 			return IntrinsicResult.Null;
 		};
@@ -1937,7 +1937,7 @@ public static class ShellIntrinsics {
 		f = Intrinsic.Create("");
 		f.AddParam("path", Value.emptyString);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
-			String path = Value.to_String(ctx.GetArg(0));
+			String path = ctx.GetArg(0).ToString(null);
 			if (!FsDelete(path)) return new IntrinsicResult(ErrorTypes.FileError("delete: could not delete: " + path));
 			return IntrinsicResult.Null;
 		};
@@ -1946,7 +1946,7 @@ public static class ShellIntrinsics {
 		f = Intrinsic.Create("");
 		f.AddParam("path", Value.emptyString);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
-			Value v = FsReadLines(Value.to_String(ctx.GetArg(0)));
+			Value v = FsReadLines(ctx.GetArg(0).ToString(null));
 			return new IntrinsicResult(v);
 		};
 		_fmKeys.Add("readLines");
@@ -1955,7 +1955,7 @@ public static class ShellIntrinsics {
 		f.AddParam("path", Value.emptyString);
 		f.AddParam("lines", Value.Null);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
-			Value v = FsWriteLines(Value.to_String(ctx.GetArg(0)), ctx.GetArg(1));
+			Value v = FsWriteLines(ctx.GetArg(0).ToString(null), ctx.GetArg(1));
 			return new IntrinsicResult(v);
 		};
 		_fmKeys.Add("writeLines");
@@ -1963,7 +1963,7 @@ public static class ShellIntrinsics {
 		f = Intrinsic.Create("");
 		f.AddParam("path", Value.emptyString);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
-			return new IntrinsicResult(FsLoadRaw(Value.to_String(ctx.GetArg(0))));
+			return new IntrinsicResult(FsLoadRaw(ctx.GetArg(0).ToString(null)));
 		};
 		_fmKeys.Add("loadRaw");
 
@@ -1971,7 +1971,7 @@ public static class ShellIntrinsics {
 		f.AddParam("path", Value.emptyString);
 		f.AddParam("data", Value.Null);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
-			Value r = FsSaveRaw(Value.to_String(ctx.GetArg(0)), ctx.GetArg(1));
+			Value r = FsSaveRaw(ctx.GetArg(0).ToString(null), ctx.GetArg(1));
 			return new IntrinsicResult(r);
 		};
 		_fmKeys.Add("saveRaw");
@@ -1981,8 +1981,8 @@ public static class ShellIntrinsics {
 		f.AddParam("path", Value.emptyString);
 		f.AddParam("mode", Value.make_string("r+"));
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
-			String path = Value.to_String(ctx.GetArg(0));
-			String mode = Value.to_String(ctx.GetArg(1));
+			String path = ctx.GetArg(0).ToString(null);
+			String mode = ctx.GetArg(1).ToString(null);
 			Value hv = MakeFileHandle(path, mode);
 			if (hv.IsNull()) return new IntrinsicResult(ErrorTypes.FileError("open: could not open: " + path));
 			Value instance = Value.make_map(4);
@@ -2213,7 +2213,7 @@ public static class ShellIntrinsics {
 			}
 			Value cmdArg = ctx.GetArg(0);
 			if (cmdArg.IsError()) return new IntrinsicResult(cmdArg);
-			String cmd = Value.to_String(cmdArg);
+			String cmd = cmdArg.ToString(null);
 			if (!_envMap.IsNull()) {
 				SyncEnvMap();
 			}
@@ -2239,8 +2239,8 @@ public static class ShellIntrinsics {
 			} else if (date.IsNumber()) {
 				return new IntrinsicResult(date);
 			} else {
-				if (!DateTimeUtils.TryParseDate(Value.to_String(date), out t)) {
-					return new IntrinsicResult(ErrorTypes.FormatError(StringUtils.Format("'{0}' is not a valid date", Value.to_String(date))));
+				if (!DateTimeUtils.TryParseDate(date.ToString(null), out t)) {
+					return new IntrinsicResult(ErrorTypes.FormatError(StringUtils.Format("'{0}' is not a valid date", date.ToString(null))));
 				}
 			}
 			return new IntrinsicResult(new Value(t - DateTimeEpoch()));
@@ -2259,15 +2259,15 @@ public static class ShellIntrinsics {
 			if (format.IsError()) return new IntrinsicResult(format);
 			String formatStr;
 			if (format.IsNull()) formatStr = "yyyy-MM-dd HH:mm:ss";
-			else formatStr = Value.to_String(format);
+			else formatStr = format.ToString(null);
 			Double d;
 			if (date.IsNull()) {
 				d = NowSeconds();
 			} else if (date.IsNumber()) {
 				d = date.DoubleValue() + DateTimeEpoch();
 			} else {
-				if (!DateTimeUtils.TryParseDate(Value.to_String(date), out d)) {
-					return new IntrinsicResult(ErrorTypes.FormatError(StringUtils.Format("'{0}' is not a valid date", Value.to_String(date))));
+				if (!DateTimeUtils.TryParseDate(date.ToString(null), out d)) {
+					return new IntrinsicResult(ErrorTypes.FormatError(StringUtils.Format("'{0}' is not a valid date", date.ToString(null))));
 				}
 			}
 			String formatted;
@@ -2289,7 +2289,7 @@ public static class ShellIntrinsics {
 				// Phase 2: the module finished running.  Store its locals map
 				// under the library name in the caller's scope, and also return
 				// it as the result value (for the `foo = import("foo")` form).
-				String lib = Value.as_cstring(partialResult.result);
+				String lib = partialResult.result.AsCString();
 				Value importedValues = ctx.vm.ManualCallResult;
 				ctx.vm.SetVar(lib, importedValues);
 				return new IntrinsicResult(importedValues, true);
@@ -2297,7 +2297,7 @@ public static class ShellIntrinsics {
 			// Phase 1: find, parse, compile, and push the module.
 			Value libnameArg = ctx.GetArg(0);
 			if (libnameArg.IsError()) return new IntrinsicResult(libnameArg);
-			String libname = Value.to_String(libnameArg);
+			String libname = libnameArg.ToString(null);
 			if (libname.Length == 0) {
 				return new IntrinsicResult(ErrorTypes.FileError("import: no library name given"));
 			}
@@ -2307,7 +2307,7 @@ public static class ShellIntrinsics {
 			if (!Value.map_try_get(GetEnvMap(), Value.make_string("MS_IMPORT_PATH"), out pathVal) || pathVal.IsNull()) {
 				searchPath = "$MS_SCRIPT_DIR:$MS_SCRIPT_DIR/lib:$MS_EXE_DIR/lib";
 			} else {
-				searchPath = Value.as_cstring(pathVal);
+				searchPath = pathVal.AsCString();
 			}
 			List<String> libDirs = SplitOn(searchPath, ":");
 			// Find and read the module source file.

@@ -133,9 +133,9 @@ public static class CoreIntrinsics {
 	private static Value RequireNumber(Value v, out double result) {
 		if (v.IsNumber()) { result = v.NumericVal(); return Value.Null; }
 		if (v.IsString()) {
-			if (StringUtils.TryParseDouble(Value.as_cstring(v), out result)) return Value.Null;
+			if (StringUtils.TryParseDouble(v.AsCString(), out result)) return Value.Null;
 			result = 0.0;
-			return ErrorTypes.FormatError(StringUtils.Format("'{0}' is not a valid number", Value.as_cstring(v)));
+			return ErrorTypes.FormatError(StringUtils.Format("'{0}' is not a valid number", v.AsCString()));
 		}
 		result = 0.0;
 		return ErrorTypes.TypeError("number", v);
@@ -300,14 +300,14 @@ public static class CoreIntrinsics {
 		f.AddParam("s", Value.make_string(""));
 		f.AddParam("delimiter", _EOL);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
-			String s = Value.as_cstring(Value.to_string(ctx.GetArg(0), ctx.vm));
+			String s = ctx.GetArg(0).ToStringValue(ctx.vm).AsCString();
 			Value delimiterVal = ctx.GetArg(1);
 			Interpreter interp = ctx.vm.GetInterpreter();
 			if (interp != null && interp.standardOutput != null) {
 				if (delimiterVal.IsNull()) {
 					interp.standardOutput(s, true);
 				} else {
-					String delimiter = Value.as_cstring(delimiterVal);
+					String delimiter = delimiterVal.AsCString();
 					if (delimiter == "\n") {
 						interp.standardOutput(s, true);
 					} else {
@@ -339,7 +339,7 @@ public static class CoreIntrinsics {
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value msg = ctx.GetArg(0);
 			Value inner = ctx.GetArg(1);
-			if (!msg.IsString()) msg = Value.to_string(msg, ctx.vm);
+			if (!msg.IsString()) msg = msg.ToStringValue(ctx.vm);
 			return new IntrinsicResult(Value.make_error(msg, inner, ctx.vm.BuildStackTrace(), Value.Null));
 		};
 
@@ -358,7 +358,7 @@ public static class CoreIntrinsics {
 				ctx.vm.RaiseRuntimeError("err method called on non-error value");
 				return IntrinsicResult.Null;
 			}
-			if (!msg.IsString()) msg = Value.to_string(msg, ctx.vm);
+			if (!msg.IsString()) msg = msg.ToStringValue(ctx.vm);
 			// Build the new error with self as __isa.  Then verify no cycle.
 			Value newErr = Value.make_error(msg, inner, ctx.vm.BuildStackTrace(), self);
 			// Walk chain from newErr to check for loop (if newErr appears again).
@@ -424,7 +424,7 @@ public static class CoreIntrinsics {
 			Value v = ctx.GetArg(0);
 			if (v.IsError()) return new IntrinsicResult(v);
 			if (v.IsNumber()) return new IntrinsicResult(v);
-			if (v.IsString()) return new IntrinsicResult(Value.to_number(v));
+			if (v.IsString()) return new IntrinsicResult(v.ToNumber());
 			return new IntrinsicResult(Value.Null);
 		};
 
@@ -435,7 +435,7 @@ public static class CoreIntrinsics {
 			Value v = ctx.GetArg(0);
 			if (v.IsError()) return new IntrinsicResult(v);
 			if (v.IsNull()) return new IntrinsicResult(Value.make_string(""));
-			return new IntrinsicResult(Value.to_string(v, ctx.vm));
+			return new IntrinsicResult(v.ToStringValue(ctx.vm));
 		};
 
 		// upper(self)
@@ -444,7 +444,7 @@ public static class CoreIntrinsics {
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value v = ctx.GetArg(0);
 			if (v.IsError()) return new IntrinsicResult(v);
-			return new IntrinsicResult(Value.string_upper(v));
+			return new IntrinsicResult(v.Upper());
 		};
 
 		// lower(self)
@@ -453,7 +453,7 @@ public static class CoreIntrinsics {
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value v = ctx.GetArg(0);
 			if (v.IsError()) return new IntrinsicResult(v);
-			return new IntrinsicResult(Value.string_lower(v));
+			return new IntrinsicResult(v.Lower());
 		};
 
 		// char(codePoint=65)
@@ -475,7 +475,7 @@ public static class CoreIntrinsics {
 			Value v = ctx.GetArg(0);
 			if (v.IsError()) return new IntrinsicResult(v);
 			if (!v.IsString()) return new IntrinsicResult(ErrorTypes.TypeError("string", v));
-			return new IntrinsicResult(new Value(Value.string_code_point(v)));
+			return new IntrinsicResult(new Value(v.CodePoint()));
 		};
 
 		// len(x)
@@ -488,7 +488,7 @@ public static class CoreIntrinsics {
 			if (container.IsList()) {
 				result = new Value(Value.list_count(container));
 			} else if (container.IsString()) {
-				result = new Value(Value.string_length(container));
+				result = new Value(container.Length());
 			} else if (container.IsMap()) {
 				result = new Value(Value.map_count(container));
 			}
@@ -825,7 +825,7 @@ public static class CoreIntrinsics {
 				Value.list_insert(self, index, value);
 				return new IntrinsicResult(self);
 			} else if (self.IsString()) {
-				return new IntrinsicResult(Value.string_insert(self, index, value, ctx.vm));
+				return new IntrinsicResult(self.StringInsert(index, value, ctx.vm));
 			}
 			return new IntrinsicResult(ErrorTypes.TypeError("list or string", self));
 		};
@@ -855,9 +855,9 @@ public static class CoreIntrinsics {
 				int afterIdx = -1;
 				if (!after.IsNull()) {
 					afterIdx = (int)after.NumericVal();
-					if (afterIdx < -1) afterIdx += Value.string_length(self);
+					if (afterIdx < -1) afterIdx += self.Length();
 				}
-				int idx = Value.string_indexOf(self, value, afterIdx + 1);
+				int idx = self.StringIndexOf(value, afterIdx + 1);
 				if (idx >= 0) result = new Value(idx);
 			} else if (self.IsMap()) {
 				// Find key where value matches
@@ -954,11 +954,11 @@ public static class CoreIntrinsics {
 			if (self.IsError()) return new IntrinsicResult(self);
 			if (!self.IsList()) return new IntrinsicResult(ErrorTypes.TypeError("list", self));
 			Value delim = ctx.GetArg(1);
-			String delimStr = delim.IsNull() ? " " : Value.to_String(delim);
+			String delimStr = delim.IsNull() ? " " : delim.ToString(null);
 			int count = Value.list_count(self);
 			List<String> parts = new List<String>(count);
 			for (int i = 0; i < count; i++) {
-				parts.Add(Value.to_String(Value.list_get(self, i)));
+				parts.Add(Value.list_get(self, i).ToString(null));
 			}
 			return new IntrinsicResult(Value.make_string(String.Join(delimStr, parts)));
 		};
@@ -974,7 +974,7 @@ public static class CoreIntrinsics {
 			if (!self.IsString()) return new IntrinsicResult(ErrorTypes.TypeError("string", self));
 			Value delim = ctx.GetArg(1);
 			int maxCount = (int)ctx.GetArg(2).NumericVal();
-			return new IntrinsicResult(Value.string_split_max(self, delim, maxCount));
+			return new IntrinsicResult(self.SplitMax(delim, maxCount));
 		};
 
 		// replace(self, oldval, newval, maxCount=null)
@@ -1017,7 +1017,7 @@ public static class CoreIntrinsics {
 				}
 				return new IntrinsicResult(self);
 			} else if (self.IsString()) {
-				return new IntrinsicResult(Value.string_replace_max(self, oldVal, newVal, maxCount));
+				return new IntrinsicResult(self.ReplaceMax(oldVal, newVal, maxCount));
 			}
 			return new IntrinsicResult(ErrorTypes.TypeError("list, map, or string", self));
 		};
@@ -1063,9 +1063,9 @@ public static class CoreIntrinsics {
 				int toIdx = ctx.GetArg(2).IsNull() ? count : (int)ctx.GetArg(2).NumericVal();
 				return new IntrinsicResult(Value.list_slice(seq, fromIdx, toIdx));
 			} else if (seq.IsString()) {
-				int slen = Value.string_length(seq);
+				int slen = seq.Length();
 				int toIdx = ctx.GetArg(2).IsNull() ? slen : (int)ctx.GetArg(2).NumericVal();
-				return new IntrinsicResult(Value.string_slice(seq, fromIdx, toIdx));
+				return new IntrinsicResult(seq.StringSlice(fromIdx, toIdx));
 			}
 			return new IntrinsicResult(ErrorTypes.TypeError("list or string", seq));
 		};
@@ -1086,7 +1086,7 @@ public static class CoreIntrinsics {
 				}
 				return new IntrinsicResult(result);
 			} else if (self.IsString()) {
-				int slen = Value.string_length(self);
+				int slen = self.Length();
 				result = Value.make_list(slen);
 				for (int i = 0; i < slen; i++) {
 					Value.list_push(result, new Value(i));
@@ -1120,7 +1120,7 @@ public static class CoreIntrinsics {
 			} else if (self.IsString()) {
 				if (!index.IsNumber()) return new IntrinsicResult(Value.zero);
 				int i = (int)index.NumericVal();
-				int slen = Value.string_length(self);
+				int slen = self.Length();
 				return new IntrinsicResult(Value.Truth(i >= -slen && i < slen));
 			} else if (self.IsMap()) {
 				return new IntrinsicResult(Value.Truth(Value.map_has_key(self, index)));
@@ -1143,10 +1143,10 @@ public static class CoreIntrinsics {
 					Value.list_push(result, iter.Val);      // CPP: Value::list_push(result, iterVal);
 				}
 			} else if (self.IsString()) {
-				int slen = Value.string_length(self);
+				int slen = self.Length();
 				result = Value.make_list(slen);
 				for (int i = 0; i < slen; i++) {
-					Value.list_push(result, Value.string_substring(self, i, 1));
+					Value.list_push(result, self.Substring(i, 1));
 				}
 			} else if (!self.IsList()) {
 				// A list returns itself (its values are its elements); any other

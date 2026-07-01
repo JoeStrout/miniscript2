@@ -77,11 +77,11 @@ public class FuncDef {
 		Value defaultVal;
 		for (Int32 i = 0; i < ParamNames.Count; i++) {
 			if (i > 0) result += ", ";
-			result += Value.as_cstring(ParamNames[i]);
+			result += ParamNames[i].AsCString();
 			defaultVal = ParamDefaults[i];
 			if (!defaultVal.IsNull()) {
 				result += "=";
-				result += Value.as_cstring(Value.value_repr(defaultVal, null));
+				result += defaultVal.Repr(null).AsCString();
 			}
 		}
 		result += ")";

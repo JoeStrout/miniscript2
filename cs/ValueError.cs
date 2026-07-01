@@ -30,7 +30,7 @@ namespace MiniScript {
 		}
 
 		public override string ToString() {
-			string msg = Message.IsString() ? Value.as_cstring(Message) : Value.to_String(Message);
+			string msg = Message.IsString() ? Message.AsCString() : Message.ToString(null);
 			return "error: " + msg;
 		}
 	}

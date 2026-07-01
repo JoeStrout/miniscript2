@@ -511,7 +511,7 @@ void App::HandleHistorySearch(String metaRest) {
 	Int32 remaining = count;
 	Int32 firstIdx = total;
 	for (Int32 i = total - 1; i >= 0 && remaining > 0; i--) {
-		String entry = Value::as_cstring(Value::list_get(CoreIntrinsics::replInList, i));
+		String entry = Value::list_get(CoreIntrinsics::replInList, i).AsCString();
 		if (!IsNull(search) && entry.IndexOf(search) < 0) continue;
 		remaining--;
 		firstIdx = i;
@@ -519,7 +519,7 @@ void App::HandleHistorySearch(String metaRest) {
 	// Second pass (forward): display in ascending order.
 	Int32 shown = 0;
 	for (Int32 i = firstIdx; i < total && shown < count; i++) {
-		String entry = Value::as_cstring(Value::list_get(CoreIntrinsics::replInList, i));
+		String entry = Value::list_get(CoreIntrinsics::replInList, i).AsCString();
 		if (!IsNull(search) && entry.IndexOf(search) < 0) continue;
 		IOHelper::Print(StringUtils::Format(" _in[{0}]: {1}", i, entry), TextStyle::Subdued);
 		shown++;
@@ -534,7 +534,7 @@ String App::RecallInput(String indexStr) {
 	if (idx < 0) return nullptr;
 	if (negative) idx = total - idx;
 	if (idx < 0 || idx >= total) return nullptr;
-	return Value::as_cstring(Value::list_get(CoreIntrinsics::replInList, idx));
+	return Value::list_get(CoreIntrinsics::replInList, idx).AsCString();
 }
 void App::RunREPL() {
 	CoreIntrinsics::replInList = Value::make_list(0);

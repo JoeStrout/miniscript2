@@ -571,7 +571,7 @@ public struct App {
 		Int32 remaining = count;
 		Int32 firstIdx = total;
 		for (Int32 i = total - 1; i >= 0 && remaining > 0; i--) {
-			String entry = Value.as_cstring(Value.list_get(CoreIntrinsics.replInList, i));
+			String entry = Value.list_get(CoreIntrinsics.replInList, i).AsCString();
 			if (search != null && entry.IndexOf(search) < 0) continue;
 			remaining--;
 			firstIdx = i;
@@ -579,7 +579,7 @@ public struct App {
 		// Second pass (forward): display in ascending order.
 		Int32 shown = 0;
 		for (Int32 i = firstIdx; i < total && shown < count; i++) {
-			String entry = Value.as_cstring(Value.list_get(CoreIntrinsics.replInList, i));
+			String entry = Value.list_get(CoreIntrinsics.replInList, i).AsCString();
 			if (search != null && entry.IndexOf(search) < 0) continue;
 			IOHelper.Print(StringUtils.Format(" _in[{0}]: {1}", i, entry), TextStyle.Subdued);
 			shown++;
@@ -597,7 +597,7 @@ public struct App {
 		if (idx < 0) return null;
 		if (negative) idx = total - idx;
 		if (idx < 0 || idx >= total) return null;
-		return Value.as_cstring(Value.list_get(CoreIntrinsics.replInList, idx));
+		return Value.list_get(CoreIntrinsics.replInList, idx).AsCString();
 	}
 
 	private static void RunREPL() {

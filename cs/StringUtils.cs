@@ -139,13 +139,13 @@ public static class StringUtils {
 
 	public static String makeRepr(Value v) {
 		if (v.IsString()) {
-			String str = Value.as_cstring(v);
+			String str = v.AsCString();
 			// Replace quotes: " becomes ""
 			String escaped = str.Replace("\"", "\"\"");
 			// Wrap in quotes
 			return "\"" + escaped + "\"";
 		}
-		return Value.to_String(v);
+		return v.ToString(null);
 	}
 	
 	// Usage: StringUtils.Format("Hello {0}, x={1}, {{braces}}", name, 42)
@@ -207,17 +207,17 @@ public static class StringUtils {
 		Char buf[2] = {c, '\0'};
 		return String(buf);
 	}
-	// Value type: delegate to to_string (handles all types, raw string for strings)
+	// Value type: delegate to ToStringValue (handles all types, raw string for strings)
 	inline static String makeString(Value v) {
-		return String(Value::as_cstring(Value::to_string(v, NULL)));
+		return String(v.ToStringValue(NULL).AsCString());
 	}
 	// Value type with VM context: enables short-name display for maps/lists
 	inline static String makeString(Value v, void* vm) {
-		return String(Value::as_cstring(Value::to_string(v, vm)));
+		return String(v.ToStringValue(vm).AsCString());
 	}
-	// Value repr (strings quoted): delegate to value_repr
+	// Value repr (strings quoted): delegate to Repr
 	inline static String makeRepr(const Value v) {
-		return String(Value::as_cstring(Value::value_repr(v, NULL)));
+		return String(v.Repr(NULL).AsCString());
 	}
 
 	// Generic fallback for numbers and streamable types.

@@ -109,7 +109,8 @@ Value make_string_n(const char* str, int len) {
 
 // ── Access ──────────────────────────────────────────────────────────────
 
-const char* Value::as_cstring(Value v) {
+const char* Value::AsCString() const {
+    Value v = *this;
     static thread_local char tiny_scratch[TINY_STRING_MAX_LEN + 1];
     if (v.IsTinyString()) {
         int len = (int)(v.bits & 0xFF);
@@ -131,7 +132,8 @@ int string_lengthB(Value v) {
     return 0;
 }
 
-int Value::string_length(Value v) {
+int Value::Length() const {
+    Value v = *this;
     if (v.IsTinyString()) {
         int lenB = (int)(v.bits & 0xFF);
         if (lenB == 0) return 0;
@@ -203,20 +205,23 @@ Value string_concat(Value a, Value b) {
     return adopt_ss(result);
 }
 
-int Value::string_indexOf(Value haystack, Value needle, int start_pos) {
+int Value::StringIndexOf(Value needle, int start_pos) const {
+    Value haystack = *this;
     TempStorage th(haystack), tn(needle);
     if (start_pos <= 0) return ss_indexOf(th, tn);
     return ss_indexOfFrom(th, tn, start_pos);
 }
 
-Value Value::string_substring(Value str, int startIndex, int len) {
+Value Value::Substring(int startIndex, int len) const {
+    Value str = *this;
     TempStorage ts(str);
     if (startIndex < 0) startIndex += ss_lengthC(ts);
     StringStorage* result = ss_substringLen(ts, startIndex, len, std::malloc);
     return adopt_ss(result);
 }
 
-Value Value::string_slice(Value str, int start, int end) {
+Value Value::StringSlice(int start, int end) const {
+    Value str = *this;
     TempStorage ts(str);
     int slen = ss_lengthC(ts);
     if (start < 0) start += slen;
@@ -240,11 +245,12 @@ Value string_sub(Value a, Value b) {
     return a;
 }
 
-Value Value::string_insert(Value str, int index, Value value, void* vm) {
+Value Value::StringInsert(int index, Value value, void* vm) const {
+    Value str = *this;
     if (!str.IsString()) return str;
-    Value insertVal = value.IsString() ? value : Value::to_string(value, vm);
+    Value insertVal = value.IsString() ? value : value.ToStringValue(vm);
     int strLenB    = string_lengthB(str);
-    int strLenC    = Value::string_length(str);
+    int strLenC    = str.Length();
     int insertLenB = string_lengthB(insertVal);
 
     if (index < 0) index += strLenC + 1;
@@ -274,7 +280,8 @@ Value Value::string_insert(Value str, int index, Value value, void* vm) {
     return result;
 }
 
-Value Value::string_upper(Value str) {
+Value Value::Upper() const {
+    Value str = *this;
     if (!str.IsString()) return str;
     TempStorage ts(str);
     StringStorage* result = ss_toUpper(ts, std::malloc);
@@ -285,7 +292,8 @@ Value Value::string_upper(Value str) {
     return adopt_ss(result);
 }
 
-Value Value::string_lower(Value str) {
+Value Value::Lower() const {
+    Value str = *this;
     if (!str.IsString()) return str;
     TempStorage ts(str);
     StringStorage* result = ss_toLower(ts, std::malloc);
@@ -314,7 +322,8 @@ Value Value::string_from_code_point(int codePoint) {
     return make_string_n(buf, n);
 }
 
-int Value::string_code_point(Value str) {
+int Value::CodePoint() const {
+    Value str = *this;
     if (!str.IsString()) return 0;
     TempStorage ts(str);
     if (!ts.get() || ss_lengthB(ts) == 0) return 0;
@@ -325,10 +334,11 @@ int Value::string_code_point(Value str) {
 // while delegating the unbounded case to ss_splitStr.
 
 Value string_split(Value str, Value delimiter) {
-    return Value::string_split_max(str, delimiter, -1);
+    return str.SplitMax(delimiter, -1);
 }
 
-Value Value::string_split_max(Value str, Value delimiter, int maxCount) {
+Value Value::SplitMax(Value delimiter, int maxCount) const {
+    Value str = *this;
     if (!str.IsString() || !delimiter.IsString()) return Value::null;
     int slen, dlen;
     const char* sdata = get_string_data_zerocopy(&str, &slen);
@@ -391,7 +401,8 @@ Value string_replace(Value source, Value search, Value replacement) {
     return adopt_ss(result);
 }
 
-Value Value::string_replace_max(Value source, Value search, Value replacement, int maxCount) {
+Value Value::ReplaceMax(Value search, Value replacement, int maxCount) const {
+    Value source = *this;
     if (maxCount <= 0) return string_replace(source, search, replacement);
     if (!source.IsString() || !search.IsString() || !replacement.IsString())
         return Value::null;
@@ -428,6 +439,14 @@ Value Value::string_replace_max(Value source, Value search, Value replacement, i
     std::free(buf);
     return result;
 }
+
+// ── Instance wrappers over the free string helpers (mirror cs/Value.cs) ───
+// These give the transpiler-facing API the same instance methods cs exposes;
+// the free functions above remain the shared implementation used by operators.
+Value Value::StringConcat(Value b) const { return string_concat(*this, b); }
+int   Value::Compare(Value b) const      { return string_compare(*this, b); }
+Value Value::Split(Value delimiter) const { return string_split(*this, delimiter); }
+Value Value::Replace(Value from, Value to) const { return string_replace(*this, from, to); }
 
 // ── Hashing ─────────────────────────────────────────────────────────────
 // string_hash(const char*, int) lives in hashing.c.

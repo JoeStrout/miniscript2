@@ -123,14 +123,14 @@ Value value_mult_nonnumeric(Value a, Value b) {
         int factorClass = std::fpclassify(factor);
         if (factorClass == FP_NAN || factorClass == FP_INFINITE) return Value::null;
         if (factor <= 0) return Value::emptyString;
-        if (Value::string_length(a) * factor > Value::MAX_COLLECTION_SIZE) {
+        if (a.Length() * factor > Value::MAX_COLLECTION_SIZE) {
             return value_make_runtime_error("string too large (exceeds maximum size)");
         }
         int repeats = (int)factor;
         Value result = Value::emptyString;
         for (int i = 0; i < repeats; i++) result = string_concat(result, a);
-        int extraChars = (int)(Value::string_length(a) * (factor - repeats));
-        if (extraChars > 0) result = string_concat(result, Value::string_substring(a, 0, extraChars));
+        int extraChars = (int)(a.Length() * (factor - repeats));
+        if (extraChars > 0) result = string_concat(result, a.Substring(0, extraChars));
         return result;
     }
     if (a.IsList() && b.IsNumber()) {
@@ -345,7 +345,7 @@ void format_double(double value, char* buf) {
 }
 
 Value quote_string(Value v) {
-    const char* content = Value::as_cstring(v);
+    const char* content = v.AsCString();
     if (!content) content = "";
     int quote_count = 0;
     for (const char* p = content; *p; p++) if (*p == '"') quote_count++;
@@ -437,16 +437,19 @@ Value code_form(Value v, void* vm, int recursion_limit) {
     return Value::make_string("<value>");
 }
 
-Value Value::to_string(Value v, void* vm) {
+Value Value::ToStringValue(void* vm) const {
+    Value v = *this;
     if (v.IsString()) return v;
     return code_form(v, vm, 3);
 }
 
-Value Value::value_repr(Value v, void* vm) {
+Value Value::Repr(void* vm) const {
+    Value v = *this;
     return code_form(v, vm, -1);
 }
 
-Value Value::to_number(Value v) {
+Value Value::ToNumber() const {
+    Value v = *this;
     if (v.IsNumber()) return v;
     if (!v.IsString()) return Value::zero;
     int len;

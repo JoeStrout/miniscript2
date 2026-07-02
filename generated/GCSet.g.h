@@ -176,6 +176,12 @@ class GCMapSetStorage : public GCSetBaseStorage {
 	public: void SetFrozen(Int32 idx, Boolean frozen);
 
 	public: void SetVmb(Int32 idx, VarMapBacking vmb);
+
+	// Attach an existing dictionary as this slot's contents, sharing its
+	// storage rather than copying entries (Dictionary assignment shares the
+	// underlying table).  Leaves Frozen and _vmb untouched, so this is meant
+	// for a freshly allocated slot.  See GCManager.NewMapFromDict.
+	public: void SetItems(Int32 idx, Dictionary<Value, Value> items);
 }; // end of class GCMapSetStorage
 
 class GCErrorSetStorage : public GCSetBaseStorage {
@@ -307,6 +313,12 @@ struct GCMapSet : public GCSetBase {
 	public: inline void SetFrozen(Int32 idx, Boolean frozen);
 
 	public: inline void SetVmb(Int32 idx, VarMapBacking vmb);
+
+	// Attach an existing dictionary as this slot's contents, sharing its
+	// storage rather than copying entries (Dictionary assignment shares the
+	// underlying table).  Leaves Frozen and _vmb untouched, so this is meant
+	// for a freshly allocated slot.  See GCManager.NewMapFromDict.
+	public: inline void SetItems(Int32 idx, Dictionary<Value, Value> items);
 }; // end of struct GCMapSet
 
 // ── GCErrorSet ────────────────────────────────────────────────────────────────
@@ -462,6 +474,12 @@ inline void GCMapSet::SetVmb(Int32 idx,VarMapBacking vmb) { return get()->SetVmb
 inline void GCMapSetStorage::SetVmb(Int32 idx,VarMapBacking vmb) {
 	GCMap item = _items[idx];
 	item._vmb = vmb;
+	_items[idx] = item;
+}
+inline void GCMapSet::SetItems(Int32 idx,Dictionary<Value, Value> items) { return get()->SetItems(idx, items); }
+inline void GCMapSetStorage::SetItems(Int32 idx,Dictionary<Value, Value> items) {
+	GCMap item = _items[idx];
+	item.Items = items;
 	_items[idx] = item;
 }
 

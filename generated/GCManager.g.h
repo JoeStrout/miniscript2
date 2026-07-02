@@ -74,6 +74,12 @@ class GCManager {
 
 	public: static Value NewMap(Int32 capacity = 8);
 
+	// Wrap an existing dictionary as a map Value, sharing its storage rather
+	// than copying entries.  The resulting map and the source dictionary refer
+	// to the same underlying table, so later mutations to either are visible
+	// through the other (matching MiniScript 1.x host semantics).
+	public: static Value NewMapFromDict(Dictionary<Value, Value> items);
+
 	public: static Value NewError(Value message, Value inner, Value stack, Value isa);
 
 	public: static Value NewFuncRef(FuncDef func, Value outerVars);

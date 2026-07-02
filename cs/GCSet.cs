@@ -231,6 +231,17 @@ public class GCMapSet : GCSetBase {
 		item._vmb = vmb;
 		_items[idx] = item;
 	}
+
+	// Attach an existing dictionary as this slot's contents, sharing its
+	// storage rather than copying entries (Dictionary assignment shares the
+	// underlying table).  Leaves Frozen and _vmb untouched, so this is meant
+	// for a freshly allocated slot.  See GCManager.NewMapFromDict.
+	[MethodImpl(AggressiveInlining)]
+	public void SetItems(Int32 idx, Dictionary<Value, Value> items) {
+		GCMap item = _items[idx];
+		item.Items = items;
+		_items[idx] = item;
+	}
 }
 
 // ── GCErrorSet ────────────────────────────────────────────────────────────────

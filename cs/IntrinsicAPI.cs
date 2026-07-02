@@ -5,6 +5,7 @@ using static System.Runtime.CompilerServices.MethodImplOptions;
 // H: #include "value.h"
 // CPP: #include "VM.g.h"
 // CPP: #include "Interpreter.g.h"
+// CPP: #include <unordered_map>
 
 namespace MiniScript {
 
@@ -88,6 +89,38 @@ public struct IntrinsicResult {
 	public static readonly IntrinsicResult Zero = new IntrinsicResult(Value.zero);
 	public static readonly IntrinsicResult One = new IntrinsicResult(Value.one);
 }
+
+/*** BEGIN H_ONLY ***
+// Wrap a host-built ValueDict as a persistent, GC-rooted map Value.  This is a
+// convenience for the common MiniScript 1.x pattern of building a "module" map
+// once and returning it from an intrinsic on every call.  The wrapper is cached
+// (keyed on the address of the passed-in dictionary), so repeated calls with the
+// same static ValueDict return the same map, and the map is added to the GC root
+// set exactly once so its contents are never collected.  See
+// notes/CPP_HOST_UPDATE_GUIDE.md.
+Value StaticMap(ValueDict& d);
+*** END H_ONLY ***/
+
+/*** BEGIN CPP_ONLY ***
+namespace MiniScript {
+	Value StaticMap(ValueDict& d) {
+		// Key the cache on the address of the caller's ValueDict.  Because the
+		// parameter is a non-const reference, a temporary won't bind, so the caller
+		// must pass a stable lvalue (its static ValueDict); the address is valid even
+		// when the dictionary is empty, avoiding the null-storage collision we would
+		// get from keying on the underlying table pointer.
+		static std::unordered_map<const void*, Value> cache;
+		const void* key = &d;
+		auto it = cache.find(key);
+		if (it != cache.end()) return it->second;
+	
+		Value m = GCManager::NewMapFromDict(d);   // shares d's storage; no entry copy
+		GCManager::AddRoot(m);                     // keep the map (and contents) alive
+		cache[key] = m;
+		return m;
+	}
+}
+*** END CPP_ONLY ***/
 
 
 }

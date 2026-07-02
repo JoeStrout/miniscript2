@@ -72,6 +72,11 @@ Value GCManager::NewMap(Int32 capacity ) {
 	Maps.Init(idx, capacity);
 	return Value::make_gc(MapSet, idx);
 }
+Value GCManager::NewMapFromDict(Dictionary<Value, Value> items) {
+	Int32 idx = Maps.AllocItem();
+	Maps.SetItems(idx, items);
+	return Value::make_gc(MapSet, idx);
+}
 Value GCManager::NewError(Value message,Value inner,Value stack,Value isa) {
 	Int32 idx = Errors.AllocItem();
 	Errors.SetFields(idx, message, inner, stack, isa);

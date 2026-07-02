@@ -117,6 +117,16 @@ public static class GCManager {
 		return Value.make_gc(MapSet, idx);
 	}
 
+	// Wrap an existing dictionary as a map Value, sharing its storage rather
+	// than copying entries.  The resulting map and the source dictionary refer
+	// to the same underlying table, so later mutations to either are visible
+	// through the other (matching MiniScript 1.x host semantics).
+	public static Value NewMapFromDict(Dictionary<Value, Value> items) {
+		Int32 idx = Maps.AllocItem();
+		Maps.SetItems(idx, items);
+		return Value.make_gc(MapSet, idx);
+	}
+
 	public static Value NewError(Value message, Value inner, Value stack, Value isa) {
 		Int32 idx = Errors.AllocItem();
 		Errors.SetFields(idx, message, inner, stack, isa);

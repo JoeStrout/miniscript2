@@ -195,22 +195,17 @@ public:
 
 	bool Empty() const { return Count() == 0; }
 
-	// Add or update
-	void Add(const TKey& key, const TValue& value) {
+private:
+	// Insert a brand-new entry for `key`. ASSUMES the key does not already
+	// exist in the dictionary; callers must guarantee this (e.g. operator[]
+	// only calls this after findEntry has failed). Does not check for or
+	// update an existing entry.
+	void AddNewEntry(const TKey& key, const TValue& value) {
 		ensureData();
 
 		int hashCode = Hash(key);
 		int capacity = static_cast<int>(data->buckets.size());
 		int bucket = hashCode % capacity;
-
-		// Check if key already exists
-		for (int i = data->buckets[bucket]; i >= 0; i = data->entries[i].next) {
-			if (data->entries[i].hashCode == hashCode && DictKeyEqual(data->entries[i].key, key)) {
-				// Update existing
-				data->entries[i].value = value;
-				return;
-			}
-		}
 
 		// Add new entry - resize if needed (use threshold = 3/4 of capacity)
 		if (data->count * 4 >= capacity * 3) {
@@ -228,6 +223,7 @@ public:
 		data->count++;
 	}
 
+public:
 	// Indexer - get value by key (returns default if not found)
 	TValue& operator[](const TKey& key) {
 		ensureData();
@@ -239,12 +235,17 @@ public:
 		// again and return a reference to the value in the map
 		// so that it can be assigned to.
 		static TValue defaultValue = TValue();
-		Add(key, defaultValue);
+		AddNewEntry(key, defaultValue);
 		index = data->findEntry(key);
 		if (index >= 0) {
 			return data->entries[index].value;
 		}
 		return defaultValue;
+	}
+
+	// SetValue - add or update, MS1-compatible alias for `dict[key] = value`.
+	void SetValue(const TKey& key, const TValue& value) {
+		(*this)[key] = value;
 	}
 
 	const TValue& operator[](const TKey& key) const {
@@ -418,3 +419,10 @@ public:
 	uint8_t getPoolNum() const { return 0; }
 	bool isValid() const { return true; }  // Always valid with shared_ptr
 };
+
+// MS1-compatible alias for the common map type. In MS1 (MiniScriptTypes.h) this
+// was Dictionary<Value, Value, HashValue>; MS2 needs no HASH template parameter
+// because Hash(Value)/DictKeyEqual(Value) are resolved as free-function overloads
+// (see above). Naming the specialization here does not instantiate it, so the
+// forward-declared Value is sufficient.
+typedef Dictionary<Value, Value> ValueDict;

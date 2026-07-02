@@ -76,4 +76,12 @@ inline Boolean IntrinsicResult::Done() {
 	return done;
 }
 
+// Wrap a host-built ValueDict as a persistent, GC-rooted map Value.  This is a
+// convenience for the common MiniScript 1.x pattern of building a "module" map
+// once and returning it from an intrinsic on every call.  The wrapper is cached
+// (keyed on the address of the passed-in dictionary), so repeated calls with the
+// same static ValueDict return the same map, and the map is added to the GC root
+// set exactly once so its contents are never collected.  See
+// notes/CPP_HOST_UPDATE_GUIDE.md.
+Value StaticMap(ValueDict& d);
 } // end of namespace MiniScript

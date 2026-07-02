@@ -181,7 +181,12 @@ class InterpreterStorage : public std::enable_shared_from_this<InterpreterStorag
 	// 
 	public: bool Running();
 
-	// 
+	// Report whether the virtual machine is done, that is, whether we have no
+	// virtual machine, or we have one and it has reached the end of its code.
+	// This is the logical inverse of Running(), provided as a convenience (and
+	// for parity with MiniScript 1.x, where host main loops commonly test Done).
+	public: bool Done();
+
 	// Return whether the parser needs more input, for example because we have
 	// run out of source code in the middle of an "if" block.  This is typically
 	// used with REPL for making an interactive console, so you can change the
@@ -416,7 +421,12 @@ struct Interpreter {
 	// 
 	public: inline bool Running();
 
-	// 
+	// Report whether the virtual machine is done, that is, whether we have no
+	// virtual machine, or we have one and it has reached the end of its code.
+	// This is the logical inverse of Running(), provided as a convenience (and
+	// for parity with MiniScript 1.x, where host main loops commonly test Done).
+	public: inline bool Done();
+
 	// Return whether the parser needs more input, for example because we have
 	// run out of source code in the middle of an "if" block.  This is typically
 	// used with REPL for making an interactive console, so you can change the
@@ -504,6 +514,7 @@ inline void Interpreter::RunUntilDone(double timeLimit,bool returnEarly) { retur
 inline void Interpreter::Step() { return get()->Step(); }
 inline void Interpreter::REPL(String sourceLine,double timeLimit) { return get()->REPL(sourceLine, timeLimit); }
 inline bool Interpreter::Running() { return get()->Running(); }
+inline bool Interpreter::Done() { return get()->Done(); }
 inline bool Interpreter::NeedMoreInput() { return get()->NeedMoreInput(); }
 inline Value Interpreter::GetGlobalValue(String varName) { return get()->GetGlobalValue(varName); }
 inline void Interpreter::SetGlobalValue(String varName,Value value) { return get()->SetGlobalValue(varName, value); }

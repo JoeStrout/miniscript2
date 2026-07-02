@@ -6,6 +6,8 @@
 #include "hashing.h"
 
 #include "layer_defs.h"
+
+namespace MiniScript {
 #if LAYER_1_VIOLATIONS
 #error "StringStorage.h (Layer 1) cannot depend on higher layers"
 #endif
@@ -621,3 +623,5 @@ StringStorage** ss_splitStr(const StringStorage* storage, const StringStorage* s
     (void)storage; (void)separator; (void)count; (void)allocator;
     return NULL;
 }
+
+}  // namespace MiniScript

@@ -1,6 +1,8 @@
 #include "hashing.h"
 
 #include "layer_defs.h"
+
+namespace MiniScript {
 #if LAYER_0_VIOLATIONS
 #error "hashing.h (Layer 0) cannot depend on any higher layer"
 #endif
@@ -24,3 +26,5 @@ uint32_t string_hash(const char* data, int len) {
     // Ensure hash is never 0 (reserved for "not computed")
     return hash == 0 ? 1 : hash;
 }
+
+}  // namespace MiniScript

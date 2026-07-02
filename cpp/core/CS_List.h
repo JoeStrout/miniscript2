@@ -8,6 +8,8 @@
 #include <vector>
 #include <initializer_list>
 
+namespace MiniScript {
+
 // This module is part of Layer 2B (Host C# Compatibility Layer)
 #define CORE_LAYER_2B
 
@@ -295,3 +297,11 @@ public:
     bool isValid() const { return data != nullptr; }
 };
 
+// MS1-compatible alias for the common list type.  Value is defined in value.h,
+// but core_includes.h pulls this header in first; a forward declaration is
+// enough here because naming List<Value> does not instantiate it (same approach
+// as ValueDict in CS_Dictionary.h).
+struct Value;
+typedef List<Value> ValueList;
+
+}  // namespace MiniScript

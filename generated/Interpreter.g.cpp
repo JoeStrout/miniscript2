@@ -249,6 +249,9 @@ void InterpreterStorage::REPL(String sourceLine,double timeLimit) {
 bool InterpreterStorage::Running() {
 	return !IsNull(vm) && vm.IsRunning();
 }
+bool InterpreterStorage::Done() {
+	return !Running();
+}
 bool InterpreterStorage::NeedMoreInput() {
 	return !IsNull(_pendingSource) && !IsNull(parser) && parser.NeedMoreInput();
 }

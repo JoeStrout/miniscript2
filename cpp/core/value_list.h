@@ -9,6 +9,8 @@
 
 #define CORE_LAYER_2A
 
+namespace MiniScript {
+
 
 // Creation
 // (make_list / list_count / list_get / list_set / list_push / list_pop /
@@ -31,5 +33,7 @@ Value list_concat(Value a, Value b);
 uint32_t list_hash(Value list_val);
 Value    list_to_string(Value list_val, void* vm);
 
+
+}  // namespace MiniScript
 
 #endif // LISTS_H

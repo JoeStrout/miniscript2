@@ -6,6 +6,8 @@
 #include <cmath>
 #include <cstdint>
 
+namespace MiniScript {
+
 // This module is part of Layer 2B (Host C# Compatibility Layer)
 #define CORE_LAYER_2B
 
@@ -123,3 +125,5 @@ private:
     Math(const Math&) = delete;
     Math& operator=(const Math&) = delete;
 };
+
+}  // namespace MiniScript

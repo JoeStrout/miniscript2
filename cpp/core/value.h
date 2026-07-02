@@ -32,9 +32,11 @@
 // are currently disabled.  CS_String.h does not include value.h, so no cycle.
 #include "CS_String.h"
 
+namespace MiniScript {
+
 #define CORE_LAYER_2A
 
-namespace MiniScript { struct FuncDef; }
+struct FuncDef;  // (was: namespace MiniScript { struct FuncDef; })
 struct MapIterator;  // defined in value_map.h; returned by Value::map_iterator
 
 // NaN-boxed dynamic Value.  The sole data member `bits` holds the 64-bit
@@ -613,5 +615,7 @@ inline String Value::TypeName() const {
     if (IsNull()) return String("null");
     return String("unknown");
 }
+
+}  // namespace MiniScript
 
 #endif // NANBOX_H

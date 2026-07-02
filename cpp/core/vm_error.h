@@ -6,6 +6,8 @@
 #ifndef VM_ERROR_H
 #define VM_ERROR_H
 
+namespace MiniScript {
+
 
 // Function pointer type for the runtime error callback
 typedef void (*vm_error_callback_t)(const char* message);
@@ -16,5 +18,7 @@ void vm_error_set_callback(vm_error_callback_t callback);
 // Raise a runtime error via the callback (called by C code)
 void vm_raise_runtime_error(const char* message);
 
+
+}  // namespace MiniScript
 
 #endif // VM_ERROR_H

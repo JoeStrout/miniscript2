@@ -13,6 +13,8 @@
 
 #include "unicodeUtil.h"
 
+namespace MiniScript {
+
 // This file is part of Layer 1 (string infrastructure)
 #define CORE_LAYER_1
 
@@ -106,4 +108,4 @@ inline void ss_ensureHashComputed(StringStorage* storage) {
     }
 }
 
-
+}  // namespace MiniScript

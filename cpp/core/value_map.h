@@ -10,6 +10,8 @@
 
 #define CORE_LAYER_2A
 
+namespace MiniScript {
+
 // make_varmap / varmap_map_to_register / varmap_gather / varmap_rebind are now
 // Value:: static methods (they take List<Value>, which value.h sees via
 // CS_String.h -> CS_List.h).
@@ -47,5 +49,7 @@ bool        map_iterator_next(MapIterator* iter, Value* out_key, Value* out_valu
 uint32_t map_hash(Value map_val);
 Value    map_to_string(Value map_val, void* vm);
 
+
+}  // namespace MiniScript
 
 #endif // VALUE_MAP_H

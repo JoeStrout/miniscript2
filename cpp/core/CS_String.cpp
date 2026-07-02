@@ -3,6 +3,8 @@
 #include "CS_String.h"
 
 #include "layer_defs.h"
+
+namespace MiniScript {
 #if LAYER_2B_HIGHER
 #error "CS_String.cpp (Layer 2B) cannot depend on higher layers (3)"
 #endif
@@ -52,3 +54,5 @@ StringStorageSPtr String::FindOrCreate(const char *cstr, int byteLen) {
 }
 
 // String Interpolation is now fully implemented in CS_String.h as inline/template code
+
+}  // namespace MiniScript

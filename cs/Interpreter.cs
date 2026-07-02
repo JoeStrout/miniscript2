@@ -424,7 +424,17 @@ public class Interpreter {
 		return vm != null && vm.IsRunning;
 	}
 
-	// 
+	//
+	// Report whether the virtual machine is done, that is, whether we have no
+	// virtual machine, or we have one and it has reached the end of its code.
+	// This is the logical inverse of Running(), provided as a convenience (and
+	// for parity with MiniScript 1.x, where host main loops commonly test Done).
+	//
+	public bool Done() {
+		return !Running();
+	}
+
+	//
 	// Return whether the parser needs more input, for example because we have
 	// run out of source code in the middle of an "if" block.  This is typically
 	// used with REPL for making an interactive console, so you can change the

@@ -22,6 +22,8 @@
 #include <climits>
 #include <vector>
 
+namespace MiniScript {
+
 using MiniScript::GCManager;
 using MiniScript::GCList;
 using MiniScript::GCMap;
@@ -564,3 +566,4 @@ Value Value::value_current_stack_trace() {
     return Value::null;
 }
 
+}  // namespace MiniScript

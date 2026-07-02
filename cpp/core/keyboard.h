@@ -18,6 +18,7 @@
 #ifndef KEYBOARD_H
 #define KEYBOARD_H
 
+namespace MiniScript {
 namespace Keyboard {
 
 // Unified key codes returned by ReadKeyTranslated() for the common editing
@@ -96,5 +97,6 @@ int ReadKey();
 int ReadKeyTranslated();
 
 } // namespace Keyboard
+} // namespace MiniScript
 
 #endif // KEYBOARD_H

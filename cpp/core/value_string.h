@@ -12,6 +12,8 @@
 
 #define CORE_LAYER_2A
 
+namespace MiniScript {
+
 
 // Strings shorter than this are interned; longer ones bypass the intern
 // table. The same threshold is used by GCManager.
@@ -50,5 +52,7 @@ Value string_sub(Value a, Value b);
 uint32_t string_hash(const char* data, int len);
 uint32_t get_string_hash(Value str_val);
 
+
+}  // namespace MiniScript
 
 #endif // VALUE_STRING_H

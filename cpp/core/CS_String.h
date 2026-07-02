@@ -18,6 +18,8 @@
 #include <vector>
 #include <type_traits>  // for std::is_enum, std::enable_if (SFINAE)
 
+namespace MiniScript {
+
 // This module is part of Layer 2B (Host C# Compatibility Layer)
 #define CORE_LAYER_2B
 
@@ -261,7 +263,9 @@ public:
     // C# String API - Properties
     int Length() const { return lengthC(); }
     bool Empty() const { return Length() == 0; }
-    
+    // MS1-compatible lowercase alias (SimpleString had empty()).
+    bool empty() const { return Length() == 0; }
+
     // C# String API - Character access (by character index, returns Unicode code point)
     uint32_t operator[](int index) const {
         const StringStorage* s = getStorageRaw();
@@ -351,7 +355,36 @@ public:
         StringStorage* result_ss = ss_substringLen(s, startIndex, length, malloc);
         return wrapStorage(result_ss, *this);
     }
-    
+
+    // MS1-compatible byte-indexed substring (SimpleString had SubstringB).
+    // posB and lengthB are byte offsets; lengthB == -1 means "to end of string".
+    String SubstringB(int posB, int lengthB = -1) const {
+        const StringStorage* s = getStorageRaw();
+        if (!s) return String();
+        int total = ss_lengthB(s);
+        if (posB < 0) posB = 0;
+        if (posB >= total) return String();
+        if (lengthB < 0 || lengthB > total - posB) lengthB = total - posB;
+        return String(s->data + posB, (size_t)lengthB);
+    }
+
+    // MS1-compatible numeric formatting (SimpleString had these static overloads).
+    static String Format(int num, const char* formatSpec = "%d") {
+        char buf[32]; snprintf(buf, sizeof(buf), formatSpec, num); return String(buf);
+    }
+    static String Format(long num, const char* formatSpec = "%ld") {
+        char buf[32]; snprintf(buf, sizeof(buf), formatSpec, num); return String(buf);
+    }
+    static String Format(float num, const char* formatSpec = "%g") {
+        char buf[64]; snprintf(buf, sizeof(buf), formatSpec, num); return String(buf);
+    }
+    static String Format(double num, const char* formatSpec = "%lg") {
+        char buf[64]; snprintf(buf, sizeof(buf), formatSpec, num); return String(buf);
+    }
+    static String Format(bool value, const char* trueString = "True", const char* falseString = "False") {
+        return String(value ? trueString : falseString);
+    }
+
     String Left(int chars) const {
     	return Substring(0, chars);
     }
@@ -799,3 +832,4 @@ inline int Hash(const String& str) {
     return (int)(ss_hash(const_cast<StringStorage*>(storage)) & 0x7FFFFFFF);
 }
 
+}  // namespace MiniScript

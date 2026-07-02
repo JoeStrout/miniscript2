@@ -8,6 +8,8 @@
 #include <cstring>
 #include <vector>
 
+namespace MiniScript {
+
 using MiniScript::GCManager;
 using MiniScript::GCList;
 
@@ -271,3 +273,4 @@ Value list_to_string(Value list_val, void* vm) {
     return code_form(list_val, vm, 3);
 }
 
+}  // namespace MiniScript

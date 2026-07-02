@@ -7,6 +7,8 @@
 #include <stdlib.h>
 
 #include "layer_defs.h"
+
+namespace MiniScript {
 #if LAYER_0_VIOLATIONS
 #error "unicodeUtil.c (Layer 0) cannot depend on any higher layer"
 #endif
@@ -724,3 +726,5 @@ uint32_t fnv1a_hash(const char* data, int len) {
     
     return hash == 0 ? 1 : hash;
 }
+
+}  // namespace MiniScript

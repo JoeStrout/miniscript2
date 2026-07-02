@@ -25,6 +25,8 @@
 #include <initializer_list>
 #include <utility>  // for std::pair
 
+namespace MiniScript {
+
 // Forward declaration
 class String;
 struct Value;  // defined in value.h; needed for the Hash/DictKeyEqual overloads below
@@ -426,3 +428,5 @@ public:
 // (see above). Naming the specialization here does not instantiate it, so the
 // forward-declared Value is sufficient.
 typedef Dictionary<Value, Value> ValueDict;
+
+}  // namespace MiniScript

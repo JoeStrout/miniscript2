@@ -21,6 +21,8 @@
 #include <cstdio>
 #include <cctype>
 
+namespace MiniScript {
+
 using MiniScript::GCManager;
 using MiniScript::GCString;
 
@@ -464,3 +466,4 @@ uint32_t get_string_hash(Value v) {
     return 0;
 }
 
+}  // namespace MiniScript

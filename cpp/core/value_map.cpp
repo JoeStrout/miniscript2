@@ -9,6 +9,8 @@
 #include "hashing.h"
 #include <cstring>
 
+namespace MiniScript {
+
 using MiniScript::GCManager;
 using MiniScript::GCMap;
 using MiniScript::VarMapBacking;
@@ -289,3 +291,5 @@ void Value::Rebind(List<Value> registers, List<Value> names) const {
     GCMap m = GCManager::Maps.Get(idx);
     if (!vmb_is_null(m._vmb)) m._vmb.Rebind(idx, registers, names);
 }
+
+}  // namespace MiniScript

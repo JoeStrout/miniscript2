@@ -9,6 +9,8 @@
 // This file is part of Layer 0 (foundation utilities)
 #define CORE_LAYER_0
 
+namespace MiniScript {
+
 
 extern uint32_t string_hash(const char* data, int len);
 
@@ -20,5 +22,7 @@ static inline uint32_t uint64_hash(uint64_t value) {
 
 
 
+
+}  // namespace MiniScript
 
 #endif

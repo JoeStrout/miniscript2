@@ -9,6 +9,8 @@
 // This file is part of Layer 0 (foundation utilities)
 #define CORE_LAYER_0
 
+namespace MiniScript {
+
 
 
 // IsUTF8IntraChar
@@ -181,5 +183,7 @@ static inline bool UnicodeCharIsWhitespace(unsigned long uniChar)
 // FNV-1a hash function
 uint32_t fnv1a_hash(const char* data, int len);
 
+
+}  // namespace MiniScript
 
 #endif // UNICODEUTIL_H

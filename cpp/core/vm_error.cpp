@@ -5,6 +5,8 @@
 #include "vm_error.h"
 #include <stdio.h>
 
+namespace MiniScript {
+
 static vm_error_callback_t s_error_callback = NULL;
 
 void vm_error_set_callback(vm_error_callback_t callback) {
@@ -18,3 +20,5 @@ void vm_raise_runtime_error(const char* message) {
         fprintf(stderr, "Runtime Error (no VM): %s\n", message);
     }
 }
+
+}  // namespace MiniScript

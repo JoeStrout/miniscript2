@@ -11,6 +11,7 @@
 #include <io.h>
 #include <cstdio>   // _fileno, EOF
 
+namespace MiniScript {
 namespace Keyboard {
 
 // On Windows the console delivers single keystrokes directly through the
@@ -74,6 +75,7 @@ int ReadKeyTranslated() {
 }
 
 } // namespace Keyboard
+} // namespace MiniScript
 
 #else // POSIX
 
@@ -84,6 +86,7 @@ int ReadKeyTranslated() {
 #include <cerrno>
 #include <csignal>
 
+namespace MiniScript {
 namespace Keyboard {
 
 static struct termios s_origTermios;     // terminal settings to restore
@@ -288,5 +291,6 @@ int ReadKeyTranslated() {
 }
 
 } // namespace Keyboard
+} // namespace MiniScript
 
 #endif // _WIN32 / POSIX

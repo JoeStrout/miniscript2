@@ -279,6 +279,17 @@ public:
 		return false;
 	}
 
+	// Lookup - MiniScript 1.x-compatible: return the value stored for key, or
+	// defaultValue if the key is not present.  A read-only convenience that does
+	// not insert (unlike operator[]).
+	TValue Lookup(const TKey& key, const TValue& defaultValue) const {
+		if (data) {
+			int index = data->findEntry(key);
+			if (index >= 0) return data->entries[index].value;
+		}
+		return defaultValue;
+	}
+
 	// Remove
 	bool Remove(const TKey& key) {
 		if (!data) return false;

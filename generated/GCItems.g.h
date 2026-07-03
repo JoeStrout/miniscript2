@@ -27,15 +27,18 @@ struct GCString {
 // ── GCList ───────────────────────────────────────────────────────────────────
 
 struct GCList {
-	private: List<Value> Items;
+	public: List<Value> Items;
 	public: Boolean Frozen;
 	public: Boolean Computed;
-	// Items is private: a list may be either "materialized" (Computed == false,
-	// Items holds the actual elements) or "computed" (Computed == true, Items
-	// holds exactly three meta-values: [0]=base, [1]=increment, [2]=length).
-	// All access goes through the methods below so callers never see the
-	// difference.  A computed list with a null increment repeats the base value
-	// (used for `[x] * n`); otherwise element i is base + increment * i.
+	// Items is public (paralleling GCMap.Items) so host bridges such as
+	// Value::GetList() can reach the backing list, but treat it with care: a list
+	// may be either "materialized" (Computed == false, Items holds the actual
+	// elements) or "computed" (Computed == true, Items holds exactly three
+	// meta-values: [0]=base, [1]=increment, [2]=length).  Prefer the methods
+	// below, which hide the difference; a computed list with a null increment
+	// repeats the base value (used for `[x] * n`), otherwise element i is
+	// base + increment * i.  Call Materialize() first if you need the real
+	// elements from a possibly-computed list.
 	// IMPORTANT: a mutation may materialize a computed list, which replaces the
 	// Items reference and clears the Computed flag.  Since GCList is a struct,
 	// callers MUST write the value back (GCManager.Lists.Set / SetFrozen style)

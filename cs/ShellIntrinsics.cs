@@ -2327,29 +2327,17 @@ public static class ShellIntrinsics {
 			if (!found) {
 				return new IntrinsicResult(ErrorTypes.FileError(StringUtils.Format("import: library not found: {0}", libname)));
 			}
-			// Parse the module source.
-			Parser p = new Parser();
-			p.Init(source);
-			List<ASTNode> stmts = p.ParseProgram();
-			if (p.HadError()) {
-				return new IntrinsicResult(ErrorTypes.CompilerError(StringUtils.Format("import: parse error in {0}.ms", libname)));
-			}
-			// Simplify AST (constant folding, etc.).
-			for (Int32 i = 0; i < stmts.Count; i++) {
-				stmts[i] = stmts[i].Simplify();
-			}
-			// Compile the module to bytecode.
-			BytecodeEmitter emitter = new BytecodeEmitter();
-			CodeGenerator gen = new CodeGenerator(emitter);
-			gen.FileName = libname + ".ms";
-			List<FuncDef> fns = gen.CompileImport(stmts, libname + ".ms");
-			if (!gen.Error.IsNull()) {
-				return new IntrinsicResult(gen.Error);
+			// Parse and compile the module to its @main FuncDef.
+			Value compileErr;
+			FuncDef moduleMain = Interpreter.CompileToFunc(source, libname + ".ms", out compileErr);
+			if (moduleMain == null) {
+				if (!compileErr.IsNull()) return new IntrinsicResult(compileErr);
+				return new IntrinsicResult(Value.Null);   // empty module
 			}
 			// Push the module call; we will be re-invoked when it finishes.
-			// fns[0] is the module's @main; nested functions are reachable
+			// moduleMain is the module's @main; nested functions are reachable
 			// from its constant pool.
-			ctx.vm.ManuallyPushCall(ctx.baseIndex, fns[0]);
+			ctx.vm.ManuallyPushCall(ctx.baseIndex, moduleMain);
 			return new IntrinsicResult(Value.make_string(libname), false);
 		};
 	}

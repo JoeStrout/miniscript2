@@ -84,4 +84,32 @@ inline Boolean IntrinsicResult::Done() {
 // set exactly once so its contents are never collected.  See
 // notes/CPP_HOST_UPDATE_GUIDE.md.
 Value StaticMap(ValueDict& d);
+
+// Wrap a host-built ValueDict as a NON-rooted (collectable) map Value.  Unlike
+// StaticMap, this does NOT add the map to the GC root set: it simply wraps the
+// dictionary's storage in a Value and hands it back.  This is the right choice
+// when an intrinsic builds a map on the fly and returns it to the caller, and
+// you want that map (and its contents) to be freed once the caller no longer
+// references it -- i.e. an ordinary dynamically-created return value, NOT a
+// persistent "module"/"class"/prototype map.
+//
+// Rule of thumb:
+//   * A map you build ONCE and return on every call (a module, a type/class
+//     prototype used with `isa`)         -> StaticMap  (rooted, stable identity)
+//   * A map you build fresh each call and return as data
+//                                         -> DynamicMap (collectable)
+//
+// Like StaticMap, the parameter is a non-const reference, so a temporary won't
+// bind; pass the lvalue ValueDict you built.  See notes/CPP_HOST_UPDATE_GUIDE.md.
+Value DynamicMap(ValueDict& d);
+
+// List counterpart of DynamicMap: wrap a host-built ValueList as a NON-rooted
+// (collectable) list Value.  The right choice when an intrinsic builds a list on
+// the fly and returns it, and you want it freed once the caller drops it.  (Note
+// that, unlike DynamicMap which shares the dictionary's storage, this copies the
+// element Values into a fresh GC list -- elements are cheap 8-byte handles, and
+// there is no shared-storage attach path for lists as there is for maps.)  As
+// with the map helpers, the parameter is a non-const reference so a temporary
+// won't bind; pass the lvalue ValueList you built.
+Value DynamicList(ValueList& items);
 } // end of namespace MiniScript

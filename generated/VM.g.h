@@ -172,6 +172,14 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 
 	// Stop the VM with a pre-built error value (e.g. an uncaught user error).
 	public: void RaiseRuntimeError(Value error);
+	// Exact-match overload for bare string literals.  Value(const char*) is
+	// implicit, so a call like RaiseRuntimeError("boom") could otherwise convert
+	// the literal to EITHER String or Value (both overloads above) and be
+	// ambiguous in C++.  An exact const char* match beats both user-defined
+	// conversions, so this disambiguates without weakening Value's ctor.  It
+	// simply forwards to the String (message) form.  (In C# there is no
+	// ambiguity, since string IS String, so this overload is C++-only.)
+	public: void RaiseRuntimeError(const char* message) { RaiseRuntimeError(String(message)); }
 
 	// Return the current call stack as a Value (frozen list of strings), or
 	// Value.Null if there is no active function.  Guarded wrapper around

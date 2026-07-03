@@ -177,6 +177,9 @@ public:
 		return ss ? ss->data : "";
     }
 
+	// MS1 SimpleString-compatible alias: raw pointer to the UTF-8 bytes.
+	const char* data() const { return c_str(); }
+
 	// Implicit conversion to const char* for use with C APIs and stream operators
 	operator const char*() const {
 		return c_str();
@@ -280,7 +283,10 @@ public:
 
     // Public byte-length accessor
     int LengthB() const { return lengthB(); }
-    
+
+    // MS1 SimpleString-compatible alias: length in bytes (UTF-8).
+    int sizeB() const { return lengthB(); }
+
     // C# String API - Search methods
     int IndexOf(const String& value) const {
         const StringStorage* s = getStorageRaw();
@@ -305,7 +311,33 @@ public:
         const StringStorage* s = getStorageRaw();
         return ss_indexOfCharFrom(s, value, startIndex);
     }
-    
+
+    // MS1-compatible byte-indexed search (SimpleString had IndexOfB), to pair
+    // with LengthB/SubstringB/AtB.  Returns the BYTE offset of the first
+    // occurrence at or after byte offset startB, or -1 if not found.
+    int IndexOfB(const String& value, int startB = 0) const {
+        int hlen = LengthB();
+        int nlen = value.LengthB();
+        const char* h = c_str();
+        const char* n = value.c_str();
+        if (nlen == 0) return (startB >= 0 && startB <= hlen) ? startB : -1;
+        if (startB < 0) startB = 0;
+        for (int i = startB; i + nlen <= hlen; i++) {
+            int j = 0;
+            while (j < nlen && h[i + j] == n[j]) j++;
+            if (j == nlen) return i;
+        }
+        return -1;
+    }
+
+    int IndexOfB(char value, int startB = 0) const {
+        int hlen = LengthB();
+        const char* h = c_str();
+        if (startB < 0) startB = 0;
+        for (int i = startB; i < hlen; i++) if (h[i] == value) return i;
+        return -1;
+    }
+
     int LastIndexOf(const String& value) const {
         const StringStorage* s = getStorageRaw();
         const StringStorage* needle = value.getStorageRaw();

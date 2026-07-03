@@ -224,6 +224,41 @@ public class Interpreter {
 		vm.Reset(compiledFunctions);
 	}
 
+	//
+	// Compile a standalone chunk of source (e.g. an imported module) to a
+	// runnable FuncDef, without touching this interpreter's own VM.  This wraps
+	// the parse -> simplify -> code-generate pipeline that `import`-style
+	// intrinsics need, so hosts (and our own ShellIntrinsics) don't have to
+	// open-code it.  The returned FuncDef is the module's "@main"; nested
+	// functions are embedded in it, so it can be handed straight to
+	// VM.ManuallyPushCall.  On a parse or compile error, returns a null FuncDef
+	// and sets `error` to the error Value (Value.Null on success).
+	//
+	public static FuncDef CompileToFunc(String source, String fileName, out Value error) {
+		error = Value.Null;
+		Parser parser = new Parser();
+		parser.Init(source);
+		List<ASTNode> statements = parser.ParseProgram();
+		if (parser.HadError()) {
+			error = parser.Error;
+			return null;
+		}
+		// Simplify AST (constant folding, etc.)
+		for (Int32 i = 0; i < statements.Count; i++) {
+			statements[i] = statements[i].Simplify();
+		}
+		BytecodeEmitter emitter = new BytecodeEmitter();
+		CodeGenerator generator = new CodeGenerator(emitter);
+		generator.FileName = fileName;
+		List<FuncDef> functions = generator.CompileImport(statements, fileName);
+		if (!generator.Error.IsNull()) {
+			error = generator.Error;
+			return null;
+		}
+		if (functions.Count == 0) return null;
+		return functions[0];   // the module's @main
+	}
+
 	// 
 	// Reset the virtual machine to the beginning of the code.  Note that this
 	// does *not* recompile; it simply resets the VM with the same functions.

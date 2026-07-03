@@ -90,6 +90,30 @@ void InterpreterStorage::Compile() {
 	vm.SetInterpreter(_this);
 	vm.Reset(compiledFunctions);
 }
+FuncDef InterpreterStorage::CompileToFunc(String source,String fileName,Value* error) {
+	*error = Value::Null;
+	Parser parser =  Parser::New();
+	parser.Init(source);
+	List<ASTNode> statements = parser.ParseProgram();
+	if (parser.HadError()) {
+		*error = parser.Error();
+		return nullptr;
+	}
+	// Simplify AST (constant folding, etc.)
+	for (Int32 i = 0; i < statements.Count(); i++) {
+		statements[i] = statements[i].Simplify();
+	}
+	BytecodeEmitter emitter =  BytecodeEmitter::New();
+	CodeGenerator generator =  CodeGenerator::New(emitter);
+	generator.set_FileName(fileName);
+	List<FuncDef> functions = generator.CompileImport(statements, fileName);
+	if (!generator.Error().IsNull()) {
+		*error = generator.Error();
+		return nullptr;
+	}
+	if (functions.Count() == 0) return nullptr;
+	return functions[0];   // the module's @main
+}
 void InterpreterStorage::Restart() {
 	if (!IsNull(vm) && !IsNull(compiledFunctions)) {
 		Error = Value::Null;

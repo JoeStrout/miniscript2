@@ -134,6 +134,16 @@ class InterpreterStorage : public std::enable_shared_from_this<InterpreterStorag
 	// 
 	public: void Compile();
 
+	// Compile a standalone chunk of source (e.g. an imported module) to a
+	// runnable FuncDef, without touching this interpreter's own VM.  This wraps
+	// the parse -> simplify -> code-generate pipeline that `import`-style
+	// intrinsics need, so hosts (and our own ShellIntrinsics) don't have to
+	// open-code it.  The returned FuncDef is the module's "@main"; nested
+	// functions are embedded in it, so it can be handed straight to
+	// VM.ManuallyPushCall.  On a parse or compile error, returns a null FuncDef
+	// and sets `error` to the error Value (Value.Null on success).
+	public: static FuncDef CompileToFunc(String source, String fileName, Value* error);
+
 	// 
 	// Reset the virtual machine to the beginning of the code.  Note that this
 	// does *not* recompile; it simply resets the VM with the same functions.
@@ -373,6 +383,16 @@ struct Interpreter {
 	// either ready to run, or generate compiler errors (reported via errorOutput).
 	// 
 	public: inline void Compile();
+
+	// Compile a standalone chunk of source (e.g. an imported module) to a
+	// runnable FuncDef, without touching this interpreter's own VM.  This wraps
+	// the parse -> simplify -> code-generate pipeline that `import`-style
+	// intrinsics need, so hosts (and our own ShellIntrinsics) don't have to
+	// open-code it.  The returned FuncDef is the module's "@main"; nested
+	// functions are embedded in it, so it can be handed straight to
+	// VM.ManuallyPushCall.  On a parse or compile error, returns a null FuncDef
+	// and sets `error` to the error Value (Value.Null on success).
+	public: static FuncDef CompileToFunc(String source, String fileName, Value* error) { return InterpreterStorage::CompileToFunc(source, fileName, error); }
 
 	// 
 	// Reset the virtual machine to the beginning of the code.  Note that this

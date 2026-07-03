@@ -31,6 +31,11 @@
 // This deliberately inverts the documented 2A/2B layering; layer_defs.h checks
 // are currently disabled.  CS_String.h does not include value.h, so no cycle.
 #include "CS_String.h"
+// Likewise pull in the List/Dictionary templates (Layer 2B) so Value can expose
+// the 1.x-compatible GetList()/GetDict() accessors, which return ValueList /
+// ValueDict.  Both headers only forward-declare Value, so there is no cycle.
+#include "CS_List.h"
+#include "CS_Dictionary.h"
 
 namespace MiniScript {
 
@@ -38,6 +43,23 @@ namespace MiniScript {
 
 struct FuncDef;  // (was: namespace MiniScript { struct FuncDef; })
 struct MapIterator;  // defined in value_map.h; returned by Value::map_iterator
+
+// MiniScript 1.x-compatible value-type tag.  MS2 stores type information in the
+// NaN-boxed payload rather than an enum field, and internally dispatches via the
+// Is* predicates (IsNull/IsNumber/IsString/...).  This enum and the Value::Type()
+// accessor below are a compatibility surface for host code written against the
+// 1.x `value.type == ValueType::X` idiom.  `Error` is new in MS2 (there was no
+// error value type in 1.x).
+enum class ValueType {
+	Null,
+	Number,
+	String,
+	List,
+	Map,
+	Function,   // a funcref
+	Handle,     // an opaque host pointer wrapped as a Value
+	Error,      // new in MS2: a runtime error value
+};
 
 // NaN-boxed dynamic Value.  The sole data member `bits` holds the 64-bit
 // payload: for numbers it is the IEEE-754 double bit pattern; for everything
@@ -61,10 +83,20 @@ typedef struct Value {
     Value(double number) noexcept;    // a number
     Value(int i) noexcept;            // integer (delegates to double; prevents 0→null-ptr ambiguity)
     Value(unsigned int u) noexcept;   // unsigned integer (delegates to double)
-    // The string ctor is explicit: a bare const char* literal must not silently
-    // become a Value, or calls like f("x") where f is overloaded on both String
-    // and Value (e.g. RaiseRuntimeError) become ambiguous.  Value("x") still works.
-    explicit Value(const char* cString); // a string (copies the C string)
+    // String constructors, mirroring MiniScript 1.x: a bare literal or a host
+    // String both convert implicitly to a Value.  This is deliberately NOT
+    // explicit -- 1.x host code relies heavily on `Value("literal")` and passing
+    // strings where a Value is expected (e.g. map keys via SetValue).
+    //
+    // The one hazard of an implicit const char* ctor is a call f("x") where f is
+    // overloaded on BOTH String and Value on the same receiver: the literal can
+    // convert to either, so it is ambiguous.  In C# that never happens (string IS
+    // String), so it is purely a transpilation artifact.  We handle it at the few
+    // such functions by giving them an exact-match const char* overload (see
+    // VM::RaiseRuntimeError) or by collapsing redundant overloads (see MapSet),
+    // rather than by weakening this ctor.
+    Value(const char* cString);          // a string (copies the C string)
+    Value(const String& s);              // a string (from a host String)
 
     // Build a Value straight from its raw NaN-boxed payload.  This is the
     // internal escape hatch used by make_* and the Value:: static constants.
@@ -128,6 +160,33 @@ typedef struct Value {
     inline double       NumericVal()  const noexcept;
     String              TypeName()    const;
 
+    // MiniScript 1.x-compatible type tag (see the ValueType enum above).  MS2
+    // has no stored type field, so this is computed from the Is* predicates; it
+    // is the accessor form of `value.type` from 1.x (host code: v.Type()).
+    // Defined out-of-line in value.cpp.
+    ValueType           Type()        const noexcept;
+
+    // MiniScript 1.x-compatible container accessors: pull the backing ValueList
+    // or ValueDict out of a list/map Value.  Both return a view that SHARES the
+    // Value's underlying storage, so mutating the returned container writes back
+    // to the Value (matching 1.x).  On a non-list / non-map Value they return a
+    // null (unallocated) container.  Defined out-of-line in value.cpp.
+    ValueList           GetList()     const;
+    ValueDict           GetDict()     const;
+
+    // 1.x-compatible map lookup: on a map Value, return the value stored for key,
+    // or null if absent (or if this is not a map).  Convenience over the
+    // out-parameter Lookup(Value, Value*) form below.  Defined in value.cpp.
+    Value               Lookup(Value key) const;
+
+    // 1.x-compatible opaque handles.  NewHandle wraps a raw host pointer in a
+    // Handle Value; the finalizer is invoked (with the pointer) when the handle
+    // is garbage-collected, so the host can release the native resource.
+    // HandlePtr returns the wrapped pointer (or null if this is not a handle).
+    // Thin wrappers over GCManager; defined in value.cpp.
+    static Value        NewHandle(void* ptr, void (*finalizer)(void*));
+    void*               HandlePtr()   const;
+
     // ── Static methods mirroring the C# Value API (cs/Value.cs) ──────────────
     // Transpiled code calls these as Value::make_string(...), etc.  These are
     // the canonical definitions; the matching free functions have been removed.
@@ -186,9 +245,12 @@ typedef struct Value {
     static Value  make_empty_map();
     int           MapCount() const;
     Value         MapGet(Value key) const;
+    // Single map-set overload.  A String or const char* key/value converts to a
+    // Value implicitly (see the Value ctors), so this one overload serves the
+    // 1.x String-keyed convenience forms too -- and having a single overload
+    // keeps `MapSet("literal", ...)` unambiguous now that Value(const char*) is
+    // implicit.
     bool          MapSet(Value key, Value value) const;
-    bool          MapSet(const String& key, Value value) const;
-    bool          MapSet(const String& key, const String& value) const;
     bool          HasKey(Value key) const;
     bool          TryGet(Value key, Value* out_value) const;
     bool          MapRemove(Value key) const;
@@ -552,6 +614,7 @@ inline Value::Value(double number) noexcept { memcpy(&bits, &number, sizeof bits
 inline Value::Value(int i) noexcept { double d = (double)i; memcpy(&bits, &d, sizeof bits); }
 inline Value::Value(unsigned int u) noexcept { double d = (double)u; memcpy(&bits, &d, sizeof bits); }
 inline Value::Value(const char* cString) { *this = Value::make_string(cString); }
+inline Value::Value(const String& s) { *this = Value::make_string(s); }
 
 // Truth factory: any numeric type converts to double via standard conversion.
 // 0.0 / false → Value::zero, anything else → a number value.
@@ -590,13 +653,6 @@ inline unsigned int Value::Hash()        const noexcept { return value_hash(*thi
 // ── String-typed Value methods (need the host String class) ──────────────
 // These mirror cs/Value.cs.  Defined inline here since String is now visible.
 inline Value Value::make_string(const String& s) { return Value::make_string(s.c_str()); }
-
-inline bool Value::MapSet(const String& key, Value value) const {
-    return MapSet(Value::make_string(key), value);
-}
-inline bool Value::MapSet(const String& key, const String& value) const {
-    return MapSet(Value::make_string(key), Value::make_string(value));
-}
 
 inline String Value::ToString(void* vm) const {
     return String(ToStringValue(vm).AsCString());

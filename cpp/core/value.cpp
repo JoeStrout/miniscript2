@@ -30,6 +30,55 @@ using MiniScript::GCMap;
 using MiniScript::GCError;
 using MiniScript::GCFunction;
 
+// MiniScript 1.x-compatible type tag, computed from the Is* predicates.
+// See the ValueType enum and Value::Type() declaration in value.h.
+ValueType Value::Type() const noexcept {
+	if (IsNumber())  return ValueType::Number;
+	if (IsNull())    return ValueType::Null;
+	if (IsString())  return ValueType::String;
+	if (IsList())    return ValueType::List;
+	if (IsMap())     return ValueType::Map;
+	if (IsFuncRef()) return ValueType::Function;
+	if (IsHandle())  return ValueType::Handle;
+	if (IsError())   return ValueType::Error;
+	return ValueType::Null;
+}
+
+// MiniScript 1.x-compatible container accessors (see value.h).  Both share the
+// Value's backing storage, so mutations write back to the Value.
+ValueDict Value::GetDict() const {
+	if (!IsMap()) return ValueDict();          // null dict for non-maps
+	return GCManager::GetMap(*this).Items;     // Dictionary shares its table
+}
+ValueList Value::GetList() const {
+	if (!IsList()) return ValueList();         // null list for non-lists
+	GCList gl = GCManager::GetList(*this);
+	if (gl.Computed) {
+		// A computed list (e.g. a range) has no real element vector; materialize
+		// it and write the now-materialized GCList struct back, so the Value and
+		// the returned ValueList share the same real storage.
+		gl.Materialize();
+		GCManager::Lists.Set(ItemIndex(), gl);
+	}
+	return gl.Items;                           // List<Value> shares the vector
+}
+
+// 1.x-compatible single-argument map lookup (see value.h).
+Value Value::Lookup(Value key) const {
+	Value out;
+	if (Lookup(key, &out)) return out;
+	return Value::Null;
+}
+
+// 1.x-compatible opaque handle helpers (see value.h).
+Value Value::NewHandle(void* ptr, void (*finalizer)(void*)) {
+	return GCManager::NewHandle(ptr, finalizer);
+}
+void* Value::HandlePtr() const {
+	if (!IsHandle()) return nullptr;
+	return GCManager::GetHandle(*this).UserData;
+}
+
 
 // ── Constants ───────────────────────────────────────────────────────────
 // Static members of Value (declared in value.h).  The immediate ones are

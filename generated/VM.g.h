@@ -59,6 +59,7 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	private: Value pendingSuper;
 	private: bool hasPendingContext;
 	private: NativeCallbackDelegate _pendingCallback = nullptr;
+	private: FuncDef _pendingCallee = nullptr; // callee FuncDef, for reconstructing Context (param names)
 	private: Int32 _pendingCalleeBase = 0; // base index for reconstructing Context
 	private: Int32 _pendingArgCount = 0; // arg count for reconstructing Context
 	private: Int32 _pendingResultIndex = 0; // absolute stack index for result (and partial result)
@@ -247,7 +248,7 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	// Invoke a native callback and handle the result.  If done, writes the
 	// result to stack[absoluteResultIndex] and returns true.  If not done,
 	// stores the pending state for re-invocation and returns false.
-	private: bool InvokeNativeCallback(NativeCallbackDelegate callback, Int32 calleeBase, Int32 argCount, IntrinsicResult partialResult, Int32 absoluteResultIndex);
+	private: bool InvokeNativeCallback(NativeCallbackDelegate callback, FuncDef callee, Int32 calleeBase, Int32 argCount, IntrinsicResult partialResult, Int32 absoluteResultIndex);
 
 	public: Value Execute(FuncDef entry);
 
@@ -341,6 +342,8 @@ struct VM {
 	private: void set_hasPendingContext(bool _v);
 	private: NativeCallbackDelegate _pendingCallback();
 	private: void set__pendingCallback(NativeCallbackDelegate _v);
+	private: FuncDef _pendingCallee(); // callee FuncDef, for reconstructing Context (param names)
+	private: void set__pendingCallee(FuncDef _v); // callee FuncDef, for reconstructing Context (param names)
 	private: Int32 _pendingCalleeBase(); // base index for reconstructing Context
 	private: void set__pendingCalleeBase(Int32 _v); // base index for reconstructing Context
 	private: Int32 _pendingArgCount(); // arg count for reconstructing Context
@@ -526,7 +529,7 @@ struct VM {
 	// Invoke a native callback and handle the result.  If done, writes the
 	// result to stack[absoluteResultIndex] and returns true.  If not done,
 	// stores the pending state for re-invocation and returns false.
-	private: inline bool InvokeNativeCallback(NativeCallbackDelegate callback, Int32 calleeBase, Int32 argCount, IntrinsicResult partialResult, Int32 absoluteResultIndex);
+	private: inline bool InvokeNativeCallback(NativeCallbackDelegate callback, FuncDef callee, Int32 calleeBase, Int32 argCount, IntrinsicResult partialResult, Int32 absoluteResultIndex);
 
 	public: inline Value Execute(FuncDef entry);
 
@@ -602,6 +605,8 @@ inline bool VM::hasPendingContext() { return get()->hasPendingContext; }
 inline void VM::set_hasPendingContext(bool _v) { get()->hasPendingContext = _v; }
 inline NativeCallbackDelegate VM::_pendingCallback() { return get()->_pendingCallback; }
 inline void VM::set__pendingCallback(NativeCallbackDelegate _v) { get()->_pendingCallback = _v; }
+inline FuncDef VM::_pendingCallee() { return get()->_pendingCallee; } // callee FuncDef, for reconstructing Context (param names)
+inline void VM::set__pendingCallee(FuncDef _v) { get()->_pendingCallee = _v; } // callee FuncDef, for reconstructing Context (param names)
 inline Int32 VM::_pendingCalleeBase() { return get()->_pendingCalleeBase; } // base index for reconstructing Context
 inline void VM::set__pendingCalleeBase(Int32 _v) { get()->_pendingCalleeBase = _v; } // base index for reconstructing Context
 inline Int32 VM::_pendingArgCount() { return get()->_pendingArgCount; } // arg count for reconstructing Context
@@ -649,7 +654,7 @@ inline Int32 VM::ProcessArguments(Int32 argCount,Int32 selfParam,Int32 startPC,I
 inline void VM::ApplyPendingContext(Int32 calleeBase,FuncDef callee) { return get()->ApplyPendingContext(calleeBase, callee); }
 inline void VM::SetupCallFrame(Int32 argCount,Int32 selfParam,Int32 calleeBase,FuncDef callee) { return get()->SetupCallFrame(argCount, selfParam, calleeBase, callee); }
 inline Int32 VM::AutoInvokeFuncRef(Value funcRefVal,Int32 resultReg,Int32 returnPC,Int32 baseIndex,FuncDef currentFunc,FuncDef* calleeOut) { return get()->AutoInvokeFuncRef(funcRefVal, resultReg, returnPC, baseIndex, currentFunc, calleeOut); }
-inline bool VM::InvokeNativeCallback(NativeCallbackDelegate callback,Int32 calleeBase,Int32 argCount,IntrinsicResult partialResult,Int32 absoluteResultIndex) { return get()->InvokeNativeCallback(callback, calleeBase, argCount, partialResult, absoluteResultIndex); }
+inline bool VM::InvokeNativeCallback(NativeCallbackDelegate callback,FuncDef callee,Int32 calleeBase,Int32 argCount,IntrinsicResult partialResult,Int32 absoluteResultIndex) { return get()->InvokeNativeCallback(callback, callee, calleeBase, argCount, partialResult, absoluteResultIndex); }
 inline Value VM::Execute(FuncDef entry) { return get()->Execute(entry); }
 inline Value VM::Execute(FuncDef entry,UInt32 maxCycles) { return get()->Execute(entry, maxCycles); }
 inline Value VM::Run(UInt32 maxCycles) { return get()->Run(maxCycles); }

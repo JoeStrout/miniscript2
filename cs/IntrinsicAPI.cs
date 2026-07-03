@@ -25,18 +25,20 @@ public struct Context {
 	public List<Value> stack;	// VM value stack
 	public Int32 baseIndex;		// index of return register; arguments follow this
 	public Int32 argCount;		// how many arguments we have
-	
+	public List<Value> paramNames;	// the called intrinsic's declared parameter names (for GetVar)
+
 	//*** BEGIN CS_ONLY ***
-	public Context(VMRef vm, List<Value> stack, Int32 baseIndex, Int32 argCount) {
+	public Context(VMRef vm, List<Value> stack, Int32 baseIndex, Int32 argCount, List<Value> paramNames) {
 		this.vm = vm;
 		this.stack = stack;
 		this.baseIndex = baseIndex;
 		this.argCount = argCount;
+		this.paramNames = paramNames;
 	}
 	//*** END CS_ONLY ***
 	/*** BEGIN H_ONLY ***
-	public: Context(VMRef vm, List<Value> stack, Int32 baseIndex, Int32 argCount)
-		: vm(vm), stack(stack), baseIndex(baseIndex), argCount(argCount) {
+	public: Context(VMRef vm, List<Value> stack, Int32 baseIndex, Int32 argCount, List<Value> paramNames)
+		: vm(vm), stack(stack), baseIndex(baseIndex), argCount(argCount), paramNames(paramNames) {
 	}
 	*** END H_ONLY ***/
 	
@@ -50,11 +52,18 @@ public struct Context {
 		return stack[baseIndex + 1 + zeroBasedIndex];
 	}
 	
-	// Look up a variable or parameter by name.  This is provided mostly for
+	// Look up an argument by parameter name.  This is provided mostly for
 	// compatibility with MiniScript 1.x; in most cases, intrinsics only need
 	// argument values, which are far more efficiently found via GetArg (above).
+	// We resolve against this call's own declared parameter names and argument
+	// base, so it works correctly even though a native intrinsic call pushes no
+	// VM frame (the VM's CurrentFunction/BaseIndex still refer to the caller).
 	public Value GetVar(String variableName) {
-		return vm.LookupParamByName(variableName);
+		Value nameVal = Value.make_string(variableName);
+		for (Int32 i = 0; i < paramNames.Count; i++) {
+			if (paramNames[i] == nameVal) return stack[baseIndex + 1 + i];
+		}
+		return Value.Null;
 	}
 	
 	public Interpreter GetInterpreter() {

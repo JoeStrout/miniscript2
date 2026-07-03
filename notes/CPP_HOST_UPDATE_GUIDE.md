@@ -18,6 +18,38 @@ pulls in what a host needs.  Your compiler's include path still needs the `cpp`,
 `cpp/core`, and `generated` directories (the generated files include each other,
 and `core_includes.h`, by bare name).
 
+### Exclude `App.g.cpp` from your build
+
+The generated tree includes `App.g.cpp` — the transpiled entry point of MS2's
+standalone command-line app, which **defines its own `main()`**.  If your build
+globs `generated/*.g.cpp` (the usual setup), that `main` collides with your
+host's at link time (`duplicate symbol '_main'`).  Filter it out, e.g. in CMake:
+```cmake
+file(GLOB MS2_GEN_SOURCES CONFIGURE_DEPENDS ${MS2_DIR}/generated/*.g.cpp)
+list(FILTER MS2_GEN_SOURCES EXCLUDE REGEX "generated/App\\.g\\.cpp$")
+```
+It is currently the only generated source with a `main()`.
+
+### Initialize the runtime at startup, before any `Value` operation
+
+MS1 needed no explicit runtime bring-up.  MS2 has a GC, and **nothing works
+until it is initialized** — the first `Value`/GC operation otherwise crashes in
+`GCManager::NewString` / `GCSetBaseStorage::AllocItem` (a null-storage deref).
+Call this sequence once, at the very top of `main()`, *before* creating the
+interpreter and before any host code that touches `Value`s (including reading
+environment variables into a `ValueDict`, setting `hostName`, etc.):
+```cpp
+MiniScript::GCManager::Init();       // create the GC sets
+MiniScript::value_init_constants();  // Value::magicIsA, selfString, keyString, …
+MiniScript::ErrorTypes::Init();      // error-type prototypes
+```
+`GCManager::Init()` is idempotent, so a later `Interpreter::New()` that also
+ensures it is harmless.  (`value_init_constants()` itself only builds tiny ≤5-byte
+strings, which are NaN-box-inline and need no GC — but `magicIsA` and friends are
+still unset until you call it, so run it before any `isa`/prototype work.)  This
+mirrors the startup in MiniScript's own `App` entry point
+(`GCManager.Init(); ErrorTypes.Init();` plus `value_init_constants()`).
+
 ### Create with `Interpreter::New`, not `new Interpreter`
 
 In MS1 the interpreter was a heap object, with output delegates set as fields:
@@ -269,6 +301,27 @@ For this to work, the `*Class()` accessor must return `ValueDict&` (a reference
 to its internal `static ValueDict`), so `StaticMap` gets a stable lvalue whose
 address keys the cache — change `ValueDict FooClass();` to `ValueDict& FooClass();`.
 
+## Fill containers by reference, not by value
+
+`ValueDict`/`ValueList` are value types wrapping a **nullable** `shared_ptr` to
+their storage.  A default-constructed (empty) one has **null** storage, which
+`SetValue`/`Add` allocates lazily on the first insert.  So a helper that *fills* a
+container must take it **by reference**:
+```cpp
+void AddMethods(ValueDict& module) { module.SetValue("Foo", …); }   // correct
+```
+If you take it **by value** and it started empty, the first insert allocates
+storage in the *copy* — the caller's container stays empty:
+```cpp
+void AddMethods(ValueDict module) { module.SetValue("Foo", …); }    // BUG
+ValueDict m;               // null storage
+AddMethods(m);             // fills a throwaway copy; `m` is still empty
+```
+(Once storage exists — e.g. the container was built with `ValueDict::New()` or
+already has an entry — copies share it, so by-value fills would "work"; that is
+exactly what makes this an intermittent trap.  MS1's refcounted dict shared even
+when empty, so by-value fill happened to work there.)  Prefer `&`.
+
 ## Reading Maps and Lists Back Out
 
 MS1's `Value::GetDict()` and `Value::GetList()` are still available and still
@@ -363,6 +416,31 @@ The finalizer runs during garbage collection, so it replaces MS1's
 destructor-on-last-release; do your `fclose`/`free`/`delete` there.  (If you only
 need to stash a raw pointer as data — not own a resource — you can still just
 store it as a number, e.g. `Value((double)(intptr_t)ptr)`.)
+
+## Don't construct string `Value`s (or `String`s) at static-init time
+
+MS1's `SimpleString` was refcounted, so a namespace-scope constant like
+```cpp
+static Value _handle("_handle");        // MS1: fine
+static String kLittleEndian("littleEndian");
+```
+was safe.  In MS2, string `Value`s are **GC-allocated**, and the `GCManager` is
+itself initialized at load time — so a global whose constructor calls
+`make_string`/`Value(const char*)` may run **before the GC exists**, giving a
+crash in `GCManager::NewString` / `GCSetBaseStorage::AllocItem` during dyld's
+initializer phase (before `main`).  (MS2's own string constants like
+`Value::emptyString` sidestep this by being declared as placeholders and
+assigned real strings from an explicit init function that runs after the GC.)
+
+Fix: build such constants **lazily on first use**, when the GC is up:
+```cpp
+static const Value& handleKey() { static Value k("_handle"); return k; }
+// ...use handleKey() instead of _handle
+```
+Strings under `GCManager::InternThreshold` (128 bytes) are **interned and
+immortal**, so once created they are safe to hold as long-lived map keys without
+rooting.  (You could instead assign the statics inside your `Add…Intrinsics()`
+setup function, which also runs after GC init.)
 
 ## Value Types and Small Gotchas
 

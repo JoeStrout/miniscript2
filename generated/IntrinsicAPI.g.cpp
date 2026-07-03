@@ -45,7 +45,11 @@ Value DynamicList(ValueList& items) {
 namespace MiniScript {
 
 Value Context::GetVar(String variableName) {
-	return vm.LookupParamByName(variableName);
+	Value nameVal = Value::make_string(variableName);
+	for (Int32 i = 0; i < paramNames.Count(); i++) {
+		if (paramNames[i] == nameVal) return stack[baseIndex + 1 + i];
+	}
+	return Value::Null;
 }
 Interpreter Context::GetInterpreter() {
 	return vm.GetInterpreter();

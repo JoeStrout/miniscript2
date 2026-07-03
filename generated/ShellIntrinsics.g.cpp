@@ -5,6 +5,7 @@
 #include "Intrinsic.g.h"
 #include "IntrinsicAPI.g.h"
 #include "VM.g.h"
+#include "Interpreter.g.h"
 #include "Parser.g.h"
 #include "CodeGenerator.g.h"
 #include "CodeEmitter.g.h"

@@ -24,18 +24,22 @@ struct Context {
 	public: List<Value> stack; // VM value stack
 	public: Int32 baseIndex; // index of return register; arguments follow this
 	public: Int32 argCount; // how many arguments we have
-	public: Context(VMRef vm, List<Value> stack, Int32 baseIndex, Int32 argCount)
-		: vm(vm), stack(stack), baseIndex(baseIndex), argCount(argCount) {
+	public: List<Value> paramNames; // the called intrinsic's declared parameter names (for GetVar)
+	public: Context(VMRef vm, List<Value> stack, Int32 baseIndex, Int32 argCount, List<Value> paramNames)
+		: vm(vm), stack(stack), baseIndex(baseIndex), argCount(argCount), paramNames(paramNames) {
 	}
-	
+
 	
 	// Get an argument from the stack, by number (the first argument is index 0,
 	// the second is index 1, etc.).
 	public: Value GetArg(int zeroBasedIndex);
 	
-	// Look up a variable or parameter by name.  This is provided mostly for
+	// Look up an argument by parameter name.  This is provided mostly for
 	// compatibility with MiniScript 1.x; in most cases, intrinsics only need
 	// argument values, which are far more efficiently found via GetArg (above).
+	// We resolve against this call's own declared parameter names and argument
+	// base, so it works correctly even though a native intrinsic call pushes no
+	// VM frame (the VM's CurrentFunction/BaseIndex still refer to the caller).
 	public: Value GetVar(String variableName);
 	
 	public: Interpreter GetInterpreter();

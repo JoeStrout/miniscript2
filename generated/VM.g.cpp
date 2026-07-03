@@ -492,7 +492,7 @@ Int32 VMStorage::AutoInvokeFuncRef(Value funcRefVal,Int32 resultReg,Int32 return
 			hasPendingContext = Boolean(false);
 		}
 		SaveState(returnPC, baseIndex, currentFunc);
-		if (InvokeNativeCallback(callee.NativeCallback(), calleeBase, selfParam, IntrinsicResult::Null, baseIndex + resultReg)) {
+		if (InvokeNativeCallback(callee.NativeCallback(), callee, calleeBase, selfParam, IntrinsicResult::Null, baseIndex + resultReg)) {
 			return -1;  // done
 		}
 		return -2;  // pending
@@ -515,16 +515,18 @@ Int32 VMStorage::AutoInvokeFuncRef(Value funcRefVal,Int32 resultReg,Int32 return
 	*calleeOut = callee;
 	return 0;
 }
-bool VMStorage::InvokeNativeCallback(NativeCallbackDelegate callback,Int32 calleeBase,Int32 argCount,IntrinsicResult partialResult,Int32 absoluteResultIndex) {
+bool VMStorage::InvokeNativeCallback(NativeCallbackDelegate callback,FuncDef callee,Int32 calleeBase,Int32 argCount,IntrinsicResult partialResult,Int32 absoluteResultIndex) {
 	Context context = Context(
 		*this,
 		stack,
 		calleeBase,
-		argCount);
+		argCount,
+		callee.ParamNames());
 	IntrinsicResult ir = callback(context, partialResult);
 	stack[absoluteResultIndex] = ir.result;
 	if (ir.done) return Boolean(true);
 	_pendingCallback = callback;
+	_pendingCallee = callee;
 	_pendingCalleeBase = calleeBase;
 	_pendingArgCount = argCount;
 	_pendingResultIndex = absoluteResultIndex;
@@ -558,7 +560,7 @@ Value VMStorage::Run(UInt32 maxCycles) {
 		} else {
 			// Normal case: re-invoke the pending intrinsic callback.
 			IntrinsicResult partialResult = IntrinsicResult(stack[_pendingResultIndex], Boolean(false));
-			if (!InvokeNativeCallback(_pendingCallback, _pendingCalleeBase, _pendingArgCount, partialResult, _pendingResultIndex)) {
+			if (!InvokeNativeCallback(_pendingCallback, _pendingCallee, _pendingCalleeBase, _pendingArgCount, partialResult, _pendingResultIndex)) {
 				// Still not done; return without running any bytecode
 				_activeVM = previousVM;
 				return Value::Null;
@@ -1504,7 +1506,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				if (!IsNull(callee.NativeCallback())) {
 					pc = nextPC;
 					SaveState(pc, baseIndex, currentFunc);
-					if (!InvokeNativeCallback(callee.NativeCallback(), calleeBase, argCount + selfParam, IntrinsicResult::Null, baseIndex + resultReg)) {
+					if (!InvokeNativeCallback(callee.NativeCallback(), callee, calleeBase, argCount + selfParam, IntrinsicResult::Null, baseIndex + resultReg)) {
 						if (_hasPendingManualCall) {
 							// The intrinsic pushed a manual call (e.g. import).  Resync
 							// local state from the instance variables ManuallyPushCall set,
@@ -1625,7 +1627,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				// Native intrinsic: invoke callback directly, no frame push
 				if (!IsNull(callee.NativeCallback())) {
 					SaveState(pc, baseIndex, currentFunc);
-					if (!InvokeNativeCallback(callee.NativeCallback(), calleeBase, selfParam, IntrinsicResult::Null, baseIndex + a)) {
+					if (!InvokeNativeCallback(callee.NativeCallback(), callee, calleeBase, selfParam, IntrinsicResult::Null, baseIndex + a)) {
 						if (_hasPendingManualCall) {
 							pc = PC;
 							baseIndex = BaseIndex;

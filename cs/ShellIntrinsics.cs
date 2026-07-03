@@ -9,6 +9,7 @@ using System.Collections.Generic;
 // CPP: #include "Intrinsic.g.h"
 // CPP: #include "IntrinsicAPI.g.h"
 // CPP: #include "VM.g.h"
+// CPP: #include "Interpreter.g.h"
 // CPP: #include "Parser.g.h"
 // CPP: #include "CodeGenerator.g.h"
 // CPP: #include "CodeEmitter.g.h"

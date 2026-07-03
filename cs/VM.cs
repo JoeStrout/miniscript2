@@ -125,6 +125,7 @@ public class VM {
 	// we store the state here so Run can re-invoke it on the next call.
 	// The partial result value is stored in stack[_pendingResultIndex].
 	private NativeCallbackDelegate _pendingCallback = null;
+	private FuncDef _pendingCallee = null;  // callee FuncDef, for reconstructing Context (param names)
 	private Int32 _pendingCalleeBase = 0;   // base index for reconstructing Context
 	private Int32 _pendingArgCount = 0;     // arg count for reconstructing Context
 	private Int32 _pendingResultIndex = 0;  // absolute stack index for result (and partial result)
@@ -700,7 +701,7 @@ public class VM {
 				hasPendingContext = false;
 			}
 			SaveState(returnPC, baseIndex, currentFunc);
-			if (InvokeNativeCallback(callee.NativeCallback, calleeBase, selfParam, IntrinsicResult.Null, baseIndex + resultReg)) {
+			if (InvokeNativeCallback(callee.NativeCallback, callee, calleeBase, selfParam, IntrinsicResult.Null, baseIndex + resultReg)) {
 				return -1;  // done
 			}
 			return -2;  // pending
@@ -727,16 +728,18 @@ public class VM {
 	// Invoke a native callback and handle the result.  If done, writes the
 	// result to stack[absoluteResultIndex] and returns true.  If not done,
 	// stores the pending state for re-invocation and returns false.
-	private bool InvokeNativeCallback(NativeCallbackDelegate callback, Int32 calleeBase, Int32 argCount, IntrinsicResult partialResult, Int32 absoluteResultIndex) {
+	private bool InvokeNativeCallback(NativeCallbackDelegate callback, FuncDef callee, Int32 calleeBase, Int32 argCount, IntrinsicResult partialResult, Int32 absoluteResultIndex) {
 		Context context = new Context(
 			this, // CPP: *this,
 			stack,
 			calleeBase,
-			argCount);
+			argCount,
+			callee.ParamNames);
 		IntrinsicResult ir = callback(context, partialResult);
 		stack[absoluteResultIndex] = ir.result;
 		if (ir.done) return true;
 		_pendingCallback = callback;
+		_pendingCallee = callee;
 		_pendingCalleeBase = calleeBase;
 		_pendingArgCount = argCount;
 		_pendingResultIndex = absoluteResultIndex;
@@ -772,7 +775,7 @@ public class VM {
 			} else {
 				// Normal case: re-invoke the pending intrinsic callback.
 				IntrinsicResult partialResult = new IntrinsicResult(stack[_pendingResultIndex], false);
-				if (!InvokeNativeCallback(_pendingCallback, _pendingCalleeBase, _pendingArgCount, partialResult, _pendingResultIndex)) {
+				if (!InvokeNativeCallback(_pendingCallback, _pendingCallee, _pendingCalleeBase, _pendingArgCount, partialResult, _pendingResultIndex)) {
 					// Still not done; return without running any bytecode
 					_activeVM = previousVM;
 					return Value.Null;
@@ -1722,7 +1725,7 @@ public class VM {
 					if (callee.NativeCallback != null) {
 						pc = nextPC;
 						SaveState(pc, baseIndex, currentFunc);
-						if (!InvokeNativeCallback(callee.NativeCallback, calleeBase, argCount + selfParam, IntrinsicResult.Null, baseIndex + resultReg)) {
+						if (!InvokeNativeCallback(callee.NativeCallback, callee, calleeBase, argCount + selfParam, IntrinsicResult.Null, baseIndex + resultReg)) {
 							if (_hasPendingManualCall) {
 								// The intrinsic pushed a manual call (e.g. import).  Resync
 								// local state from the instance variables ManuallyPushCall set,
@@ -1846,7 +1849,7 @@ public class VM {
 					// Native intrinsic: invoke callback directly, no frame push
 					if (callee.NativeCallback != null) {
 						SaveState(pc, baseIndex, currentFunc);
-						if (!InvokeNativeCallback(callee.NativeCallback, calleeBase, selfParam, IntrinsicResult.Null, baseIndex + a)) {
+						if (!InvokeNativeCallback(callee.NativeCallback, callee, calleeBase, selfParam, IntrinsicResult.Null, baseIndex + a)) {
 							if (_hasPendingManualCall) {
 								pc = PC;
 								baseIndex = BaseIndex;

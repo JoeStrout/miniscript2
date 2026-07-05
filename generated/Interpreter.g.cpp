@@ -114,6 +114,10 @@ FuncDef InterpreterStorage::CompileToFunc(String source,String fileName,Value* e
 	if (functions.Count() == 0) return nullptr;
 	return functions[0];   // the module's @main
 }
+Value InterpreterStorage::RunFunction(Value funcRef,List<Value> args) {
+	if (IsNull(vm)) return Value::Null;
+	return vm.RunFunction(funcRef, args);
+}
 void InterpreterStorage::Restart() {
 	if (!IsNull(vm) && !IsNull(compiledFunctions)) {
 		Error = Value::Null;

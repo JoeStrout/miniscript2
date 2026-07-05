@@ -392,6 +392,41 @@ helpers that threw must change how they signal failure.  Two good options:
 (An intrinsic that in 1.x wrapped a call in `try { ... } catch (MiniscriptException&)`
 has no exception to catch in MS2 — replace the try/catch with a status check.)
 
+## Calling back into MiniScript from native code (`RunFunction`)
+
+Sometimes a host needs to call a MiniScript function *value* and get its result
+**synchronously**, from inside native code — classically a C library callback
+(e.g. raylib's `SetLoadFileDataCallback` / `SetTraceLogCallback`, which call your
+C function mid-operation and need the result immediately).  MS1 did this by
+building a TAC invoker and single-stepping the VM (`GetTopContext`/`Step`/temp
+registers).  That surface is gone in MS2; use instead:
+
+```cpp
+Value Interpreter::RunFunction(Value funcRef, ValueList args);   // or vm.RunFunction(...)
+```
+
+It pushes a frame for `funcRef` and runs the VM *re-entrantly to completion* of
+that one call, then restores the interrupted execution state and returns the
+result.  It is safe to call from inside an intrinsic or a C callback (i.e. while
+already nested in `vm.Run()`).  Arguments bind positionally (missing → parameter
+defaults, extra → runtime error); a runtime error raised by the callee is
+surfaced on the outer run (which then stops and reports it).
+
+Typical bridge shape (holding the `Interpreter` you captured via
+`context.vm.GetInterpreter()` at registration time):
+
+```cpp
+if (IsNull(g_state.interpreter)) return false;          // no VM
+Value result = g_state.interpreter.RunFunction(callback, args);
+```
+
+Note this differs from the `import` pattern: `import` can *defer* (return a
+not-done `IntrinsicResult` and let the outer loop run the module, reading
+`vm.ManualCallResult` on re-entry).  A C callback cannot unwind and re-enter, so
+it must run to completion in place — that's what `RunFunction` does.  Don't reach
+for `RunFunction` when a deferred `IntrinsicResult` would do; it's specifically
+for the can't-unwind case.
+
 ## Opaque Handles (wrapping native pointers)
 
 MS1 wrapped native resources with a `RefCountedStorage` subclass and
@@ -457,6 +492,20 @@ setup function, which also runs after GC init.)
   *ambiguous*.  Cast wide integers explicitly: `Value((double)fileSize)`.
 - **`Value::GetString()` → `Value::ToString()`**; **`list.Item(i)` → `list[i]`**.
 - **`Value::null` → `Value::Null`** (capital N, matching C#).
+- **`ToString().c_str()` dangles — hold the `String` in a named local.**
+  `Value::ToString()` returns a *temporary* `String`; a `const char*` taken from
+  it is invalid after the full-expression ends. This bites MS1 host code that
+  did `const char* s = ctx.GetVar("x").ToString().c_str();` and used `s` on a
+  later line (it may have pointed at stable storage in MS1; in MS2 it's a
+  use-after-free — often surfacing only once *more* allocation happens between,
+  e.g. a re-entrant callback). Fix:
+  ```cpp
+  String s = ctx.GetVar("x").ToString();     // keep the String alive
+  SomeCFunc(s.c_str());                       // now valid
+  ```
+  Passing `.ToString().c_str()` *directly as an argument* is fine (the temporary
+  lives until the call returns); only a stored pointer outliving the temporary
+  is the bug.
 
 ## Mechanical search-and-replace cheat sheet
 

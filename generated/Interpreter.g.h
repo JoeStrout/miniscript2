@@ -144,7 +144,14 @@ class InterpreterStorage : public std::enable_shared_from_this<InterpreterStorag
 	// and sets `error` to the error Value (Value.Null on success).
 	public: static FuncDef CompileToFunc(String source, String fileName, Value* error);
 
-	// 
+	// Synchronously call a MiniScript function value with the given arguments,
+	// running the VM re-entrantly to completion, and return its result.  This is
+	// the host-facing entry point for calling back into MiniScript from native
+	// code (e.g. raylib's file-I/O and trace-log callback hooks): it is safe to
+	// call from inside an intrinsic or C callback, where the host needs a result
+	// immediately and cannot unwind the VM.  Returns Value.Null if there is no VM.
+	public: Value RunFunction(Value funcRef, List<Value> args);
+
 	// Reset the virtual machine to the beginning of the code.  Note that this
 	// does *not* recompile; it simply resets the VM with the same functions.
 	// Useful in cases where you have a short script you want to run over and
@@ -394,7 +401,14 @@ struct Interpreter {
 	// and sets `error` to the error Value (Value.Null on success).
 	public: static FuncDef CompileToFunc(String source, String fileName, Value* error) { return InterpreterStorage::CompileToFunc(source, fileName, error); }
 
-	// 
+	// Synchronously call a MiniScript function value with the given arguments,
+	// running the VM re-entrantly to completion, and return its result.  This is
+	// the host-facing entry point for calling back into MiniScript from native
+	// code (e.g. raylib's file-I/O and trace-log callback hooks): it is safe to
+	// call from inside an intrinsic or C callback, where the host needs a result
+	// immediately and cannot unwind the VM.  Returns Value.Null if there is no VM.
+	public: inline Value RunFunction(Value funcRef, List<Value> args);
+
 	// Reset the virtual machine to the beginning of the code.  Note that this
 	// does *not* recompile; it simply resets the VM with the same functions.
 	// Useful in cases where you have a short script you want to run over and
@@ -529,6 +543,7 @@ inline void Interpreter::Stop() { return get()->Stop(); }
 inline void Interpreter::Reset(String _source) { return get()->Reset(_source); }
 inline void Interpreter::Reset(List<FuncDef> functions) { return get()->Reset(functions); }
 inline void Interpreter::Compile() { return get()->Compile(); }
+inline Value Interpreter::RunFunction(Value funcRef,List<Value> args) { return get()->RunFunction(funcRef, args); }
 inline void Interpreter::Restart() { return get()->Restart(); }
 inline void Interpreter::RunUntilDone(double timeLimit,bool returnEarly) { return get()->RunUntilDone(timeLimit, returnEarly); }
 inline void Interpreter::Step() { return get()->Step(); }

@@ -66,6 +66,7 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	private: Boolean _hasPendingManualCall = Boolean(false);
 	private: Int32 _pendingManualCallDepth = 0; // callStackTop value after the push
 	public: Value ManualCallResult = Value::Null; // return value of the manually-pushed call
+	private: Int32 _nativeFrameTop = 0;
 	public: bool yielding = Boolean(false);
 	private: std::chrono::steady_clock::time_point _startTime;
 
@@ -94,6 +95,13 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	// Support for manually-pushed calls (used by the import intrinsic).
 	// When _hasPendingManualCall is true, Run() skips callback re-invocation
 	// and runs RunInner so the pushed function can execute first.
+
+	// Top of the register stack currently in use by an active native (intrinsic)
+	// callback: calleeBase + callee.MaxRegs, set for the duration of each
+	// InvokeNativeCallback.  A re-entrant call made from inside a native callback
+	// (see RunFunction) must place its frame above this so it doesn't clobber
+	// the intrinsic's own argument/working registers.  Zero when no native
+	// callback is on the C++ stack.
 
 	// Set by the "yield" intrinsic; host app can check and clear this.
 
@@ -154,6 +162,24 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	// In REPL mode (ReplGlobals != null) at the top level, writes to ReplGlobals
 	// so the variable persists across REPL iterations.
 	public: void SetVar(String varName, Value value);
+
+	// Synchronously invoke a MiniScript function value with the given arguments,
+	// running the VM re-entrantly to completion of that call, and return its
+	// result.  This is safe to call from inside a native intrinsic or C callback
+	// (e.g. raylib's file-I/O and trace-log hooks), where the host must call back
+	// into MiniScript and obtain a result *immediately* -- unlike the import
+	// intrinsic, which can defer via a not-done IntrinsicResult, a C callback is
+	// stuck mid-operation and cannot unwind.  So instead of deferring, we push a
+	// frame for the callee (above the active native frame so we don't clobber the
+	// calling intrinsic's registers) and drive RunInner ourselves until that
+	// frame returns, then restore the interrupted outer execution state.
+	// The run-to-completion stop condition reuses the same manual-call sentinel
+	// the import path uses: RETURN halts RunInner as soon as callStackTop falls
+	// back to our pushed frame's caller depth.  Arguments are bound positionally;
+	// extra args raise an error, missing args take the callee's parameter
+	// defaults.  Returns the callee's result, or Value.Null on error (with the
+	// error surfaced on the outer run so RunUntilDone reports it).
+	public: Value RunFunction(Value funcRef, List<Value> args);
 
 	public: void Reset(List<FuncDef> allFunctions);
 
@@ -356,6 +382,8 @@ struct VM {
 	private: void set__pendingManualCallDepth(Int32 _v); // callStackTop value after the push
 	public: Value ManualCallResult(); // return value of the manually-pushed call
 	public: void set_ManualCallResult(Value _v); // return value of the manually-pushed call
+	private: Int32 _nativeFrameTop();
+	private: void set__nativeFrameTop(Int32 _v);
 	public: bool yielding();
 	public: void set_yielding(bool _v);
 
@@ -384,6 +412,13 @@ struct VM {
 	// Support for manually-pushed calls (used by the import intrinsic).
 	// When _hasPendingManualCall is true, Run() skips callback re-invocation
 	// and runs RunInner so the pushed function can execute first.
+
+	// Top of the register stack currently in use by an active native (intrinsic)
+	// callback: calleeBase + callee.MaxRegs, set for the duration of each
+	// InvokeNativeCallback.  A re-entrant call made from inside a native callback
+	// (see RunFunction) must place its frame above this so it doesn't clobber
+	// the intrinsic's own argument/working registers.  Zero when no native
+	// callback is on the C++ stack.
 
 	// Set by the "yield" intrinsic; host app can check and clear this.
 
@@ -443,6 +478,24 @@ struct VM {
 	// In REPL mode (ReplGlobals != null) at the top level, writes to ReplGlobals
 	// so the variable persists across REPL iterations.
 	public: inline void SetVar(String varName, Value value);
+
+	// Synchronously invoke a MiniScript function value with the given arguments,
+	// running the VM re-entrantly to completion of that call, and return its
+	// result.  This is safe to call from inside a native intrinsic or C callback
+	// (e.g. raylib's file-I/O and trace-log hooks), where the host must call back
+	// into MiniScript and obtain a result *immediately* -- unlike the import
+	// intrinsic, which can defer via a not-done IntrinsicResult, a C callback is
+	// stuck mid-operation and cannot unwind.  So instead of deferring, we push a
+	// frame for the callee (above the active native frame so we don't clobber the
+	// calling intrinsic's registers) and drive RunInner ourselves until that
+	// frame returns, then restore the interrupted outer execution state.
+	// The run-to-completion stop condition reuses the same manual-call sentinel
+	// the import path uses: RETURN halts RunInner as soon as callStackTop falls
+	// back to our pushed frame's caller depth.  Arguments are bound positionally;
+	// extra args raise an error, missing args take the callee's parameter
+	// defaults.  Returns the callee's result, or Value.Null on error (with the
+	// error surfaced on the outer run so RunUntilDone reports it).
+	public: inline Value RunFunction(Value funcRef, List<Value> args);
 
 	public: inline void Reset(List<FuncDef> allFunctions);
 
@@ -619,6 +672,8 @@ inline Int32 VM::_pendingManualCallDepth() { return get()->_pendingManualCallDep
 inline void VM::set__pendingManualCallDepth(Int32 _v) { get()->_pendingManualCallDepth = _v; } // callStackTop value after the push
 inline Value VM::ManualCallResult() { return get()->ManualCallResult; } // return value of the manually-pushed call
 inline void VM::set_ManualCallResult(Value _v) { get()->ManualCallResult = _v; } // return value of the manually-pushed call
+inline Int32 VM::_nativeFrameTop() { return get()->_nativeFrameTop; }
+inline void VM::set__nativeFrameTop(Int32 _v) { get()->_nativeFrameTop = _v; }
 inline bool VM::yielding() { return get()->yielding; }
 inline void VM::set_yielding(bool _v) { get()->yielding = _v; }
 inline double VM::ElapsedTime() { return get()->ElapsedTime(); }
@@ -637,6 +692,7 @@ inline void VM::CleanupVM() { return get()->CleanupVM(); }
 inline void VM::MarkFuncConstants(FuncDef func) { return get()->MarkFuncConstants(func); }
 inline void VM::ManuallyPushCall(Int32 intrinsicCalleeBase,FuncDef importMain) { return get()->ManuallyPushCall(intrinsicCalleeBase, importMain); }
 inline void VM::SetVar(String varName,Value value) { return get()->SetVar(varName, value); }
+inline Value VM::RunFunction(Value funcRef,List<Value> args) { return get()->RunFunction(funcRef, args); }
 inline void VM::Reset(List<FuncDef> allFunctions) { return get()->Reset(allFunctions); }
 inline void VM::Reset(List<FuncDef> allFunctions,Value replGlobals) { return get()->Reset(allFunctions, replGlobals); }
 inline void VM::Stop() { return get()->Stop(); }

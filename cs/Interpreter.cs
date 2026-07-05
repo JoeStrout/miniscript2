@@ -259,7 +259,20 @@ public class Interpreter {
 		return functions[0];   // the module's @main
 	}
 
-	// 
+	//
+	// Synchronously call a MiniScript function value with the given arguments,
+	// running the VM re-entrantly to completion, and return its result.  This is
+	// the host-facing entry point for calling back into MiniScript from native
+	// code (e.g. raylib's file-I/O and trace-log callback hooks): it is safe to
+	// call from inside an intrinsic or C callback, where the host needs a result
+	// immediately and cannot unwind the VM.  Returns Value.Null if there is no VM.
+	//
+	public Value RunFunction(Value funcRef, List<Value> args) {
+		if (vm == null) return Value.Null;
+		return vm.RunFunction(funcRef, args);
+	}
+
+	//
 	// Reset the virtual machine to the beginning of the code.  Note that this
 	// does *not* recompile; it simply resets the VM with the same functions.
 	// Useful in cases where you have a short script you want to run over and

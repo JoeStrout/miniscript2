@@ -137,6 +137,14 @@ public class VM {
 	private Int32 _pendingManualCallDepth = 0;  // callStackTop value after the push
 	public Value ManualCallResult = Value.Null;    // return value of the manually-pushed call
 
+	// Top of the register stack currently in use by an active native (intrinsic)
+	// callback: calleeBase + callee.MaxRegs, set for the duration of each
+	// InvokeNativeCallback.  A re-entrant call made from inside a native callback
+	// (see RunFunction) must place its frame above this so it doesn't clobber
+	// the intrinsic's own argument/working registers.  Zero when no native
+	// callback is on the C++ stack.
+	private Int32 _nativeFrameTop = 0;
+
 	// Set by the "yield" intrinsic; host app can check and clear this.
 	public bool yielding = false;
 
@@ -351,6 +359,144 @@ public class VM {
 			targetMap = GetCurrentLocalVarMap(BaseIndex, CurrentFunction.MaxRegs);
 		}
 		targetMap.MapSet(varName, value);
+	}
+
+	// Synchronously invoke a MiniScript function value with the given arguments,
+	// running the VM re-entrantly to completion of that call, and return its
+	// result.  This is safe to call from inside a native intrinsic or C callback
+	// (e.g. raylib's file-I/O and trace-log hooks), where the host must call back
+	// into MiniScript and obtain a result *immediately* -- unlike the import
+	// intrinsic, which can defer via a not-done IntrinsicResult, a C callback is
+	// stuck mid-operation and cannot unwind.  So instead of deferring, we push a
+	// frame for the callee (above the active native frame so we don't clobber the
+	// calling intrinsic's registers) and drive RunInner ourselves until that
+	// frame returns, then restore the interrupted outer execution state.
+	//
+	// The run-to-completion stop condition reuses the same manual-call sentinel
+	// the import path uses: RETURN halts RunInner as soon as callStackTop falls
+	// back to our pushed frame's caller depth.  Arguments are bound positionally;
+	// extra args raise an error, missing args take the callee's parameter
+	// defaults.  Returns the callee's result, or Value.Null on error (with the
+	// error surfaced on the outer run so RunUntilDone reports it).
+	public Value RunFunction(Value funcRef, List<Value> args) {
+		if (!funcRef.IsFuncRef()) {
+			RaiseRuntimeError("RunFunction: value is not a function reference");
+			return Value.Null;
+		}
+		FuncDef callee = funcRef.FunctionDef();
+		if (callee == null) {
+			RaiseRuntimeError("RunFunction: invalid function reference");
+			return Value.Null;
+		}
+		Int32 argCount = args.Count;
+		Int32 paramCount = callee.ParamNames.Count;
+		if (argCount > paramCount) {
+			RaiseRuntimeError(StringUtils.Format(
+				"RunFunction: too many arguments: got {0}, expected {1}", argCount, paramCount));
+			return Value.Null;
+		}
+
+		// Choose a callee base above every currently-live register.  During a
+		// native callback, _nativeFrameTop is the top of the calling intrinsic's
+		// frame; between top-level Run batches it is 0, so we also consider the
+		// current frame's top.  The max is safe in both situations.
+		Int32 safeTop = BaseIndex + (CurrentFunction != null ? CurrentFunction.MaxRegs : 0);
+		Int32 calleeBase = _nativeFrameTop > safeTop ? _nativeFrameTop : safeTop;
+		if (!EnsureFrame(calleeBase, callee.MaxRegs)) return Value.Null;
+
+		// Save the outer execution state that the nested run will overwrite.
+		Int32 savedPC = PC;
+		Int32 savedBase = BaseIndex;
+		FuncDef savedFunc = CurrentFunction;
+		Boolean savedRunning = IsRunning;
+		Int32 savedCallStackTop = callStackTop;
+		Boolean savedHasManual = _hasPendingManualCall;
+		Int32 savedManualDepth = _pendingManualCallDepth;
+		Value savedManualResult = ManualCallResult;
+		Value savedError = Error;
+		Value savedSelf = pendingSelf;
+		Value savedSuper = pendingSuper;
+		Boolean savedHasCtx = hasPendingContext;
+
+		// Set up the callee frame, writing each register exactly once (mirrors
+		// ProcessArguments + SetupCallFrame).  r0 is the return register; the
+		// parameters occupy r1..rParamCount (bound args first, then defaults for
+		// any missing); registers beyond the parameters are cleared.
+		stack[calleeBase] = Value.Null;
+		names[calleeBase] = Value.Null;
+		for (Int32 i = 0; i < argCount; i++) {
+			stack[calleeBase + 1 + i] = args[i];
+			names[calleeBase + 1 + i] = callee.ParamNames[i];
+		}
+		for (Int32 i = argCount; i < paramCount; i++) {
+			stack[calleeBase + 1 + i] = callee.ParamDefaults[i];
+			names[calleeBase + 1 + i] = callee.ParamNames[i];
+		}
+		for (Int32 i = paramCount + 1; i < callee.MaxRegs; i++) {
+			stack[calleeBase + i] = Value.Null;
+			names[calleeBase + i] = Value.Null;
+		}
+
+		// Push a return frame carrying the funcref's closure context, then switch
+		// instance execution state to the callee.  The pushed CallInfo records the
+		// outer state and uses CopyResultToReg = -1, so RETURN restores us without
+		// writing a result into any outer register (we read ManualCallResult).
+		if (callStackTop >= callStack.Count) callStack.Add(new CallInfo(0, 0, null));
+		callStack[callStackTop] = new CallInfo(savedPC, savedBase, savedFunc, -1, funcRef.OuterVars());
+		callStackTop++;
+		Int32 runDepth = callStackTop;
+
+		BaseIndex = calleeBase;
+		CurrentFunction = callee;
+		PC = 0;
+		IsRunning = true;
+		pendingSelf = Value.Null;
+		pendingSuper = Value.Null;
+		hasPendingContext = false;
+
+		// Arm the manual-call sentinel so RETURN stops RunInner when THIS frame
+		// returns (callStackTop == _pendingManualCallDepth - 1) instead of
+		// continuing into the outer program.
+		_hasPendingManualCall = true;
+		_pendingManualCallDepth = runDepth;
+		ManualCallResult = Value.Null;
+
+		// Drive the VM until our pushed call completes.  Normally one RunInner is
+		// enough (the sentinel exits the instant our frame returns); the loop is
+		// belt-and-suspenders should RunInner exit early for any other reason.
+		VM previousVM = _activeVM;
+		_activeVM = this;
+		while (_hasPendingManualCall && IsRunning) {
+			RunInner(0);
+		}
+		_activeVM = previousVM;
+
+		Value result = ManualCallResult;
+		Value callError = Error;
+
+		// Restore the interrupted outer execution state.
+		PC = savedPC;
+		BaseIndex = savedBase;
+		CurrentFunction = savedFunc;
+		IsRunning = savedRunning;
+		callStackTop = savedCallStackTop;
+		_hasPendingManualCall = savedHasManual;
+		_pendingManualCallDepth = savedManualDepth;
+		ManualCallResult = savedManualResult;
+		pendingSelf = savedSelf;
+		pendingSuper = savedSuper;
+		hasPendingContext = savedHasCtx;
+
+		// If the nested call raised a runtime error, surface it on the outer run
+		// (so RunUntilDone reports it and stops); otherwise keep the outer error.
+		if (callError.IsError()) {
+			Error = callError;
+			IsRunning = false;
+		} else {
+			Error = savedError;
+		}
+
+		return result;
 	}
 
 
@@ -735,7 +881,12 @@ public class VM {
 			calleeBase,
 			argCount,
 			callee.ParamNames);
+		// Record this intrinsic's frame top so a re-entrant RunFunction made from
+		// within the callback lands above it.  Save/restore for nested callbacks.
+		Int32 savedNativeTop = _nativeFrameTop;
+		_nativeFrameTop = calleeBase + callee.MaxRegs;
 		IntrinsicResult ir = callback(context, partialResult);
+		_nativeFrameTop = savedNativeTop;
 		stack[absoluteResultIndex] = ir.result;
 		if (ir.done) return true;
 		_pendingCallback = callback;

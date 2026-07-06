@@ -23,6 +23,7 @@ using static System.Runtime.CompilerServices.MethodImplOptions;
 // CPP: #include "dispatch_macros.h"
 // CPP: #include "vm_error.h"
 // CPP: #include "Interpreter.g.h"
+// CPP: #include "cstr_arena.h"
 // CPP: #include <chrono>
 
 
@@ -885,7 +886,11 @@ public class VM {
 		// within the callback lands above it.  Save/restore for nested callbacks.
 		Int32 savedNativeTop = _nativeFrameTop;
 		_nativeFrameTop = calleeBase + callee.MaxRegs;
+		// Bracket the callback with a CStrArena mark/reset so any Value::c_str()
+		// the intrinsic makes is freed when it returns (C++ only; see cstr_arena.h).
+		// CPP: CStrArena::Mark _cstrArenaMark = CStrArena::GetMark();
 		IntrinsicResult ir = callback(context, partialResult);
+		// CPP: CStrArena::Reset(_cstrArenaMark);
 		_nativeFrameTop = savedNativeTop;
 		stack[absoluteResultIndex] = ir.result;
 		if (ir.done) return true;

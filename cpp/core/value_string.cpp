@@ -16,6 +16,7 @@
 #include "StringStorage.h"
 #include "unicodeUtil.h"
 #include "hashing.h"
+#include "cstr_arena.h"
 #include <cstring>
 #include <cstdlib>
 #include <cstdio>
@@ -163,6 +164,17 @@ const char* get_string_data_zerocopy(const Value* v_ptr, int* out_len) {
     }
     *out_len = 0;
     return nullptr;
+}
+
+const char* Value::c_str() const {
+    // Safe replacement for the dangling ToString().c_str() idiom: copy this
+    // value's UTF-8 bytes into the per-call CStrArena and return a pointer valid
+    // until the current native (intrinsic) call returns.  Non-string values are
+    // formatted via their standard string representation first.  See cstr_arena.h.
+    Value s = IsString() ? *this : ToStringValue();
+    int len = 0;
+    const char* data = get_string_data_zerocopy(&s, &len);
+    return CStrArena::Copy(data, len);
 }
 
 const char* get_string_data_nullterm(const Value* v_ptr, char* tiny_buffer) {

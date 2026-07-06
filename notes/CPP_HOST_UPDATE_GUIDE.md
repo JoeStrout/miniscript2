@@ -492,20 +492,34 @@ setup function, which also runs after GC init.)
   *ambiguous*.  Cast wide integers explicitly: `Value((double)fileSize)`.
 - **`Value::GetString()` → `Value::ToString()`**; **`list.Item(i)` → `list[i]`**.
 - **`Value::null` → `Value::Null`** (capital N, matching C#).
-- **`ToString().c_str()` dangles — hold the `String` in a named local.**
-  `Value::ToString()` returns a *temporary* `String`; a `const char*` taken from
-  it is invalid after the full-expression ends. This bites MS1 host code that
-  did `const char* s = ctx.GetVar("x").ToString().c_str();` and used `s` on a
-  later line (it may have pointed at stable storage in MS1; in MS2 it's a
-  use-after-free — often surfacing only once *more* allocation happens between,
-  e.g. a re-entrant callback). Fix:
+- **Getting a `const char*` from a Value: use `Value::c_str()`.**
+  `value.ToString().c_str()` is a **use-after-free**: `ToString()` returns a
+  *temporary* `String` that owns its bytes (shared_ptr), so a `const char*` taken
+  from it dangles once the full-expression ends. This bit MS1 host code that did
+  `const char* s = ctx.GetVar("x").ToString().c_str();` and used `s` on a later
+  line (it may have pointed at stable storage in MS1; in MS2 it's a UAF, often
+  surfacing only once *more* allocation happens between — e.g. a re-entrant
+  callback). Prefer the safe accessor:
   ```cpp
-  String s = ctx.GetVar("x").ToString();     // keep the String alive
-  SomeCFunc(s.c_str());                       // now valid
+  const char* s = ctx.GetVar("x").c_str();   // valid until this intrinsic returns
+  SomeCFunc(s);
   ```
-  Passing `.ToString().c_str()` *directly as an argument* is fine (the temporary
-  lives until the call returns); only a stored pointer outliving the temporary
-  is the bug.
+  `Value::c_str()` copies the bytes into a per-call arena (see
+  `core/cstr_arena.h`) and returns a pointer **valid until the current native
+  (intrinsic) call returns** — handles any value type, any length, and lets you
+  hold several at once (`TextFindIndex(a.c_str(), b.c_str())`). Don't stash the
+  pointer past the call; if you need it longer, copy into a `String`/`std::string`.
+  (The old "hold the `String` in a named local" idiom still works and is right
+  when the value must outlive the call — e.g. a cached handle. And passing
+  `.ToString().c_str()` *directly as a call argument* is safe, since the temporary
+  lives until that call returns; only a stored pointer outliving it is the bug.)
+
+  **Calling `c_str()` outside an intrinsic** (host main loop, setup code): the
+  pointer never dangles, but there's no per-call bracket to reclaim it, so
+  repeated use accumulates. Wrap such blocks in a `CStrArena::Scope` (RAII: marks
+  on entry, rewinds on exit) — the manual equivalent of the intrinsic bracket —
+  or call `CStrArena::ResetAll()` at a safe point (e.g. once per frame). A pointer
+  may safely span a `vm.RunUntilDone()` call; the arena is not reset per Run batch.
 
 ## Mechanical search-and-replace cheat sheet
 

@@ -204,6 +204,11 @@ typedef struct Value {
     static Value  make_string(const String& s);
     String        ToString(void* vm = nullptr) const;
     const char*   AsCString() const;
+    // Like ToString().c_str() but SAFE: copies the bytes into the per-call
+    // CStrArena and returns a pointer valid until the current native (intrinsic)
+    // call returns.  Use this at C-API boundaries instead of the dangling
+    // ToString().c_str() idiom.  See cstr_arena.h.
+    const char*   c_str() const;
     int           Length() const;
     int           StringIndexOf(Value needle, int start_pos) const;
     Value         Substring(int startIndex, int len) const;

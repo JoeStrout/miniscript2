@@ -14,6 +14,7 @@
 #include "dispatch_macros.h"
 #include "vm_error.h"
 #include "Interpreter.g.h"
+#include "cstr_arena.h"
 #include <chrono>
 
 namespace MiniScript {
@@ -647,7 +648,11 @@ bool VMStorage::InvokeNativeCallback(NativeCallbackDelegate callback,FuncDef cal
 	// within the callback lands above it.  Save/restore for nested callbacks.
 	Int32 savedNativeTop = _nativeFrameTop;
 	_nativeFrameTop = calleeBase + callee.MaxRegs();
+	// Bracket the callback with a CStrArena mark/reset so any Value::c_str()
+	// the intrinsic makes is freed when it returns (C++ only; see cstr_arena.h).
+	CStrArena::Mark _cstrArenaMark = CStrArena::GetMark();
 	IntrinsicResult ir = callback(context, partialResult);
+	CStrArena::Reset(_cstrArenaMark);
 	_nativeFrameTop = savedNativeTop;
 	stack[absoluteResultIndex] = ir.result;
 	if (ir.done) return Boolean(true);

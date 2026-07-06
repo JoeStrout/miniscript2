@@ -34,6 +34,20 @@ using StringStorageSPtr = std::shared_ptr<StringStorage>;
 StringStorageSPtr ss_createShared(int byteLen);
 StringStorageSPtr ss_createShared(const char *cstr, int byteLen=-1);
 
+// MS_LIFETIMEBOUND marks a method whose returned pointer/reference is tied to
+// the lifetime of *this, so Clang's -Wdangling can flag storing it past the
+// object's life -- notably the `const char* p = s.ToString().c_str();` UAF,
+// where the temporary String frees its buffer at the semicolon.  It's a Clang
+// extension; expand to nothing on GCC/MSVC so those builds are unaffected.
+#if defined(__clang__) && defined(__has_cpp_attribute)
+  #if __has_cpp_attribute(clang::lifetimebound)
+    #define MS_LIFETIMEBOUND [[clang::lifetimebound]]
+  #endif
+#endif
+#ifndef MS_LIFETIMEBOUND
+  #define MS_LIFETIMEBOUND
+#endif
+
 // Lightweight String class - thin wrapper around shared_ptr<StringStorage>
 class String {
 private:
@@ -171,17 +185,17 @@ public:
         return ss_lengthC(s);
     }
     
-    const char* c_str() const {
+    const char* c_str() const MS_LIFETIMEBOUND {
 		if (!ref) return "";
 		const StringStorage *ss = getStorageRaw();
 		return ss ? ss->data : "";
     }
 
 	// MS1 SimpleString-compatible alias: raw pointer to the UTF-8 bytes.
-	const char* data() const { return c_str(); }
+	const char* data() const MS_LIFETIMEBOUND { return c_str(); }
 
 	// Implicit conversion to const char* for use with C APIs and stream operators
-	operator const char*() const {
+	operator const char*() const MS_LIFETIMEBOUND {
 		return c_str();
 	}
 

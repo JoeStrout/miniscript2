@@ -70,6 +70,35 @@ public struct CallInfo {
 	}
 }
 
+// Snapshot of the VM's "pending call" state: a deferred intrinsic continuation
+// (callback + where to store its result) plus the manual-call sentinel.  This is
+// saved on a stack when a manual call (import) is pushed, so that a *nested*
+// manual call (e.g. an import that itself imports) can restore the outer pending
+// call once the inner one completes.  See ManuallyPushCall and Run.
+public struct PendingCallState {
+	public NativeCallbackDelegate Callback;  // pending intrinsic continuation (null if none)
+	public FuncDef Callee;                   // callee FuncDef, for reconstructing Context
+	public Int32 CalleeBase;                 // base index for reconstructing Context
+	public Int32 ArgCount;                   // arg count for reconstructing Context
+	public Int32 ResultIndex;                // absolute stack index for the (partial) result
+	public Boolean IsManual;                 // true if this continuation is a manual call
+	public Boolean HasManual;                // saved _hasPendingManualCall
+	public Int32 ManualDepth;                // saved _pendingManualCallDepth
+	public Value ManualResult;               // saved ManualCallResult
+
+	public PendingCallState(NativeCallbackDelegate callback, FuncDef callee, Int32 calleeBase, Int32 argCount, Int32 resultIndex, Boolean isManual, Boolean hasManual, Int32 manualDepth, Value manualResult) {
+		Callback = callback;
+		Callee = callee;
+		CalleeBase = calleeBase;
+		ArgCount = argCount;
+		ResultIndex = resultIndex;
+		IsManual = isManual;
+		HasManual = hasManual;
+		ManualDepth = manualDepth;
+		ManualResult = manualResult;
+	}
+}
+
 // VM state
 public class VM {
 	public Boolean DebugMode = false;
@@ -137,6 +166,16 @@ public class VM {
 	private Boolean _hasPendingManualCall = false;
 	private Int32 _pendingManualCallDepth = 0;  // callStackTop value after the push
 	public Value ManualCallResult = Value.Null;    // return value of the manually-pushed call
+
+	// True when the current pending continuation (_pendingCallback) belongs to a
+	// manual call (import).  Used by Run() to decide whether completing that
+	// continuation should restore an outer pending call from _pendingCallStack.
+	private Boolean _pendingIsManual = false;
+	// Stack of outer pending-call states saved across nested manual calls, so an
+	// import that imports another module doesn't clobber the outer import's
+	// continuation.  Pushed by ManuallyPushCall; popped by Run() when a manual
+	// continuation completes.  See PendingCallState.
+	private List<PendingCallState> _pendingCallStack;
 
 	// Top of the register stack currently in use by an active native (intrinsic)
 	// callback: calleeBase + callee.MaxRegs, set for the duration of each
@@ -221,6 +260,7 @@ public class VM {
 		names = new List<Value>();
 		callStack = new List<CallInfo>();
 		callStackTop = 0;
+		_pendingCallStack = new List<PendingCallState>();
 		Error = Value.Null;
 
 		// Initialize stack with null values
@@ -309,6 +349,10 @@ public class VM {
 			vm.MarkFuncConstants(vm.callStack[ci].ReturnFunc);
 		}
 		GCManager.Mark(vm.ManualCallResult);
+		// Manual-call results saved on the pending-call stack (nested imports).
+		for (Int32 pi = 0; pi < vm._pendingCallStack.Count; pi++) {
+			GCManager.Mark(vm._pendingCallStack[pi].ManualResult);
+		}
 	}
 
 	// Mark a function's compile-time constants (used by the GC root scan).
@@ -328,6 +372,15 @@ public class VM {
 		// Module frame sits just above the import intrinsic's 2-register frame (r0 + libname).
 		Int32 calleeBase = intrinsicCalleeBase + 2;
 		if (!EnsureFrame(calleeBase, importMain.MaxRegs)) return;
+
+		// The import intrinsic's 2-register scratch frame (r0 + the "libname" arg)
+		// lives inside the CALLER's register file.  ProcessArguments named the arg
+		// register "libname"; the module-map result gets written back into that
+		// same register when import finishes.  If we leave the name in place, that
+		// bogus "libname" entry leaks into the caller module's locals map (visible
+		// once nested imports actually complete).  Clear both scratch names.
+		names[intrinsicCalleeBase] = Value.Null;
+		names[intrinsicCalleeBase + 1] = Value.Null;
 		for (Int32 i = 0; i < importMain.MaxRegs; i++) {
 			stack[calleeBase + i] = Value.Null;
 			names[calleeBase + i] = Value.Null;
@@ -341,9 +394,21 @@ public class VM {
 		CurrentFunction = importMain;
 		PC = 0;
 
+		// Save the current (outer) pending-call state so a nested manual call
+		// doesn't clobber it.  At this point the scalar _pending* fields still
+		// describe the outer deferred intrinsic (if any); the caller's callback
+		// will overwrite them with THIS call's continuation right after we return.
+		// When this manual call's continuation completes, Run() pops this entry
+		// to restore the outer call.  See Run().
+		_pendingCallStack.Add(new PendingCallState(
+			_pendingCallback, _pendingCallee, _pendingCalleeBase, _pendingArgCount,
+			_pendingResultIndex, _pendingIsManual,
+			_hasPendingManualCall, _pendingManualCallDepth, ManualCallResult));
+
 		_hasPendingManualCall = true;
 		_pendingManualCallDepth = callStackTop;
 		ManualCallResult = Value.Null;
+		_pendingIsManual = true;
 	}
 
 	// Set a variable by name in the current frame's locals VarMap.
@@ -550,6 +615,12 @@ public class VM {
 		pendingSelf = Value.Null;
 		pendingSuper = Value.Null;
 		hasPendingContext = false;
+
+		// Clear any pending intrinsic/manual-call state left over from an aborted run.
+		_pendingCallback = null;
+		_hasPendingManualCall = false;
+		_pendingIsManual = false;
+		_pendingCallStack.Clear();
 
 		EnsureFrame(BaseIndex, CurrentFunction.MaxRegs);
 
@@ -936,7 +1007,26 @@ public class VM {
 					_activeVM = previousVM;
 					return Value.Null;
 				}
-				_pendingCallback = null;
+				// The continuation completed.  If it was a nested manual call
+				// (import), restore the outer pending call we saved when it was
+				// pushed, so the outer import resumes (its module keeps running,
+				// then its own continuation fires).  Otherwise, just clear.
+				if (_pendingIsManual && _pendingCallStack.Count > 0) {
+					PendingCallState saved = _pendingCallStack[_pendingCallStack.Count - 1];
+					_pendingCallStack.RemoveAt(_pendingCallStack.Count - 1);
+					_pendingCallback = saved.Callback;
+					_pendingCallee = saved.Callee;
+					_pendingCalleeBase = saved.CalleeBase;
+					_pendingArgCount = saved.ArgCount;
+					_pendingResultIndex = saved.ResultIndex;
+					_pendingIsManual = saved.IsManual;
+					_hasPendingManualCall = saved.HasManual;
+					_pendingManualCallDepth = saved.ManualDepth;
+					ManualCallResult = saved.ManualResult;
+				} else {
+					_pendingCallback = null;
+					_pendingIsManual = false;
+				}
 			}
 		}
 

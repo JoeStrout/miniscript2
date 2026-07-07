@@ -4,6 +4,7 @@ namespace MiniScript {
 struct CodeGenerator;
 class CodeGeneratorStorage;
 struct CallInfo;
+struct PendingCallState;
 struct VM;
 class VMStorage;
 struct Context;

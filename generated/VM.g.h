@@ -33,6 +33,25 @@ struct CallInfo {
 	public: Value GetLocalVarMap(List<Value> registers, List<Value> names, int baseIdx, int regCount);
 }; // end of struct CallInfo
 
+// Snapshot of the VM's "pending call" state: a deferred intrinsic continuation
+// (callback + where to store its result) plus the manual-call sentinel.  This is
+// saved on a stack when a manual call (import) is pushed, so that a *nested*
+// manual call (e.g. an import that itself imports) can restore the outer pending
+// call once the inner one completes.  See ManuallyPushCall and Run.
+struct PendingCallState {
+	public: NativeCallbackDelegate Callback; // pending intrinsic continuation (null if none)
+	public: FuncDef Callee; // callee FuncDef, for reconstructing Context
+	public: Int32 CalleeBase; // base index for reconstructing Context
+	public: Int32 ArgCount; // arg count for reconstructing Context
+	public: Int32 ResultIndex; // absolute stack index for the (partial) result
+	public: Boolean IsManual; // true if this continuation is a manual call
+	public: Boolean HasManual; // saved _hasPendingManualCall
+	public: Int32 ManualDepth; // saved _pendingManualCallDepth
+	public: Value ManualResult; // saved ManualCallResult
+
+	public: PendingCallState(NativeCallbackDelegate callback, FuncDef callee, Int32 calleeBase, Int32 argCount, Int32 resultIndex, Boolean isManual, Boolean hasManual, Int32 manualDepth, Value manualResult);
+}; // end of struct PendingCallState
+
 class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	friend struct VM;
 	public: Boolean DebugMode = Boolean(false);
@@ -66,6 +85,8 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	private: Boolean _hasPendingManualCall = Boolean(false);
 	private: Int32 _pendingManualCallDepth = 0; // callStackTop value after the push
 	public: Value ManualCallResult = Value::Null; // return value of the manually-pushed call
+	private: Boolean _pendingIsManual = Boolean(false);
+	private: List<PendingCallState> _pendingCallStack;
 	private: Int32 _nativeFrameTop = 0;
 	public: bool yielding = Boolean(false);
 	private: std::chrono::steady_clock::time_point _startTime;
@@ -95,6 +116,14 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	// Support for manually-pushed calls (used by the import intrinsic).
 	// When _hasPendingManualCall is true, Run() skips callback re-invocation
 	// and runs RunInner so the pushed function can execute first.
+
+	// True when the current pending continuation (_pendingCallback) belongs to a
+	// manual call (import).  Used by Run() to decide whether completing that
+	// continuation should restore an outer pending call from _pendingCallStack.
+	// Stack of outer pending-call states saved across nested manual calls, so an
+	// import that imports another module doesn't clobber the outer import's
+	// continuation.  Pushed by ManuallyPushCall; popped by Run() when a manual
+	// continuation completes.  See PendingCallState.
 
 	// Top of the register stack currently in use by an active native (intrinsic)
 	// callback: calleeBase + callee.MaxRegs, set for the duration of each
@@ -382,6 +411,10 @@ struct VM {
 	private: void set__pendingManualCallDepth(Int32 _v); // callStackTop value after the push
 	public: Value ManualCallResult(); // return value of the manually-pushed call
 	public: void set_ManualCallResult(Value _v); // return value of the manually-pushed call
+	private: Boolean _pendingIsManual();
+	private: void set__pendingIsManual(Boolean _v);
+	private: List<PendingCallState> _pendingCallStack();
+	private: void set__pendingCallStack(List<PendingCallState> _v);
 	private: Int32 _nativeFrameTop();
 	private: void set__nativeFrameTop(Int32 _v);
 	public: bool yielding();
@@ -412,6 +445,14 @@ struct VM {
 	// Support for manually-pushed calls (used by the import intrinsic).
 	// When _hasPendingManualCall is true, Run() skips callback re-invocation
 	// and runs RunInner so the pushed function can execute first.
+
+	// True when the current pending continuation (_pendingCallback) belongs to a
+	// manual call (import).  Used by Run() to decide whether completing that
+	// continuation should restore an outer pending call from _pendingCallStack.
+	// Stack of outer pending-call states saved across nested manual calls, so an
+	// import that imports another module doesn't clobber the outer import's
+	// continuation.  Pushed by ManuallyPushCall; popped by Run() when a manual
+	// continuation completes.  See PendingCallState.
 
 	// Top of the register stack currently in use by an active native (intrinsic)
 	// callback: calleeBase + callee.MaxRegs, set for the duration of each
@@ -672,6 +713,10 @@ inline Int32 VM::_pendingManualCallDepth() { return get()->_pendingManualCallDep
 inline void VM::set__pendingManualCallDepth(Int32 _v) { get()->_pendingManualCallDepth = _v; } // callStackTop value after the push
 inline Value VM::ManualCallResult() { return get()->ManualCallResult; } // return value of the manually-pushed call
 inline void VM::set_ManualCallResult(Value _v) { get()->ManualCallResult = _v; } // return value of the manually-pushed call
+inline Boolean VM::_pendingIsManual() { return get()->_pendingIsManual; }
+inline void VM::set__pendingIsManual(Boolean _v) { get()->_pendingIsManual = _v; }
+inline List<PendingCallState> VM::_pendingCallStack() { return get()->_pendingCallStack; }
+inline void VM::set__pendingCallStack(List<PendingCallState> _v) { get()->_pendingCallStack = _v; }
 inline Int32 VM::_nativeFrameTop() { return get()->_nativeFrameTop; }
 inline void VM::set__nativeFrameTop(Int32 _v) { get()->_nativeFrameTop = _v; }
 inline bool VM::yielding() { return get()->yielding; }

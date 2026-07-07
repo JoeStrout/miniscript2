@@ -451,10 +451,12 @@ Transpiler.lookup = function(identifier, context)
 	end if		
 	
 	// 1. locals, including curMethod parameters (search in reverse order)
-	for i in range(self.localVars.len-1, 0, -1)
-		var = self.localVars[i]
-		if var.name == identifier then return var
-	end for
+	if self.localVars then
+		for i in range(self.localVars.len-1, 0, -1)
+			var = self.localVars[i]
+			if var.name == identifier then return var
+		end for
+	end if
 	
 	// 2. fields and methods of the current class
 	if self.curClass then

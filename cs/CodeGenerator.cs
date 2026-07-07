@@ -352,8 +352,29 @@ public class CodeGenerator : IASTVisitor {
 		
 		// Get or allocate register for this variable
 		Int32 varReg;
+		// hold the register for the variable in the recursive case (-1 = no need)
+		Int32 pendingReg = -1;
 		if (_variableRegs.TryGetValue(node.Variable, out varReg)) {
-			// Variable already has a register - reuse it
+			// In the case of lists and maps, it's possible to define a variable which
+			// relies on the variable's prior value; for example, ensureImport from the
+			// importUtil library has the code:
+			// if moduleName isa string then moduleName = [moduleName]
+			// In that case and that case alone, we need to allocate a temporary register
+			// for the new value of the variable and then copy the new value into the right
+			// register.
+			// Note that a similar case does not need to be added for IndexedAssignmentNode
+			// since that allocates a new register for the value in all cases.
+			if (CheckForRecursiveDefinition(node.Variable, node.Value)) {
+				// Check and make sure this isn't something like "x = x"
+				// (we only need to check if the node is an IdentifierNode, since an
+				// IdentifierNode with any other name wouldn't trigger the recursive
+				// definition check)
+				IdentifierNode valueIdNode = node.Value as IdentifierNode;
+				if (valueIdNode == null) {
+					pendingReg = varReg;
+					varReg = AllocReg();
+				}
+			}
 		} else {
 			// Hmm.  Should we allocate a new register for this variable, or
 			// just claim the target register as our storage?  I'm going to alloc
@@ -367,7 +388,7 @@ public class CodeGenerator : IASTVisitor {
 		// on every path that assigns the variable, including conditional branches
 		// (e.g. the else clause of a single-line if), or the variable would be
 		// undefined at runtime when only that path executes.
-		EnsureNamed(node.Variable, varReg);
+		if (pendingReg == -1) EnsureNamed(node.Variable, varReg);
 		// If the RHS is a function expression, note the current function count so we
 		// can assign the variable name to the resulting FuncDef afterward.
 		FunctionNode rhsFunc = node.Value as FunctionNode;
@@ -381,6 +402,16 @@ public class CodeGenerator : IASTVisitor {
 			if (rhsFuncDef != null) rhsFuncDef.Name = node.Variable;
 		}
 
+		if (pendingReg != -1) {
+			// We allocated a temporary register earlier, so now we need to finish the
+			// assignment. Load the variable's actual register with the value of the
+			// temporary register and then free the temporary register to be used later.
+			_emitter.EmitABC(Opcode.LOAD_rA_rB, pendingReg, varReg,
+				0, $"r{pendingReg} = r{varReg}");
+			FreeReg(varReg);
+			varReg = pendingReg;
+		}
+
 		// Note that we don't FreeReg(varReg) here, as we need this register to
 		// continue to serve as the storage for this variable for the life of
 		// the function.  (TODO: or until some lifetime analysis determines that
@@ -390,6 +421,36 @@ public class CodeGenerator : IASTVisitor {
 		// the value there as well.  Not sure why that would ever be the case (since
 		// assignment can't be used in an expression in MiniScript).  So:
 		return varReg;
+	}
+
+	private Boolean CheckForRecursiveDefinition(String variableName, ASTNode node) {
+		// IdentifierNode: is it the right variable?
+		IdentifierNode identifierNode = node as IdentifierNode;
+		if (identifierNode != null) {
+			return identifierNode.Name == variableName;
+		}
+
+		// ListNode: check every item in the list
+		ListNode listNode = node as ListNode;
+		if (listNode != null) {
+			for (Int32 i = 0; i < listNode.Elements.Count; ++i) {
+				if (CheckForRecursiveDefinition(variableName, listNode.Elements[i])) return true;
+			}
+			return false;
+		}
+
+		// MapNode: check all keys and values in the map
+		MapNode mapNode = node as MapNode;
+		if (mapNode != null) {
+			for (Int32 i = 0; i < mapNode.Keys.Count; ++i) {
+				if (CheckForRecursiveDefinition(variableName, mapNode.Keys[i])) return true;
+				if (CheckForRecursiveDefinition(variableName, mapNode.Values[i])) return true;
+			}
+			return false;
+		}
+
+		// All other cases: return false.
+		return false;
 	}
 
 	public Int32 Visit(IndexedAssignmentNode node) {

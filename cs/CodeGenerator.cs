@@ -438,6 +438,35 @@ public class CodeGenerator : IASTVisitor {
 			return identifierNode.Name == variableName;
 		}
 
+		// UnaryOpNode: check operand
+		UnaryOpNode unaryOpNode = node as UnaryOpNode;
+		if (unaryOpNode != null) {
+			return CheckForRecursiveDefinition(variableName, unaryOpNode.Operand);
+		}
+
+		// BinaryOpNode: check operands
+		BinaryOpNode binaryOpNode = node as BinaryOpNode;
+		if (binaryOpNode != null) {
+			return CheckForRecursiveDefinition(variableName, binaryOpNode.Left)
+				|| CheckForRecursiveDefinition(variableName, binaryOpNode.Right);
+		}
+
+		// CallNode: check function name and operands
+		CallNode callNode = node as CallNode;
+		if (callNode != null) {
+			if (callNode.Function == variableName) return true;
+			for (Int32 i = 0; i < callNode.Arguments.Count; ++i) {
+				if (CheckForRecursiveDefinition(variableName, callNode.Arguments[i])) return true;
+			}
+			return false;
+		}
+
+		// GroupNode: check expression inside
+		GroupNode groupNode = node as GroupNode;
+		if (groupNode != null) {
+			return CheckForRecursiveDefinition(variableName, groupNode.Expression);
+		}
+
 		// ListNode: check every item in the list
 		ListNode listNode = node as ListNode;
 		if (listNode != null) {
@@ -453,6 +482,54 @@ public class CodeGenerator : IASTVisitor {
 			for (Int32 i = 0; i < mapNode.Keys.Count; ++i) {
 				if (CheckForRecursiveDefinition(variableName, mapNode.Keys[i])) return true;
 				if (CheckForRecursiveDefinition(variableName, mapNode.Values[i])) return true;
+			}
+			return false;
+		}
+
+		// IndexNode: check target and index
+		IndexNode indexNode = node as IndexNode;
+		if (indexNode != null) {
+			return CheckForRecursiveDefinition(variableName, indexNode.Target)
+				|| CheckForRecursiveDefinition(variableName, indexNode.Index);
+		}
+
+		// SliceNode: check target, start, and end
+		SliceNode sliceNode = node as SliceNode;
+		if (sliceNode != null) {
+			return CheckForRecursiveDefinition(variableName, sliceNode.Target)
+				|| CheckForRecursiveDefinition(variableName, sliceNode.StartIndex)
+				|| CheckForRecursiveDefinition(variableName, sliceNode.EndIndex);
+		}
+
+		// MemberNode: check target
+		MemberNode memberNode = node as MemberNode;
+		if (memberNode != null) {
+			return CheckForRecursiveDefinition(variableName, memberNode.Target);
+		}
+
+		// MethodCallNode: check target and arguments
+		MethodCallNode methodCallNode = node as MethodCallNode;
+		if (methodCallNode != null) {
+			if (CheckForRecursiveDefinition(variableName, methodCallNode.Target)) return true;
+			for (Int32 i = 0; i < methodCallNode.Arguments.Count; ++i) {
+				if (CheckForRecursiveDefinition(variableName, methodCallNode.Arguments[i])) return true;
+			}
+		}
+
+		// ExprCallNode: check function and arguments
+		ExprCallNode exprCallNode = node as ExprCallNode;
+		if (exprCallNode != null) {
+			if (CheckForRecursiveDefinition(variableName, exprCallNode.Function)) return true;
+			for (Int32 i = 0; i < exprCallNode.Arguments.Count; ++i) {
+				if (CheckForRecursiveDefinition(variableName, exprCallNode.Arguments[i])) return true;
+			}
+		}
+
+		// ComparisonChainNode: check all operands
+		ComparisonChainNode comparisonChainNode = node as ComparisonChainNode;
+		if (comparisonChainNode != null) {
+			for (Int32 i = 0; i < comparisonChainNode.Operands.Count; ++i) {
+				if (CheckForRecursiveDefinition(variableName, comparisonChainNode.Operands[i])) return true;
 			}
 			return false;
 		}

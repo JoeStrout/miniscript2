@@ -367,14 +367,14 @@ public class CodeGenerator : IASTVisitor {
 		// relies on the variable's prior value; for example, ensureImport from the
 		// importUtil library has the code:
 		// if moduleName isa string then moduleName = [moduleName]
-		// In that case and that case alone, we need to allocate a temporary register
+		// In these sorts of cases specifically, we need to allocate a temporary register
 		// for the new value of the variable and then copy the new value into the right
 		// register.
 		// Note that a similar case does not need to be added for IndexedAssignmentNode
 		// since that allocates a new register for the value in all cases.
 		// Holds the register for the variable in the recursive case (-1 = no need)
 		Int32 pendingReg = -1;
-		if (CheckForRecursiveDefinition(node.Variable, node.Value)) {
+		if (node.Value.ContainsVariable(node.Variable)) {
 			// Check and make sure this isn't something like "x = x"
 			// (we only need to check if the node is an IdentifierNode, since an
 			// IdentifierNode with any other name wouldn't trigger the recursive
@@ -429,113 +429,6 @@ public class CodeGenerator : IASTVisitor {
 		// the value there as well.  Not sure why that would ever be the case (since
 		// assignment can't be used in an expression in MiniScript).  So:
 		return varReg;
-	}
-
-	private Boolean CheckForRecursiveDefinition(String variableName, ASTNode node) {
-		// IdentifierNode: is it the right variable?
-		IdentifierNode identifierNode = node as IdentifierNode;
-		if (identifierNode != null) {
-			return identifierNode.Name == variableName;
-		}
-
-		// UnaryOpNode: check operand
-		UnaryOpNode unaryOpNode = node as UnaryOpNode;
-		if (unaryOpNode != null) {
-			return CheckForRecursiveDefinition(variableName, unaryOpNode.Operand);
-		}
-
-		// BinaryOpNode: check operands
-		BinaryOpNode binaryOpNode = node as BinaryOpNode;
-		if (binaryOpNode != null) {
-			return CheckForRecursiveDefinition(variableName, binaryOpNode.Left)
-				|| CheckForRecursiveDefinition(variableName, binaryOpNode.Right);
-		}
-
-		// CallNode: check function name and operands
-		CallNode callNode = node as CallNode;
-		if (callNode != null) {
-			if (callNode.Function == variableName) return true;
-			for (Int32 i = 0; i < callNode.Arguments.Count; ++i) {
-				if (CheckForRecursiveDefinition(variableName, callNode.Arguments[i])) return true;
-			}
-			return false;
-		}
-
-		// GroupNode: check expression inside
-		GroupNode groupNode = node as GroupNode;
-		if (groupNode != null) {
-			return CheckForRecursiveDefinition(variableName, groupNode.Expression);
-		}
-
-		// ListNode: check every item in the list
-		ListNode listNode = node as ListNode;
-		if (listNode != null) {
-			for (Int32 i = 0; i < listNode.Elements.Count; ++i) {
-				if (CheckForRecursiveDefinition(variableName, listNode.Elements[i])) return true;
-			}
-			return false;
-		}
-
-		// MapNode: check all keys and values in the map
-		MapNode mapNode = node as MapNode;
-		if (mapNode != null) {
-			for (Int32 i = 0; i < mapNode.Keys.Count; ++i) {
-				if (CheckForRecursiveDefinition(variableName, mapNode.Keys[i])) return true;
-				if (CheckForRecursiveDefinition(variableName, mapNode.Values[i])) return true;
-			}
-			return false;
-		}
-
-		// IndexNode: check target and index
-		IndexNode indexNode = node as IndexNode;
-		if (indexNode != null) {
-			return CheckForRecursiveDefinition(variableName, indexNode.Target)
-				|| CheckForRecursiveDefinition(variableName, indexNode.Index);
-		}
-
-		// SliceNode: check target, start, and end
-		SliceNode sliceNode = node as SliceNode;
-		if (sliceNode != null) {
-			return CheckForRecursiveDefinition(variableName, sliceNode.Target)
-				|| CheckForRecursiveDefinition(variableName, sliceNode.StartIndex)
-				|| CheckForRecursiveDefinition(variableName, sliceNode.EndIndex);
-		}
-
-		// MemberNode: check target
-		MemberNode memberNode = node as MemberNode;
-		if (memberNode != null) {
-			return CheckForRecursiveDefinition(variableName, memberNode.Target);
-		}
-
-		// MethodCallNode: check target and arguments
-		MethodCallNode methodCallNode = node as MethodCallNode;
-		if (methodCallNode != null) {
-			if (CheckForRecursiveDefinition(variableName, methodCallNode.Target)) return true;
-			for (Int32 i = 0; i < methodCallNode.Arguments.Count; ++i) {
-				if (CheckForRecursiveDefinition(variableName, methodCallNode.Arguments[i])) return true;
-			}
-		}
-
-		// ExprCallNode: check function and arguments
-		ExprCallNode exprCallNode = node as ExprCallNode;
-		if (exprCallNode != null) {
-			if (CheckForRecursiveDefinition(variableName, exprCallNode.Function)) return true;
-			for (Int32 i = 0; i < exprCallNode.Arguments.Count; ++i) {
-				if (CheckForRecursiveDefinition(variableName, exprCallNode.Arguments[i])) return true;
-			}
-		}
-
-		// ComparisonChainNode: check all operands
-		ComparisonChainNode comparisonChainNode = node as ComparisonChainNode;
-		if (comparisonChainNode != null) {
-			for (Int32 i = 0; i < comparisonChainNode.Operands.Count; ++i) {
-				if (CheckForRecursiveDefinition(variableName, comparisonChainNode.Operands[i])) return true;
-			}
-			return false;
-		}
-
-		// All other cases: return false.
-		return false;
 	}
 
 	public Int32 Visit(IndexedAssignmentNode node) {

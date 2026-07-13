@@ -75,6 +75,14 @@ public abstract class ASTNode {
 	// Returns a simplified version of this node (may be a new node, or this node unchanged)
 	public abstract ASTNode Simplify();
 
+	// Does this node contain the variable `variableName`?
+	// This is used to determine whether the Value of an AssignmentNode is defined in terms
+	// of its Variable, in which case a temporary register needs to be used during
+	// calculations.
+	public virtual Boolean ContainsVariable(String variableName) {
+		return false;
+	}
+
 	// Copy the source line from this node to the given node and return it.
 	// Call as `return CopyLine(new SomeNode(...));` inside Simplify() overrides.
 	protected ASTNode CopyLine(ASTNode result) {
@@ -142,6 +150,10 @@ public class IdentifierNode : ASTNode {
 
 	public override ASTNode Simplify() {
 		return this;
+	}
+
+	public override Boolean ContainsVariable(String variableName) {
+		return Name == variableName;
 	}
 
 	public override Int32 Accept(IASTVisitor visitor) {
@@ -230,6 +242,10 @@ public class UnaryOpNode : ASTNode {
 
 		// Otherwise return unary op with simplified operand
 		return new UnaryOpNode(Op, simplifiedOperand);
+	}
+
+	public override Boolean ContainsVariable(String variableName) {
+		return Operand.ContainsVariable(variableName);
 	}
 
 	public override Int32 Accept(IASTVisitor visitor) {
@@ -332,6 +348,11 @@ public class BinaryOpNode : ASTNode {
 		return new BinaryOpNode(Op, simplifiedLeft, simplifiedRight);
 	}
 
+	public override Boolean ContainsVariable(String variableName) {
+		return Left.ContainsVariable(variableName)
+			|| Right.ContainsVariable(variableName);
+	}
+
 	public override Int32 Accept(IASTVisitor visitor) {
 		return visitor.Visit(this);
 	}
@@ -362,6 +383,13 @@ public class ComparisonChainNode : ASTNode {
 			simplifiedOperands.Add(Operands[i].Simplify());
 		}
 		return new ComparisonChainNode(simplifiedOperands, Operators);
+	}
+
+	public override Boolean ContainsVariable(String variableName) {
+		for (Int32 i = 0; i < Operands.Count; ++i) {
+			if (Operands[i].ContainsVariable(variableName)) return true;
+		}
+		return false;
 	}
 
 	public override Int32 Accept(IASTVisitor visitor) {
@@ -402,6 +430,14 @@ public class CallNode : ASTNode {
 		return CopyLine(new CallNode(Function, simplifiedArgs));
 	}
 
+	public override Boolean ContainsVariable(String variableName) {
+		if (Function == variableName) return true;
+		for (Int32 i = 0; i < Arguments.Count; ++i) {
+			if (Arguments[i].ContainsVariable(variableName)) return true;
+		}
+		return false;
+	}
+
 	public override Int32 Accept(IASTVisitor visitor) {
 		return visitor.Visit(this);
 	}
@@ -423,6 +459,10 @@ public class GroupNode : ASTNode {
 	public override ASTNode Simplify() {
 		// Groups don't affect value, just return simplified child
 		return Expression.Simplify();
+	}
+
+	public override Boolean ContainsVariable(String variableName) {
+		return Expression.ContainsVariable(variableName);
 	}
 
 	public override Int32 Accept(IASTVisitor visitor) {
@@ -458,6 +498,13 @@ public class ListNode : ASTNode {
 			simplifiedElements.Add(Elements[i].Simplify());
 		}
 		return new ListNode(simplifiedElements);
+	}
+
+	public override Boolean ContainsVariable(String variableName) {
+		for (Int32 i = 0; i < Elements.Count; ++i) {
+			if (Elements[i].ContainsVariable(variableName)) return true;
+		}
+		return false;
 	}
 
 	public override Int32 Accept(IASTVisitor visitor) {
@@ -500,6 +547,14 @@ public class MapNode : ASTNode {
 		return new MapNode(simplifiedKeys, simplifiedValues);
 	}
 
+	public override Boolean ContainsVariable(String variableName) {
+		for (Int32 i = 0; i < Keys.Count; ++i) {
+			if (Keys[i].ContainsVariable(variableName)) return true;
+			if (Values[i].ContainsVariable(variableName)) return true;
+		}
+		return false;
+	}
+
 	public override Int32 Accept(IASTVisitor visitor) {
 		return visitor.Visit(this);
 	}
@@ -521,6 +576,11 @@ public class IndexNode : ASTNode {
 
 	public override ASTNode Simplify() {
 		return new IndexNode(Target.Simplify(), Index.Simplify());
+	}
+
+	public override Boolean ContainsVariable(String variableName) {
+		return Target.ContainsVariable(variableName)
+			|| Index.ContainsVariable(variableName);
 	}
 
 	public override Int32 Accept(IASTVisitor visitor) {
@@ -552,6 +612,12 @@ public class SliceNode : ASTNode {
 		return new SliceNode(Target.Simplify(), simplifiedStart, simplifiedEnd);
 	}
 
+	public override Boolean ContainsVariable(String variableName) {
+		return Target.ContainsVariable(variableName)
+			|| StartIndex.ContainsVariable(variableName)
+			|| EndIndex.ContainsVariable(variableName);
+	}
+
 	public override Int32 Accept(IASTVisitor visitor) {
 		return visitor.Visit(this);
 	}
@@ -573,6 +639,10 @@ public class MemberNode : ASTNode {
 
 	public override ASTNode Simplify() {
 		return new MemberNode(Target.Simplify(), Member);
+	}
+
+	public override Boolean ContainsVariable(String variableName) {
+		return Target.ContainsVariable(variableName);
 	}
 
 	public override Int32 Accept(IASTVisitor visitor) {
@@ -611,6 +681,14 @@ public class MethodCallNode : ASTNode {
 		return new MethodCallNode(Target.Simplify(), Method, simplifiedArgs);
 	}
 
+	public override Boolean ContainsVariable(String variableName) {
+		if (Target.ContainsVariable(variableName)) return true;
+		for (Int32 i = 0; i < Arguments.Count; ++i) {
+			if (Arguments[i].ContainsVariable(variableName)) return true;
+		}
+		return false;
+	}
+
 	public override Int32 Accept(IASTVisitor visitor) {
 		return visitor.Visit(this);
 	}
@@ -644,6 +722,14 @@ public class ExprCallNode : ASTNode {
 			simplifiedArgs.Add(Arguments[i].Simplify());
 		}
 		return CopyLine(new ExprCallNode(Function.Simplify(), simplifiedArgs));
+	}
+
+	public override Boolean ContainsVariable(String variableName) {
+		if (Function.ContainsVariable(variableName)) return true;
+		for (Int32 i = 0; i < Arguments.Count; ++i) {
+			if (Arguments[i].ContainsVariable(variableName)) return true;
+		}
+		return false;
 	}
 
 	public override Int32 Accept(IASTVisitor visitor) {

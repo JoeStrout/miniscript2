@@ -39,6 +39,7 @@ class InterpreterStorage : public std::enable_shared_from_this<InterpreterStorag
 	public: Value lastImplicitResult = Value::Null;
 	private: String _pendingSource; // accumulated REPL lines so far
 	private: Value _replGlobals = Value::Null; // persistent globals VarMap
+	private: Value _keptGlobals = Value::Null;
 
 	// 
 	// standardOutput: receives the output of the "print" intrinsic.
@@ -95,6 +96,10 @@ class InterpreterStorage : public std::enable_shared_from_this<InterpreterStorag
 
 	// REPL state
 
+	// Globals carried over from the outgoing program, set by
+	// ResetPreservingGlobals and consumed by the next Compile.  Value.Null
+	// (the usual case) means the next program starts with empty globals.
+
   
 	// 
 	// Constructor taking some MiniScript source code, and the output delegates.
@@ -121,6 +126,23 @@ class InterpreterStorage : public std::enable_shared_from_this<InterpreterStorag
 	// Reset the interpreter with the given source code.
 	// 
 	public: void Reset(String _source="");
+
+	// Reset the interpreter with the given source code and compile it, but keep
+	// the current program's global variables, so the new program starts with
+	// those globals already defined.  This is what a "chain to another script"
+	// intrinsic (`run`) needs: the outgoing script's state stays available, and
+	// any global the new script assigns simply overwrites the inherited value.
+	// Functions carried over keep working too, since a top-level function's
+	// closure captures this very globals map.
+	// Reset and Compile happen together here because the globals are held in a
+	// live map between the two steps; there is no meaningful state in which to
+	// leave the interpreter in between.  On a compile error the interpreter is
+	// left with no VM (as with Reset + Compile), and the globals are dropped.
+	// The outgoing VM is stopped, which matters when (as with `run`) this is
+	// called from an intrinsic: we are then inside that VM's own Run loop, and
+	// replacing this.vm does not stop it -- without the Stop it would carry on
+	// executing the rest of the abandoned program after the intrinsic returns.
+	public: void ResetPreservingGlobals(String _source="");
 
 	// 
 	// Reset the interpreter with pre-compiled functions (e.g. from an assembler).
@@ -291,6 +313,8 @@ struct Interpreter {
 	private: void set__pendingSource(String _v); // accumulated REPL lines so far
 	private: Value _replGlobals(); // persistent globals VarMap
 	private: void set__replGlobals(Value _v); // persistent globals VarMap
+	private: Value _keptGlobals();
+	private: void set__keptGlobals(Value _v);
 	public: Interpreter(InterpreterStorage* p) : storage(p ? p->shared_from_this() : nullptr) {}  
 
 	// 
@@ -348,6 +372,10 @@ struct Interpreter {
 
 	// REPL state
 
+	// Globals carried over from the outgoing program, set by
+	// ResetPreservingGlobals and consumed by the next Compile.  Value.Null
+	// (the usual case) means the next program starts with empty globals.
+
   
 	// 
 	// Constructor taking some MiniScript source code, and the output delegates.
@@ -378,6 +406,23 @@ struct Interpreter {
 	// Reset the interpreter with the given source code.
 	// 
 	public: inline void Reset(String _source="");
+
+	// Reset the interpreter with the given source code and compile it, but keep
+	// the current program's global variables, so the new program starts with
+	// those globals already defined.  This is what a "chain to another script"
+	// intrinsic (`run`) needs: the outgoing script's state stays available, and
+	// any global the new script assigns simply overwrites the inherited value.
+	// Functions carried over keep working too, since a top-level function's
+	// closure captures this very globals map.
+	// Reset and Compile happen together here because the globals are held in a
+	// live map between the two steps; there is no meaningful state in which to
+	// leave the interpreter in between.  On a compile error the interpreter is
+	// left with no VM (as with Reset + Compile), and the globals are dropped.
+	// The outgoing VM is stopped, which matters when (as with `run`) this is
+	// called from an intrinsic: we are then inside that VM's own Run loop, and
+	// replacing this.vm does not stop it -- without the Stop it would carry on
+	// executing the rest of the abandoned program after the intrinsic returns.
+	public: inline void ResetPreservingGlobals(String _source="");
 
 	// 
 	// Reset the interpreter with pre-compiled functions (e.g. from an assembler).
@@ -538,9 +583,12 @@ inline String Interpreter::_pendingSource() { return get()->_pendingSource; } //
 inline void Interpreter::set__pendingSource(String _v) { get()->_pendingSource = _v; } // accumulated REPL lines so far
 inline Value Interpreter::_replGlobals() { return get()->_replGlobals; } // persistent globals VarMap
 inline void Interpreter::set__replGlobals(Value _v) { get()->_replGlobals = _v; } // persistent globals VarMap
+inline Value Interpreter::_keptGlobals() { return get()->_keptGlobals; }
+inline void Interpreter::set__keptGlobals(Value _v) { get()->_keptGlobals = _v; }
 inline void Interpreter::Init(String _source,TextOutputMethod _standardOutput,TextOutputMethod _errorOutput) { return get()->Init(_source, _standardOutput, _errorOutput); }
 inline void Interpreter::Stop() { return get()->Stop(); }
 inline void Interpreter::Reset(String _source) { return get()->Reset(_source); }
+inline void Interpreter::ResetPreservingGlobals(String _source) { return get()->ResetPreservingGlobals(_source); }
 inline void Interpreter::Reset(List<FuncDef> functions) { return get()->Reset(functions); }
 inline void Interpreter::Compile() { return get()->Compile(); }
 inline Value Interpreter::RunFunction(Value funcRef,List<Value> args) { return get()->RunFunction(funcRef, args); }

@@ -927,6 +927,53 @@ Boolean UnitTests::TestREPL() {
 	if (!ok) IOHelper::Print("TestREPL FAILED");
 	return ok;
 }
+Boolean UnitTests::TestResetPreservingGlobals() {
+	Boolean ok = Boolean(true);
+
+	List<String> output =  List<String>::New();
+	gTestOutput = output;
+	Interpreter interp;
+	interp =  Interpreter::New("a = 42\ns = \"kept\"\nf = function; return a * 2; end function");
+	interp.set_standardOutput([](String s, Boolean) { gTestOutput.Add(s); });
+	interp.set_errorOutput([](String s, Boolean) { gTestOutput.Add(s); });
+	interp.RunUntilDone(10, Boolean(false));
+	ok = ok && Assert(output.Count() == 0,
+		StringUtils::Format("first program should print nothing, got {0} lines", output.Count()));
+
+	// Chain to a second program.  It reads a global it never assigns (s),
+	// reads then reassigns another (a), and calls a function the first
+	// program defined -- which must still see the globals through its
+	// closure, and must still find the `print` intrinsic on the new VM.
+	interp.ResetPreservingGlobals("print s\nprint a\nprint f\na = 7\nprint a");
+	// Collect before running: the preserved globals are reachable only as
+	// the new VM's persistent globals map, so this fails if that map (and
+	// the gathered entries in it) is not treated as a GC root.
+	GCManager::CollectGarbage();
+	interp.RunUntilDone(10, Boolean(false));
+
+	ok = ok && Assert(output.Count() == 4,
+		StringUtils::Format("chained program should print 4 lines, got {0}", output.Count()));
+	if (output.Count() == 4) {
+		ok = ok && Assert(output[0] == "kept",
+			StringUtils::Format("global untouched by new program: expected 'kept', got '{0}'", output[0]));
+		ok = ok && Assert(output[1] == "42",
+			StringUtils::Format("global read before reassignment: expected '42', got '{0}'", output[1]));
+		ok = ok && Assert(output[2] == "84",
+			StringUtils::Format("function from old program: expected '84', got '{0}'", output[2]));
+		ok = ok && Assert(output[3] == "7",
+			StringUtils::Format("global reassigned by new program: expected '7', got '{0}'", output[3]));
+	}
+
+	// A plain Reset must still start clean.
+	interp.Reset("if globals.hasIndex(\"a\") then print \"leaked\" else print \"clean\"");
+	interp.RunUntilDone(10, Boolean(false));
+	ok = ok && Assert(output.Count() == 5 && output[4] == "clean",
+		StringUtils::Format("plain Reset should not preserve globals, got '{0}'",
+			output.Count() > 4 ? output[4] : "(no output)"));
+
+	if (!ok) IOHelper::Print("TestResetPreservingGlobals FAILED");
+	return ok;
+}
 Int32 UnitTests::_handleFinalizerCallCount = 0;
 void UnitTests::TestHandleFinalizer(object userData) {
 	_handleFinalizerCallCount++;
@@ -1026,6 +1073,7 @@ Boolean UnitTests::RunAll() {
 		&& TestEmitPatternValidation()
 		&& TestParserNeedMoreInput()
 		&& TestREPL()
+		&& TestResetPreservingGlobals()
 		&& TestGCHandle();
 }
 

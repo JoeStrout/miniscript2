@@ -197,6 +197,11 @@ void VMStorage::MarkRoots(object user_data) {
 		vm.MarkFuncConstants(vm.callStack()[ci].ReturnFunc);
 	}
 	GCManager::Mark(vm.ManualCallResult());
+	// The persistent globals map (REPL, or globals carried over from a
+	// previous program) is reachable only from here: it is not on the stack,
+	// and its gathered entries -- globals the current program never names --
+	// live in its hash table, not in any register.
+	GCManager::Mark(vm.ReplGlobals());
 	// Manual-call results saved on the pending-call stack (nested imports).
 	for (Int32 pi = 0; pi < vm._pendingCallStack().Count(); pi++) {
 		GCManager::Mark(vm._pendingCallStack()[pi].ManualResult);
@@ -393,9 +398,11 @@ void VMStorage::Reset(List<FuncDef> allFunctions,Value replGlobals) {
 		if (allFunctions[i].Name() == "@main") mainFunc = allFunctions[i];
 	}
 
-	// Intrinsics are built once and shared; (re)build the name->funcref
-	// table on a full reset.  In REPL mode it already exists.
-	if (!partialReset) {
+	// Intrinsics are built once and shared; build the name->funcref table if
+	// this VM doesn't have one yet.  (Keyed on the table rather than on
+	// partialReset because a VM can be freshly constructed *and* be given
+	// persistent globals -- that is how chaining to a new program works.)
+	if (IsNull(_intrinsics)) {
 		_intrinsics =  Dictionary<String, Value>::New();
 		Intrinsic::RegisterAll(_intrinsics);
 	}

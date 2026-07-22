@@ -57,6 +57,10 @@ class UnitTests {
 	public: static Boolean TestParserNeedMoreInput();
 
 	public: static Boolean TestREPL();
+
+	// ── Chaining to a new program, preserving globals ────────────────────────────
+
+	public: static Boolean TestResetPreservingGlobals();
 	private: static Int32 _handleFinalizerCallCount;
 
 	// ── GCHandle test ────────────────────────────────────────────────────────────

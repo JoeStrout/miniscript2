@@ -100,6 +100,11 @@ public class Interpreter {
 	private String _pendingSource;       // accumulated REPL lines so far
 	private Value _replGlobals = Value.Null; // persistent globals VarMap
 
+	// Globals carried over from the outgoing program, set by
+	// ResetPreservingGlobals and consumed by the next Compile.  Value.Null
+	// (the usual case) means the next program starts with empty globals.
+	private Value _keptGlobals = Value.Null;
+
 	// H_WRAPPER: public: Interpreter(InterpreterStorage* p) : storage(p ? p->shared_from_this() : nullptr) {}  
   
 	// 
@@ -160,6 +165,37 @@ public class Interpreter {
 		vm = null;
 		compiledFunctions = null;
 		Error = Value.Null;
+		_keptGlobals = Value.Null;
+	}
+
+	//
+	// Reset the interpreter with the given source code and compile it, but keep
+	// the current program's global variables, so the new program starts with
+	// those globals already defined.  This is what a "chain to another script"
+	// intrinsic (`run`) needs: the outgoing script's state stays available, and
+	// any global the new script assigns simply overwrites the inherited value.
+	// Functions carried over keep working too, since a top-level function's
+	// closure captures this very globals map.
+	//
+	// Reset and Compile happen together here because the globals are held in a
+	// live map between the two steps; there is no meaningful state in which to
+	// leave the interpreter in between.  On a compile error the interpreter is
+	// left with no VM (as with Reset + Compile), and the globals are dropped.
+	//
+	// The outgoing VM is stopped, which matters when (as with `run`) this is
+	// called from an intrinsic: we are then inside that VM's own Run loop, and
+	// replacing this.vm does not stop it -- without the Stop it would carry on
+	// executing the rest of the abandoned program after the intrinsic returns.
+	//
+	public void ResetPreservingGlobals(String _source="") {
+		Value keptGlobals = Value.Null;
+		if (vm != null) {
+			keptGlobals = vm.GetGlobalsVarMap();
+			vm.Stop();
+		}
+		Reset(_source);
+		_keptGlobals = keptGlobals;
+		Compile();
 	}
 
 	// 
@@ -218,10 +254,13 @@ public class Interpreter {
 
 		compiledFunctions = generator.GetFunctions();
 
-		// Create and configure VM
+		// Create and configure VM.  _keptGlobals is Value.Null unless we were
+		// entered from ResetPreservingGlobals, in which case it holds the
+		// outgoing program's globals for the new VM to adopt.
 		vm = new VM();
 		vm.SetInterpreter(this);
-		vm.Reset(compiledFunctions);
+		vm.Reset(compiledFunctions, _keptGlobals);
+		_keptGlobals = Value.Null;
 	}
 
 	//

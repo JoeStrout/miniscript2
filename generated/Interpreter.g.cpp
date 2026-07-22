@@ -35,6 +35,17 @@ void InterpreterStorage::Reset(String _source) {
 	vm = nullptr;
 	compiledFunctions = nullptr;
 	Error = Value::Null;
+	_keptGlobals = Value::Null;
+}
+void InterpreterStorage::ResetPreservingGlobals(String _source) {
+	Value keptGlobals = Value::Null;
+	if (!IsNull(vm)) {
+		keptGlobals = vm.GetGlobalsVarMap();
+		vm.Stop();
+	}
+	Reset(_source);
+	_keptGlobals = keptGlobals;
+	Compile();
 }
 void InterpreterStorage::Reset(List<FuncDef> functions) {
 	Interpreter _this(std::static_pointer_cast<InterpreterStorage>(shared_from_this()));
@@ -85,10 +96,13 @@ void InterpreterStorage::Compile() {
 
 	compiledFunctions = generator.GetFunctions();
 
-	// Create and configure VM
+	// Create and configure VM.  _keptGlobals is Value.Null unless we were
+	// entered from ResetPreservingGlobals, in which case it holds the
+	// outgoing program's globals for the new VM to adopt.
 	vm =  VM::New();
 	vm.SetInterpreter(_this);
-	vm.Reset(compiledFunctions);
+	vm.Reset(compiledFunctions, _keptGlobals);
+	_keptGlobals = Value::Null;
 }
 FuncDef InterpreterStorage::CompileToFunc(String source,String fileName,Value* error) {
 	*error = Value::Null;

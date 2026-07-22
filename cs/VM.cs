@@ -349,6 +349,11 @@ public class VM {
 			vm.MarkFuncConstants(vm.callStack[ci].ReturnFunc);
 		}
 		GCManager.Mark(vm.ManualCallResult);
+		// The persistent globals map (REPL, or globals carried over from a
+		// previous program) is reachable only from here: it is not on the stack,
+		// and its gathered entries -- globals the current program never names --
+		// live in its hash table, not in any register.
+		GCManager.Mark(vm.ReplGlobals);
 		// Manual-call results saved on the pending-call stack (nested imports).
 		for (Int32 pi = 0; pi < vm._pendingCallStack.Count; pi++) {
 			GCManager.Mark(vm._pendingCallStack[pi].ManualResult);
@@ -570,6 +575,14 @@ public class VM {
 		Reset(allFunctions, Value.Null);
 	}
 
+	// Reset to run allFunctions, with a persistent globals VarMap.  Pass Value.Null
+	// for a normal (full) reset.  A non-null replGlobals makes the given map the
+	// new program's globals: it is gathered off whatever registers it was bound to
+	// and rebound to this VM's, so the variables in it survive into the new program.
+	// Two callers use this: the REPL, which passes the same VM its own globals map
+	// each line, and a host chaining to a new program via
+	// Interpreter.ResetPreservingGlobals, which passes a *fresh* VM the globals of
+	// the outgoing one.
 	public void Reset(List<FuncDef> allFunctions, Value replGlobals) {
 		bool partialReset = !replGlobals.IsNull();
 
@@ -581,9 +594,11 @@ public class VM {
 			if (allFunctions[i].Name == "@main") mainFunc = allFunctions[i];
 		}
 
-		// Intrinsics are built once and shared; (re)build the name->funcref
-		// table on a full reset.  In REPL mode it already exists.
-		if (!partialReset) {
+		// Intrinsics are built once and shared; build the name->funcref table if
+		// this VM doesn't have one yet.  (Keyed on the table rather than on
+		// partialReset because a VM can be freshly constructed *and* be given
+		// persistent globals -- that is how chaining to a new program works.)
+		if (_intrinsics == null) {
 			_intrinsics = new Dictionary<String, Value>();
 			Intrinsic.RegisterAll(_intrinsics);
 		}
@@ -2483,13 +2498,18 @@ public class VM {
 	}
 	*** END CPP_ONLY ***/
 
-	// Get the globals VarMap.  In REPL mode, returns the persistent ReplGlobals.
-	// Otherwise, returns @main's cached callStack[0].LocalVarMap (creating it on
-	// first use).  The cache stays current because NAME_rA_kBC keeps a live frame
-	// VarMap in sync as new variables are declared.  callStack[0].ReturnFunc
-	// holds @main's own function index (by convention for this slot), used to
-	// find @main's MaxRegs.
-	private Value GetGlobalsVarMap() {
+	// Get the globals VarMap: a live map view of the top-level (@main) variables,
+	// the same map the `globals` intrinsic returns.  In REPL mode, this is the
+	// persistent ReplGlobals.  Otherwise it is @main's cached
+	// callStack[0].LocalVarMap (created on first use).  The cache stays current
+	// because NAME_rA_kBC keeps a live frame VarMap in sync as new variables are
+	// declared.  callStack[0].ReturnFunc holds @main's own function index (by
+	// convention for this slot), used to find @main's MaxRegs.
+	//
+	// Public because host code needs it to carry globals from one program to the
+	// next: hand the result to VM.Reset of the VM running the new program (see
+	// Interpreter.ResetPreservingGlobals).
+	public Value GetGlobalsVarMap() {
 		if (!ReplGlobals.IsNull()) return ReplGlobals;
 		CallInfo gframe = callStack[0];
 		FuncDef rf = gframe.ReturnFunc;

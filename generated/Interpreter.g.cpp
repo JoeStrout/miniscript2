@@ -311,9 +311,7 @@ void InterpreterStorage::ResetReplGlobals() {
 	if (!IsNull(vm)) vm.set_ReplGlobals(Value::Null);
 }
 void InterpreterStorage::ReportError(Value error) {
-	String msg = StringUtils::Format("{0}", error.Message());
-	String prefix = error.IsaContains(ErrorTypes::compiler) ? "Compiler Error: " : "Runtime Error: ";
-	ReportError(prefix + msg);
+	ReportError(ErrorTypes::DescribeError(error));
 }
 void InterpreterStorage::ReportError(String message) {
 	if (!IsNull(errorOutput)) errorOutput(message, Boolean(true));

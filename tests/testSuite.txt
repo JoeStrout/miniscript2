@@ -1587,19 +1587,19 @@ print [a, b, c, d, e, f, g]
 ================================
 x = x
 --------------------------------
-Runtime Error: Undefined Identifier: 'x' is unknown in this context
+Runtime Error: Undefined Identifier: 'x' is unknown in this context [line 1]
 ================================
 ==== Self-reference in an expression with no enclosing variable is an error
 ================================
 x = x + 1
 --------------------------------
-Runtime Error: Undefined Identifier: 'x' is unknown in this context
+Runtime Error: Undefined Identifier: 'x' is unknown in this context [line 1]
 ================================
 ==== Self-reference in a collection with no enclosing variable is an error
 ================================
 x = [x]
 --------------------------------
-Runtime Error: Undefined Identifier: 'x' is unknown in this context
+Runtime Error: Undefined Identifier: 'x' is unknown in this context [line 1]
 ================================================================================
 ==== SECTION 9: WHILE LOOPS
 ================================================================================
@@ -2122,14 +2122,14 @@ end for
 m = {"a": 1}
 print m["b"]
 --------------------------------
-Runtime Error: Key Not Found: 'b' not found in map
+Runtime Error: Key Not Found: 'b' not found in map [line 2]
 ================================
 ==== Runtime error: index into non-collection
 ================================
 x = 42
 print x[0]
 --------------------------------
-Runtime Error: Can't index into 42
+Runtime Error: Can't index into 42 [line 2]
 ================================
 ==== Compiler error: break outside loop
 ================================
@@ -2414,7 +2414,7 @@ x = [1, 2, 3]
 freeze x
 remove x, 0
 --------------------------------
-Runtime Error: Attempt to modify a frozen list
+Runtime Error: Attempt to modify a frozen list [line 3]
 ================================
 ==== frozen map: remove raises error
 ================================
@@ -2422,7 +2422,7 @@ m = {"a": 1, "b": 2}
 freeze m
 remove m, "a"
 --------------------------------
-Runtime Error: Attempt to modify a frozen map
+Runtime Error: Attempt to modify a frozen map [line 3]
 ================================
 ==== list * huge count yields an error value (not an OOM)
 ================================
@@ -4619,7 +4619,7 @@ foo = function; end function
 m = info(@foo)
 m.x = 1
 ---------------------------------
-Runtime Error: Attempt to modify a frozen map
+Runtime Error: Attempt to modify a frozen map [line 3]
 ================================
 ==== address-of on map member: @foo.bar should return function, not invoke it
 ================================
@@ -4721,14 +4721,14 @@ print e isa error
 e = err("x")
 print e.foo
 ---------------------------------
-Runtime Error: Undefined error field 'foo'
+Runtime Error: Undefined error field 'foo' [line 2]
 ================================
 ==== error: used in if condition terminates
 ================================
 e = err("x")
 if e then print "yes"
 ---------------------------------
-Runtime Error: Error used in conditional: error: x
+Runtime Error: Error used in conditional: error: x [line 2]
 ================================
 ==== error: slice with error index terminates
 ================================
@@ -4736,7 +4736,7 @@ e = err("DOH")
 lst = [1, 2, 3, 4, 5]
 lst[2:e]
 ---------------------------------
-Runtime Error: Uncaught DOH
+Runtime Error: Uncaught DOH [line 2]
 ================================
 ==== error: numeric function with wrong arg type
 ================================

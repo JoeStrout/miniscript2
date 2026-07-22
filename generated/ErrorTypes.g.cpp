@@ -3,6 +3,7 @@
 
 #include "ErrorTypes.g.h"
 #include "CS_value_util.h"
+#include "StringUtils.g.h"
 
 namespace MiniScript {
 
@@ -44,6 +45,25 @@ Value ErrorTypes::FormatError(String msg) {
 Value ErrorTypes::TypeError(String expectedType,Value actualValue) {
 	return RuntimeError("Type error: " + expectedType + " required, but got "
 		+ actualValue.TypeName());
+}
+String ErrorTypes::ErrorLocation(Value error) {
+	Value stack = error.Stack();
+	if (!stack.IsList() || stack.ListCount() == 0) return "";
+	String loc = StringUtils::Format("{0}", stack.ListGet(0));
+	// Drop the "(current program) " prefix used for the top-level
+	// script, leaving just "line N" for the common case.
+	String prefix = "(current program) ";
+	if (loc.Length() >= prefix.Length() && loc.Left(prefix.Length()) == prefix) {
+		loc = loc.Substring(prefix.Length());
+	}
+	return loc;
+}
+String ErrorTypes::DescribeError(Value error) {
+	String prefix = error.IsaContains(compiler) ? "Compiler Error: " : "Runtime Error: ";
+	String msg = StringUtils::Format("{0}", error.Message());
+	String loc = ErrorLocation(error);
+	if (loc == "") return prefix + msg;
+	return StringUtils::Format("{0}{1} [{2}]", prefix, msg, loc);
 }
 void ErrorTypes::MarkRoots(object user_data) {
 	GCManager::Mark(compiler);

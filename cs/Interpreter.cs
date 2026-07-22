@@ -547,9 +547,7 @@ public class Interpreter {
 	// 
 	// <param name="error">error Value to report</param>
 	protected virtual void ReportError(Value error) {
-		String msg = StringUtils.Format("{0}", error.Message());
-		String prefix = error.IsaContains(ErrorTypes.compiler) ? "Compiler Error: " : "Runtime Error: ";
-		ReportError(prefix + msg);
+		ReportError(ErrorTypes.DescribeError(error));
 	}
 
 	// 

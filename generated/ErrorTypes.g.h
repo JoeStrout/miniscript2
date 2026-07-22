@@ -56,6 +56,20 @@ class ErrorTypes {
 	// RuntimeError for now, but can later get a dedicated __isa prototype.
 	public: static Value TypeError(String expectedType, Value actualValue);
 
+	// Return the source location of an error as "file line N" -- or just
+	// "line N" for the top-level script -- taken from the innermost frame of
+	// the error's stack trace.  Returns "" when the error carries no trace
+	// (a compiler error, or a runtime error raised before execution began).
+	public: static String ErrorLocation(Value error);
+
+	// Format an error as a complete one-line description: the standard prefix
+	// ("Runtime Error: " or "Compiler Error: "), the message, and the source
+	// location in brackets when the error carries one.  This is the single
+	// formatter for both VM.ReportRuntimeError (stdout, standalone use) and
+	// Interpreter.ReportError (the host's errorOutput delegate), so the two
+	// cannot drift apart.
+	public: static String DescribeError(Value error);
+
 	// GC mark callback to protect our static error prototypes from collection.
 	public: static void MarkRoots(object user_data);
 

@@ -721,23 +721,7 @@ public class VM {
 	// Returns false if there is no error.
 	public bool ReportRuntimeError() {
 		if (Error.IsNull()) return false;
-		String msg = StringUtils.Format("{0}", Error.Message());
-		String loc = "";
-		Value stack = Error.Stack();
-		if (stack.IsList() && stack.ListCount() > 0) {
-			loc = StringUtils.Format("{0}", stack.ListGet(0));
-			// Drop the "(current program) " prefix used for the top-level
-			// script, leaving just "line N" for the common case.
-			String prefix = "(current program) ";
-			if (loc.Length >= prefix.Length && loc.Left(prefix.Length) == prefix) {
-				loc = loc.Substring(prefix.Length);
-			}
-		}
-		if (loc == "") {
-			IOHelper.Print(StringUtils.Format("Runtime Error: {0}", msg));
-		} else {
-			IOHelper.Print(StringUtils.Format("Runtime Error: {0} [{1}]", msg, loc));
-		}
+		IOHelper.Print(ErrorTypes.DescribeError(Error));
 		return true;
 	}
 

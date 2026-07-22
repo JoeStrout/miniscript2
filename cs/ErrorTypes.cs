@@ -8,6 +8,7 @@ using System;
 // H: #include "value.h"
 // H: #include "GCManager.g.h"
 // CPP: #include "CS_value_util.h"
+// CPP: #include "StringUtils.g.h"
 
 namespace MiniScript {
 
@@ -79,6 +80,37 @@ public static class ErrorTypes {
 	public static Value TypeError(String expectedType, Value actualValue) {
 		return RuntimeError("Type error: " + expectedType + " required, but got "
 			+ actualValue.TypeName());
+	}
+
+	// Return the source location of an error as "file line N" -- or just
+	// "line N" for the top-level script -- taken from the innermost frame of
+	// the error's stack trace.  Returns "" when the error carries no trace
+	// (a compiler error, or a runtime error raised before execution began).
+	public static String ErrorLocation(Value error) {
+		Value stack = error.Stack();
+		if (!stack.IsList() || stack.ListCount() == 0) return "";
+		String loc = StringUtils.Format("{0}", stack.ListGet(0));
+		// Drop the "(current program) " prefix used for the top-level
+		// script, leaving just "line N" for the common case.
+		String prefix = "(current program) ";
+		if (loc.Length >= prefix.Length && loc.Left(prefix.Length) == prefix) {
+			loc = loc.Substring(prefix.Length);
+		}
+		return loc;
+	}
+
+	// Format an error as a complete one-line description: the standard prefix
+	// ("Runtime Error: " or "Compiler Error: "), the message, and the source
+	// location in brackets when the error carries one.  This is the single
+	// formatter for both VM.ReportRuntimeError (stdout, standalone use) and
+	// Interpreter.ReportError (the host's errorOutput delegate), so the two
+	// cannot drift apart.
+	public static String DescribeError(Value error) {
+		String prefix = error.IsaContains(compiler) ? "Compiler Error: " : "Runtime Error: ";
+		String msg = StringUtils.Format("{0}", error.Message());
+		String loc = ErrorLocation(error);
+		if (loc == "") return prefix + msg;
+		return StringUtils.Format("{0}{1} [{2}]", prefix, msg, loc);
 	}
 
 	// GC mark callback to protect our static error prototypes from collection.

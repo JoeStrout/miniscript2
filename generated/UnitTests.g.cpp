@@ -956,6 +956,64 @@ Boolean UnitTests::TestGCHandle() {
 	if (!ok) IOHelper::Print("TestGCHandle FAILED");
 	return ok;
 }
+Boolean UnitTests::CheckMayReadVar(Parser parser,String input,String varName,Boolean expected) {
+	ASTNode ast = parser.Parse(input);
+	if (parser.HadError()) {
+		IOHelper::Print(Interp("Parse error for input: {}", input));
+		return Boolean(false);
+	}
+	AssignmentNode assign = As<AssignmentNode, AssignmentNodeStorage>(ast.Simplify());
+	if (IsNull(assign)) {
+		IOHelper::Print(Interp("MayReadVar test input is not an assignment: {}", input));
+		return Boolean(false);
+	}
+	Boolean result = assign.Value().MayReadVar(varName);
+	if (result != expected) {
+		IOHelper::Print(Interp("MayReadVar('{}') on RHS of `{}`: expected {}, got {}", varName, input, expected, result));
+		return Boolean(false);
+	}
+	return Boolean(true);
+}
+Boolean UnitTests::TestMayReadVar() {
+	Parser parser =  Parser::New();
+	Boolean ok = Boolean(true);
+
+	// Structural recursion should find the name wherever it appears.
+	ok = ok && CheckMayReadVar(parser, "x = x", "x", Boolean(true));
+	ok = ok && CheckMayReadVar(parser, "x = @x", "x", Boolean(true));
+	ok = ok && CheckMayReadVar(parser, "x = [x]", "x", Boolean(true));
+	ok = ok && CheckMayReadVar(parser, "x = [[1, x]]", "x", Boolean(true));
+	ok = ok && CheckMayReadVar(parser, "x = {x: 1}", "x", Boolean(true));
+	ok = ok && CheckMayReadVar(parser, "x = {1: x}", "x", Boolean(true));
+	ok = ok && CheckMayReadVar(parser, "x = 1 + x * 2", "x", Boolean(true));
+	ok = ok && CheckMayReadVar(parser, "x = -x", "x", Boolean(true));
+	ok = ok && CheckMayReadVar(parser, "x = f(x)", "x", Boolean(true));
+	ok = ok && CheckMayReadVar(parser, "x = x(1)", "x", Boolean(true));
+	ok = ok && CheckMayReadVar(parser, "x = x.foo", "x", Boolean(true));
+	ok = ok && CheckMayReadVar(parser, "x = x[1]", "x", Boolean(true));
+	ok = ok && CheckMayReadVar(parser, "x = a[1:x]", "x", Boolean(true));
+	ok = ok && CheckMayReadVar(parser, "x = 0 <= x <= 9", "x", Boolean(true));
+
+	// ...and answer false when it genuinely does not appear.
+	ok = ok && CheckMayReadVar(parser, "x = 42", "x", Boolean(false));
+	ok = ok && CheckMayReadVar(parser, "x = \"s\"", "x", Boolean(false));
+	ok = ok && CheckMayReadVar(parser, "x = []", "x", Boolean(false));
+	ok = ok && CheckMayReadVar(parser, "x = [y, z]", "x", Boolean(false));
+	ok = ok && CheckMayReadVar(parser, "x = f(y)", "x", Boolean(false));
+	// A member name is not a variable read: y.x reads y, not x.
+	ok = ok && CheckMayReadVar(parser, "x = y.x", "x", Boolean(false));
+
+	// ScopeNode resolves by name at runtime, reaching registers the AST never
+	// names, so it must answer true for any variable.  This is what keeps
+	// "x = [globals.x]" from building a list containing itself.
+	ok = ok && CheckMayReadVar(parser, "x = [globals.x]", "x", Boolean(true));
+	ok = ok && CheckMayReadVar(parser, "x = [locals.x]", "x", Boolean(true));
+	ok = ok && CheckMayReadVar(parser, "x = globals[\"x\"]", "x", Boolean(true));
+	ok = ok && CheckMayReadVar(parser, "x = [outer.somethingElse]", "x", Boolean(true));
+
+	if (!ok) IOHelper::Print("TestMayReadVar FAILED");
+	return ok;
+}
 Boolean UnitTests::RunAll() {
 	return TestStringUtils()
 		&& TestDisassembler()
@@ -963,6 +1021,7 @@ Boolean UnitTests::RunAll() {
 		&& TestValueMap()
 		&& TestLexer()
 		&& TestParser()
+		&& TestMayReadVar()
 		&& TestCodeGenerator()
 		&& TestEmitPatternValidation()
 		&& TestParserNeedMoreInput()

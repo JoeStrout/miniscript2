@@ -1094,4 +1094,6 @@ One gotcha: some host code was calling someVal.ToString().c_str(), which until n
 
 Working today on some issues related to resolving variable values while building a list or map.  This was found by MineRobber9000, with a suggested fix in PR#10, but I'm going to take a somewhat different approach to fixing it.
 
+But this led to discovery of a related bug; something like `y = [y]` where `y` is a global results in `[null]`, rather than a list containing whatever the value of `y` was.  This appears to be because the NAME opcode pulls in the value of the register.  This NAME opcode has to be done before we evaluate the RHS in an assignment (since if we do it after, it would pull in the old/stale value and clobber the result we just computed).  ...Well, unless we compile the RHS into a temp, and then copy the temp into the register.  Which might be the right solution here.
+
 

@@ -42,6 +42,9 @@ ASTNode NumberNodeStorage::Simplify() {
 	NumberNode _this(std::static_pointer_cast<NumberNodeStorage>(shared_from_this()));
 	return _this;
 }
+Boolean NumberNodeStorage::MayReadVar(String varName) {
+	return Boolean(false);
+}
 Int32 NumberNodeStorage::Accept(IASTVisitor& visitor) {
 	NumberNode _this(std::static_pointer_cast<NumberNodeStorage>(shared_from_this()));
 	return visitor.Visit(_this);
@@ -57,6 +60,9 @@ ASTNode StringNodeStorage::Simplify() {
 	StringNode _this(std::static_pointer_cast<StringNodeStorage>(shared_from_this()));
 	return _this;
 }
+Boolean StringNodeStorage::MayReadVar(String varName) {
+	return Boolean(false);
+}
 Int32 StringNodeStorage::Accept(IASTVisitor& visitor) {
 	StringNode _this(std::static_pointer_cast<StringNodeStorage>(shared_from_this()));
 	return visitor.Visit(_this);
@@ -71,6 +77,9 @@ String IdentifierNodeStorage::ToStr() {
 ASTNode IdentifierNodeStorage::Simplify() {
 	IdentifierNode _this(std::static_pointer_cast<IdentifierNodeStorage>(shared_from_this()));
 	return _this;
+}
+Boolean IdentifierNodeStorage::MayReadVar(String varName) {
+	return Name == varName;
 }
 Int32 IdentifierNodeStorage::Accept(IASTVisitor& visitor) {
 	IdentifierNode _this(std::static_pointer_cast<IdentifierNodeStorage>(shared_from_this()));
@@ -88,6 +97,9 @@ ASTNode AssignmentNodeStorage::Simplify() {
 	ASTNode simplifiedValue = Value.Simplify();
 	return CopyLine( AssignmentNode::New(Variable, simplifiedValue));
 }
+Boolean AssignmentNodeStorage::MayReadVar(String varName) {
+	return Value.MayReadVar(varName);
+}
 Int32 AssignmentNodeStorage::Accept(IASTVisitor& visitor) {
 	AssignmentNode _this(std::static_pointer_cast<AssignmentNodeStorage>(shared_from_this()));
 	return visitor.Visit(_this);
@@ -104,6 +116,11 @@ String IndexedAssignmentNodeStorage::ToStr() {
 }
 ASTNode IndexedAssignmentNodeStorage::Simplify() {
 	return CopyLine( IndexedAssignmentNode::New(Target.Simplify(), Index.Simplify(), Value.Simplify(), LHSName));
+}
+Boolean IndexedAssignmentNodeStorage::MayReadVar(String varName) {
+	return Target.MayReadVar(varName)
+		|| Index.MayReadVar(varName)
+		|| Value.MayReadVar(varName);
 }
 Int32 IndexedAssignmentNodeStorage::Accept(IASTVisitor& visitor) {
 	IndexedAssignmentNode _this(std::static_pointer_cast<IndexedAssignmentNodeStorage>(shared_from_this()));
@@ -133,6 +150,9 @@ ASTNode UnaryOpNodeStorage::Simplify() {
 
 	// Otherwise return unary op with simplified operand
 	return  UnaryOpNode::New(Op, simplifiedOperand);
+}
+Boolean UnaryOpNodeStorage::MayReadVar(String varName) {
+	return Operand.MayReadVar(varName);
 }
 Int32 UnaryOpNodeStorage::Accept(IASTVisitor& visitor) {
 	UnaryOpNode _this(std::static_pointer_cast<UnaryOpNodeStorage>(shared_from_this()));
@@ -225,6 +245,9 @@ ASTNode BinaryOpNodeStorage::Simplify() {
 	// Otherwise return binary op with simplified operands
 	return  BinaryOpNode::New(Op, simplifiedLeft, simplifiedRight);
 }
+Boolean BinaryOpNodeStorage::MayReadVar(String varName) {
+	return Left.MayReadVar(varName) || Right.MayReadVar(varName);
+}
 Int32 BinaryOpNodeStorage::Accept(IASTVisitor& visitor) {
 	BinaryOpNode _this(std::static_pointer_cast<BinaryOpNodeStorage>(shared_from_this()));
 	return visitor.Visit(_this);
@@ -247,6 +270,12 @@ ASTNode ComparisonChainNodeStorage::Simplify() {
 		simplifiedOperands.Add(Operands[i].Simplify());
 	}
 	return  ComparisonChainNode::New(simplifiedOperands, Operators);
+}
+Boolean ComparisonChainNodeStorage::MayReadVar(String varName) {
+	for (Int32 i = 0; i < Operands.Count(); i++) {
+		if (Operands[i].MayReadVar(varName)) return Boolean(true);
+	}
+	return Boolean(false);
 }
 Int32 ComparisonChainNodeStorage::Accept(IASTVisitor& visitor) {
 	ComparisonChainNode _this(std::static_pointer_cast<ComparisonChainNodeStorage>(shared_from_this()));
@@ -277,6 +306,13 @@ ASTNode CallNodeStorage::Simplify() {
 	}
 	return CopyLine( CallNode::New(Function, simplifiedArgs));
 }
+Boolean CallNodeStorage::MayReadVar(String varName) {
+	if (Function == varName) return Boolean(true);
+	for (Int32 i = 0; i < Arguments.Count(); i++) {
+		if (Arguments[i].MayReadVar(varName)) return Boolean(true);
+	}
+	return Boolean(false);
+}
 Int32 CallNodeStorage::Accept(IASTVisitor& visitor) {
 	CallNode _this(std::static_pointer_cast<CallNodeStorage>(shared_from_this()));
 	return visitor.Visit(_this);
@@ -291,6 +327,9 @@ String GroupNodeStorage::ToStr() {
 ASTNode GroupNodeStorage::Simplify() {
 	// Groups don't affect value, just return simplified child
 	return Expression.Simplify();
+}
+Boolean GroupNodeStorage::MayReadVar(String varName) {
+	return Expression.MayReadVar(varName);
 }
 Int32 GroupNodeStorage::Accept(IASTVisitor& visitor) {
 	GroupNode _this(std::static_pointer_cast<GroupNodeStorage>(shared_from_this()));
@@ -318,6 +357,12 @@ ASTNode ListNodeStorage::Simplify() {
 		simplifiedElements.Add(Elements[i].Simplify());
 	}
 	return  ListNode::New(simplifiedElements);
+}
+Boolean ListNodeStorage::MayReadVar(String varName) {
+	for (Int32 i = 0; i < Elements.Count(); i++) {
+		if (Elements[i].MayReadVar(varName)) return Boolean(true);
+	}
+	return Boolean(false);
 }
 Int32 ListNodeStorage::Accept(IASTVisitor& visitor) {
 	ListNode _this(std::static_pointer_cast<ListNodeStorage>(shared_from_this()));
@@ -350,6 +395,13 @@ ASTNode MapNodeStorage::Simplify() {
 	}
 	return  MapNode::New(simplifiedKeys, simplifiedValues);
 }
+Boolean MapNodeStorage::MayReadVar(String varName) {
+	for (Int32 i = 0; i < Keys.Count(); i++) {
+		if (Keys[i].MayReadVar(varName)) return Boolean(true);
+		if (Values[i].MayReadVar(varName)) return Boolean(true);
+	}
+	return Boolean(false);
+}
 Int32 MapNodeStorage::Accept(IASTVisitor& visitor) {
 	MapNode _this(std::static_pointer_cast<MapNodeStorage>(shared_from_this()));
 	return visitor.Visit(_this);
@@ -364,6 +416,9 @@ String IndexNodeStorage::ToStr() {
 }
 ASTNode IndexNodeStorage::Simplify() {
 	return  IndexNode::New(Target.Simplify(), Index.Simplify());
+}
+Boolean IndexNodeStorage::MayReadVar(String varName) {
+	return Target.MayReadVar(varName) || Index.MayReadVar(varName);
 }
 Int32 IndexNodeStorage::Accept(IASTVisitor& visitor) {
 	IndexNode _this(std::static_pointer_cast<IndexNodeStorage>(shared_from_this()));
@@ -385,6 +440,12 @@ ASTNode SliceNodeStorage::Simplify() {
 	ASTNode simplifiedEnd = (!IsNull(EndIndex)) ? EndIndex.Simplify() : nullptr;
 	return  SliceNode::New(Target.Simplify(), simplifiedStart, simplifiedEnd);
 }
+Boolean SliceNodeStorage::MayReadVar(String varName) {
+	if (Target.MayReadVar(varName)) return Boolean(true);
+	if (!IsNull(StartIndex) && StartIndex.MayReadVar(varName)) return Boolean(true);
+	if (!IsNull(EndIndex) && EndIndex.MayReadVar(varName)) return Boolean(true);
+	return Boolean(false);
+}
 Int32 SliceNodeStorage::Accept(IASTVisitor& visitor) {
 	SliceNode _this(std::static_pointer_cast<SliceNodeStorage>(shared_from_this()));
 	return visitor.Visit(_this);
@@ -399,6 +460,9 @@ String MemberNodeStorage::ToStr() {
 }
 ASTNode MemberNodeStorage::Simplify() {
 	return  MemberNode::New(Target.Simplify(), Member);
+}
+Boolean MemberNodeStorage::MayReadVar(String varName) {
+	return Target.MayReadVar(varName);
 }
 Int32 MemberNodeStorage::Accept(IASTVisitor& visitor) {
 	MemberNode _this(std::static_pointer_cast<MemberNodeStorage>(shared_from_this()));
@@ -426,6 +490,13 @@ ASTNode MethodCallNodeStorage::Simplify() {
 	}
 	return  MethodCallNode::New(Target.Simplify(), Method, simplifiedArgs);
 }
+Boolean MethodCallNodeStorage::MayReadVar(String varName) {
+	if (Target.MayReadVar(varName)) return Boolean(true);
+	for (Int32 i = 0; i < Arguments.Count(); i++) {
+		if (Arguments[i].MayReadVar(varName)) return Boolean(true);
+	}
+	return Boolean(false);
+}
 Int32 MethodCallNodeStorage::Accept(IASTVisitor& visitor) {
 	MethodCallNode _this(std::static_pointer_cast<MethodCallNodeStorage>(shared_from_this()));
 	return visitor.Visit(_this);
@@ -451,6 +522,13 @@ ASTNode ExprCallNodeStorage::Simplify() {
 	}
 	return CopyLine( ExprCallNode::New(Function.Simplify(), simplifiedArgs));
 }
+Boolean ExprCallNodeStorage::MayReadVar(String varName) {
+	if (Function.MayReadVar(varName)) return Boolean(true);
+	for (Int32 i = 0; i < Arguments.Count(); i++) {
+		if (Arguments[i].MayReadVar(varName)) return Boolean(true);
+	}
+	return Boolean(false);
+}
 Int32 ExprCallNodeStorage::Accept(IASTVisitor& visitor) {
 	ExprCallNode _this(std::static_pointer_cast<ExprCallNodeStorage>(shared_from_this()));
 	return visitor.Visit(_this);
@@ -475,6 +553,13 @@ ASTNode WhileNodeStorage::Simplify() {
 		simplifiedBody.Add(Body[i].Simplify());
 	}
 	return CopyLine( WhileNode::New(simplifiedCondition, simplifiedBody));
+}
+Boolean WhileNodeStorage::MayReadVar(String varName) {
+	if (Condition.MayReadVar(varName)) return Boolean(true);
+	for (Int32 i = 0; i < Body.Count(); i++) {
+		if (Body[i].MayReadVar(varName)) return Boolean(true);
+	}
+	return Boolean(false);
 }
 Int32 WhileNodeStorage::Accept(IASTVisitor& visitor) {
 	WhileNode _this(std::static_pointer_cast<WhileNodeStorage>(shared_from_this()));
@@ -512,6 +597,16 @@ ASTNode IfNodeStorage::Simplify() {
 	}
 	return CopyLine( IfNode::New(simplifiedCondition, simplifiedThenBody, simplifiedElseBody));
 }
+Boolean IfNodeStorage::MayReadVar(String varName) {
+	if (Condition.MayReadVar(varName)) return Boolean(true);
+	for (Int32 i = 0; i < ThenBody.Count(); i++) {
+		if (ThenBody[i].MayReadVar(varName)) return Boolean(true);
+	}
+	for (Int32 i = 0; i < ElseBody.Count(); i++) {
+		if (ElseBody[i].MayReadVar(varName)) return Boolean(true);
+	}
+	return Boolean(false);
+}
 Int32 IfNodeStorage::Accept(IASTVisitor& visitor) {
 	IfNode _this(std::static_pointer_cast<IfNodeStorage>(shared_from_this()));
 	return visitor.Visit(_this);
@@ -538,6 +633,13 @@ ASTNode ForNodeStorage::Simplify() {
 	}
 	return CopyLine( ForNode::New(Variable, simplifiedIterable, simplifiedBody));
 }
+Boolean ForNodeStorage::MayReadVar(String varName) {
+	if (Iterable.MayReadVar(varName)) return Boolean(true);
+	for (Int32 i = 0; i < Body.Count(); i++) {
+		if (Body[i].MayReadVar(varName)) return Boolean(true);
+	}
+	return Boolean(false);
+}
 Int32 ForNodeStorage::Accept(IASTVisitor& visitor) {
 	ForNode _this(std::static_pointer_cast<ForNodeStorage>(shared_from_this()));
 	return visitor.Visit(_this);
@@ -552,6 +654,9 @@ ASTNode BreakNodeStorage::Simplify() {
 	BreakNode _this(std::static_pointer_cast<BreakNodeStorage>(shared_from_this()));
 	return _this;
 }
+Boolean BreakNodeStorage::MayReadVar(String varName) {
+	return Boolean(false);
+}
 Int32 BreakNodeStorage::Accept(IASTVisitor& visitor) {
 	BreakNode _this(std::static_pointer_cast<BreakNodeStorage>(shared_from_this()));
 	return visitor.Visit(_this);
@@ -565,6 +670,9 @@ String ContinueNodeStorage::ToStr() {
 ASTNode ContinueNodeStorage::Simplify() {
 	ContinueNode _this(std::static_pointer_cast<ContinueNodeStorage>(shared_from_this()));
 	return _this;
+}
+Boolean ContinueNodeStorage::MayReadVar(String varName) {
+	return Boolean(false);
 }
 Int32 ContinueNodeStorage::Accept(IASTVisitor& visitor) {
 	ContinueNode _this(std::static_pointer_cast<ContinueNodeStorage>(shared_from_this()));
@@ -609,6 +717,12 @@ ASTNode FunctionNodeStorage::Simplify() {
 	}
 	return CopyLine( FunctionNode::New(ParamNames, simplifiedDefaults, simplifiedBody));
 }
+Boolean FunctionNodeStorage::MayReadVar(String varName) {
+	// Defining a function reads nothing: FUNCREF binds a template plus the
+	// current frame as closure context, and the body's reads happen later,
+	// when it is called.  Parameter defaults must be compile-time constants.
+	return Boolean(false);
+}
 Int32 FunctionNodeStorage::Accept(IASTVisitor& visitor) {
 	FunctionNode _this(std::static_pointer_cast<FunctionNodeStorage>(shared_from_this()));
 	return visitor.Visit(_this);
@@ -621,6 +735,9 @@ ASTNode SelfNodeStorage::Simplify() {
 	SelfNode _this(std::static_pointer_cast<SelfNodeStorage>(shared_from_this()));
 	return _this;
 }
+Boolean SelfNodeStorage::MayReadVar(String varName) {
+	return Boolean(false);
+}
 Int32 SelfNodeStorage::Accept(IASTVisitor& visitor) {
 	SelfNode _this(std::static_pointer_cast<SelfNodeStorage>(shared_from_this()));
 	return visitor.Visit(_this);
@@ -632,6 +749,9 @@ String SuperNodeStorage::ToStr() {
 ASTNode SuperNodeStorage::Simplify() {
 	SuperNode _this(std::static_pointer_cast<SuperNodeStorage>(shared_from_this()));
 	return _this;
+}
+Boolean SuperNodeStorage::MayReadVar(String varName) {
+	return Boolean(false);
 }
 Int32 SuperNodeStorage::Accept(IASTVisitor& visitor) {
 	SuperNode _this(std::static_pointer_cast<SuperNodeStorage>(shared_from_this()));
@@ -650,6 +770,12 @@ ASTNode ScopeNodeStorage::Simplify() {
 	ScopeNode _this(std::static_pointer_cast<ScopeNodeStorage>(shared_from_this()));
 	return _this;
 }
+Boolean ScopeNodeStorage::MayReadVar(String varName) {
+	// `locals`/`globals`/`outer` are live windows onto the register file, so a
+	// read through one (locals.x, globals["x"], or a map handed elsewhere) can
+	// reach any variable without naming it in the AST.  Always answer true.
+	return Boolean(true);
+}
 Int32 ScopeNodeStorage::Accept(IASTVisitor& visitor) {
 	ScopeNode _this(std::static_pointer_cast<ScopeNodeStorage>(shared_from_this()));
 	return visitor.Visit(_this);
@@ -666,6 +792,9 @@ ASTNode ReturnNodeStorage::Simplify() {
 	ReturnNode _this(std::static_pointer_cast<ReturnNodeStorage>(shared_from_this()));
 	if (!IsNull(Value)) return CopyLine( ReturnNode::New(Value.Simplify()));
 	return _this;
+}
+Boolean ReturnNodeStorage::MayReadVar(String varName) {
+	return !IsNull(Value) && Value.MayReadVar(varName);
 }
 Int32 ReturnNodeStorage::Accept(IASTVisitor& visitor) {
 	ReturnNode _this(std::static_pointer_cast<ReturnNodeStorage>(shared_from_this()));

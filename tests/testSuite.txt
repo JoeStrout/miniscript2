@@ -1366,6 +1366,241 @@ print b
 [10]
 [10]
 ================================================================================
+==== SECTION 8c: FIRST ASSIGNMENT AND SCOPE SHADOWING
+================================================================================
+==== First assignment reads the enclosing variable, not the new local
+================================
+globals.n = 5
+globals.s = "hi"
+globals.lst = [1, 2]
+globals.m = {"k": "v"}
+f = function
+	n = n + 1
+	return n
+end function
+print f
+g = function
+	s = s + "!"
+	return s
+end function
+print g
+h = function
+	lst = lst + [3]
+	return lst
+end function
+print h
+k = function
+	m = {"outer": m}
+	return m
+end function
+print k
+// the globals themselves are untouched
+print n
+print s
+print lst
+print m
+--------------------------------
+6
+hi!
+[1, 2, 3]
+{"outer": {"k": "v"}}
+5
+hi
+[1, 2]
+{"k": "v"}
+================================
+==== First assignment with a recursive collection reads the enclosing variable
+================================
+globals.y = 5
+f = function
+	y = [y]
+	return y
+end function
+print f
+g = function
+	y = {y: y}
+	return y
+end function
+print g
+print y
+--------------------------------
+[5]
+{5: 5}
+5
+================================
+==== Shadowing through outer function scope
+================================
+outerFn = function
+	v = 10
+	innerFn = function
+		v = v + 1
+		return v
+	end function
+	a = innerFn
+	b = innerFn
+	return [a, b, v]
+end function
+print outerFn
+--------------------------------
+[11, 11, 10]
+================================
+==== First assignment sees a value placed in locals earlier
+================================
+f = function
+	locals.v = 3
+	v = v + 1
+	return v
+end function
+print f
+g = function
+	w = 7
+	return locals.w
+end function
+print g
+--------------------------------
+4
+7
+================================
+==== Reassignment still reads the local register
+================================
+x = 1
+x = x + 1
+x = x * 10
+print x
+f = function
+	t = 1
+	t = t + 1
+	t = t * 10
+	return t
+end function
+print f
+total = 0
+for i in range(1, 5)
+	total = total + i
+end for
+print total
+--------------------------------
+20
+20
+15
+================================
+==== First assignment in only one branch
+================================
+c = 1
+if c then
+	q = 10
+else
+	q = 20
+end if
+print q
+d = 0
+if d then
+	r = 10
+else
+	r = 20
+end if
+print r
+--------------------------------
+10
+20
+================================
+==== Recursive function definition still resolves
+================================
+fact = function(k)
+	if k <= 1 then return 1
+	return k * fact(k - 1)
+end function
+print fact(5)
+--------------------------------
+120
+================================
+==== Closure captures a variable assigned before it
+================================
+mk = function
+	acc = []
+	adder = function(v)
+		acc.push v
+		return acc
+	end function
+	adder 1
+	adder 2
+	return acc
+end function
+print mk
+--------------------------------
+[1, 2]
+================================
+==== First assignment of a value that reads nothing still shadows correctly
+================================
+globals.z = 99
+f = function
+	z = []
+	z.push 1
+	return z
+end function
+print f
+g = function
+	z = {}
+	z.a = 1
+	return z
+end function
+print g
+h = function
+	z = true
+	return z
+end function
+print h
+k = function
+	z = null
+	return z == null
+end function
+print k
+m = function
+	z = 42
+	return z
+end function
+print m
+// the enclosing z is untouched throughout
+print z
+--------------------------------
+[1]
+{"a": 1}
+1
+1
+42
+99
+================================
+==== Constant folding leaves first assignments unchanged in meaning
+================================
+a = 40 + 2
+b = 2 * 3 + 1
+c = -5
+d = "ab" + "cd"
+e = 1 < 2
+f = not 0
+g = 2 ^ 10
+print [a, b, c, d, e, f, g]
+--------------------------------
+[42, 7, -5, "abcd", 1, 1, 1024]
+================================
+==== Self-reference with no enclosing variable is an error
+================================
+x = x
+--------------------------------
+Runtime Error: Undefined Identifier: 'x' is unknown in this context
+================================
+==== Self-reference in an expression with no enclosing variable is an error
+================================
+x = x + 1
+--------------------------------
+Runtime Error: Undefined Identifier: 'x' is unknown in this context
+================================
+==== Self-reference in a collection with no enclosing variable is an error
+================================
+x = [x]
+--------------------------------
+Runtime Error: Undefined Identifier: 'x' is unknown in this context
+================================================================================
 ==== SECTION 9: WHILE LOOPS
 ================================================================================
 ==== Basic while loop

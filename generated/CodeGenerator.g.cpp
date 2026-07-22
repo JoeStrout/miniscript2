@@ -290,36 +290,60 @@ Int32 CodeGeneratorStorage::Visit(AssignmentNode node) {
 		if (Error.IsNull()) Error = ErrorTypes::CompilerError(StringUtils::Format("unexpected target register {0} in assignment", _targetReg));
 	}
 	
-	// Get or allocate register for this variable
+	// Get or allocate register for this variable.
 	Int32 varReg;
-	if (_variableRegs.TryGetValue(node.Variable(), &varReg)) {
-		// Variable already has a register - reuse it
-	} else {
+	Boolean isNew = !_variableRegs.TryGetValue(node.Variable(), &varReg);
+	if (isNew) {
 		// Hmm.  Should we allocate a new register for this variable, or
 		// just claim the target register as our storage?  I'm going to alloc
 		// a new one for now, because I can't be sure the caller won't free
 		// the target register when done.  But we should probably return to
 		// this later and see if we can optimize it more.
 		varReg = AllocReg();
-		_variableRegs[node.Variable()] = varReg;
 	}
+
+	// Creating a variable whose name the RHS also reads is the one case where the
+	// NAME op has to wait: NAME is what makes the register findable by name, and
+	// while it is pending, VisitIdentifier emits the r0 form of LOADC so the VM
+	// walks out to the enclosing scope.  That is what lets "n = n + 1" creating a
+	// local n read the global n.  The RHS then has to land in a temp so the copy
+	// can follow the NAME (see below).
+	//
+	// This is only about *creating* a variable.  Once it exists, the RHS should
+	// read its register, so NAME stays ahead of the RHS and no temp is needed --
+	// "x = x + 1" compiles straight into x's register.  Guarding the destination
+	// against a RHS that overwrites it before reading its operands is a separate
+	// concern, handled by IsLiveVariableReg in Visit(ListNode)/Visit(MapNode).
+	Boolean useTemp = isNew && node.Value().MayReadVar(node.Variable());
+
 	// Emit a NAME op unless one already dominates this point.  This must run
 	// on every path that assigns the variable, including conditional branches
 	// (e.g. the else clause of a single-line if), or the variable would be
 	// undefined at runtime when only that path executes.
-	//
-	// NAME must stay ahead of the RHS: via MapToRegister it imports any existing
-	// value for this name out of a live VarMap (ReplGlobals, or the frame's
-	// LocalVarMap) and into the register.  That import is how REPL globals
-	// persist across lines, and it overwrites the register -- so emitting NAME
-	// after the RHS would discard the value just computed.
-	EnsureNamed(node.Variable(), varReg);
+	if (!useTemp) EnsureNamed(node.Variable(), varReg);
 	// If the RHS is a function expression, note the current function count so we
 	// can assign the variable name to the resulting FuncDef afterward.
 	FunctionNode rhsFunc = As<FunctionNode, FunctionNodeStorage>(node.Value());
 	Int32 funcIndexBeforeRHS = _functions.Count();
 
-	CompileInto(node.Value(), varReg);  // get RHS directly into the variable's register
+	if (useTemp) {
+		Int32 tempReg = AllocReg();
+		Int32 rhsReg = CompileInto(node.Value(), tempReg);
+		// NAME is not a passive binding: via MapToRegister it imports any existing
+		// value for this name out of a live VarMap (ReplGlobals, or the frame's
+		// LocalVarMap) into the register, which is how REPL globals persist across
+		// lines.  Copying the temp in afterwards overwrites that stale import with
+		// the value we just computed, so the copy must follow the NAME.
+		EnsureNamed(node.Variable(), varReg);
+		_emitter.EmitABC(Opcode::LOAD_rA_rB, varReg, rhsReg, 0, Interp("r{} = r{}", varReg, rhsReg));
+		FreeReg(tempReg);
+	} else {
+		CompileInto(node.Value(), varReg);  // get RHS directly into the variable's register
+	}
+
+	// The variable exists from here on, so nested expressions in later statements
+	// may read its register directly.
+	if (isNew) _variableRegs[node.Variable()] = varReg;
 
 	// If the RHS was a function expression, give that FuncDef the variable name.
 	if (!IsNull(rhsFunc) && funcIndexBeforeRHS < _functions.Count()) {
@@ -660,9 +684,9 @@ Int32 CodeGeneratorStorage::Visit(ListNode node) {
 	Int32 listReg = GetTargetOrAlloc();
 
 	// LIST writes its destination before the elements are evaluated, so if the
-	// destination holds a live variable, an element that reads that variable
-	// would see the new (empty) list instead -- e.g. "x = [x]" would build a
-	// list containing itself.  Build in a temp and copy at the end.
+	// destination holds a live variable, an element that reads that variable would
+	// see the new (empty) list instead -- e.g. "x = [x]" would build a list
+	// containing itself.  Build in a temp and copy at the end.
 	Int32 buildReg = listReg;
 	if (IsLiveVariableReg(listReg)) buildReg = AllocReg();
 
@@ -688,8 +712,8 @@ Int32 CodeGeneratorStorage::Visit(MapNode node) {
 	CodeGenerator _this(std::static_pointer_cast<CodeGeneratorStorage>(shared_from_this()));
 	Int32 mapReg = GetTargetOrAlloc();
 
-	// As in Visit(ListNode): MAP writes its destination before the keys and
-	// values are evaluated, so build in a temp when the destination is live.
+	// As in Visit(ListNode): MAP writes its destination before the keys and values
+	// are evaluated, so build in a temp when the destination is live.
 	Int32 buildReg = mapReg;
 	if (IsLiveVariableReg(mapReg)) buildReg = AllocReg();
 

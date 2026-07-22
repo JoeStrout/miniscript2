@@ -95,11 +95,23 @@ struct ASTNode {
 	public: void set_Line(Int32 _v); // source line number (set by parser)
 	public: String ToStr();
 	public: ASTNode Simplify();
+	public: Boolean MayReadVar(String varName);
 
 	// Each node type should override this to provide a string representation
 
 	// Simplify this node (constant folding and other optimizations)
 	// Returns a simplified version of this node (may be a new node, or this node unchanged)
+
+	// Could evaluating this node read the variable `varName`?
+	// The code generator uses this to decide whether an assignment's RHS has to be
+	// computed in a temporary register: "x = [x]" must read the old x before the new
+	// one lands, and "x = x + 1" creating a local x must resolve x to the enclosing
+	// scope.  Answering true is always safe (it just costs a register-to-register
+	// move), so this is deliberately abstract rather than defaulting to false: a new
+	// node type must state its answer instead of silently opting out and
+	// miscompiling.  Note ScopeNode answers true unconditionally -- `locals` and
+	// `globals` are live windows onto every register, so a read through one is
+	// invisible to any name-matching walk.
 
 	// Copy the source line from this node to the given node and return it.
 	// Call as `return CopyLine(new SomeNode(...));` inside Simplify() overrides.
@@ -115,11 +127,23 @@ class ASTNodeStorage : public std::enable_shared_from_this<ASTNodeStorage> {
 	public: Int32 Line = 0; // source line number (set by parser)
 	public: virtual String ToStr() = 0;
 	public: virtual ASTNode Simplify() = 0;
+	public: virtual Boolean MayReadVar(String varName) = 0;
 
 	// Each node type should override this to provide a string representation
 
 	// Simplify this node (constant folding and other optimizations)
 	// Returns a simplified version of this node (may be a new node, or this node unchanged)
+
+	// Could evaluating this node read the variable `varName`?
+	// The code generator uses this to decide whether an assignment's RHS has to be
+	// computed in a temporary register: "x = [x]" must read the old x before the new
+	// one lands, and "x = x + 1" creating a local x must resolve x to the enclosing
+	// scope.  Answering true is always safe (it just costs a register-to-register
+	// move), so this is deliberately abstract rather than defaulting to false: a new
+	// node type must state its answer instead of silently opting out and
+	// miscompiling.  Note ScopeNode answers true unconditionally -- `locals` and
+	// `globals` are live windows onto every register, so a read through one is
+	// invisible to any name-matching walk.
 
 	// Copy the source line from this node to the given node and return it.
 	// Call as `return CopyLine(new SomeNode(...));` inside Simplify() overrides.
@@ -139,6 +163,8 @@ class NumberNodeStorage : public ASTNodeStorage {
 
 	public: ASTNode Simplify();
 
+	public: Boolean MayReadVar(String varName);
+
 	public: Int32 Accept(IASTVisitor& visitor);
 }; // end of class NumberNodeStorage
 
@@ -151,6 +177,8 @@ class StringNodeStorage : public ASTNodeStorage {
 	public: String ToStr();
 
 	public: ASTNode Simplify();
+
+	public: Boolean MayReadVar(String varName);
 
 	public: Int32 Accept(IASTVisitor& visitor);
 }; // end of class StringNodeStorage
@@ -165,6 +193,8 @@ class IdentifierNodeStorage : public ASTNodeStorage {
 
 	public: ASTNode Simplify();
 
+	public: Boolean MayReadVar(String varName);
+
 	public: Int32 Accept(IASTVisitor& visitor);
 }; // end of class IdentifierNodeStorage
 
@@ -178,6 +208,8 @@ class AssignmentNodeStorage : public ASTNodeStorage {
 	public: String ToStr();
 
 	public: ASTNode Simplify();
+
+	public: Boolean MayReadVar(String varName);
 
 	public: Int32 Accept(IASTVisitor& visitor);
 }; // end of class AssignmentNodeStorage
@@ -195,6 +227,8 @@ class IndexedAssignmentNodeStorage : public ASTNodeStorage {
 
 	public: ASTNode Simplify();
 
+	public: Boolean MayReadVar(String varName);
+
 	public: Int32 Accept(IASTVisitor& visitor);
 }; // end of class IndexedAssignmentNodeStorage
 
@@ -208,6 +242,8 @@ class UnaryOpNodeStorage : public ASTNodeStorage {
 	public: String ToStr();
 
 	public: ASTNode Simplify();
+
+	public: Boolean MayReadVar(String varName);
 
 	public: Int32 Accept(IASTVisitor& visitor);
 }; // end of class UnaryOpNodeStorage
@@ -224,6 +260,8 @@ class BinaryOpNodeStorage : public ASTNodeStorage {
 
 	public: ASTNode Simplify();
 
+	public: Boolean MayReadVar(String varName);
+
 	public: Int32 Accept(IASTVisitor& visitor);
 }; // end of class BinaryOpNodeStorage
 
@@ -237,6 +275,8 @@ class ComparisonChainNodeStorage : public ASTNodeStorage {
 	public: String ToStr();
 
 	public: ASTNode Simplify();
+
+	public: Boolean MayReadVar(String varName);
 
 	public: Int32 Accept(IASTVisitor& visitor);
 }; // end of class ComparisonChainNodeStorage
@@ -254,6 +294,8 @@ class CallNodeStorage : public ASTNodeStorage {
 
 	public: ASTNode Simplify();
 
+	public: Boolean MayReadVar(String varName);
+
 	public: Int32 Accept(IASTVisitor& visitor);
 }; // end of class CallNodeStorage
 
@@ -266,6 +308,8 @@ class GroupNodeStorage : public ASTNodeStorage {
 	public: String ToStr();
 
 	public: ASTNode Simplify();
+
+	public: Boolean MayReadVar(String varName);
 
 	public: Int32 Accept(IASTVisitor& visitor);
 }; // end of class GroupNodeStorage
@@ -281,6 +325,8 @@ class ListNodeStorage : public ASTNodeStorage {
 	public: String ToStr();
 
 	public: ASTNode Simplify();
+
+	public: Boolean MayReadVar(String varName);
 
 	public: Int32 Accept(IASTVisitor& visitor);
 }; // end of class ListNodeStorage
@@ -298,6 +344,8 @@ class MapNodeStorage : public ASTNodeStorage {
 
 	public: ASTNode Simplify();
 
+	public: Boolean MayReadVar(String varName);
+
 	public: Int32 Accept(IASTVisitor& visitor);
 }; // end of class MapNodeStorage
 
@@ -311,6 +359,8 @@ class IndexNodeStorage : public ASTNodeStorage {
 	public: String ToStr();
 
 	public: ASTNode Simplify();
+
+	public: Boolean MayReadVar(String varName);
 
 	public: Int32 Accept(IASTVisitor& visitor);
 }; // end of class IndexNodeStorage
@@ -327,6 +377,8 @@ class SliceNodeStorage : public ASTNodeStorage {
 
 	public: ASTNode Simplify();
 
+	public: Boolean MayReadVar(String varName);
+
 	public: Int32 Accept(IASTVisitor& visitor);
 }; // end of class SliceNodeStorage
 
@@ -340,6 +392,8 @@ class MemberNodeStorage : public ASTNodeStorage {
 	public: String ToStr();
 
 	public: ASTNode Simplify();
+
+	public: Boolean MayReadVar(String varName);
 
 	public: Int32 Accept(IASTVisitor& visitor);
 }; // end of class MemberNodeStorage
@@ -356,6 +410,8 @@ class MethodCallNodeStorage : public ASTNodeStorage {
 
 	public: ASTNode Simplify();
 
+	public: Boolean MayReadVar(String varName);
+
 	public: Int32 Accept(IASTVisitor& visitor);
 }; // end of class MethodCallNodeStorage
 
@@ -370,6 +426,8 @@ class ExprCallNodeStorage : public ASTNodeStorage {
 
 	public: ASTNode Simplify();
 
+	public: Boolean MayReadVar(String varName);
+
 	public: Int32 Accept(IASTVisitor& visitor);
 }; // end of class ExprCallNodeStorage
 
@@ -383,6 +441,8 @@ class WhileNodeStorage : public ASTNodeStorage {
 	public: String ToStr();
 
 	public: ASTNode Simplify();
+
+	public: Boolean MayReadVar(String varName);
 
 	public: Int32 Accept(IASTVisitor& visitor);
 }; // end of class WhileNodeStorage
@@ -399,6 +459,8 @@ class IfNodeStorage : public ASTNodeStorage {
 
 	public: ASTNode Simplify();
 
+	public: Boolean MayReadVar(String varName);
+
 	public: Int32 Accept(IASTVisitor& visitor);
 }; // end of class IfNodeStorage
 
@@ -414,6 +476,8 @@ class ForNodeStorage : public ASTNodeStorage {
 
 	public: ASTNode Simplify();
 
+	public: Boolean MayReadVar(String varName);
+
 	public: Int32 Accept(IASTVisitor& visitor);
 }; // end of class ForNodeStorage
 
@@ -425,6 +489,8 @@ class BreakNodeStorage : public ASTNodeStorage {
 
 	public: ASTNode Simplify();
 
+	public: Boolean MayReadVar(String varName);
+
 	public: Int32 Accept(IASTVisitor& visitor);
 }; // end of class BreakNodeStorage
 
@@ -435,6 +501,8 @@ class ContinueNodeStorage : public ASTNodeStorage {
 	public: String ToStr();
 
 	public: ASTNode Simplify();
+
+	public: Boolean MayReadVar(String varName);
 
 	public: Int32 Accept(IASTVisitor& visitor);
 }; // end of class ContinueNodeStorage
@@ -451,6 +519,8 @@ class FunctionNodeStorage : public ASTNodeStorage {
 
 	public: ASTNode Simplify();
 
+	public: Boolean MayReadVar(String varName);
+
 	public: Int32 Accept(IASTVisitor& visitor);
 }; // end of class FunctionNodeStorage
 
@@ -459,6 +529,8 @@ class SelfNodeStorage : public ASTNodeStorage {
 	public: SelfNodeStorage() {}
 	public: String ToStr();
 	public: ASTNode Simplify();
+
+	public: Boolean MayReadVar(String varName);
 	public: Int32 Accept(IASTVisitor& visitor);
 }; // end of class SelfNodeStorage
 
@@ -467,6 +539,8 @@ class SuperNodeStorage : public ASTNodeStorage {
 	public: SuperNodeStorage() {}
 	public: String ToStr();
 	public: ASTNode Simplify();
+
+	public: Boolean MayReadVar(String varName);
 	public: Int32 Accept(IASTVisitor& visitor);
 }; // end of class SuperNodeStorage
 
@@ -476,6 +550,8 @@ class ScopeNodeStorage : public ASTNodeStorage {
 	public: ScopeNodeStorage(ScopeType scope);
 	public: String ToStr();
 	public: ASTNode Simplify();
+
+	public: Boolean MayReadVar(String varName);
 	public: Int32 Accept(IASTVisitor& visitor);
 }; // end of class ScopeNodeStorage
 
@@ -488,6 +564,8 @@ class ReturnNodeStorage : public ASTNodeStorage {
 	public: String ToStr();
 
 	public: ASTNode Simplify();
+
+	public: Boolean MayReadVar(String varName);
 
 	public: Int32 Accept(IASTVisitor& visitor);
 }; // end of class ReturnNodeStorage
@@ -511,6 +589,8 @@ struct NumberNode : public ASTNode {
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
 
+	public: Boolean MayReadVar(String varName) { return get()->MayReadVar(varName); }
+
 	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct NumberNode
 
@@ -533,6 +613,8 @@ struct StringNode : public ASTNode {
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
 
+	public: Boolean MayReadVar(String varName) { return get()->MayReadVar(varName); }
+
 	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct StringNode
 
@@ -554,6 +636,8 @@ struct IdentifierNode : public ASTNode {
 	public: String ToStr() { return get()->ToStr(); }
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
+
+	public: Boolean MayReadVar(String varName) { return get()->MayReadVar(varName); }
 
 	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct IdentifierNode
@@ -578,6 +662,8 @@ struct AssignmentNode : public ASTNode {
 	public: String ToStr() { return get()->ToStr(); }
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
+
+	public: Boolean MayReadVar(String varName) { return get()->MayReadVar(varName); }
 
 	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct AssignmentNode
@@ -607,6 +693,8 @@ struct IndexedAssignmentNode : public ASTNode {
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
 
+	public: Boolean MayReadVar(String varName) { return get()->MayReadVar(varName); }
+
 	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct IndexedAssignmentNode
 
@@ -630,6 +718,8 @@ struct UnaryOpNode : public ASTNode {
 	public: String ToStr() { return get()->ToStr(); }
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
+
+	public: Boolean MayReadVar(String varName) { return get()->MayReadVar(varName); }
 
 	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct UnaryOpNode
@@ -657,6 +747,8 @@ struct BinaryOpNode : public ASTNode {
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
 
+	public: Boolean MayReadVar(String varName) { return get()->MayReadVar(varName); }
+
 	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct BinaryOpNode
 
@@ -681,6 +773,8 @@ struct ComparisonChainNode : public ASTNode {
 	public: String ToStr() { return get()->ToStr(); }
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
+
+	public: Boolean MayReadVar(String varName) { return get()->MayReadVar(varName); }
 
 	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct ComparisonChainNode
@@ -710,6 +804,8 @@ struct CallNode : public ASTNode {
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
 
+	public: Boolean MayReadVar(String varName) { return get()->MayReadVar(varName); }
+
 	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct CallNode
 
@@ -732,6 +828,8 @@ struct GroupNode : public ASTNode {
 	public: String ToStr() { return get()->ToStr(); }
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
+
+	public: Boolean MayReadVar(String varName) { return get()->MayReadVar(varName); }
 
 	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct GroupNode
@@ -758,6 +856,8 @@ struct ListNode : public ASTNode {
 	public: String ToStr() { return get()->ToStr(); }
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
+
+	public: Boolean MayReadVar(String varName) { return get()->MayReadVar(varName); }
 
 	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct ListNode
@@ -787,6 +887,8 @@ struct MapNode : public ASTNode {
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
 
+	public: Boolean MayReadVar(String varName) { return get()->MayReadVar(varName); }
+
 	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct MapNode
 
@@ -810,6 +912,8 @@ struct IndexNode : public ASTNode {
 	public: String ToStr() { return get()->ToStr(); }
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
+
+	public: Boolean MayReadVar(String varName) { return get()->MayReadVar(varName); }
 
 	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct IndexNode
@@ -837,6 +941,8 @@ struct SliceNode : public ASTNode {
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
 
+	public: Boolean MayReadVar(String varName) { return get()->MayReadVar(varName); }
+
 	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct SliceNode
 
@@ -860,6 +966,8 @@ struct MemberNode : public ASTNode {
 	public: String ToStr() { return get()->ToStr(); }
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
+
+	public: Boolean MayReadVar(String varName) { return get()->MayReadVar(varName); }
 
 	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct MemberNode
@@ -888,6 +996,8 @@ struct MethodCallNode : public ASTNode {
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
 
+	public: Boolean MayReadVar(String varName) { return get()->MayReadVar(varName); }
+
 	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct MethodCallNode
 
@@ -914,6 +1024,8 @@ struct ExprCallNode : public ASTNode {
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
 
+	public: Boolean MayReadVar(String varName) { return get()->MayReadVar(varName); }
+
 	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct ExprCallNode
 
@@ -937,6 +1049,8 @@ struct WhileNode : public ASTNode {
 	public: String ToStr() { return get()->ToStr(); }
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
+
+	public: Boolean MayReadVar(String varName) { return get()->MayReadVar(varName); }
 
 	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct WhileNode
@@ -966,6 +1080,8 @@ struct IfNode : public ASTNode {
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
 
+	public: Boolean MayReadVar(String varName) { return get()->MayReadVar(varName); }
+
 	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct IfNode
 
@@ -992,6 +1108,8 @@ struct ForNode : public ASTNode {
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
 
+	public: Boolean MayReadVar(String varName) { return get()->MayReadVar(varName); }
+
 	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct ForNode
 
@@ -1011,6 +1129,8 @@ struct BreakNode : public ASTNode {
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
 
+	public: Boolean MayReadVar(String varName) { return get()->MayReadVar(varName); }
+
 	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct BreakNode
 
@@ -1029,6 +1149,8 @@ struct ContinueNode : public ASTNode {
 	public: String ToStr() { return get()->ToStr(); }
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
+
+	public: Boolean MayReadVar(String varName) { return get()->MayReadVar(varName); }
 
 	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct ContinueNode
@@ -1056,6 +1178,8 @@ struct FunctionNode : public ASTNode {
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
 
+	public: Boolean MayReadVar(String varName) { return get()->MayReadVar(varName); }
+
 	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct FunctionNode
 
@@ -1072,6 +1196,8 @@ struct SelfNode : public ASTNode {
 	}
 	public: String ToStr() { return get()->ToStr(); }
 	public: ASTNode Simplify() { return get()->Simplify(); }
+
+	public: Boolean MayReadVar(String varName) { return get()->MayReadVar(varName); }
 	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct SelfNode
 
@@ -1088,6 +1214,8 @@ struct SuperNode : public ASTNode {
 	}
 	public: String ToStr() { return get()->ToStr(); }
 	public: ASTNode Simplify() { return get()->Simplify(); }
+
+	public: Boolean MayReadVar(String varName) { return get()->MayReadVar(varName); }
 	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct SuperNode
 
@@ -1106,6 +1234,8 @@ struct ScopeNode : public ASTNode {
 	}
 	public: String ToStr() { return get()->ToStr(); }
 	public: ASTNode Simplify() { return get()->Simplify(); }
+
+	public: Boolean MayReadVar(String varName) { return get()->MayReadVar(varName); }
 	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct ScopeNode
 
@@ -1128,6 +1258,8 @@ struct ReturnNode : public ASTNode {
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
 
+	public: Boolean MayReadVar(String varName) { return get()->MayReadVar(varName); }
+
 	public: Int32 Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 }; // end of struct ReturnNode
 
@@ -1138,6 +1270,7 @@ inline Int32 ASTNode::Line() { return get()->Line; } // source line number (set 
 inline void ASTNode::set_Line(Int32 _v) { get()->Line = _v; } // source line number (set by parser)
 inline String ASTNode::ToStr() { return get()->ToStr(); }
 inline ASTNode ASTNode::Simplify() { return get()->Simplify(); }
+inline Boolean ASTNode::MayReadVar(String varName) { return get()->MayReadVar(varName); }
 inline ASTNode ASTNode::CopyLine(ASTNode result) { return get()->CopyLine(result); }
 inline Int32 ASTNode::Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 

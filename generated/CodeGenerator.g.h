@@ -46,17 +46,18 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 	private: Int32 AllocConsecutiveRegs(Int32 count);
 
 	// Is this register currently bound to a variable?
-	// Visit methods must write their destination register only after every
-	// subexpression they depend on has been evaluated; otherwise a subexpression
-	// that reads the destination sees the half-built result.  Most Visit methods
-	// get this for free by emitting their result op last, but LIST and MAP have to
-	// create the container before filling it, so they need to know whether writing
-	// the destination early is safe.
-	// The registers a nested expression can read are exactly those bound to
-	// variables: it may read one directly (LOADC/LOADV rX, rVar), or by name at
-	// runtime (locals.x / globals.x, which resolve through the frame's name table
-	// to the same register).  Any other register it touches is a temp it allocated
-	// itself.  So this test is name-agnostic and covers both routes.
+	// LIST and MAP have to create their container before filling it, so unlike every
+	// other Visit method they write their destination before reading their operands.
+	// That is only safe if nothing the operands read lives in that register.  The
+	// registers a nested expression can read are exactly those bound to variables:
+	// directly (LOADC/LOADV rX, rVar), or by name at runtime (locals.x / globals.x,
+	// which resolve through the frame's name table to the same register).  Anything
+	// else it touches is a temp it allocated itself.
+	// This is deliberately register-based rather than name-based: it does not care
+	// *why* the register might be read, so it covers the locals/globals route that no
+	// name-matching walk can see.  MayReadVar answers a different question -- whether
+	// the RHS names the variable, which is what decides NAME ordering on a first
+	// assignment -- and neither subsumes the other.
 	private: Boolean IsLiveVariableReg(Int32 reg);
 
 	// Compile an expression into a specific target register
@@ -282,17 +283,18 @@ struct CodeGenerator : public IASTVisitor {
 	private: inline Int32 AllocConsecutiveRegs(Int32 count);
 
 	// Is this register currently bound to a variable?
-	// Visit methods must write their destination register only after every
-	// subexpression they depend on has been evaluated; otherwise a subexpression
-	// that reads the destination sees the half-built result.  Most Visit methods
-	// get this for free by emitting their result op last, but LIST and MAP have to
-	// create the container before filling it, so they need to know whether writing
-	// the destination early is safe.
-	// The registers a nested expression can read are exactly those bound to
-	// variables: it may read one directly (LOADC/LOADV rX, rVar), or by name at
-	// runtime (locals.x / globals.x, which resolve through the frame's name table
-	// to the same register).  Any other register it touches is a temp it allocated
-	// itself.  So this test is name-agnostic and covers both routes.
+	// LIST and MAP have to create their container before filling it, so unlike every
+	// other Visit method they write their destination before reading their operands.
+	// That is only safe if nothing the operands read lives in that register.  The
+	// registers a nested expression can read are exactly those bound to variables:
+	// directly (LOADC/LOADV rX, rVar), or by name at runtime (locals.x / globals.x,
+	// which resolve through the frame's name table to the same register).  Anything
+	// else it touches is a temp it allocated itself.
+	// This is deliberately register-based rather than name-based: it does not care
+	// *why* the register might be read, so it covers the locals/globals route that no
+	// name-matching walk can see.  MayReadVar answers a different question -- whether
+	// the RHS names the variable, which is what decides NAME ordering on a first
+	// assignment -- and neither subsumes the other.
 	private: inline Boolean IsLiveVariableReg(Int32 reg);
 
 	// Compile an expression into a specific target register

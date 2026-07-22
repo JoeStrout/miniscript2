@@ -133,18 +133,19 @@ public class CodeGenerator : IASTVisitor {
 
 	// Is this register currently bound to a variable?
 	//
-	// Visit methods must write their destination register only after every
-	// subexpression they depend on has been evaluated; otherwise a subexpression
-	// that reads the destination sees the half-built result.  Most Visit methods
-	// get this for free by emitting their result op last, but LIST and MAP have to
-	// create the container before filling it, so they need to know whether writing
-	// the destination early is safe.
+	// LIST and MAP have to create their container before filling it, so unlike every
+	// other Visit method they write their destination before reading their operands.
+	// That is only safe if nothing the operands read lives in that register.  The
+	// registers a nested expression can read are exactly those bound to variables:
+	// directly (LOADC/LOADV rX, rVar), or by name at runtime (locals.x / globals.x,
+	// which resolve through the frame's name table to the same register).  Anything
+	// else it touches is a temp it allocated itself.
 	//
-	// The registers a nested expression can read are exactly those bound to
-	// variables: it may read one directly (LOADC/LOADV rX, rVar), or by name at
-	// runtime (locals.x / globals.x, which resolve through the frame's name table
-	// to the same register).  Any other register it touches is a temp it allocated
-	// itself.  So this test is name-agnostic and covers both routes.
+	// This is deliberately register-based rather than name-based: it does not care
+	// *why* the register might be read, so it covers the locals/globals route that no
+	// name-matching walk can see.  MayReadVar answers a different question -- whether
+	// the RHS names the variable, which is what decides NAME ordering on a first
+	// assignment -- and neither subsumes the other.
 	private Boolean IsLiveVariableReg(Int32 reg) {
 		foreach (Int32 r in _variableRegs.Values) { // CPP: for (Int32 r : _variableRegs.GetValues()) {
 			if (r == reg) return true;
@@ -371,36 +372,60 @@ public class CodeGenerator : IASTVisitor {
 			if (Error.IsNull()) Error = ErrorTypes.CompilerError(StringUtils.Format("unexpected target register {0} in assignment", _targetReg));
 		}
 		
-		// Get or allocate register for this variable
+		// Get or allocate register for this variable.
 		Int32 varReg;
-		if (_variableRegs.TryGetValue(node.Variable, out varReg)) {
-			// Variable already has a register - reuse it
-		} else {
+		Boolean isNew = !_variableRegs.TryGetValue(node.Variable, out varReg);
+		if (isNew) {
 			// Hmm.  Should we allocate a new register for this variable, or
 			// just claim the target register as our storage?  I'm going to alloc
 			// a new one for now, because I can't be sure the caller won't free
 			// the target register when done.  But we should probably return to
 			// this later and see if we can optimize it more.
 			varReg = AllocReg();
-			_variableRegs[node.Variable] = varReg;
 		}
+
+		// Creating a variable whose name the RHS also reads is the one case where the
+		// NAME op has to wait: NAME is what makes the register findable by name, and
+		// while it is pending, VisitIdentifier emits the r0 form of LOADC so the VM
+		// walks out to the enclosing scope.  That is what lets "n = n + 1" creating a
+		// local n read the global n.  The RHS then has to land in a temp so the copy
+		// can follow the NAME (see below).
+		//
+		// This is only about *creating* a variable.  Once it exists, the RHS should
+		// read its register, so NAME stays ahead of the RHS and no temp is needed --
+		// "x = x + 1" compiles straight into x's register.  Guarding the destination
+		// against a RHS that overwrites it before reading its operands is a separate
+		// concern, handled by IsLiveVariableReg in Visit(ListNode)/Visit(MapNode).
+		Boolean useTemp = isNew && node.Value.MayReadVar(node.Variable);
+
 		// Emit a NAME op unless one already dominates this point.  This must run
 		// on every path that assigns the variable, including conditional branches
 		// (e.g. the else clause of a single-line if), or the variable would be
 		// undefined at runtime when only that path executes.
-		//
-		// NAME must stay ahead of the RHS: via MapToRegister it imports any existing
-		// value for this name out of a live VarMap (ReplGlobals, or the frame's
-		// LocalVarMap) and into the register.  That import is how REPL globals
-		// persist across lines, and it overwrites the register -- so emitting NAME
-		// after the RHS would discard the value just computed.
-		EnsureNamed(node.Variable, varReg);
+		if (!useTemp) EnsureNamed(node.Variable, varReg);
 		// If the RHS is a function expression, note the current function count so we
 		// can assign the variable name to the resulting FuncDef afterward.
 		FunctionNode rhsFunc = node.Value as FunctionNode;
 		Int32 funcIndexBeforeRHS = _functions.Count;
 
-		CompileInto(node.Value, varReg);  // get RHS directly into the variable's register
+		if (useTemp) {
+			Int32 tempReg = AllocReg();
+			Int32 rhsReg = CompileInto(node.Value, tempReg);
+			// NAME is not a passive binding: via MapToRegister it imports any existing
+			// value for this name out of a live VarMap (ReplGlobals, or the frame's
+			// LocalVarMap) into the register, which is how REPL globals persist across
+			// lines.  Copying the temp in afterwards overwrites that stale import with
+			// the value we just computed, so the copy must follow the NAME.
+			EnsureNamed(node.Variable, varReg);
+			_emitter.EmitABC(Opcode.LOAD_rA_rB, varReg, rhsReg, 0, $"r{varReg} = r{rhsReg}");
+			FreeReg(tempReg);
+		} else {
+			CompileInto(node.Value, varReg);  // get RHS directly into the variable's register
+		}
+
+		// The variable exists from here on, so nested expressions in later statements
+		// may read its register directly.
+		if (isNew) _variableRegs[node.Variable] = varReg;
 
 		// If the RHS was a function expression, give that FuncDef the variable name.
 		if (rhsFunc != null && funcIndexBeforeRHS < _functions.Count) {
@@ -755,9 +780,9 @@ public class CodeGenerator : IASTVisitor {
 		Int32 listReg = GetTargetOrAlloc();
 
 		// LIST writes its destination before the elements are evaluated, so if the
-		// destination holds a live variable, an element that reads that variable
-		// would see the new (empty) list instead -- e.g. "x = [x]" would build a
-		// list containing itself.  Build in a temp and copy at the end.
+		// destination holds a live variable, an element that reads that variable would
+		// see the new (empty) list instead -- e.g. "x = [x]" would build a list
+		// containing itself.  Build in a temp and copy at the end.
 		Int32 buildReg = listReg;
 		if (IsLiveVariableReg(listReg)) buildReg = AllocReg();
 
@@ -783,8 +808,8 @@ public class CodeGenerator : IASTVisitor {
 	public Int32 Visit(MapNode node) {
 		Int32 mapReg = GetTargetOrAlloc();
 
-		// As in Visit(ListNode): MAP writes its destination before the keys and
-		// values are evaluated, so build in a temp when the destination is live.
+		// As in Visit(ListNode): MAP writes its destination before the keys and values
+		// are evaluated, so build in a temp when the destination is live.
 		Int32 buildReg = mapReg;
 		if (IsLiveVariableReg(mapReg)) buildReg = AllocReg();
 

@@ -65,6 +65,11 @@ class UnitTests {
 
 	public: static Boolean TestGCHandle();
 
+	// Helper for MayReadVar tests: parse an assignment, then ask its RHS.
+	private: static Boolean CheckMayReadVar(Parser parser, String input, String varName, Boolean expected);
+
+	public: static Boolean TestMayReadVar();
+
 	public: static Boolean RunAll();
 }; // end of struct UnitTests
 

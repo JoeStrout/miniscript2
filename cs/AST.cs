@@ -75,6 +75,19 @@ public abstract class ASTNode {
 	// Returns a simplified version of this node (may be a new node, or this node unchanged)
 	public abstract ASTNode Simplify();
 
+	// Could evaluating this node read the variable `varName`?
+	//
+	// The code generator uses this to decide whether an assignment's RHS has to be
+	// computed in a temporary register: "x = [x]" must read the old x before the new
+	// one lands, and "x = x + 1" creating a local x must resolve x to the enclosing
+	// scope.  Answering true is always safe (it just costs a register-to-register
+	// move), so this is deliberately abstract rather than defaulting to false: a new
+	// node type must state its answer instead of silently opting out and
+	// miscompiling.  Note ScopeNode answers true unconditionally -- `locals` and
+	// `globals` are live windows onto every register, so a read through one is
+	// invisible to any name-matching walk.
+	public abstract Boolean MayReadVar(String varName);
+
 	// Copy the source line from this node to the given node and return it.
 	// Call as `return CopyLine(new SomeNode(...));` inside Simplify() overrides.
 	protected ASTNode CopyLine(ASTNode result) {
@@ -102,6 +115,10 @@ public class NumberNode : ASTNode {
 		return this;
 	}
 
+	public override Boolean MayReadVar(String varName) {
+		return false;
+	}
+
 	public override Int32 Accept(IASTVisitor visitor) {
 		return visitor.Visit(this);
 	}
@@ -123,6 +140,10 @@ public class StringNode : ASTNode {
 		return this;
 	}
 
+	public override Boolean MayReadVar(String varName) {
+		return false;
+	}
+
 	public override Int32 Accept(IASTVisitor visitor) {
 		return visitor.Visit(this);
 	}
@@ -142,6 +163,10 @@ public class IdentifierNode : ASTNode {
 
 	public override ASTNode Simplify() {
 		return this;
+	}
+
+	public override Boolean MayReadVar(String varName) {
+		return Name == varName;
 	}
 
 	public override Int32 Accept(IASTVisitor visitor) {
@@ -166,6 +191,10 @@ public class AssignmentNode : ASTNode {
 	public override ASTNode Simplify() {
 		ASTNode simplifiedValue = Value.Simplify();
 		return CopyLine(new AssignmentNode(Variable, simplifiedValue));
+	}
+
+	public override Boolean MayReadVar(String varName) {
+		return Value.MayReadVar(varName);
 	}
 
 	public override Int32 Accept(IASTVisitor visitor) {
@@ -193,6 +222,12 @@ public class IndexedAssignmentNode : ASTNode {
 
 	public override ASTNode Simplify() {
 		return CopyLine(new IndexedAssignmentNode(Target.Simplify(), Index.Simplify(), Value.Simplify(), LHSName));
+	}
+
+	public override Boolean MayReadVar(String varName) {
+		return Target.MayReadVar(varName)
+			|| Index.MayReadVar(varName)
+			|| Value.MayReadVar(varName);
 	}
 
 	public override Int32 Accept(IASTVisitor visitor) {
@@ -230,6 +265,10 @@ public class UnaryOpNode : ASTNode {
 
 		// Otherwise return unary op with simplified operand
 		return new UnaryOpNode(Op, simplifiedOperand);
+	}
+
+	public override Boolean MayReadVar(String varName) {
+		return Operand.MayReadVar(varName);
 	}
 
 	public override Int32 Accept(IASTVisitor visitor) {
@@ -332,6 +371,10 @@ public class BinaryOpNode : ASTNode {
 		return new BinaryOpNode(Op, simplifiedLeft, simplifiedRight);
 	}
 
+	public override Boolean MayReadVar(String varName) {
+		return Left.MayReadVar(varName) || Right.MayReadVar(varName);
+	}
+
 	public override Int32 Accept(IASTVisitor visitor) {
 		return visitor.Visit(this);
 	}
@@ -362,6 +405,13 @@ public class ComparisonChainNode : ASTNode {
 			simplifiedOperands.Add(Operands[i].Simplify());
 		}
 		return new ComparisonChainNode(simplifiedOperands, Operators);
+	}
+
+	public override Boolean MayReadVar(String varName) {
+		for (Int32 i = 0; i < Operands.Count; i++) {
+			if (Operands[i].MayReadVar(varName)) return true;
+		}
+		return false;
 	}
 
 	public override Int32 Accept(IASTVisitor visitor) {
@@ -402,6 +452,14 @@ public class CallNode : ASTNode {
 		return CopyLine(new CallNode(Function, simplifiedArgs));
 	}
 
+	public override Boolean MayReadVar(String varName) {
+		if (Function == varName) return true;
+		for (Int32 i = 0; i < Arguments.Count; i++) {
+			if (Arguments[i].MayReadVar(varName)) return true;
+		}
+		return false;
+	}
+
 	public override Int32 Accept(IASTVisitor visitor) {
 		return visitor.Visit(this);
 	}
@@ -423,6 +481,10 @@ public class GroupNode : ASTNode {
 	public override ASTNode Simplify() {
 		// Groups don't affect value, just return simplified child
 		return Expression.Simplify();
+	}
+
+	public override Boolean MayReadVar(String varName) {
+		return Expression.MayReadVar(varName);
 	}
 
 	public override Int32 Accept(IASTVisitor visitor) {
@@ -458,6 +520,13 @@ public class ListNode : ASTNode {
 			simplifiedElements.Add(Elements[i].Simplify());
 		}
 		return new ListNode(simplifiedElements);
+	}
+
+	public override Boolean MayReadVar(String varName) {
+		for (Int32 i = 0; i < Elements.Count; i++) {
+			if (Elements[i].MayReadVar(varName)) return true;
+		}
+		return false;
 	}
 
 	public override Int32 Accept(IASTVisitor visitor) {
@@ -500,6 +569,14 @@ public class MapNode : ASTNode {
 		return new MapNode(simplifiedKeys, simplifiedValues);
 	}
 
+	public override Boolean MayReadVar(String varName) {
+		for (Int32 i = 0; i < Keys.Count; i++) {
+			if (Keys[i].MayReadVar(varName)) return true;
+			if (Values[i].MayReadVar(varName)) return true;
+		}
+		return false;
+	}
+
 	public override Int32 Accept(IASTVisitor visitor) {
 		return visitor.Visit(this);
 	}
@@ -521,6 +598,10 @@ public class IndexNode : ASTNode {
 
 	public override ASTNode Simplify() {
 		return new IndexNode(Target.Simplify(), Index.Simplify());
+	}
+
+	public override Boolean MayReadVar(String varName) {
+		return Target.MayReadVar(varName) || Index.MayReadVar(varName);
 	}
 
 	public override Int32 Accept(IASTVisitor visitor) {
@@ -552,6 +633,13 @@ public class SliceNode : ASTNode {
 		return new SliceNode(Target.Simplify(), simplifiedStart, simplifiedEnd);
 	}
 
+	public override Boolean MayReadVar(String varName) {
+		if (Target.MayReadVar(varName)) return true;
+		if (StartIndex != null && StartIndex.MayReadVar(varName)) return true;
+		if (EndIndex != null && EndIndex.MayReadVar(varName)) return true;
+		return false;
+	}
+
 	public override Int32 Accept(IASTVisitor visitor) {
 		return visitor.Visit(this);
 	}
@@ -573,6 +661,10 @@ public class MemberNode : ASTNode {
 
 	public override ASTNode Simplify() {
 		return new MemberNode(Target.Simplify(), Member);
+	}
+
+	public override Boolean MayReadVar(String varName) {
+		return Target.MayReadVar(varName);
 	}
 
 	public override Int32 Accept(IASTVisitor visitor) {
@@ -611,6 +703,14 @@ public class MethodCallNode : ASTNode {
 		return new MethodCallNode(Target.Simplify(), Method, simplifiedArgs);
 	}
 
+	public override Boolean MayReadVar(String varName) {
+		if (Target.MayReadVar(varName)) return true;
+		for (Int32 i = 0; i < Arguments.Count; i++) {
+			if (Arguments[i].MayReadVar(varName)) return true;
+		}
+		return false;
+	}
+
 	public override Int32 Accept(IASTVisitor visitor) {
 		return visitor.Visit(this);
 	}
@@ -646,6 +746,14 @@ public class ExprCallNode : ASTNode {
 		return CopyLine(new ExprCallNode(Function.Simplify(), simplifiedArgs));
 	}
 
+	public override Boolean MayReadVar(String varName) {
+		if (Function.MayReadVar(varName)) return true;
+		for (Int32 i = 0; i < Arguments.Count; i++) {
+			if (Arguments[i].MayReadVar(varName)) return true;
+		}
+		return false;
+	}
+
 	public override Int32 Accept(IASTVisitor visitor) {
 		return visitor.Visit(this);
 	}
@@ -677,6 +785,14 @@ public class WhileNode : ASTNode {
 			simplifiedBody.Add(Body[i].Simplify());
 		}
 		return CopyLine(new WhileNode(simplifiedCondition, simplifiedBody));
+	}
+
+	public override Boolean MayReadVar(String varName) {
+		if (Condition.MayReadVar(varName)) return true;
+		for (Int32 i = 0; i < Body.Count; i++) {
+			if (Body[i].MayReadVar(varName)) return true;
+		}
+		return false;
 	}
 
 	public override Int32 Accept(IASTVisitor visitor) {
@@ -726,6 +842,17 @@ public class IfNode : ASTNode {
 		return CopyLine(new IfNode(simplifiedCondition, simplifiedThenBody, simplifiedElseBody));
 	}
 
+	public override Boolean MayReadVar(String varName) {
+		if (Condition.MayReadVar(varName)) return true;
+		for (Int32 i = 0; i < ThenBody.Count; i++) {
+			if (ThenBody[i].MayReadVar(varName)) return true;
+		}
+		for (Int32 i = 0; i < ElseBody.Count; i++) {
+			if (ElseBody[i].MayReadVar(varName)) return true;
+		}
+		return false;
+	}
+
 	public override Int32 Accept(IASTVisitor visitor) {
 		return visitor.Visit(this);
 	}
@@ -761,6 +888,14 @@ public class ForNode : ASTNode {
 		return CopyLine(new ForNode(Variable, simplifiedIterable, simplifiedBody));
 	}
 
+	public override Boolean MayReadVar(String varName) {
+		if (Iterable.MayReadVar(varName)) return true;
+		for (Int32 i = 0; i < Body.Count; i++) {
+			if (Body[i].MayReadVar(varName)) return true;
+		}
+		return false;
+	}
+
 	public override Int32 Accept(IASTVisitor visitor) {
 		return visitor.Visit(this);
 	}
@@ -779,6 +914,10 @@ public class BreakNode : ASTNode {
 		return this;
 	}
 
+	public override Boolean MayReadVar(String varName) {
+		return false;
+	}
+
 	public override Int32 Accept(IASTVisitor visitor) {
 		return visitor.Visit(this);
 	}
@@ -795,6 +934,10 @@ public class ContinueNode : ASTNode {
 
 	public override ASTNode Simplify() {
 		return this;
+	}
+
+	public override Boolean MayReadVar(String varName) {
+		return false;
 	}
 
 	public override Int32 Accept(IASTVisitor visitor) {
@@ -849,6 +992,13 @@ public class FunctionNode : ASTNode {
 		return CopyLine(new FunctionNode(ParamNames, simplifiedDefaults, simplifiedBody));
 	}
 
+	public override Boolean MayReadVar(String varName) {
+		// Defining a function reads nothing: FUNCREF binds a template plus the
+		// current frame as closure context, and the body's reads happen later,
+		// when it is called.  Parameter defaults must be compile-time constants.
+		return false;
+	}
+
 	public override Int32 Accept(IASTVisitor visitor) {
 		return visitor.Visit(this);
 	}
@@ -863,6 +1013,10 @@ public class SelfNode : ASTNode {
 	public override ASTNode Simplify() {
 		return this;
 	}
+
+	public override Boolean MayReadVar(String varName) {
+		return false;
+	}
 	public override Int32 Accept(IASTVisitor visitor) {
 		return visitor.Visit(this);
 	}
@@ -876,6 +1030,10 @@ public class SuperNode : ASTNode {
 	}
 	public override ASTNode Simplify() {
 		return this;
+	}
+
+	public override Boolean MayReadVar(String varName) {
+		return false;
 	}
 	public override Int32 Accept(IASTVisitor visitor) {
 		return visitor.Visit(this);
@@ -903,6 +1061,13 @@ public class ScopeNode : ASTNode {
 	public override ASTNode Simplify() {
 		return this;
 	}
+
+	public override Boolean MayReadVar(String varName) {
+		// `locals`/`globals`/`outer` are live windows onto the register file, so a
+		// read through one (locals.x, globals["x"], or a map handed elsewhere) can
+		// reach any variable without naming it in the AST.  Always answer true.
+		return true;
+	}
 	public override Int32 Accept(IASTVisitor visitor) {
 		return visitor.Visit(this);
 	}
@@ -924,6 +1089,10 @@ public class ReturnNode : ASTNode {
 	public override ASTNode Simplify() {
 		if (Value != null) return CopyLine(new ReturnNode(Value.Simplify()));
 		return this;
+	}
+
+	public override Boolean MayReadVar(String varName) {
+		return Value != null && Value.MayReadVar(varName);
 	}
 
 	public override Int32 Accept(IASTVisitor visitor) {

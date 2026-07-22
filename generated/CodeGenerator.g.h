@@ -45,6 +45,20 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 	// Returns the first register of the block
 	private: Int32 AllocConsecutiveRegs(Int32 count);
 
+	// Is this register currently bound to a variable?
+	// Visit methods must write their destination register only after every
+	// subexpression they depend on has been evaluated; otherwise a subexpression
+	// that reads the destination sees the half-built result.  Most Visit methods
+	// get this for free by emitting their result op last, but LIST and MAP have to
+	// create the container before filling it, so they need to know whether writing
+	// the destination early is safe.
+	// The registers a nested expression can read are exactly those bound to
+	// variables: it may read one directly (LOADC/LOADV rX, rVar), or by name at
+	// runtime (locals.x / globals.x, which resolve through the frame's name table
+	// to the same register).  Any other register it touches is a temp it allocated
+	// itself.  So this test is name-agnostic and covers both routes.
+	private: Boolean IsLiveVariableReg(Int32 reg);
+
 	// Compile an expression into a specific target register
 	// The target register should already be allocated by the caller
 	private: Int32 CompileInto(ASTNode node, Int32 targetReg);
@@ -267,6 +281,20 @@ struct CodeGenerator : public IASTVisitor {
 	// Returns the first register of the block
 	private: inline Int32 AllocConsecutiveRegs(Int32 count);
 
+	// Is this register currently bound to a variable?
+	// Visit methods must write their destination register only after every
+	// subexpression they depend on has been evaluated; otherwise a subexpression
+	// that reads the destination sees the half-built result.  Most Visit methods
+	// get this for free by emitting their result op last, but LIST and MAP have to
+	// create the container before filling it, so they need to know whether writing
+	// the destination early is safe.
+	// The registers a nested expression can read are exactly those bound to
+	// variables: it may read one directly (LOADC/LOADV rX, rVar), or by name at
+	// runtime (locals.x / globals.x, which resolve through the frame's name table
+	// to the same register).  Any other register it touches is a temp it allocated
+	// itself.  So this test is name-agnostic and covers both routes.
+	private: inline Boolean IsLiveVariableReg(Int32 reg);
+
 	// Compile an expression into a specific target register
 	// The target register should already be allocated by the caller
 	private: inline Int32 CompileInto(ASTNode node, Int32 targetReg);
@@ -469,6 +497,7 @@ inline List<FuncDef> CodeGenerator::GetFunctions() { return get()->GetFunctions(
 inline Int32 CodeGenerator::AllocReg() { return get()->AllocReg(); }
 inline void CodeGenerator::FreeReg(Int32 reg) { return get()->FreeReg(reg); }
 inline Int32 CodeGenerator::AllocConsecutiveRegs(Int32 count) { return get()->AllocConsecutiveRegs(count); }
+inline Boolean CodeGenerator::IsLiveVariableReg(Int32 reg) { return get()->IsLiveVariableReg(reg); }
 inline Int32 CodeGenerator::CompileInto(ASTNode node,Int32 targetReg) { return get()->CompileInto(node, targetReg); }
 inline Int32 CodeGenerator::GetTargetOrAlloc() { return get()->GetTargetOrAlloc(); }
 inline Int32 CodeGenerator::Compile(ASTNode ast) { return get()->Compile(ast); }

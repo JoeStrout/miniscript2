@@ -1235,6 +1235,137 @@ n1 == n3: 0
 n1 == n4: 0
 n1 == n5: 0
 ================================================================================
+==== SECTION 8b: RECURSIVELY DEFINED VARIABLES
+================================================================================
+==== List containing itself
+================================
+x = 42
+x = [x]
+print x
+--------------------------------
+[42]
+================================
+==== Map containing itself
+================================
+x = "hello"
+x = {x: x}
+print x
+--------------------------------
+{"hello": "hello"}
+================================
+==== Operations A
+================================
+printAndReset = function
+	print outer.x
+	outer.x = 42
+end function
+x = 42
+printAndReset
+x = [-x]
+printAndReset
+x = [x * 2]
+printAndReset
+x = [(x)]
+printAndReset
+x = [[x]]
+printAndReset
+x = [{x: x}]
+printAndReset
+x = [0 <= x <= 50]
+printAndReset
+--------------------------------
+42
+[-42]
+[84]
+[42]
+[[42]]
+[{42: 42}]
+[1]
+================================
+==== Operations B
+================================
+printAndReset = function(v=42)
+	print outer.x
+	outer.x = @v
+end function
+exFunction = function(n)
+	return n*2
+end function
+exList = range(0,100)
+exMap = {42: "life, the universe and everything", "foo": "bar"}
+exMap.member = function(x)
+	return self[x]
+end function
+// Make sure printAndReset works
+x = 42
+// Function calls
+printAndReset @exFunction
+x = [x(2)]
+printAndReset
+x = [exFunction(x)]
+// Index/member
+printAndReset exMap
+x = [x[42]]
+printAndReset
+x = [exMap[x]]
+printAndReset exMap
+x = [x.foo]
+printAndReset exMap
+x = [x.member(42)]
+printAndReset
+x = [exMap.member(x)]
+// Expr call
+printAndReset exMap
+x = [x["member"](42)]
+// Slice
+printAndReset exList
+x = [x[5:10]]
+printAndReset
+x = [exList[x:50]]
+printAndReset
+x = [exList[40:x]]
+printAndReset
+--------------------------------
+42
+[4]
+[84]
+["life, the universe and everything"]
+["life, the universe and everything"]
+["bar"]
+["life, the universe and everything"]
+["life, the universe and everything"]
+["life, the universe and everything"]
+[[5, 6, 7, 8, 9]]
+[[42, 43, 44, 45, 46, 47, 48, 49]]
+[[40, 41]]
+================================
+==== Scope-qualified self-reference
+================================
+x = 42
+x = [globals.x]
+print x
+y = 42
+y = {locals.y: "ok"}
+print y
+z = [1, 2]
+z = [globals.z[0], locals.z[1]]
+print z
+--------------------------------
+[42]
+{42: "ok"}
+[1, 2]
+================================
+==== Self-reference is not confused with reuse of the same register
+================================
+a = 10
+b = [a]
+a = [a]
+print a
+print b
+--------------------------------
+[10]
+[10]
+================================================================================
 ==== SECTION 9: WHILE LOOPS
 ================================================================================
 ==== Basic while loop

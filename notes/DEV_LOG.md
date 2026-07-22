@@ -1090,4 +1090,8 @@ The raylib-miniscript project is now using MS2.  I've continued to work through 
 
 One gotcha: some host code was calling someVal.ToString().c_str(), which until now, was not safe as the string created by ToString() would be reclaimed before the call using the char* obtained from it.  We now have a MS_LIFETIMEBOUND tag we put on `c_str`, `data` and `operator const char*` which catches such abuses; and on Value, we have a new `CString()` inspector that safely holds on to the returned buffer until it is reset.  This reset happens automatically around an intrinsic call, or you can do it manually if you need such a CString from a Value somewhere other than in an intrinsic (see cstr_arena.h).  It's also perfectly valid to do it in two steps: get the ToString() into a local String, and then get the c_str() of that, and use it before your String goes out of scope.  A little annoying to have to remember all this, but hopefully the MS_LIFETIMEBOUND macro will catch it if you do it wrong (at least when compiling with Clang).
 
+## Jul 22, 2026
+
+Working today on some issues related to resolving variable values while building a list or map.  This was found by MineRobber9000, with a suggested fix in PR#10, but I'm going to take a somewhat different approach to fixing it.
+
 

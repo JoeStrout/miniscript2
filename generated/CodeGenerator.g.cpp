@@ -101,6 +101,12 @@ Int32 CodeGeneratorStorage::AllocConsecutiveRegs(Int32 count) {
 
 	return startReg;
 }
+Boolean CodeGeneratorStorage::IsLiveVariableReg(Int32 reg) {
+	for (Int32 r : _variableRegs.GetValues()) {
+		if (r == reg) return Boolean(true);
+	}
+	return Boolean(false);
+}
 Int32 CodeGeneratorStorage::CompileInto(ASTNode node,Int32 targetReg) {
 	CodeGenerator _this(std::static_pointer_cast<CodeGeneratorStorage>(shared_from_this()));
 	_targetReg = targetReg;
@@ -301,6 +307,12 @@ Int32 CodeGeneratorStorage::Visit(AssignmentNode node) {
 	// on every path that assigns the variable, including conditional branches
 	// (e.g. the else clause of a single-line if), or the variable would be
 	// undefined at runtime when only that path executes.
+	//
+	// NAME must stay ahead of the RHS: via MapToRegister it imports any existing
+	// value for this name out of a live VarMap (ReplGlobals, or the frame's
+	// LocalVarMap) and into the register.  That import is how REPL globals
+	// persist across lines, and it overwrites the register -- so emitting NAME
+	// after the RHS would discard the value just computed.
 	EnsureNamed(node.Variable(), varReg);
 	// If the RHS is a function expression, note the current function count so we
 	// can assign the variable name to the resulting FuncDef afterward.
@@ -645,34 +657,58 @@ Int32 CodeGeneratorStorage::Visit(GroupNode node) {
 }
 Int32 CodeGeneratorStorage::Visit(ListNode node) {
 	CodeGenerator _this(std::static_pointer_cast<CodeGeneratorStorage>(shared_from_this()));
-	// Create a list with the given number of elements
 	Int32 listReg = GetTargetOrAlloc();
+
+	// LIST writes its destination before the elements are evaluated, so if the
+	// destination holds a live variable, an element that reads that variable
+	// would see the new (empty) list instead -- e.g. "x = [x]" would build a
+	// list containing itself.  Build in a temp and copy at the end.
+	Int32 buildReg = listReg;
+	if (IsLiveVariableReg(listReg)) buildReg = AllocReg();
+
+	// Create a list with the given number of elements
 	Int32 count = node.Elements().Count();
-	_emitter.EmitAB(Opcode::LIST_rA_iBC, listReg, count, Interp("r{} = new list[{}]", listReg, count));
+	_emitter.EmitAB(Opcode::LIST_rA_iBC, buildReg, count, Interp("r{} = new list[{}]", buildReg, count));
 
 	// Push each element onto the list
 	for (Int32 i = 0; i < count; i++) {
 		Int32 elemReg = node.Elements()[i].Accept(_this);
-		_emitter.EmitABC(Opcode::PUSH_rA_rB, listReg, elemReg, 0, Interp("push element {} onto r{}", i, listReg));
+		_emitter.EmitABC(Opcode::PUSH_rA_rB, buildReg, elemReg, 0, Interp("push element {} onto r{}", i, buildReg));
 		FreeReg(elemReg);
+	}
+
+	if (buildReg != listReg) {
+		_emitter.EmitABC(Opcode::LOAD_rA_rB, listReg, buildReg, 0, Interp("r{} = r{}", listReg, buildReg));
+		FreeReg(buildReg);
 	}
 
 	return listReg;
 }
 Int32 CodeGeneratorStorage::Visit(MapNode node) {
 	CodeGenerator _this(std::static_pointer_cast<CodeGeneratorStorage>(shared_from_this()));
-	// Create a map
 	Int32 mapReg = GetTargetOrAlloc();
+
+	// As in Visit(ListNode): MAP writes its destination before the keys and
+	// values are evaluated, so build in a temp when the destination is live.
+	Int32 buildReg = mapReg;
+	if (IsLiveVariableReg(mapReg)) buildReg = AllocReg();
+
+	// Create a map
 	Int32 count = node.Keys().Count();
-	_emitter.EmitAB(Opcode::MAP_rA_iBC, mapReg, count, Interp("new map[{}]", count));
+	_emitter.EmitAB(Opcode::MAP_rA_iBC, buildReg, count, Interp("new map[{}]", count));
 
 	// Set each key-value pair
 	for (Int32 i = 0; i < count; i++) {
 		Int32 keyReg = node.Keys()[i].Accept(_this);
 		Int32 valueReg = node.Values()[i].Accept(_this);
-		_emitter.EmitABC(Opcode::IDXSET_rA_rB_rC, mapReg, keyReg, valueReg, Interp("map[{}] = {}", node.Keys()[i].ToStr(), node.Values()[i].ToStr()));
+		_emitter.EmitABC(Opcode::IDXSET_rA_rB_rC, buildReg, keyReg, valueReg, Interp("map[{}] = {}", node.Keys()[i].ToStr(), node.Values()[i].ToStr()));
 		FreeReg(valueReg);
 		FreeReg(keyReg);
+	}
+
+	if (buildReg != mapReg) {
+		_emitter.EmitABC(Opcode::LOAD_rA_rB, mapReg, buildReg, 0, Interp("r{} = r{}", mapReg, buildReg));
+		FreeReg(buildReg);
 	}
 
 	return mapReg;

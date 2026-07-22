@@ -131,6 +131,27 @@ public class CodeGenerator : IASTVisitor {
 		return startReg;
 	}
 
+	// Is this register currently bound to a variable?
+	//
+	// Visit methods must write their destination register only after every
+	// subexpression they depend on has been evaluated; otherwise a subexpression
+	// that reads the destination sees the half-built result.  Most Visit methods
+	// get this for free by emitting their result op last, but LIST and MAP have to
+	// create the container before filling it, so they need to know whether writing
+	// the destination early is safe.
+	//
+	// The registers a nested expression can read are exactly those bound to
+	// variables: it may read one directly (LOADC/LOADV rX, rVar), or by name at
+	// runtime (locals.x / globals.x, which resolve through the frame's name table
+	// to the same register).  Any other register it touches is a temp it allocated
+	// itself.  So this test is name-agnostic and covers both routes.
+	private Boolean IsLiveVariableReg(Int32 reg) {
+		foreach (Int32 r in _variableRegs.Values) { // CPP: for (Int32 r : _variableRegs.GetValues()) {
+			if (r == reg) return true;
+		}
+		return false;
+	}
+
 	// Compile an expression into a specific target register
 	// The target register should already be allocated by the caller
 	private Int32 CompileInto(ASTNode node, Int32 targetReg) {
@@ -367,6 +388,12 @@ public class CodeGenerator : IASTVisitor {
 		// on every path that assigns the variable, including conditional branches
 		// (e.g. the else clause of a single-line if), or the variable would be
 		// undefined at runtime when only that path executes.
+		//
+		// NAME must stay ahead of the RHS: via MapToRegister it imports any existing
+		// value for this name out of a live VarMap (ReplGlobals, or the frame's
+		// LocalVarMap) and into the register.  That import is how REPL globals
+		// persist across lines, and it overwrites the register -- so emitting NAME
+		// after the RHS would discard the value just computed.
 		EnsureNamed(node.Variable, varReg);
 		// If the RHS is a function expression, note the current function count so we
 		// can assign the variable name to the resulting FuncDef afterward.
@@ -725,34 +752,58 @@ public class CodeGenerator : IASTVisitor {
 	}
 
 	public Int32 Visit(ListNode node) {
-		// Create a list with the given number of elements
 		Int32 listReg = GetTargetOrAlloc();
+
+		// LIST writes its destination before the elements are evaluated, so if the
+		// destination holds a live variable, an element that reads that variable
+		// would see the new (empty) list instead -- e.g. "x = [x]" would build a
+		// list containing itself.  Build in a temp and copy at the end.
+		Int32 buildReg = listReg;
+		if (IsLiveVariableReg(listReg)) buildReg = AllocReg();
+
+		// Create a list with the given number of elements
 		Int32 count = node.Elements.Count;
-		_emitter.EmitAB(Opcode.LIST_rA_iBC, listReg, count, $"r{listReg} = new list[{count}]");
+		_emitter.EmitAB(Opcode.LIST_rA_iBC, buildReg, count, $"r{buildReg} = new list[{count}]");
 
 		// Push each element onto the list
 		for (Int32 i = 0; i < count; i++) {
 			Int32 elemReg = node.Elements[i].Accept(this);
-			_emitter.EmitABC(Opcode.PUSH_rA_rB, listReg, elemReg, 0, $"push element {i} onto r{listReg}");
+			_emitter.EmitABC(Opcode.PUSH_rA_rB, buildReg, elemReg, 0, $"push element {i} onto r{buildReg}");
 			FreeReg(elemReg);
+		}
+
+		if (buildReg != listReg) {
+			_emitter.EmitABC(Opcode.LOAD_rA_rB, listReg, buildReg, 0, $"r{listReg} = r{buildReg}");
+			FreeReg(buildReg);
 		}
 
 		return listReg;
 	}
 
 	public Int32 Visit(MapNode node) {
-		// Create a map
 		Int32 mapReg = GetTargetOrAlloc();
+
+		// As in Visit(ListNode): MAP writes its destination before the keys and
+		// values are evaluated, so build in a temp when the destination is live.
+		Int32 buildReg = mapReg;
+		if (IsLiveVariableReg(mapReg)) buildReg = AllocReg();
+
+		// Create a map
 		Int32 count = node.Keys.Count;
-		_emitter.EmitAB(Opcode.MAP_rA_iBC, mapReg, count, $"new map[{count}]");
+		_emitter.EmitAB(Opcode.MAP_rA_iBC, buildReg, count, $"new map[{count}]");
 
 		// Set each key-value pair
 		for (Int32 i = 0; i < count; i++) {
 			Int32 keyReg = node.Keys[i].Accept(this);
 			Int32 valueReg = node.Values[i].Accept(this);
-			_emitter.EmitABC(Opcode.IDXSET_rA_rB_rC, mapReg, keyReg, valueReg, $"map[{node.Keys[i].ToStr()}] = {node.Values[i].ToStr()}");
+			_emitter.EmitABC(Opcode.IDXSET_rA_rB_rC, buildReg, keyReg, valueReg, $"map[{node.Keys[i].ToStr()}] = {node.Values[i].ToStr()}");
 			FreeReg(valueReg);
 			FreeReg(keyReg);
+		}
+
+		if (buildReg != mapReg) {
+			_emitter.EmitABC(Opcode.LOAD_rA_rB, mapReg, buildReg, 0, $"r{mapReg} = r{buildReg}");
+			FreeReg(buildReg);
 		}
 
 		return mapReg;

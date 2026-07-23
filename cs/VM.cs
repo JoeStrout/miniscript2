@@ -1077,6 +1077,19 @@ public class VM {
 
 		while (IsRunning) {
 			// CPP: VM_DISPATCH_TOP();
+			// If an intrinsic (e.g. yield) asked us to pause, stop here -- between
+			// instructions, with pc pointing at the next one to run.  Every opcode
+			// returns to this point (switch: break; computed-goto: goto
+			// vm_dispatch_top), so this catches a yield set by any call path.
+			// RunUntilDone sees vm.yielding and returns to the host; a later Run()
+			// resumes right here.  Without this, yielding was only noticed after the
+			// full maxCycles batch, so execution paused at an arbitrary point rather
+			// than at the yield -- visible on single-buffered web builds as a canvas
+			// composited mid-frame.
+			if (yielding) {
+				SaveState(pc, baseIndex, currentFunc);
+				return Value.Null;
+			}
 			if (cyclesLeft == 0) {
 				SaveState(pc, baseIndex, currentFunc);
 				return Value.Null;

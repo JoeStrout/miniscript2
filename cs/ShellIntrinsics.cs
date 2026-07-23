@@ -49,10 +49,11 @@ using System.Collections.Generic;
     #include <sys/stat.h>
     #include <stdlib.h>
     #if defined(__APPLE__) || defined(__FreeBSD__)
-        #include <copyfile.h>
-    #else
-        #include <sys/sendfile.h>
+        #include <copyfile.h>   // for fcopyfile() in FsCopy
     #endif
+    // (Other platforms copy via system("cp -p ...") and need no extra header.
+    //  sys/sendfile.h was included here previously but sendfile() is never
+    //  called, and that header is absent on Emscripten/macOS.)
     #define PATHSEP "/"
 	extern "C" {
 		extern char **environ;

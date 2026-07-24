@@ -162,6 +162,50 @@ dist_csharp() {
     echo "  Done: build/dist/miniscript2-csharp.zip"
 }
 
+# ---------------------------------------------------------------------------
+# refresh_compile_commands
+#
+# Keep compile_commands.json (used by clangd) in sync with the source tree.
+#
+# Deliberately cheap: the staleness test is a handful of bash -nt comparisons,
+# no directory walk. A directory's mtime changes when a file is added, removed,
+# or renamed -- which is exactly when the database needs rebuilding. Editing an
+# existing file does NOT change the directory mtime, and also does not need a
+# rebuild, so the cheap signal is the correct one.
+#
+# cpp/Makefile is tested separately as a file, since editing it in place leaves
+# the directory mtime untouched but can change the compile flags themselves.
+#
+# Does nothing if the database has never been generated: it is optional dev
+# tooling, so we maintain it rather than create it uninvited. Run
+# tools/gen_compile_commands.sh once to opt in.
+# ---------------------------------------------------------------------------
+refresh_compile_commands() {
+    # Resolve an absolute root here rather than relying on PROJECT_ROOT, which
+    # is relative and only correct while cwd is the project root.
+    local root
+    root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+    local db="$root/compile_commands.json"
+    [ -f "$db" ] || return 0
+
+    local stale=""
+    if [ "$root/cpp/Makefile" -nt "$db" ]; then stale=1; fi
+    if [ -z "$stale" ]; then
+        for d in cpp cpp/core cpp/editline generated; do
+            [ -d "$root/$d" ] || continue
+            if [ "$root/$d" -nt "$db" ]; then stale=1; break; fi
+        done
+    fi
+    [ -n "$stale" ] || return 0
+
+    echo "Source tree changed; refreshing compile_commands.json..."
+    # Never let a tooling hiccup fail the build.
+    if ! "$root/tools/gen_compile_commands.sh" > /dev/null 2>&1; then
+        echo "Warning: could not refresh compile_commands.json (clangd may be stale)."
+    fi
+    return 0
+}
+
 case "$TARGET" in
     "setup")
         echo "Setting up development environment..."
@@ -213,6 +257,7 @@ case "$TARGET" in
         fi
 
         echo "Transpilation complete."
+        refresh_compile_commands
         ;;
     
     "cpp")
@@ -234,6 +279,8 @@ case "$TARGET" in
                 *.cpp)             COMPILE_FILE="$arg" ;;
             esac
         done
+
+        refresh_compile_commands
 
         MAKE_ARGS=""
         if [ "$BUILD_MODE" = "debug" ]; then

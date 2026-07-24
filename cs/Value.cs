@@ -1305,8 +1305,13 @@ public readonly struct Value {
 	}
 
 	// ==== OVERRIDES ==========================================================
+	// CS0809: an obsolete override of a non-obsolete member. That is deliberate
+	// here -- the attribute steers direct callers to ToString(vm), and we accept
+	// that calls arriving via object.ToString() won't see the warning.
+#pragma warning disable CS0809
 	[Obsolete("Use ToString(vm) instead")]
 	public override string ToString() => ToString(null);
+#pragma warning restore CS0809
 
 	// Equals/GetHashCode embody the same semantics as MiniScript ==, so that
 	// Dictionary<Value, Value> hashes/compares keys correctly. In particular,

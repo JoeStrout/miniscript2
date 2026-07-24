@@ -1,0 +1,17 @@
+# clangd configuration.
+#
+# The real compile flags come from compile_commands.json, which is generated
+# by tools/gen_compile_commands.sh from cpp/Makefile. Run that script once per
+# checkout (and again after adding sources or transpiling).
+#
+# This file only supplies a fallback language standard, so that a checkout
+# WITHOUT a generated compile database still parses as C++11 instead of
+# defaulting to C++98 -- which otherwise produces spurious errors on
+# constexpr, on rvalue references, and on ">>" in nested templates.
+#
+# Include paths are deliberately not listed here: they are relative to cpp/
+# and would resolve differently depending on whether a compile database is
+# present. compile_commands.json is the single source of truth for those.
+CompileFlags:
+  Add:
+    - -std=gnu++11

@@ -87,6 +87,11 @@ cs/cs.sln
 # Internal Stuff
 InternalNotes
 
+# clangd compile database (machine-specific absolute paths).
+# Regenerate with tools/gen_compile_commands.sh; the .clangd config IS tracked.
+compile_commands.json
+.cache/clangd/
+
 # Benchmarks (symbolic link to miniscript-benchmarks/cmdline)
 benchmarks
 

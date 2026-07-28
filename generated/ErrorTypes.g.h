@@ -26,8 +26,17 @@ class ErrorTypes {
 	// Must be called after gc_init() in C++; in C# this is called lazily.
 	public: static void Init();
 
-	// Create a compiler error value with the given message.
+	// Create a compiler error value with the given message.  Carries no stack
+	// trace: compilation normally happens before the program runs, so there is
+	// no call stack to report.
 	public: static Value CompilerError(String msg);
+
+	// Create a compiler error value that wraps `inner` and carries the active
+	// VM's stack trace.  For compilation that happens *during* execution -- the
+	// `import` intrinsic -- where there is a meaningful location to report (the
+	// line that asked for the module), and the underlying parse error is worth
+	// keeping as the inner error.
+	public: static Value CompilerError(String msg, Value inner);
 
 	// Create a runtime error value with the given message and stack trace.
 	public: static Value RuntimeError(String msg, Value stack);

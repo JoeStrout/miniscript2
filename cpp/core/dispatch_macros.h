@@ -108,7 +108,8 @@
 	X(IDXGET_rA_rB_rC) \
 	X(SETSELF_rA) \
 	X(CALLIFREF_rA) \
-	X(ITERGET_rA_rB_rC)
+	X(ITERGET_rA_rB_rC) \
+	X(ERRCHK_rA)
 
 
 #if VM_USE_COMPUTED_GOTO
@@ -117,9 +118,17 @@
 	#define VM_LABEL_ADDR(OP) &&L_##OP
 	#define VM_LABEL_LIST(OP) VM_LABEL_ADDR(OP),
 
-	#define VM_DISPATCH_TOP() vm_dispatch_top:
+	// The IsRunning test belongs here, at the top -- before the instruction
+	// fetch -- because VM_NEXT() jumps to this label, so this is the goto
+	// build's equivalent of the switch build re-checking `while (IsRunning)`
+	// after a `break`.  Testing it after the fetch instead would let a handler
+	// that stopped the VM (RaiseRuntimeError, and friends) still advance pc and
+	// PC by one, which throws off every stack trace built from PC - 1.  Same
+	// number of tests per instruction either way.
+	#define VM_DISPATCH_TOP() \
+		vm_dispatch_top: \
+		if (!IsRunning) goto vm_dispatch_bottom;
 	#define VM_DISPATCH_BEGIN() \
-		if (!IsRunning) goto vm_dispatch_bottom; \
 		goto *vm_labels[(int)opcode];
 
 	#define VM_CASE(OP)     L_##OP:

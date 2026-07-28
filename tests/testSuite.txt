@@ -4736,7 +4736,25 @@ e = err("DOH")
 lst = [1, 2, 3, 4, 5]
 lst[2:e]
 ---------------------------------
+Runtime Error: Uncaught DOH [line 3]
+================================
+==== error: discarded as a bare statement terminates
+================================
+print "before"
+err("DOH")
+print "after"
+---------------------------------
+before
 Runtime Error: Uncaught DOH [line 2]
+================================
+==== error: caught by assignment does not terminate
+================================
+e = err("DOH")
+print "still running"
+print e isa error
+---------------------------------
+still running
+1
 ================================
 ==== error: numeric function with wrong arg type
 ================================

@@ -88,6 +88,7 @@ public static class Disassembler {
 			case Opcode.SETSELF_rA:    return "SETSELF";
 			case Opcode.CALLIFREF_rA:  return "CALLIFREF";
 			case Opcode.ITERGET_rA_rB_rC: return "ITERGET";
+			case Opcode.ERRCHK_rA:     return "ERRCHK";
 			default:
 				return "Unknown opcode";
 		}		
@@ -115,6 +116,7 @@ public static class Disassembler {
 			case Opcode.GLOBALS_rA:
 			case Opcode.SETSELF_rA:
 			case Opcode.CALLIFREF_rA:
+			case Opcode.ERRCHK_rA:
 				return StringUtils.Format("{0} r{1}",
 					mnemonic,
 					(Int32)BytecodeUtil.Au(instruction));

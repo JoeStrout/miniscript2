@@ -143,6 +143,7 @@ String BytecodeUtil::ToMnemonic(Opcode opcode) {
 		case Opcode::SETSELF_rA:     return "SETSELF_rA";
 		case Opcode::CALLIFREF_rA:   return "CALLIFREF_rA";
 		case Opcode::ITERGET_rA_rB_rC: return "ITERGET_rA_rB_rC";
+		case Opcode::ERRCHK_rA:      return "ERRCHK_rA";
 		default:
 			return "Unknown opcode";
 	}
@@ -224,6 +225,7 @@ Opcode BytecodeUtil::FromMnemonic(String s) {
 	if (s == "SETSELF_rA")      return Opcode::SETSELF_rA;
 	if (s == "CALLIFREF_rA")    return Opcode::CALLIFREF_rA;
 	if (s == "ITERGET_rA_rB_rC") return Opcode::ITERGET_rA_rB_rC;
+	if (s == "ERRCHK_rA")       return Opcode::ERRCHK_rA;
 	return Opcode::NOOP;
 }
 

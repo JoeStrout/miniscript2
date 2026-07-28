@@ -2159,6 +2159,17 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				VM_NEXT();
 			}
 
+			VM_CASE(ERRCHK_rA) {
+				// Halt if R[A] holds an error.  Emitted after any expression
+				// compiled as a bare statement: its value goes nowhere, so an
+				// error there is one nobody can ever catch.  Assigning the
+				// expression to a variable (or passing it along) suppresses
+				// this check, which is how a caller "catches" the error.
+				Byte a = BytecodeUtil::Au(instruction);
+				if (localStack[a].IsError()) RaiseUncaughtError(localStack[a]);
+				VM_NEXT();
+			}
+
 			VM_DISPATCH_END();
 	}
 	VM_DISPATCH_BOTTOM();

@@ -141,8 +141,13 @@ void CodeGeneratorStorage::CompileBody(List<ASTNode> body) {
 	for (Int32 i = 0; i < body.Count(); i++) {
 		ResetTempRegisters();
 		if (body[i].Line() != 0) _emitter.set_CurrentLine(body[i].Line());
-		body[i].Accept(_this);
+		Int32 resultReg = body[i].Accept(_this);
+		EmitDiscardCheck(body[i], resultReg);
 	}
+}
+void CodeGeneratorStorage::EmitDiscardCheck(ASTNode stmt,Int32 resultReg) {
+	if (stmt.IsStatement() || resultReg < 0) return;
+	_emitter.EmitA(Opcode::ERRCHK_rA, resultReg, "halt if result is an uncaught error");
 }
 void CodeGeneratorStorage::CompileConditionalBody(List<ASTNode> body) {
 	Int32 mark = _namedStack.Count();
@@ -188,7 +193,8 @@ List<FuncDef> CodeGeneratorStorage::CompileImport(List<ASTNode> statements,Strin
 	for (Int32 i = 0; i < statements.Count(); i++) {
 		ResetTempRegisters();
 		if (statements[i].Line() != 0) _emitter.set_CurrentLine(statements[i].Line());
-		CompileInto(statements[i], 0);
+		Int32 resultReg = CompileInto(statements[i], 0);
+		EmitDiscardCheck(statements[i], resultReg);
 	}
 
 	_emitter.EmitA(Opcode::LOCALS_rA, 0, "return locals");
@@ -214,7 +220,8 @@ FuncDef CodeGeneratorStorage::CompileProgram(List<ASTNode> statements,String fun
 	for (Int32 i = 0; i < statements.Count(); i++) {
 		ResetTempRegisters();
 		if (statements[i].Line() != 0) _emitter.set_CurrentLine(statements[i].Line());
-		CompileInto(statements[i], 0);
+		Int32 resultReg = CompileInto(statements[i], 0);
+		EmitDiscardCheck(statements[i], resultReg);
 	}
 
 	_emitter.Emit(Opcode::RETURN, nullptr);

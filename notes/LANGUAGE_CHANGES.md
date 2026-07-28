@@ -49,6 +49,7 @@ We'll add one new type to MiniScript, `error`, which represents a runtime error,
 - All binary operators except for `isa`, `==`, and `!=` (so `+`, `-`, `*`, `/`, `%`, `^`, `<`, `<=`, `>`, `>=`, `and`) involving `e` evaluate to `e` (or if both operands are errors, evaluate to the first one), as do the unary operators `-` and `not`.
 - `e[i]` evaluate to `e`.
 - Any use of `e.foo` or `e[i]` in an lvalue expression terminates.
+- An expression statement that evaluates to `e` terminates, since the value is discarded and so could never be caught.  This is what makes a failing `import "foo"` (or `f.readLines(path)`, etc.) halt on its own line, while `x = import("foo")` keeps the error as an ordinary value.
 
 Note 1: "Terminates" above means that the program is halted, and a new runtime error is displayed, containing `e` as its `inner` error.  Program code can not catch these; but they are always preventable with proper code.
 Note 2: Any function can be written to propagate an argument error, or do something else when sensible; user functions are up to the user.

@@ -2333,7 +2333,14 @@ public static class ShellIntrinsics {
 			Value compileErr;
 			FuncDef moduleMain = Interpreter.CompileToFunc(source, libname + ".ms", out compileErr);
 			if (moduleMain == null) {
-				if (!compileErr.IsNull()) return new IntrinsicResult(compileErr);
+				// Return the error as our result: as a bare statement (the usual
+				// form) the discarded value halts the program via ERRCHK, while
+				// `x = import("foo")` lets the caller inspect it instead.  The
+				// parser's message carries only a line number, so name the module.
+				if (!compileErr.IsNull()) {
+					return new IntrinsicResult(ErrorTypes.CompilerError(StringUtils.Format(
+						"in {0}.ms: {1}", libname, compileErr.Message()), compileErr));
+				}
 				return new IntrinsicResult(Value.Null);   // empty module
 			}
 			// Push the module call; we will be re-invoked when it finishes.

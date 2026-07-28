@@ -208,21 +208,8 @@ void InterpreterStorage::REPL(String sourceLine,double timeLimit) {
 
 	// Detect implicit output: last statement is a bare expression
 	// (not an assignment, block statement, break, continue, or return)
-	Boolean hasImplicitOutput = Boolean(false);
 	ASTNode lastStmt = statements[statements.Count() - 1];
-	AssignmentNode asAssign = As<AssignmentNode, AssignmentNodeStorage>(lastStmt);
-	IndexedAssignmentNode asIdxAssign = As<IndexedAssignmentNode, IndexedAssignmentNodeStorage>(lastStmt);
-	WhileNode asWhile = As<WhileNode, WhileNodeStorage>(lastStmt);
-	IfNode asIf = As<IfNode, IfNodeStorage>(lastStmt);
-	ForNode asFor = As<ForNode, ForNodeStorage>(lastStmt);
-	BreakNode asBreak = As<BreakNode, BreakNodeStorage>(lastStmt);
-	ContinueNode asContinue = As<ContinueNode, ContinueNodeStorage>(lastStmt);
-	ReturnNode asReturn = As<ReturnNode, ReturnNodeStorage>(lastStmt);
-	if (IsNull(asAssign) && IsNull(asIdxAssign)
-		&& IsNull(asWhile) && IsNull(asIf) && IsNull(asFor)
-		&& IsNull(asBreak) && IsNull(asContinue) && IsNull(asReturn)) {
-		hasImplicitOutput = Boolean(true);
-	}
+	Boolean hasImplicitOutput = !lastStmt.IsStatement();
 
 	// Compile to bytecode.  Each REPL line is its own @main; previously
 	// defined functions are reached as funcref values in the globals VarMap.

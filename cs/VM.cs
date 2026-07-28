@@ -2445,6 +2445,17 @@ public class VM {
 					break;
 				}
 
+				case Opcode.ERRCHK_rA: {
+					// Halt if R[A] holds an error.  Emitted after any expression
+					// compiled as a bare statement: its value goes nowhere, so an
+					// error there is one nobody can ever catch.  Assigning the
+					// expression to a variable (or passing it along) suppresses
+					// this check, which is how a caller "catches" the error.
+					Byte a = BytecodeUtil.Au(instruction);
+					if (localStack[a].IsError()) RaiseUncaughtError(localStack[a]);
+					break;
+				}
+
 				// CPP: VM_DISPATCH_END();
 //*** BEGIN CS_ONLY ***
 				default:

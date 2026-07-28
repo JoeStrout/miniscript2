@@ -98,6 +98,7 @@ enum class Opcode : Byte {
 	SETSELF_rA,
 	CALLIFREF_rA,
 	ITERGET_rA_rB_rC,
+	ERRCHK_rA,
 	OP__COUNT  // Not an opcode, but rather how many opcodes we have.
 }; // end of enum Opcode
 

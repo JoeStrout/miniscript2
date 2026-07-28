@@ -80,6 +80,13 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 	// Resets temporary registers before each statement.
 	private: void CompileBody(List<ASTNode> body);
 
+	// After compiling a statement, guard against silently dropping an error.
+	// A bare expression used as a statement throws its value away; if that value
+	// is an error, nobody can ever catch it, so ERRCHK halts the program there
+	// (with the discarding line in the stack trace).  Statements proper have no
+	// meaningful result register, and are skipped.
+	private: void EmitDiscardCheck(ASTNode stmt, Int32 resultReg);
+
 	// Compile a body of statements that executes conditionally (an if/else branch
 	// or a loop body).  A NAME op emitted inside this body does not dominate code
 	// after it, so any names recorded while compiling the body are forgotten on
@@ -317,6 +324,13 @@ struct CodeGenerator : public IASTVisitor {
 	// Resets temporary registers before each statement.
 	private: inline void CompileBody(List<ASTNode> body);
 
+	// After compiling a statement, guard against silently dropping an error.
+	// A bare expression used as a statement throws its value away; if that value
+	// is an error, nobody can ever catch it, so ERRCHK halts the program there
+	// (with the discarding line in the stack trace).  Statements proper have no
+	// meaningful result register, and are skipped.
+	private: inline void EmitDiscardCheck(ASTNode stmt, Int32 resultReg);
+
 	// Compile a body of statements that executes conditionally (an if/else branch
 	// or a loop body).  A NAME op emitted inside this body does not dominate code
 	// after it, so any names recorded while compiling the body are forgotten on
@@ -505,6 +519,7 @@ inline Int32 CodeGenerator::GetTargetOrAlloc() { return get()->GetTargetOrAlloc(
 inline Int32 CodeGenerator::Compile(ASTNode ast) { return get()->Compile(ast); }
 inline void CodeGenerator::ResetTempRegisters() { return get()->ResetTempRegisters(); }
 inline void CodeGenerator::CompileBody(List<ASTNode> body) { return get()->CompileBody(body); }
+inline void CodeGenerator::EmitDiscardCheck(ASTNode stmt,Int32 resultReg) { return get()->EmitDiscardCheck(stmt, resultReg); }
 inline void CodeGenerator::CompileConditionalBody(List<ASTNode> body) { return get()->CompileConditionalBody(body); }
 inline void CodeGenerator::EnsureNamed(String varName,Int32 varReg) { return get()->EnsureNamed(varName, varReg); }
 inline FuncDef CodeGenerator::CompileFunction(ASTNode ast,String funcName) { return get()->CompileFunction(ast, funcName); }

@@ -94,6 +94,7 @@ public enum Opcode : Byte {
 	SETSELF_rA,
 	CALLIFREF_rA,
 	ITERGET_rA_rB_rC,
+	ERRCHK_rA,
 	OP__COUNT  // Not an opcode, but rather how many opcodes we have.
 }
 
@@ -270,6 +271,7 @@ public static class BytecodeUtil {
 			case Opcode.SETSELF_rA:     return "SETSELF_rA";
 			case Opcode.CALLIFREF_rA:   return "CALLIFREF_rA";
 			case Opcode.ITERGET_rA_rB_rC: return "ITERGET_rA_rB_rC";
+			case Opcode.ERRCHK_rA:      return "ERRCHK_rA";
 			default:
 				return "Unknown opcode";
 		}
@@ -352,6 +354,7 @@ public static class BytecodeUtil {
 		if (s == "SETSELF_rA")      return Opcode.SETSELF_rA;
 		if (s == "CALLIFREF_rA")    return Opcode.CALLIFREF_rA;
 		if (s == "ITERGET_rA_rB_rC") return Opcode.ITERGET_rA_rB_rC;
+		if (s == "ERRCHK_rA")       return Opcode.ERRCHK_rA;
 		return Opcode.NOOP;
 	}
 }

@@ -198,8 +198,19 @@ public class CodeGenerator : IASTVisitor {
 		for (Int32 i = 0; i < body.Count; i++) {
 			ResetTempRegisters();
 			if (body[i].Line != 0) _emitter.CurrentLine = body[i].Line;
-			body[i].Accept(this);
+			Int32 resultReg = body[i].Accept(this);
+			EmitDiscardCheck(body[i], resultReg);
 		}
+	}
+
+	// After compiling a statement, guard against silently dropping an error.
+	// A bare expression used as a statement throws its value away; if that value
+	// is an error, nobody can ever catch it, so ERRCHK halts the program there
+	// (with the discarding line in the stack trace).  Statements proper have no
+	// meaningful result register, and are skipped.
+	private void EmitDiscardCheck(ASTNode stmt, Int32 resultReg) {
+		if (stmt.IsStatement() || resultReg < 0) return;
+		_emitter.EmitA(Opcode.ERRCHK_rA, resultReg, "halt if result is an uncaught error");
 	}
 
 	// Compile a body of statements that executes conditionally (an if/else branch
@@ -261,7 +272,8 @@ public class CodeGenerator : IASTVisitor {
 		for (Int32 i = 0; i < statements.Count; i++) {
 			ResetTempRegisters();
 			if (statements[i].Line != 0) _emitter.CurrentLine = statements[i].Line;
-			CompileInto(statements[i], 0);
+			Int32 resultReg = CompileInto(statements[i], 0);
+			EmitDiscardCheck(statements[i], resultReg);
 		}
 
 		_emitter.EmitA(Opcode.LOCALS_rA, 0, "return locals");
@@ -289,7 +301,8 @@ public class CodeGenerator : IASTVisitor {
 		for (Int32 i = 0; i < statements.Count; i++) {
 			ResetTempRegisters();
 			if (statements[i].Line != 0) _emitter.CurrentLine = statements[i].Line;
-			CompileInto(statements[i], 0);
+			Int32 resultReg = CompileInto(statements[i], 0);
+			EmitDiscardCheck(statements[i], resultReg);
 		}
 
 		_emitter.Emit(Opcode.RETURN, null);

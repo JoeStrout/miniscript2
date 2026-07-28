@@ -98,6 +98,7 @@ Our internal opcode names include a verb/mnemonic, and a description of how the 
 | SETSELF_rA | Override pendingSelf with R[A] (used for super.method() to preserve original self) |
 | CALLIFREF_rA | If R[A] is a funcref and pending context exists, auto-invoke it with pending self/super; otherwise clear pending context |
 | ITERGET_rA_rB_rC | R[A] := element at position R[C] from container R[B]; for lists/strings same as INDEX, for maps returns {"key":k, "value":v} |
+| ERRCHK_rA | if R[A] is an error, terminate with an "Uncaught" runtime error; otherwise do nothing |
 
 (More opcodes will be added as the prototype develops.)
 
@@ -138,6 +139,14 @@ For when we have a truth value already in a register (a common situation when co
 - `BRERR_rA_iBC` jumps ±32767 steps if the register value is an error
 
 `BRTRUE`/`BRFALSE` deliberately raise a runtime error when given an error value, since an error used as an `if`/`while` condition should terminate the program.  `BRERR` makes no such judgment — it simply tests for an error value without raising — which is what lets short-circuit `and`/`or` handle errors (see below).
+
+### Discarded errors: `ERRCHK`
+
+Error values propagate lazily: they flow through assignments, arguments, and most operators as ordinary values, and only terminate the program when used somewhere that cannot tolerate them.  That leaves one hole — an expression compiled as a *bare statement* throws its value away, so an error there would simply vanish (`file.readLines("/nope")` or `import "broken"` on a line by itself would do nothing at all).
+
+So the code generator follows every bare-expression statement with `ERRCHK` on the register holding its result.  An error nobody stored and nobody passed on is an error nobody can catch, and `ERRCHK` halts there, reporting `Uncaught <message>` with the discarding line in the stack trace.  Statements proper (assignment, `if`, `while`, `for`, `break`, `continue`, `return`) have no meaningful result register and get no check; `ASTNode.IsStatement()` is what tells the two apart.
+
+This is also what makes an error a *catchable* result: `import "broken"` terminates, while `e = import("broken")` stores the error for the caller to inspect.  An intrinsic that wants a failure to be catchable should therefore return an error value rather than raising a runtime error itself.
 
 ### Short-circuit `and`/`or`
 

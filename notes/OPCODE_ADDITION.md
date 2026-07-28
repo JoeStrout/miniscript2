@@ -10,7 +10,7 @@ To add a new opcode, the following must be implemented:
 2. cpp/core/dispatch_macros.h: The raw opcodes must be added to the list of macros in `VM_OpCodes(X)`.
 3. cs/Assembler.cs: The assembly version of the opcodes must be implemented in `Assembler.AddLine()`.
 4. cs/Disassembler.cs: The raw opcodes and assembly opcodes must be matched together in both `Disassembler.AssemOp()` and `Disassembler.ToString()`.
-5. cs/VM.cs: Implementation of the raw opcodes must be completed in `VM.Execute()`
+5. cs/VM.cs: Implementation of the raw opcodes must be completed in the dispatch loop in `VM.RunInner()`
 6. VM_DESIGN.md: The new opcodes should be documented.
 
 Opcodes should be implemented in the same order across all files, *as best as possible*. If your new opcode comes immediately after the JUMP opcode in cs/Bytecode.cs, then it should be implemented after JUMP in cs/VM.cs, for example.
@@ -86,20 +86,26 @@ case Opcode.INC_rA:
 
 ### cs/VM.cs
 
-We'll add the following to `VM.Execute()`:
+We'll add the following to the dispatch loop in `VM.RunInner()`:
 
 ```cs
-case Opcode.INC_rA: { // CPP: VM_CASE(INC_rA) {
+case Opcode.INC_rA: {
     // R[A]++
     Byte a = BytecodeUtil.Au(instruction);
-    stack[baseIndex + a] = value_add(stack[baseIndex + a], val_one);
+    localStack[a] = localStack[a].Add(Value.one, this);
 
-    // We assume R[A] is an integer.
+    // We assume R[A] is a number.
     // TODO: Add support for other data types, like strings.
 
-    break; // CPP: VM_NEXT();
+    break;
 }
 ```
+
+Registers are addressed through `localStack`, which is the current frame's window onto the register stack, so `localStack[a]` is register A (no `baseIndex` arithmetic needed).
+
+Write a plain `case` and `break`: the transpiler emits `VM_CASE(INC_rA)` and `VM_NEXT()` for you, so the dispatch method works under both computed-goto and switch builds.  A handful of older cases still carry explicit `// CPP: VM_CASE(...)` / `// CPP: VM_NEXT();` annotations; those are leftovers, not a pattern to copy.
+
+If your opcode needs to stop the VM (say, on a bad operand), call `RaiseRuntimeError` and then `break` as usual — the dispatch loop notices `IsRunning` went false, exits, and saves state; the handler itself does not need to do anything more.
 
 ### cpp/core/dispatch_macros.h
 

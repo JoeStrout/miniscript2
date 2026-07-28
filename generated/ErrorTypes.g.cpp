@@ -28,6 +28,10 @@ Value ErrorTypes::CompilerError(String msg) {
 	if (compiler.IsNull()) Init();
 	return Value::make_error(Value::make_string(msg), Value::Null, Value::Null, compiler);
 }
+Value ErrorTypes::CompilerError(String msg,Value inner) {
+	if (compiler.IsNull()) Init();
+	return Value::make_error(Value::make_string(msg), inner, Value::value_current_stack_trace(), compiler);
+}
 Value ErrorTypes::RuntimeError(String msg,Value stack) {
 	if (runtime.IsNull()) Init();
 	return Value::make_error(Value::make_string(msg), Value::Null, stack, runtime);

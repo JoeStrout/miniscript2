@@ -96,6 +96,7 @@ struct ASTNode {
 	public: String ToStr();
 	public: ASTNode Simplify();
 	public: Boolean MayReadVar(String varName);
+	public: Boolean IsStatement();
 
 	// Each node type should override this to provide a string representation
 
@@ -112,6 +113,16 @@ struct ASTNode {
 	// miscompiling.  Note ScopeNode answers true unconditionally -- `locals` and
 	// `globals` are live windows onto every register, so a read through one is
 	// invisible to any name-matching walk.
+
+	// Is this node a statement, i.e. something executed only for its effect?
+	// Expressions answer false: when one is compiled as a bare statement its value
+	// is discarded, so the code generator follows it with an ERRCHK -- an error
+	// value nobody stored or passed on is an error nobody can catch, and should
+	// stop the program.  Statements answer true; their result register holds
+	// nothing meaningful, so checking it could halt a perfectly good program.
+	// Neither answer is safe by default, which is why this is abstract (like
+	// MayReadVar above): a new node type must state which it is.  The REPL uses
+	// the same answer to decide whether a line produces implicit output.
 
 	// Copy the source line from this node to the given node and return it.
 	// Call as `return CopyLine(new SomeNode(...));` inside Simplify() overrides.
@@ -128,6 +139,7 @@ class ASTNodeStorage : public std::enable_shared_from_this<ASTNodeStorage> {
 	public: virtual String ToStr() = 0;
 	public: virtual ASTNode Simplify() = 0;
 	public: virtual Boolean MayReadVar(String varName) = 0;
+	public: virtual Boolean IsStatement() = 0;
 
 	// Each node type should override this to provide a string representation
 
@@ -145,6 +157,16 @@ class ASTNodeStorage : public std::enable_shared_from_this<ASTNodeStorage> {
 	// `globals` are live windows onto every register, so a read through one is
 	// invisible to any name-matching walk.
 
+	// Is this node a statement, i.e. something executed only for its effect?
+	// Expressions answer false: when one is compiled as a bare statement its value
+	// is discarded, so the code generator follows it with an ERRCHK -- an error
+	// value nobody stored or passed on is an error nobody can catch, and should
+	// stop the program.  Statements answer true; their result register holds
+	// nothing meaningful, so checking it could halt a perfectly good program.
+	// Neither answer is safe by default, which is why this is abstract (like
+	// MayReadVar above): a new node type must state which it is.  The REPL uses
+	// the same answer to decide whether a line produces implicit output.
+
 	// Copy the source line from this node to the given node and return it.
 	// Call as `return CopyLine(new SomeNode(...));` inside Simplify() overrides.
 	protected: ASTNode CopyLine(ASTNode result);
@@ -158,6 +180,8 @@ class NumberNodeStorage : public ASTNodeStorage {
 	public: Double Value;
 
 	public: NumberNodeStorage(Double value);
+
+	public: Boolean IsStatement();
 
 	public: String ToStr();
 
@@ -174,6 +198,8 @@ class StringNodeStorage : public ASTNodeStorage {
 
 	public: StringNodeStorage(String value);
 
+	public: Boolean IsStatement();
+
 	public: String ToStr();
 
 	public: ASTNode Simplify();
@@ -188,6 +214,8 @@ class IdentifierNodeStorage : public ASTNodeStorage {
 	public: String Name;
 
 	public: IdentifierNodeStorage(String name);
+
+	public: Boolean IsStatement();
 
 	public: String ToStr();
 
@@ -204,6 +232,8 @@ class AssignmentNodeStorage : public ASTNodeStorage {
 	public: ASTNode Value; // expression being assigned
 
 	public: AssignmentNodeStorage(String variable, ASTNode value);
+
+	public: Boolean IsStatement();
 
 	public: String ToStr();
 
@@ -223,6 +253,8 @@ class IndexedAssignmentNodeStorage : public ASTNodeStorage {
 
 	public: IndexedAssignmentNodeStorage(ASTNode target, ASTNode index, ASTNode value, String lhsName);
 
+	public: Boolean IsStatement();
+
 	public: String ToStr();
 
 	public: ASTNode Simplify();
@@ -238,6 +270,8 @@ class UnaryOpNodeStorage : public ASTNodeStorage {
 	public: ASTNode Operand; // the expression being operated on
 
 	public: UnaryOpNodeStorage(String op, ASTNode operand);
+
+	public: Boolean IsStatement();
 
 	public: String ToStr();
 
@@ -256,6 +290,8 @@ class BinaryOpNodeStorage : public ASTNodeStorage {
 
 	public: BinaryOpNodeStorage(String op, ASTNode left, ASTNode right);
 
+	public: Boolean IsStatement();
+
 	public: String ToStr();
 
 	public: ASTNode Simplify();
@@ -271,6 +307,8 @@ class ComparisonChainNodeStorage : public ASTNodeStorage {
 	public: List<String> Operators; // comparison operators (Op.LESS_THAN, etc.)
 
 	public: ComparisonChainNodeStorage(List<ASTNode> operands, List<String> operators);
+
+	public: Boolean IsStatement();
 
 	public: String ToStr();
 
@@ -290,6 +328,8 @@ class CallNodeStorage : public ASTNodeStorage {
 
 	public: CallNodeStorage(String function);
 
+	public: Boolean IsStatement();
+
 	public: String ToStr();
 
 	public: ASTNode Simplify();
@@ -304,6 +344,8 @@ class GroupNodeStorage : public ASTNodeStorage {
 	public: ASTNode Expression;
 
 	public: GroupNodeStorage(ASTNode expression);
+
+	public: Boolean IsStatement();
 
 	public: String ToStr();
 
@@ -321,6 +363,8 @@ class ListNodeStorage : public ASTNodeStorage {
 	public: ListNodeStorage(List<ASTNode> elements);
 
 	public: ListNodeStorage();
+
+	public: Boolean IsStatement();
 
 	public: String ToStr();
 
@@ -340,6 +384,8 @@ class MapNodeStorage : public ASTNodeStorage {
 
 	public: MapNodeStorage();
 
+	public: Boolean IsStatement();
+
 	public: String ToStr();
 
 	public: ASTNode Simplify();
@@ -355,6 +401,8 @@ class IndexNodeStorage : public ASTNodeStorage {
 	public: ASTNode Index; // the index expression
 
 	public: IndexNodeStorage(ASTNode target, ASTNode index);
+
+	public: Boolean IsStatement();
 
 	public: String ToStr();
 
@@ -373,6 +421,8 @@ class SliceNodeStorage : public ASTNodeStorage {
 
 	public: SliceNodeStorage(ASTNode target, ASTNode startIndex, ASTNode endIndex);
 
+	public: Boolean IsStatement();
+
 	public: String ToStr();
 
 	public: ASTNode Simplify();
@@ -388,6 +438,8 @@ class MemberNodeStorage : public ASTNodeStorage {
 	public: String Member; // the member name
 
 	public: MemberNodeStorage(ASTNode target, String member);
+
+	public: Boolean IsStatement();
 
 	public: String ToStr();
 
@@ -406,6 +458,8 @@ class MethodCallNodeStorage : public ASTNodeStorage {
 
 	public: MethodCallNodeStorage(ASTNode target, String method, List<ASTNode> arguments);
 
+	public: Boolean IsStatement();
+
 	public: String ToStr();
 
 	public: ASTNode Simplify();
@@ -422,6 +476,8 @@ class ExprCallNodeStorage : public ASTNodeStorage {
 
 	public: ExprCallNodeStorage(ASTNode function, List<ASTNode> arguments);
 
+	public: Boolean IsStatement();
+
 	public: String ToStr();
 
 	public: ASTNode Simplify();
@@ -437,6 +493,8 @@ class WhileNodeStorage : public ASTNodeStorage {
 	public: List<ASTNode> Body; // statements in the loop body
 
 	public: WhileNodeStorage(ASTNode condition, List<ASTNode> body);
+
+	public: Boolean IsStatement();
 
 	public: String ToStr();
 
@@ -455,6 +513,8 @@ class IfNodeStorage : public ASTNodeStorage {
 
 	public: IfNodeStorage(ASTNode condition, List<ASTNode> thenBody, List<ASTNode> elseBody);
 
+	public: Boolean IsStatement();
+
 	public: String ToStr();
 
 	public: ASTNode Simplify();
@@ -472,6 +532,8 @@ class ForNodeStorage : public ASTNodeStorage {
 
 	public: ForNodeStorage(String variable, ASTNode iterable, List<ASTNode> body);
 
+	public: Boolean IsStatement();
+
 	public: String ToStr();
 
 	public: ASTNode Simplify();
@@ -485,6 +547,8 @@ class BreakNodeStorage : public ASTNodeStorage {
 	friend struct BreakNode;
 	public: BreakNodeStorage();
 
+	public: Boolean IsStatement();
+
 	public: String ToStr();
 
 	public: ASTNode Simplify();
@@ -497,6 +561,8 @@ class BreakNodeStorage : public ASTNodeStorage {
 class ContinueNodeStorage : public ASTNodeStorage {
 	friend struct ContinueNode;
 	public: ContinueNodeStorage();
+
+	public: Boolean IsStatement();
 
 	public: String ToStr();
 
@@ -515,6 +581,8 @@ class FunctionNodeStorage : public ASTNodeStorage {
 
 	public: FunctionNodeStorage(List<String> paramNames, List<ASTNode> paramDefaults, List<ASTNode> body);
 
+	public: Boolean IsStatement();
+
 	public: String ToStr();
 
 	public: ASTNode Simplify();
@@ -527,6 +595,8 @@ class FunctionNodeStorage : public ASTNodeStorage {
 class SelfNodeStorage : public ASTNodeStorage {
 	friend struct SelfNode;
 	public: SelfNodeStorage() {}
+	public: Boolean IsStatement();
+
 	public: String ToStr();
 	public: ASTNode Simplify();
 
@@ -537,6 +607,8 @@ class SelfNodeStorage : public ASTNodeStorage {
 class SuperNodeStorage : public ASTNodeStorage {
 	friend struct SuperNode;
 	public: SuperNodeStorage() {}
+	public: Boolean IsStatement();
+
 	public: String ToStr();
 	public: ASTNode Simplify();
 
@@ -548,6 +620,8 @@ class ScopeNodeStorage : public ASTNodeStorage {
 	friend struct ScopeNode;
 	public: ScopeType Scope;
 	public: ScopeNodeStorage(ScopeType scope);
+	public: Boolean IsStatement();
+
 	public: String ToStr();
 	public: ASTNode Simplify();
 
@@ -560,6 +634,8 @@ class ReturnNodeStorage : public ASTNodeStorage {
 	public: ASTNode Value; // expression to return (null for bare return)
 
 	public: ReturnNodeStorage(ASTNode value);
+
+	public: Boolean IsStatement();
 
 	public: String ToStr();
 
@@ -585,6 +661,8 @@ struct NumberNode : public ASTNode {
 		return NumberNode(std::make_shared<NumberNodeStorage>(value));
 	}
 
+	public: Boolean IsStatement() { return get()->IsStatement(); }
+
 	public: String ToStr() { return get()->ToStr(); }
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
@@ -609,6 +687,8 @@ struct StringNode : public ASTNode {
 		return StringNode(std::make_shared<StringNodeStorage>(value));
 	}
 
+	public: Boolean IsStatement() { return get()->IsStatement(); }
+
 	public: String ToStr() { return get()->ToStr(); }
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
@@ -632,6 +712,8 @@ struct IdentifierNode : public ASTNode {
 	public: static IdentifierNode New(String name) {
 		return IdentifierNode(std::make_shared<IdentifierNodeStorage>(name));
 	}
+
+	public: Boolean IsStatement() { return get()->IsStatement(); }
 
 	public: String ToStr() { return get()->ToStr(); }
 
@@ -658,6 +740,8 @@ struct AssignmentNode : public ASTNode {
 	public: static AssignmentNode New(String variable, ASTNode value) {
 		return AssignmentNode(std::make_shared<AssignmentNodeStorage>(variable, value));
 	}
+
+	public: Boolean IsStatement() { return get()->IsStatement(); }
 
 	public: String ToStr() { return get()->ToStr(); }
 
@@ -689,6 +773,8 @@ struct IndexedAssignmentNode : public ASTNode {
 		return IndexedAssignmentNode(std::make_shared<IndexedAssignmentNodeStorage>(target, index, value, lhsName));
 	}
 
+	public: Boolean IsStatement() { return get()->IsStatement(); }
+
 	public: String ToStr() { return get()->ToStr(); }
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
@@ -714,6 +800,8 @@ struct UnaryOpNode : public ASTNode {
 	public: static UnaryOpNode New(String op, ASTNode operand) {
 		return UnaryOpNode(std::make_shared<UnaryOpNodeStorage>(op, operand));
 	}
+
+	public: Boolean IsStatement() { return get()->IsStatement(); }
 
 	public: String ToStr() { return get()->ToStr(); }
 
@@ -743,6 +831,8 @@ struct BinaryOpNode : public ASTNode {
 		return BinaryOpNode(std::make_shared<BinaryOpNodeStorage>(op, left, right));
 	}
 
+	public: Boolean IsStatement() { return get()->IsStatement(); }
+
 	public: String ToStr() { return get()->ToStr(); }
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
@@ -769,6 +859,8 @@ struct ComparisonChainNode : public ASTNode {
 	public: static ComparisonChainNode New(List<ASTNode> operands, List<String> operators) {
 		return ComparisonChainNode(std::make_shared<ComparisonChainNodeStorage>(operands, operators));
 	}
+
+	public: Boolean IsStatement() { return get()->IsStatement(); }
 
 	public: String ToStr() { return get()->ToStr(); }
 
@@ -800,6 +892,8 @@ struct CallNode : public ASTNode {
 		return CallNode(std::make_shared<CallNodeStorage>(function));
 	}
 
+	public: Boolean IsStatement() { return get()->IsStatement(); }
+
 	public: String ToStr() { return get()->ToStr(); }
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
@@ -824,6 +918,8 @@ struct GroupNode : public ASTNode {
 	public: static GroupNode New(ASTNode expression) {
 		return GroupNode(std::make_shared<GroupNodeStorage>(expression));
 	}
+
+	public: Boolean IsStatement() { return get()->IsStatement(); }
 
 	public: String ToStr() { return get()->ToStr(); }
 
@@ -852,6 +948,8 @@ struct ListNode : public ASTNode {
 	public: static ListNode New() {
 		return ListNode(std::make_shared<ListNodeStorage>());
 	}
+
+	public: Boolean IsStatement() { return get()->IsStatement(); }
 
 	public: String ToStr() { return get()->ToStr(); }
 
@@ -883,6 +981,8 @@ struct MapNode : public ASTNode {
 		return MapNode(std::make_shared<MapNodeStorage>());
 	}
 
+	public: Boolean IsStatement() { return get()->IsStatement(); }
+
 	public: String ToStr() { return get()->ToStr(); }
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
@@ -908,6 +1008,8 @@ struct IndexNode : public ASTNode {
 	public: static IndexNode New(ASTNode target, ASTNode index) {
 		return IndexNode(std::make_shared<IndexNodeStorage>(target, index));
 	}
+
+	public: Boolean IsStatement() { return get()->IsStatement(); }
 
 	public: String ToStr() { return get()->ToStr(); }
 
@@ -937,6 +1039,8 @@ struct SliceNode : public ASTNode {
 		return SliceNode(std::make_shared<SliceNodeStorage>(target, startIndex, endIndex));
 	}
 
+	public: Boolean IsStatement() { return get()->IsStatement(); }
+
 	public: String ToStr() { return get()->ToStr(); }
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
@@ -962,6 +1066,8 @@ struct MemberNode : public ASTNode {
 	public: static MemberNode New(ASTNode target, String member) {
 		return MemberNode(std::make_shared<MemberNodeStorage>(target, member));
 	}
+
+	public: Boolean IsStatement() { return get()->IsStatement(); }
 
 	public: String ToStr() { return get()->ToStr(); }
 
@@ -992,6 +1098,8 @@ struct MethodCallNode : public ASTNode {
 		return MethodCallNode(std::make_shared<MethodCallNodeStorage>(target, method, arguments));
 	}
 
+	public: Boolean IsStatement() { return get()->IsStatement(); }
+
 	public: String ToStr() { return get()->ToStr(); }
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
@@ -1020,6 +1128,8 @@ struct ExprCallNode : public ASTNode {
 		return ExprCallNode(std::make_shared<ExprCallNodeStorage>(function, arguments));
 	}
 
+	public: Boolean IsStatement() { return get()->IsStatement(); }
+
 	public: String ToStr() { return get()->ToStr(); }
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
@@ -1045,6 +1155,8 @@ struct WhileNode : public ASTNode {
 	public: static WhileNode New(ASTNode condition, List<ASTNode> body) {
 		return WhileNode(std::make_shared<WhileNodeStorage>(condition, body));
 	}
+
+	public: Boolean IsStatement() { return get()->IsStatement(); }
 
 	public: String ToStr() { return get()->ToStr(); }
 
@@ -1076,6 +1188,8 @@ struct IfNode : public ASTNode {
 		return IfNode(std::make_shared<IfNodeStorage>(condition, thenBody, elseBody));
 	}
 
+	public: Boolean IsStatement() { return get()->IsStatement(); }
+
 	public: String ToStr() { return get()->ToStr(); }
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
@@ -1104,6 +1218,8 @@ struct ForNode : public ASTNode {
 		return ForNode(std::make_shared<ForNodeStorage>(variable, iterable, body));
 	}
 
+	public: Boolean IsStatement() { return get()->IsStatement(); }
+
 	public: String ToStr() { return get()->ToStr(); }
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
@@ -1125,6 +1241,8 @@ struct BreakNode : public ASTNode {
 		return BreakNode(std::make_shared<BreakNodeStorage>());
 	}
 
+	public: Boolean IsStatement() { return get()->IsStatement(); }
+
 	public: String ToStr() { return get()->ToStr(); }
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
@@ -1145,6 +1263,8 @@ struct ContinueNode : public ASTNode {
 	public: static ContinueNode New() {
 		return ContinueNode(std::make_shared<ContinueNodeStorage>());
 	}
+
+	public: Boolean IsStatement() { return get()->IsStatement(); }
 
 	public: String ToStr() { return get()->ToStr(); }
 
@@ -1174,6 +1294,8 @@ struct FunctionNode : public ASTNode {
 		return FunctionNode(std::make_shared<FunctionNodeStorage>(paramNames, paramDefaults, body));
 	}
 
+	public: Boolean IsStatement() { return get()->IsStatement(); }
+
 	public: String ToStr() { return get()->ToStr(); }
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
@@ -1194,6 +1316,8 @@ struct SelfNode : public ASTNode {
 	public: static SelfNode New() {
 		return SelfNode(std::make_shared<SelfNodeStorage>());
 	}
+	public: Boolean IsStatement() { return get()->IsStatement(); }
+
 	public: String ToStr() { return get()->ToStr(); }
 	public: ASTNode Simplify() { return get()->Simplify(); }
 
@@ -1212,6 +1336,8 @@ struct SuperNode : public ASTNode {
 	public: static SuperNode New() {
 		return SuperNode(std::make_shared<SuperNodeStorage>());
 	}
+	public: Boolean IsStatement() { return get()->IsStatement(); }
+
 	public: String ToStr() { return get()->ToStr(); }
 	public: ASTNode Simplify() { return get()->Simplify(); }
 
@@ -1232,6 +1358,8 @@ struct ScopeNode : public ASTNode {
 	public: static ScopeNode New(ScopeType scope) {
 		return ScopeNode(std::make_shared<ScopeNodeStorage>(scope));
 	}
+	public: Boolean IsStatement() { return get()->IsStatement(); }
+
 	public: String ToStr() { return get()->ToStr(); }
 	public: ASTNode Simplify() { return get()->Simplify(); }
 
@@ -1254,6 +1382,8 @@ struct ReturnNode : public ASTNode {
 		return ReturnNode(std::make_shared<ReturnNodeStorage>(value));
 	}
 
+	public: Boolean IsStatement() { return get()->IsStatement(); }
+
 	public: String ToStr() { return get()->ToStr(); }
 
 	public: ASTNode Simplify() { return get()->Simplify(); }
@@ -1271,6 +1401,7 @@ inline void ASTNode::set_Line(Int32 _v) { get()->Line = _v; } // source line num
 inline String ASTNode::ToStr() { return get()->ToStr(); }
 inline ASTNode ASTNode::Simplify() { return get()->Simplify(); }
 inline Boolean ASTNode::MayReadVar(String varName) { return get()->MayReadVar(varName); }
+inline Boolean ASTNode::IsStatement() { return get()->IsStatement(); }
 inline ASTNode ASTNode::CopyLine(ASTNode result) { return get()->CopyLine(result); }
 inline Int32 ASTNode::Accept(IASTVisitor& visitor) { return get()->Accept(visitor); }
 

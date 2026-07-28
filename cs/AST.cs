@@ -88,6 +88,18 @@ public abstract class ASTNode {
 	// invisible to any name-matching walk.
 	public abstract Boolean MayReadVar(String varName);
 
+	// Is this node a statement, i.e. something executed only for its effect?
+	//
+	// Expressions answer false: when one is compiled as a bare statement its value
+	// is discarded, so the code generator follows it with an ERRCHK -- an error
+	// value nobody stored or passed on is an error nobody can catch, and should
+	// stop the program.  Statements answer true; their result register holds
+	// nothing meaningful, so checking it could halt a perfectly good program.
+	// Neither answer is safe by default, which is why this is abstract (like
+	// MayReadVar above): a new node type must state which it is.  The REPL uses
+	// the same answer to decide whether a line produces implicit output.
+	public abstract Boolean IsStatement();
+
 	// Copy the source line from this node to the given node and return it.
 	// Call as `return CopyLine(new SomeNode(...));` inside Simplify() overrides.
 	protected ASTNode CopyLine(ASTNode result) {
@@ -105,6 +117,10 @@ public class NumberNode : ASTNode {
 
 	public NumberNode(Double value) {
 		Value = value;
+	}
+
+	public override Boolean IsStatement() {
+		return false;
 	}
 
 	public override String ToStr() {
@@ -132,6 +148,10 @@ public class StringNode : ASTNode {
 		Value = value;
 	}
 
+	public override Boolean IsStatement() {
+		return false;
+	}
+
 	public override String ToStr() {
 		return "\"" + Value + "\"";
 	}
@@ -155,6 +175,10 @@ public class IdentifierNode : ASTNode {
 
 	public IdentifierNode(String name) {
 		Name = name;
+	}
+
+	public override Boolean IsStatement() {
+		return false;
 	}
 
 	public override String ToStr() {
@@ -182,6 +206,10 @@ public class AssignmentNode : ASTNode {
 	public AssignmentNode(String variable, ASTNode value) {
 		Variable = variable;
 		Value = value;
+	}
+
+	public override Boolean IsStatement() {
+		return true;
 	}
 
 	public override String ToStr() {
@@ -216,6 +244,10 @@ public class IndexedAssignmentNode : ASTNode {
 		LHSName = lhsName;
 	}
 
+	public override Boolean IsStatement() {
+		return true;
+	}
+
 	public override String ToStr() {
 		return Target.ToStr() + "[" + Index.ToStr() + "] = " + Value.ToStr();
 	}
@@ -245,6 +277,10 @@ public class UnaryOpNode : ASTNode {
 		Operand = operand;
 	}
 
+	public override Boolean IsStatement() {
+		return false;
+	}
+
 	public override String ToStr() {
 		return Op + "(" + Operand.ToStr() + ")";
 	}
@@ -264,7 +300,7 @@ public class UnaryOpNode : ASTNode {
 		}
 
 		// Otherwise return unary op with simplified operand
-		return new UnaryOpNode(Op, simplifiedOperand);
+		return CopyLine(new UnaryOpNode(Op, simplifiedOperand));
 	}
 
 	public override Boolean MayReadVar(String varName) {
@@ -286,6 +322,10 @@ public class BinaryOpNode : ASTNode {
 		Op = op;
 		Left = left;
 		Right = right;
+	}
+
+	public override Boolean IsStatement() {
+		return false;
 	}
 
 	public override String ToStr() {
@@ -357,7 +397,7 @@ public class BinaryOpNode : ASTNode {
 			// If the result would exceed the maximum size, don't fold; leave it as
 			// a runtime op so operator* raises the "string too large" error.
 			if (leftStr.Value.Length * factor > Value.MAX_COLLECTION_SIZE) {
-				return new BinaryOpNode(Op, simplifiedLeft, simplifiedRight);
+				return CopyLine(new BinaryOpNode(Op, simplifiedLeft, simplifiedRight));
 			}
 			int repeats = (int)factor;
 			int extraChars = (int)(leftStr.Value.Length * (factor - repeats));
@@ -368,7 +408,7 @@ public class BinaryOpNode : ASTNode {
 		}
 
 		// Otherwise return binary op with simplified operands
-		return new BinaryOpNode(Op, simplifiedLeft, simplifiedRight);
+		return CopyLine(new BinaryOpNode(Op, simplifiedLeft, simplifiedRight));
 	}
 
 	public override Boolean MayReadVar(String varName) {
@@ -391,6 +431,10 @@ public class ComparisonChainNode : ASTNode {
 		Operators = operators;
 	}
 
+	public override Boolean IsStatement() {
+		return false;
+	}
+
 	public override String ToStr() {
 		String result = Operands[0].ToStr();
 		for (Int32 i = 0; i < Operators.Count; i++) {
@@ -404,7 +448,7 @@ public class ComparisonChainNode : ASTNode {
 		for (Int32 i = 0; i < Operands.Count; i++) {
 			simplifiedOperands.Add(Operands[i].Simplify());
 		}
-		return new ComparisonChainNode(simplifiedOperands, Operators);
+		return CopyLine(new ComparisonChainNode(simplifiedOperands, Operators));
 	}
 
 	public override Boolean MayReadVar(String varName) {
@@ -432,6 +476,10 @@ public class CallNode : ASTNode {
 	public CallNode(String function) {
 		Function = function;
 		Arguments = new List<ASTNode>();
+	}
+
+	public override Boolean IsStatement() {
+		return false;
 	}
 
 	public override String ToStr() {
@@ -474,6 +522,10 @@ public class GroupNode : ASTNode {
 		Expression = expression;
 	}
 
+	public override Boolean IsStatement() {
+		return false;
+	}
+
 	public override String ToStr() {
 		return "(" + Expression.ToStr() + ")";
 	}
@@ -504,6 +556,10 @@ public class ListNode : ASTNode {
 		Elements = new List<ASTNode>();
 	}
 
+	public override Boolean IsStatement() {
+		return false;
+	}
+
 	public override String ToStr() {
 		String result = "[";
 		for (Int32 i = 0; i < Elements.Count; i++) {
@@ -519,7 +575,7 @@ public class ListNode : ASTNode {
 		for (Int32 i = 0; i < Elements.Count; i++) {
 			simplifiedElements.Add(Elements[i].Simplify());
 		}
-		return new ListNode(simplifiedElements);
+		return CopyLine(new ListNode(simplifiedElements));
 	}
 
 	public override Boolean MayReadVar(String varName) {
@@ -549,6 +605,10 @@ public class MapNode : ASTNode {
 		Values = new List<ASTNode>();
 	}
 
+	public override Boolean IsStatement() {
+		return false;
+	}
+
 	public override String ToStr() {
 		String result = "{";
 		for (Int32 i = 0; i < Keys.Count; i++) {
@@ -566,7 +626,7 @@ public class MapNode : ASTNode {
 			simplifiedKeys.Add(Keys[i].Simplify());
 			simplifiedValues.Add(Values[i].Simplify());
 		}
-		return new MapNode(simplifiedKeys, simplifiedValues);
+		return CopyLine(new MapNode(simplifiedKeys, simplifiedValues));
 	}
 
 	public override Boolean MayReadVar(String varName) {
@@ -592,12 +652,16 @@ public class IndexNode : ASTNode {
 		Index = index;
 	}
 
+	public override Boolean IsStatement() {
+		return false;
+	}
+
 	public override String ToStr() {
 		return Target.ToStr() + "[" + Index.ToStr() + "]";
 	}
 
 	public override ASTNode Simplify() {
-		return new IndexNode(Target.Simplify(), Index.Simplify());
+		return CopyLine(new IndexNode(Target.Simplify(), Index.Simplify()));
 	}
 
 	public override Boolean MayReadVar(String varName) {
@@ -621,6 +685,10 @@ public class SliceNode : ASTNode {
 		EndIndex = endIndex;
 	}
 
+	public override Boolean IsStatement() {
+		return false;
+	}
+
 	public override String ToStr() {
 		String startStr = (StartIndex != null) ? StartIndex.ToStr() : "";
 		String endStr = (EndIndex != null) ? EndIndex.ToStr() : "";
@@ -630,7 +698,7 @@ public class SliceNode : ASTNode {
 	public override ASTNode Simplify() {
 		ASTNode simplifiedStart = (StartIndex != null) ? StartIndex.Simplify() : null;
 		ASTNode simplifiedEnd = (EndIndex != null) ? EndIndex.Simplify() : null;
-		return new SliceNode(Target.Simplify(), simplifiedStart, simplifiedEnd);
+		return CopyLine(new SliceNode(Target.Simplify(), simplifiedStart, simplifiedEnd));
 	}
 
 	public override Boolean MayReadVar(String varName) {
@@ -655,12 +723,16 @@ public class MemberNode : ASTNode {
 		Member = member;
 	}
 
+	public override Boolean IsStatement() {
+		return false;
+	}
+
 	public override String ToStr() {
 		return Target.ToStr() + "." + Member;
 	}
 
 	public override ASTNode Simplify() {
-		return new MemberNode(Target.Simplify(), Member);
+		return CopyLine(new MemberNode(Target.Simplify(), Member));
 	}
 
 	public override Boolean MayReadVar(String varName) {
@@ -685,6 +757,10 @@ public class MethodCallNode : ASTNode {
 		Arguments = arguments;
 	}
 
+	public override Boolean IsStatement() {
+		return false;
+	}
+
 	public override String ToStr() {
 		String result = Target.ToStr() + "." + Method + "(";
 		for (Int32 i = 0; i < Arguments.Count; i++) {
@@ -700,7 +776,7 @@ public class MethodCallNode : ASTNode {
 		for (Int32 i = 0; i < Arguments.Count; i++) {
 			simplifiedArgs.Add(Arguments[i].Simplify());
 		}
-		return new MethodCallNode(Target.Simplify(), Method, simplifiedArgs);
+		return CopyLine(new MethodCallNode(Target.Simplify(), Method, simplifiedArgs));
 	}
 
 	public override Boolean MayReadVar(String varName) {
@@ -726,6 +802,10 @@ public class ExprCallNode : ASTNode {
 	public ExprCallNode(ASTNode function, List<ASTNode> arguments) {
 		Function = function;
 		Arguments = arguments;
+	}
+
+	public override Boolean IsStatement() {
+		return false;
 	}
 
 	public override String ToStr() {
@@ -767,6 +847,10 @@ public class WhileNode : ASTNode {
 	public WhileNode(ASTNode condition, List<ASTNode> body) {
 		Condition = condition;
 		Body = body;
+	}
+
+	public override Boolean IsStatement() {
+		return true;
 	}
 
 	public override String ToStr() {
@@ -812,6 +896,10 @@ public class IfNode : ASTNode {
 		Condition = condition;
 		ThenBody = thenBody;
 		ElseBody = elseBody;
+	}
+
+	public override Boolean IsStatement() {
+		return true;
 	}
 
 	public override String ToStr() {
@@ -870,6 +958,10 @@ public class ForNode : ASTNode {
 		Body = body;
 	}
 
+	public override Boolean IsStatement() {
+		return true;
+	}
+
 	public override String ToStr() {
 		String result = "for " + Variable + " in " + Iterable.ToStr() + "\n";
 		for (Int32 i = 0; i < Body.Count; i++) {
@@ -906,6 +998,10 @@ public class BreakNode : ASTNode {
 	public BreakNode() {
 	}
 
+	public override Boolean IsStatement() {
+		return true;
+	}
+
 	public override String ToStr() {
 		return "break";
 	}
@@ -926,6 +1022,10 @@ public class BreakNode : ASTNode {
 // Continue statement node - skips to next iteration of innermost loop
 public class ContinueNode : ASTNode {
 	public ContinueNode() {
+	}
+
+	public override Boolean IsStatement() {
+		return true;
 	}
 
 	public override String ToStr() {
@@ -955,6 +1055,10 @@ public class FunctionNode : ASTNode {
 		ParamNames = paramNames;
 		ParamDefaults = paramDefaults;
 		Body = body;
+	}
+
+	public override Boolean IsStatement() {
+		return false;
 	}
 
 	public override String ToStr() {
@@ -1007,6 +1111,10 @@ public class FunctionNode : ASTNode {
 // Self keyword node — refers to the receiver in a method call
 public class SelfNode : ASTNode {
 	public SelfNode() {}
+	public override Boolean IsStatement() {
+		return false;
+	}
+
 	public override String ToStr() {
 		return "self";
 	}
@@ -1025,6 +1133,10 @@ public class SelfNode : ASTNode {
 // Super keyword node — refers to the __isa parent of the map where the method was found
 public class SuperNode : ASTNode {
 	public SuperNode() {}
+	public override Boolean IsStatement() {
+		return false;
+	}
+
 	public override String ToStr() {
 		return "super";
 	}
@@ -1053,6 +1165,10 @@ public class ScopeNode : ASTNode {
 	public ScopeNode(ScopeType scope) {
 		Scope = scope;
 	}
+	public override Boolean IsStatement() {
+		return false;
+	}
+
 	public override String ToStr() {
 		if (Scope == ScopeType.Outer) return "outer";
 		if (Scope == ScopeType.Globals) return "globals";
@@ -1079,6 +1195,10 @@ public class ReturnNode : ASTNode {
 
 	public ReturnNode(ASTNode value) {
 		Value = value;
+	}
+
+	public override Boolean IsStatement() {
+		return true;
 	}
 
 	public override String ToStr() {

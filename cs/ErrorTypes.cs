@@ -36,10 +36,22 @@ public static class ErrorTypes {
 		}
 	}
 
-	// Create a compiler error value with the given message.
+	// Create a compiler error value with the given message.  Carries no stack
+	// trace: compilation normally happens before the program runs, so there is
+	// no call stack to report.
 	public static Value CompilerError(String msg) {
 		if (compiler.IsNull()) Init();
 		return Value.make_error(Value.make_string(msg), Value.Null, Value.Null, compiler);
+	}
+
+	// Create a compiler error value that wraps `inner` and carries the active
+	// VM's stack trace.  For compilation that happens *during* execution -- the
+	// `import` intrinsic -- where there is a meaningful location to report (the
+	// line that asked for the module), and the underlying parse error is worth
+	// keeping as the inner error.
+	public static Value CompilerError(String msg, Value inner) {
+		if (compiler.IsNull()) Init();
+		return Value.make_error(Value.make_string(msg), inner, Value.value_current_stack_trace(), compiler);
 	}
 
 	// Create a runtime error value with the given message and stack trace.

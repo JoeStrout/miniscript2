@@ -35,6 +35,9 @@ ASTNode ASTNodeStorage::CopyLine(ASTNode result) {
 NumberNodeStorage::NumberNodeStorage(Double value) {
 	Value = value;
 }
+Boolean NumberNodeStorage::IsStatement() {
+	return Boolean(false);
+}
 String NumberNodeStorage::ToStr() {
 	return Interp("{}", Value);
 }
@@ -52,6 +55,9 @@ Int32 NumberNodeStorage::Accept(IASTVisitor& visitor) {
 
 StringNodeStorage::StringNodeStorage(String value) {
 	Value = value;
+}
+Boolean StringNodeStorage::IsStatement() {
+	return Boolean(false);
 }
 String StringNodeStorage::ToStr() {
 	return "\"" + Value + "\"";
@@ -71,6 +77,9 @@ Int32 StringNodeStorage::Accept(IASTVisitor& visitor) {
 IdentifierNodeStorage::IdentifierNodeStorage(String name) {
 	Name = name;
 }
+Boolean IdentifierNodeStorage::IsStatement() {
+	return Boolean(false);
+}
 String IdentifierNodeStorage::ToStr() {
 	return Name;
 }
@@ -89,6 +98,9 @@ Int32 IdentifierNodeStorage::Accept(IASTVisitor& visitor) {
 AssignmentNodeStorage::AssignmentNodeStorage(String variable,ASTNode value) {
 	Variable = variable;
 	Value = value;
+}
+Boolean AssignmentNodeStorage::IsStatement() {
+	return Boolean(true);
 }
 String AssignmentNodeStorage::ToStr() {
 	return Variable + " = " + Value.ToStr();
@@ -111,6 +123,9 @@ IndexedAssignmentNodeStorage::IndexedAssignmentNodeStorage(ASTNode target,ASTNod
 	Value = value;
 	LHSName = lhsName;
 }
+Boolean IndexedAssignmentNodeStorage::IsStatement() {
+	return Boolean(true);
+}
 String IndexedAssignmentNodeStorage::ToStr() {
 	return Target.ToStr() + "[" + Index.ToStr() + "] = " + Value.ToStr();
 }
@@ -131,6 +146,9 @@ UnaryOpNodeStorage::UnaryOpNodeStorage(String op,ASTNode operand) {
 	Op = op;
 	Operand = operand;
 }
+Boolean UnaryOpNodeStorage::IsStatement() {
+	return Boolean(false);
+}
 String UnaryOpNodeStorage::ToStr() {
 	return Op + "(" + Operand.ToStr() + ")";
 }
@@ -149,7 +167,7 @@ ASTNode UnaryOpNodeStorage::Simplify() {
 	}
 
 	// Otherwise return unary op with simplified operand
-	return  UnaryOpNode::New(Op, simplifiedOperand);
+	return CopyLine( UnaryOpNode::New(Op, simplifiedOperand));
 }
 Boolean UnaryOpNodeStorage::MayReadVar(String varName) {
 	return Operand.MayReadVar(varName);
@@ -163,6 +181,9 @@ BinaryOpNodeStorage::BinaryOpNodeStorage(String op,ASTNode left,ASTNode right) {
 	Op = op;
 	Left = left;
 	Right = right;
+}
+Boolean BinaryOpNodeStorage::IsStatement() {
+	return Boolean(false);
 }
 String BinaryOpNodeStorage::ToStr() {
 	return Op + "(" + Left.ToStr() + ", " + Right.ToStr() + ")";
@@ -232,7 +253,7 @@ ASTNode BinaryOpNodeStorage::Simplify() {
 		// If the result would exceed the maximum size, don't fold; leave it as
 		// a runtime op so operator* raises the "string too large" error.
 		if (leftStr.Value().Length() * factor > Value::MAX_COLLECTION_SIZE) {
-			return  BinaryOpNode::New(Op, simplifiedLeft, simplifiedRight);
+			return CopyLine( BinaryOpNode::New(Op, simplifiedLeft, simplifiedRight));
 		}
 		int repeats = (int)factor;
 		int extraChars = (int)(leftStr.Value().Length() * (factor - repeats));
@@ -243,7 +264,7 @@ ASTNode BinaryOpNodeStorage::Simplify() {
 	}
 
 	// Otherwise return binary op with simplified operands
-	return  BinaryOpNode::New(Op, simplifiedLeft, simplifiedRight);
+	return CopyLine( BinaryOpNode::New(Op, simplifiedLeft, simplifiedRight));
 }
 Boolean BinaryOpNodeStorage::MayReadVar(String varName) {
 	return Left.MayReadVar(varName) || Right.MayReadVar(varName);
@@ -257,6 +278,9 @@ ComparisonChainNodeStorage::ComparisonChainNodeStorage(List<ASTNode> operands,Li
 	Operands = operands;
 	Operators = operators;
 }
+Boolean ComparisonChainNodeStorage::IsStatement() {
+	return Boolean(false);
+}
 String ComparisonChainNodeStorage::ToStr() {
 	String result = Operands[0].ToStr();
 	for (Int32 i = 0; i < Operators.Count(); i++) {
@@ -269,7 +293,7 @@ ASTNode ComparisonChainNodeStorage::Simplify() {
 	for (Int32 i = 0; i < Operands.Count(); i++) {
 		simplifiedOperands.Add(Operands[i].Simplify());
 	}
-	return  ComparisonChainNode::New(simplifiedOperands, Operators);
+	return CopyLine( ComparisonChainNode::New(simplifiedOperands, Operators));
 }
 Boolean ComparisonChainNodeStorage::MayReadVar(String varName) {
 	for (Int32 i = 0; i < Operands.Count(); i++) {
@@ -289,6 +313,9 @@ CallNodeStorage::CallNodeStorage(String function,List<ASTNode> arguments) {
 CallNodeStorage::CallNodeStorage(String function) {
 	Function = function;
 	Arguments =  List<ASTNode>::New();
+}
+Boolean CallNodeStorage::IsStatement() {
+	return Boolean(false);
 }
 String CallNodeStorage::ToStr() {
 	String result = Function + "(";
@@ -321,6 +348,9 @@ Int32 CallNodeStorage::Accept(IASTVisitor& visitor) {
 GroupNodeStorage::GroupNodeStorage(ASTNode expression) {
 	Expression = expression;
 }
+Boolean GroupNodeStorage::IsStatement() {
+	return Boolean(false);
+}
 String GroupNodeStorage::ToStr() {
 	return "(" + Expression.ToStr() + ")";
 }
@@ -342,6 +372,9 @@ ListNodeStorage::ListNodeStorage(List<ASTNode> elements) {
 ListNodeStorage::ListNodeStorage() {
 	Elements =  List<ASTNode>::New();
 }
+Boolean ListNodeStorage::IsStatement() {
+	return Boolean(false);
+}
 String ListNodeStorage::ToStr() {
 	String result = "[";
 	for (Int32 i = 0; i < Elements.Count(); i++) {
@@ -356,7 +389,7 @@ ASTNode ListNodeStorage::Simplify() {
 	for (Int32 i = 0; i < Elements.Count(); i++) {
 		simplifiedElements.Add(Elements[i].Simplify());
 	}
-	return  ListNode::New(simplifiedElements);
+	return CopyLine( ListNode::New(simplifiedElements));
 }
 Boolean ListNodeStorage::MayReadVar(String varName) {
 	for (Int32 i = 0; i < Elements.Count(); i++) {
@@ -377,6 +410,9 @@ MapNodeStorage::MapNodeStorage() {
 	Keys =  List<ASTNode>::New();
 	Values =  List<ASTNode>::New();
 }
+Boolean MapNodeStorage::IsStatement() {
+	return Boolean(false);
+}
 String MapNodeStorage::ToStr() {
 	String result = "{";
 	for (Int32 i = 0; i < Keys.Count(); i++) {
@@ -393,7 +429,7 @@ ASTNode MapNodeStorage::Simplify() {
 		simplifiedKeys.Add(Keys[i].Simplify());
 		simplifiedValues.Add(Values[i].Simplify());
 	}
-	return  MapNode::New(simplifiedKeys, simplifiedValues);
+	return CopyLine( MapNode::New(simplifiedKeys, simplifiedValues));
 }
 Boolean MapNodeStorage::MayReadVar(String varName) {
 	for (Int32 i = 0; i < Keys.Count(); i++) {
@@ -411,11 +447,14 @@ IndexNodeStorage::IndexNodeStorage(ASTNode target,ASTNode index) {
 	Target = target;
 	Index = index;
 }
+Boolean IndexNodeStorage::IsStatement() {
+	return Boolean(false);
+}
 String IndexNodeStorage::ToStr() {
 	return Target.ToStr() + "[" + Index.ToStr() + "]";
 }
 ASTNode IndexNodeStorage::Simplify() {
-	return  IndexNode::New(Target.Simplify(), Index.Simplify());
+	return CopyLine( IndexNode::New(Target.Simplify(), Index.Simplify()));
 }
 Boolean IndexNodeStorage::MayReadVar(String varName) {
 	return Target.MayReadVar(varName) || Index.MayReadVar(varName);
@@ -430,6 +469,9 @@ SliceNodeStorage::SliceNodeStorage(ASTNode target,ASTNode startIndex,ASTNode end
 	StartIndex = startIndex;
 	EndIndex = endIndex;
 }
+Boolean SliceNodeStorage::IsStatement() {
+	return Boolean(false);
+}
 String SliceNodeStorage::ToStr() {
 	String startStr = (!IsNull(StartIndex)) ? StartIndex.ToStr() : "";
 	String endStr = (!IsNull(EndIndex)) ? EndIndex.ToStr() : "";
@@ -438,7 +480,7 @@ String SliceNodeStorage::ToStr() {
 ASTNode SliceNodeStorage::Simplify() {
 	ASTNode simplifiedStart = (!IsNull(StartIndex)) ? StartIndex.Simplify() : nullptr;
 	ASTNode simplifiedEnd = (!IsNull(EndIndex)) ? EndIndex.Simplify() : nullptr;
-	return  SliceNode::New(Target.Simplify(), simplifiedStart, simplifiedEnd);
+	return CopyLine( SliceNode::New(Target.Simplify(), simplifiedStart, simplifiedEnd));
 }
 Boolean SliceNodeStorage::MayReadVar(String varName) {
 	if (Target.MayReadVar(varName)) return Boolean(true);
@@ -455,11 +497,14 @@ MemberNodeStorage::MemberNodeStorage(ASTNode target,String member) {
 	Target = target;
 	Member = member;
 }
+Boolean MemberNodeStorage::IsStatement() {
+	return Boolean(false);
+}
 String MemberNodeStorage::ToStr() {
 	return Target.ToStr() + "." + Member;
 }
 ASTNode MemberNodeStorage::Simplify() {
-	return  MemberNode::New(Target.Simplify(), Member);
+	return CopyLine( MemberNode::New(Target.Simplify(), Member));
 }
 Boolean MemberNodeStorage::MayReadVar(String varName) {
 	return Target.MayReadVar(varName);
@@ -473,6 +518,9 @@ MethodCallNodeStorage::MethodCallNodeStorage(ASTNode target,String method,List<A
 	Target = target;
 	Method = method;
 	Arguments = arguments;
+}
+Boolean MethodCallNodeStorage::IsStatement() {
+	return Boolean(false);
 }
 String MethodCallNodeStorage::ToStr() {
 	String result = Target.ToStr() + "." + Method + "(";
@@ -488,7 +536,7 @@ ASTNode MethodCallNodeStorage::Simplify() {
 	for (Int32 i = 0; i < Arguments.Count(); i++) {
 		simplifiedArgs.Add(Arguments[i].Simplify());
 	}
-	return  MethodCallNode::New(Target.Simplify(), Method, simplifiedArgs);
+	return CopyLine( MethodCallNode::New(Target.Simplify(), Method, simplifiedArgs));
 }
 Boolean MethodCallNodeStorage::MayReadVar(String varName) {
 	if (Target.MayReadVar(varName)) return Boolean(true);
@@ -505,6 +553,9 @@ Int32 MethodCallNodeStorage::Accept(IASTVisitor& visitor) {
 ExprCallNodeStorage::ExprCallNodeStorage(ASTNode function,List<ASTNode> arguments) {
 	Function = function;
 	Arguments = arguments;
+}
+Boolean ExprCallNodeStorage::IsStatement() {
+	return Boolean(false);
 }
 String ExprCallNodeStorage::ToStr() {
 	String result = Function.ToStr() + "(";
@@ -538,6 +589,9 @@ WhileNodeStorage::WhileNodeStorage(ASTNode condition,List<ASTNode> body) {
 	Condition = condition;
 	Body = body;
 }
+Boolean WhileNodeStorage::IsStatement() {
+	return Boolean(true);
+}
 String WhileNodeStorage::ToStr() {
 	String result = "while " + Condition.ToStr() + "\n";
 	for (Int32 i = 0; i < Body.Count(); i++) {
@@ -570,6 +624,9 @@ IfNodeStorage::IfNodeStorage(ASTNode condition,List<ASTNode> thenBody,List<ASTNo
 	Condition = condition;
 	ThenBody = thenBody;
 	ElseBody = elseBody;
+}
+Boolean IfNodeStorage::IsStatement() {
+	return Boolean(true);
 }
 String IfNodeStorage::ToStr() {
 	String result = "if " + Condition.ToStr() + " then\n";
@@ -617,6 +674,9 @@ ForNodeStorage::ForNodeStorage(String variable,ASTNode iterable,List<ASTNode> bo
 	Iterable = iterable;
 	Body = body;
 }
+Boolean ForNodeStorage::IsStatement() {
+	return Boolean(true);
+}
 String ForNodeStorage::ToStr() {
 	String result = "for " + Variable + " in " + Iterable.ToStr() + "\n";
 	for (Int32 i = 0; i < Body.Count(); i++) {
@@ -647,6 +707,9 @@ Int32 ForNodeStorage::Accept(IASTVisitor& visitor) {
 
 BreakNodeStorage::BreakNodeStorage() {
 }
+Boolean BreakNodeStorage::IsStatement() {
+	return Boolean(true);
+}
 String BreakNodeStorage::ToStr() {
 	return "break";
 }
@@ -663,6 +726,9 @@ Int32 BreakNodeStorage::Accept(IASTVisitor& visitor) {
 }
 
 ContinueNodeStorage::ContinueNodeStorage() {
+}
+Boolean ContinueNodeStorage::IsStatement() {
+	return Boolean(true);
 }
 String ContinueNodeStorage::ToStr() {
 	return "continue";
@@ -683,6 +749,9 @@ FunctionNodeStorage::FunctionNodeStorage(List<String> paramNames,List<ASTNode> p
 	ParamNames = paramNames;
 	ParamDefaults = paramDefaults;
 	Body = body;
+}
+Boolean FunctionNodeStorage::IsStatement() {
+	return Boolean(false);
 }
 String FunctionNodeStorage::ToStr() {
 	String result = "function(";
@@ -728,6 +797,9 @@ Int32 FunctionNodeStorage::Accept(IASTVisitor& visitor) {
 	return visitor.Visit(_this);
 }
 
+Boolean SelfNodeStorage::IsStatement() {
+	return Boolean(false);
+}
 String SelfNodeStorage::ToStr() {
 	return "self";
 }
@@ -743,6 +815,9 @@ Int32 SelfNodeStorage::Accept(IASTVisitor& visitor) {
 	return visitor.Visit(_this);
 }
 
+Boolean SuperNodeStorage::IsStatement() {
+	return Boolean(false);
+}
 String SuperNodeStorage::ToStr() {
 	return "super";
 }
@@ -760,6 +835,9 @@ Int32 SuperNodeStorage::Accept(IASTVisitor& visitor) {
 
 ScopeNodeStorage::ScopeNodeStorage(ScopeType scope) {
 	Scope = scope;
+}
+Boolean ScopeNodeStorage::IsStatement() {
+	return Boolean(false);
 }
 String ScopeNodeStorage::ToStr() {
 	if (Scope == ScopeType::Outer) return "outer";
@@ -783,6 +861,9 @@ Int32 ScopeNodeStorage::Accept(IASTVisitor& visitor) {
 
 ReturnNodeStorage::ReturnNodeStorage(ASTNode value) {
 	Value = value;
+}
+Boolean ReturnNodeStorage::IsStatement() {
+	return Boolean(true);
 }
 String ReturnNodeStorage::ToStr() {
 	if (!IsNull(Value)) return "return " + Value.ToStr();

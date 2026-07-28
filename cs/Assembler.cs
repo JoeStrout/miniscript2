@@ -641,6 +641,11 @@ public class Assembler {
 			Byte indexReg = ParseRegister(parts[3]);
 			instruction = BytecodeUtil.INS_ABC(Opcode.ITERGET_rA_rB_rC, dest, containerReg, indexReg);
 
+		} else if (mnemonic == "ERRCHK") {
+			if (parts.Count != 2) { Error("ERRCHK requires 1 operand"); return 0; }
+			Byte reg = ParseRegister(parts[1]);
+			instruction = BytecodeUtil.INS_A(Opcode.ERRCHK_rA, reg);
+
 		} else {
 			Error(StringUtils.Format("Unknown opcode: '{0}'", mnemonic));
 			return 0;

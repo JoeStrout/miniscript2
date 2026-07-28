@@ -422,21 +422,8 @@ public class Interpreter {
 
 		// Detect implicit output: last statement is a bare expression
 		// (not an assignment, block statement, break, continue, or return)
-		Boolean hasImplicitOutput = false;
 		ASTNode lastStmt = statements[statements.Count - 1];
-		AssignmentNode asAssign = lastStmt as AssignmentNode;
-		IndexedAssignmentNode asIdxAssign = lastStmt as IndexedAssignmentNode;
-		WhileNode asWhile = lastStmt as WhileNode;
-		IfNode asIf = lastStmt as IfNode;
-		ForNode asFor = lastStmt as ForNode;
-		BreakNode asBreak = lastStmt as BreakNode;
-		ContinueNode asContinue = lastStmt as ContinueNode;
-		ReturnNode asReturn = lastStmt as ReturnNode;
-		if (asAssign == null && asIdxAssign == null
-			&& asWhile == null && asIf == null && asFor == null
-			&& asBreak == null && asContinue == null && asReturn == null) {
-			hasImplicitOutput = true;
-		}
+		Boolean hasImplicitOutput = !lastStmt.IsStatement();
 
 		// Compile to bytecode.  Each REPL line is its own @main; previously
 		// defined functions are reached as funcref values in the globals VarMap.

@@ -5188,6 +5188,155 @@ print _dateStr(d, "HH:mm:ss")
 12-25
 18:45:30
 ================================
+================================================================================
+==== SECTION: UNARY MINUS VS. SUBTRACTION
+================================================================================
+==== A '-' is subtraction only if it is not at the start of a statement, and
+==== either has whitespace after it or no whitespace before it.  Otherwise it
+==== can only be negation.  See notes/UNARY_MINUS_QUIRK.md.
+================================
+==== All the subtraction spacings, including inside a call's argument list
+a = 10
+b = 3
+print a - b
+print a- b
+print a-b
+print a -b
+--------------------------------
+7
+7
+7
+7
+================================
+==== Negation in the positions where it is unambiguous
+b = 3
+print -b
+print (-b)
+print [-b, - b, -3]
+x = -b
+print x
+print -2 ^ 2
+print -(3 - 5)
+--------------------------------
+-3
+-3
+[-3, -3, -3]
+-3
+-4
+2
+================================
+==== Call statement with a bare identifier target
+f = function(a, b=99)
+	print "f(" + a + ", " + b + ")"
+end function
+f -5
+f -5, -5
+f 5, -5
+f 5,-5
+f(-5)
+f(-5, -5)
+--------------------------------
+f(-5, 99)
+f(-5, -5)
+f(5, -5)
+f(5, -5)
+f(-5, 99)
+f(-5, -5)
+================================
+==== Call statement with a dotted target (target is not a bare identifier)
+m = {}
+m.f = function(a, b=99)
+	print "m.f(" + a + ", " + b + ")"
+end function
+m.f -5
+m.f -5, -5
+m.f(-5)
+n = {"inner": m}
+n.inner.f -5
+--------------------------------
+m.f(-5, 99)
+m.f(-5, -5)
+m.f(-5, 99)
+m.f(-5, 99)
+================================
+==== Call statement with an indexed target
+show = function(x)
+	print "show " + x
+end function
+funcs = [null]
+funcs[0] = @show
+funcs[0] -5
+h = {"g": @show}
+h["g"] -5
+--------------------------------
+show -5
+show -5
+================================
+==== Call statement with a self/super target
+Base = {}
+Base.show = function(x)
+	print "Base.show " + x
+end function
+Sub = new Base
+Sub.show = function(x)
+	super.show -x
+	print "Sub.show " + x
+end function
+obj = new Sub
+obj.show -5
+--------------------------------
+Base.show 5
+Sub.show -5
+================================
+==== Below statement level, "a -b" is still subtraction
+a = 10
+b = 3
+x = a -b
+print x
+y = (a -b) * 2
+print y
+print 1 + 2 - 3
+lst = [a -b, 1 -1]
+print lst
+if a -b > 5 then print "yes" else print "no"
+while a -b > 5
+	a = a - 5
+end while
+print a
+--------------------------------
+7
+14
+0
+[7, 0]
+yes
+5
+================================
+==== The rule does not disturb -=, or a '-' continued onto the next line
+x = 10
+x -= 3
+print x
+y = 10
+y-=3
+print y
+a = 10
+b = 3
+print a -
+  b
+--------------------------------
+7
+7
+7
+================================
+==== A '-' after a function reference: still subtraction of the call's result
+g = function
+	return 10
+end function
+print g - 4
+print g -4
+--------------------------------
+6
+6
+================================
 ==== END OF TESTS
 ================================================================================
 

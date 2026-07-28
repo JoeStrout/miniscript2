@@ -53,6 +53,7 @@ public class Parser : IParser {
 
 		// Unary operators
 		RegisterPrefix(TokenType.MINUS, new UnaryOpParselet(Op.MINUS, Precedence.UNARY_MINUS));
+		RegisterPrefix(TokenType.STRONG_NEGATE, new UnaryOpParselet(Op.MINUS, Precedence.UNARY_MINUS));
 		RegisterPrefix(TokenType.NOT, new UnaryOpParselet(Op.NOT, Precedence.NOT));
 		RegisterPrefix(TokenType.ADDRESS_OF, new AddressOfParselet());
 		RegisterPrefix(TokenType.NEW, new UnaryOpParselet(Op.NEW, Precedence.UNARY_MINUS));
@@ -65,6 +66,10 @@ public class Parser : IParser {
 		// Binary operators
 		RegisterInfix(TokenType.PLUS, new BinaryOpParselet(Op.PLUS, Precedence.SUM));
 		RegisterInfix(TokenType.MINUS, new BinaryOpParselet(Op.MINUS, Precedence.SUM));
+		// STRONG_NEGATE subtracts too, but only below statement level -- see
+		// GetPrecedence.  That is what makes "m.f -5" a call while "x = a -b"
+		// stays a subtraction.
+		RegisterInfix(TokenType.STRONG_NEGATE, new BinaryOpParselet(Op.MINUS, Precedence.SUM));
 		RegisterInfix(TokenType.TIMES, new BinaryOpParselet(Op.TIMES, Precedence.PRODUCT));
 		RegisterInfix(TokenType.DIVIDE, new BinaryOpParselet(Op.DIVIDE, Precedence.PRODUCT));
 		RegisterInfix(TokenType.MOD, new BinaryOpParselet(Op.MOD, Precedence.PRODUCT));
@@ -219,11 +224,23 @@ public class Parser : IParser {
 		return new Token(TokenType.ERROR, "", _current.Line, _current.Column);
 	}
 
-	// Get the precedence of the infix parselet for the current token
-	private Precedence GetPrecedence() {
+	// Get the precedence of the infix parselet for the current token.
+	// callStatementAllowed says whether the expression being parsed could turn
+	// out to be the target of a no-parens call statement -- the same condition
+	// that lets AtCallArgument below take what follows as an argument list.
+	private Precedence GetPrecedence(Boolean callStatementAllowed) {
 		// A '[' preceded by whitespace is not an index operator; it begins a
 		// separate list argument (e.g. "foo.push [1, 2]" is a call, not an index).
 		if (_current.Type == TokenType.LBRACKET && _current.AfterSpace) {
+			return Precedence.NONE;
+		}
+		// A STRONG_NEGATE ('-' with a space before it but not after it) cannot
+		// be subtraction where a call statement is allowed: in `m.f -5` it
+		// begins the argument list, so stop and let AtCallArgument have it.
+		// Anywhere else it is ordinary subtraction, which is what keeps
+		// `x = a -b` working.  This one test is all that MiniScript 1.x needed
+		// its `statementStart` parameter for.
+		if (_current.Type == TokenType.STRONG_NEGATE && callStatementAllowed) {
 			return Precedence.NONE;
 		}
 		InfixParselet parselet = null;
@@ -242,6 +259,7 @@ public class Parser : IParser {
 			|| type == TokenType.LBRACKET
 			|| type == TokenType.LBRACE
 			|| type == TokenType.MINUS
+			|| type == TokenType.STRONG_NEGATE
 			|| type == TokenType.ADDRESS_OF
 			|| type == TokenType.NOT
 			|| type == TokenType.NEW
@@ -253,8 +271,30 @@ public class Parser : IParser {
 			|| type == TokenType.FUNCTION;
 	}
 
+	// Check whether the current token can begin the argument list of a call
+	// statement written without parentheses, as in `print 42`.
+	//
+	// Whitespace before the token is required, so that `list[0]` reads as an
+	// index rather than a call taking a list argument.  A plain MINUS is
+	// excluded, because `f - 5` is a subtraction; the call form `f -5` yields a
+	// STRONG_NEGATE instead (see notes/UNARY_MINUS_QUIRK.md).
+	private Boolean AtCallArgument() {
+		if (!_current.AfterSpace) return false;
+		if (_current.Type == TokenType.MINUS) return false;
+		return CanStartExpression(_current.Type);
+	}
+
 	// Parse an expression with the given minimum precedence (Pratt parser core)
 	public ASTNode ParseExpression(Precedence minPrecedence) {
+		return ParseExpressionAt(minPrecedence, false);
+	}
+
+	// Parse an expression, saying whether a no-parens call statement could be
+	// built from it.  That is true only for the outermost expression of a
+	// statement -- never for an argument, an assignment's right-hand side, a
+	// condition, or anything inside brackets, all of which recurse through
+	// ParseExpression above and so pass false.
+	private ASTNode ParseExpressionAt(Precedence minPrecedence, Boolean callStatementAllowed) {
 		Token token = _current;
 		Advance();
 
@@ -275,7 +315,7 @@ public class Parser : IParser {
 		ASTNode left = prefix.Parse(this, token);
 
 		// Continue parsing infix expressions while precedence allows
-		while ((Int32)minPrecedence < (Int32)GetPrecedence()) {
+		while ((Int32)minPrecedence < (Int32)GetPrecedence(callStatementAllowed)) {
 			token = _current;
 			Advance();
 
@@ -295,9 +335,10 @@ public class Parser : IParser {
 
 	// Continue parsing an expression given a starting left operand.
 	// Used when we've already consumed a token (like an identifier) and need
-	// to continue with any infix operators that follow.
+	// to continue with any infix operators that follow.  This is only ever
+	// reached from ParseSimpleStatement, so a call statement is allowed here.
 	private ASTNode ParseExpressionFrom(ASTNode left) {
-		while ((Int32)Precedence.NONE < (Int32)GetPrecedence()) {
+		while ((Int32)Precedence.NONE < (Int32)GetPrecedence(true)) {
 			Token token = _current;
 			Advance();
 			InfixParselet infix = null;
@@ -368,7 +409,7 @@ public class Parser : IParser {
 			// (but NOT '(' which would be handled as func(args) by expression parsing).
 			// IMPORTANT: Whitespace is required between identifier and argument to
 			// distinguish "print [1,2,3]" (call) from "list[0]" (index expression).
-			if (_current.AfterSpace && CanStartExpression(_current.Type)) {
+			if (AtCallArgument()) {
 				// This is a call statement like "print 42" or "print x, y"
 				List<ASTNode> args = new List<ASTNode>();
 				args.Add(ParseExpression());
@@ -414,7 +455,7 @@ public class Parser : IParser {
 			}
 
 			// Check for no-parens call on an expression result, e.g. funcs[0] 10
-			if (_current.AfterSpace && CanStartExpression(_current.Type)) {
+			if (AtCallArgument()) {
 				List<ASTNode> args = new List<ASTNode>();
 				args.Add(ParseExpression());
 				while (Match(TokenType.COMMA)) {
@@ -426,8 +467,9 @@ public class Parser : IParser {
 			return expr;
 		}
 
-		// Not an identifier - parse as expression statement
-		ASTNode expr2 = ParseExpression();
+		// Not an identifier - parse as expression statement.  A call statement
+		// is still possible here (e.g. "super.speak msg"), so say so.
+		ASTNode expr2 = ParseExpressionAt(Precedence.NONE, true);
 		IndexNode idxNode2 = expr2 as IndexNode;
 		if (idxNode2 != null && IsAssignOp(_current.Type)) {
 			String compoundOp2 = CompoundAssignOp(_current.Type);
@@ -453,7 +495,7 @@ public class Parser : IParser {
 		}
 
 		// Check for no-parens call on an expression result, e.g. super.speak msg
-		if (_current.AfterSpace && CanStartExpression(_current.Type)) {
+		if (AtCallArgument()) {
 			List<ASTNode> args = new List<ASTNode>();
 			args.Add(ParseExpression());
 			while (Match(TokenType.COMMA)) {

@@ -47,6 +47,26 @@ The MiniScript 1 parser handled this by having the tokenizer set an `afterSpace`
 
 This encodes the extra restrictions on OpMinus being interpreted as subtraction.
 
+## MiniScript 2 Implementation
+
+MiniScript 2 uses the alternative described below, with one adjustment.
+
+`Lexer.NextToken` returns `TokenType.STRONG_NEGATE` for a `-` that is preceded by whitespace and not followed by whitespace, and the ordinary `TokenType.MINUS` (the "weak negate" below) otherwise.  "Followed by whitespace" includes tab, newline and end of input, so a trailing `-` is always a `MINUS` and still triggers line continuation.
+
+`Parser` registers `STRONG_NEGATE` as a prefix (negation) parselet, and *also* as an infix (subtraction) parselet — but `GetPrecedence` refuses the infix reading wherever a no-parens call statement could be built:
+
+```csharp
+if (_current.Type == TokenType.STRONG_NEGATE && callStatementAllowed) {
+    return Precedence.NONE;
+}
+```
+
+That `callStatementAllowed` flag is the adjustment.  Taking the alternative literally — never letting a `STRONG_NEGATE` be subtraction — breaks `x = a -b`, which 1.x accepts (its `statementStart` is false on an assignment's right-hand side).  So the parser passes `true` only for the outermost expression of a statement, which is exactly where `AtCallArgument` may claim what follows as an argument list; arguments, right-hand sides, conditions and anything inside brackets all recurse through `ParseExpression` and pass `false`.
+
+It is a single parameter on two methods rather than 1.x's threading through every parse method, because in a Pratt parser only `GetPrecedence` has to know.
+
+Coverage: the "UNARY MINUS VS. SUBTRACTION" section of `tests/testSuite.txt`.
+
 ## Possible Alternative
 
 Another way to approach this might be to have the tokenizer itself distinguish these as two different tokens:

@@ -32,7 +32,8 @@ public enum TokenType : Int32 {
 	IDENTIFIER,
 	ADDRESS_OF,
 	PLUS,
-	MINUS,
+	MINUS,           // '-' in any position except the one below; may be subtraction or negation
+	STRONG_NEGATE,   // '-' preceded by whitespace and *not* followed by whitespace; negation only
 	TIMES,
 	DIVIDE,
 	MOD,

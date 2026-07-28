@@ -1106,4 +1106,8 @@ But then I ran into a really bizarre-looking bug where in some real code (the Te
 
 I've added backstop range checks to CodeEmitter, and then added new fallback forms which use two instructions instead of one when necessary.  This raises the constant ceiling from 256 to 65536.  We still have a limit of 256 registers per function, though.  At least if we exceed that now, the backstops should make it obvious, rather than sending us on another wild bug hunt.
 
+Then, I also ran into a case where a call like `td.setCursor -5, -5` generated a weird compiler error unless I put parentheses around the arguments.  That should of course not be necessary, and notes/UNARY_MINUS_QUIRK.md defines the correct behavior already.  It turns out that our current approach is more like MiniScript 1.x, but only half implemented; there was no `IsAtWhitespace()` equivalent, so half the disambiguation rules were simply not implemented.
+
+To fix this, I'm switching to the approach described under "Possible Alternative", i.e., separate STRONG_NEGATE and WEAK_NEGATE tokens from the lexer.  I think that will make the parser much simpler and more reliable.  I'll also make sure the test suite covers this feature thoroughly -- we really should have caught this ages ago.
+
 

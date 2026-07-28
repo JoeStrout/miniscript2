@@ -80,21 +80,40 @@ class ParserStorage : public std::enable_shared_from_this<ParserStorage>, public
 	// Expect a specific token type, report error if not found
 	public: Token Expect(TokenType type, String errorMessage);
 
-	// Get the precedence of the infix parselet for the current token
-	private: Precedence GetPrecedence();
+	// Get the precedence of the infix parselet for the current token.
+	// callStatementAllowed says whether the expression being parsed could turn
+	// out to be the target of a no-parens call statement -- the same condition
+	// that lets AtCallArgument below take what follows as an argument list.
+	private: Precedence GetPrecedence(Boolean callStatementAllowed);
 
 	// Check if a token type can start an expression
 	public: Boolean CanStartExpression(TokenType type);
 
+	// Check whether the current token can begin the argument list of a call
+	// statement written without parentheses, as in `print 42`.
+	// Whitespace before the token is required, so that `list[0]` reads as an
+	// index rather than a call taking a list argument.  A plain MINUS is
+	// excluded, because `f - 5` is a subtraction; the call form `f -5` yields a
+	// STRONG_NEGATE instead (see notes/UNARY_MINUS_QUIRK.md).
+	private: Boolean AtCallArgument();
+
 	// Parse an expression with the given minimum precedence (Pratt parser core)
 	public: ASTNode ParseExpression(Precedence minPrecedence);
+
+	// Parse an expression, saying whether a no-parens call statement could be
+	// built from it.  That is true only for the outermost expression of a
+	// statement -- never for an argument, an assignment's right-hand side, a
+	// condition, or anything inside brackets, all of which recurse through
+	// ParseExpression above and so pass false.
+	private: ASTNode ParseExpressionAt(Precedence minPrecedence, Boolean callStatementAllowed);
 
 	// Parse an expression (convenience method with default precedence)
 	public: ASTNode ParseExpression();
 
 	// Continue parsing an expression given a starting left operand.
 	// Used when we've already consumed a token (like an identifier) and need
-	// to continue with any infix operators that follow.
+	// to continue with any infix operators that follow.  This is only ever
+	// reached from ParseSimpleStatement, so a call statement is allowed here.
 	private: ASTNode ParseExpressionFrom(ASTNode left);
 
 	// Parse a simple statement (grammar: simpleStatement)
@@ -242,21 +261,40 @@ struct Parser : public IParser {
 	// Expect a specific token type, report error if not found
 	public: inline Token Expect(TokenType type, String errorMessage);
 
-	// Get the precedence of the infix parselet for the current token
-	private: inline Precedence GetPrecedence();
+	// Get the precedence of the infix parselet for the current token.
+	// callStatementAllowed says whether the expression being parsed could turn
+	// out to be the target of a no-parens call statement -- the same condition
+	// that lets AtCallArgument below take what follows as an argument list.
+	private: inline Precedence GetPrecedence(Boolean callStatementAllowed);
 
 	// Check if a token type can start an expression
 	public: inline Boolean CanStartExpression(TokenType type);
 
+	// Check whether the current token can begin the argument list of a call
+	// statement written without parentheses, as in `print 42`.
+	// Whitespace before the token is required, so that `list[0]` reads as an
+	// index rather than a call taking a list argument.  A plain MINUS is
+	// excluded, because `f - 5` is a subtraction; the call form `f -5` yields a
+	// STRONG_NEGATE instead (see notes/UNARY_MINUS_QUIRK.md).
+	private: inline Boolean AtCallArgument();
+
 	// Parse an expression with the given minimum precedence (Pratt parser core)
 	public: inline ASTNode ParseExpression(Precedence minPrecedence);
+
+	// Parse an expression, saying whether a no-parens call statement could be
+	// built from it.  That is true only for the outermost expression of a
+	// statement -- never for an argument, an assignment's right-hand side, a
+	// condition, or anything inside brackets, all of which recurse through
+	// ParseExpression above and so pass false.
+	private: inline ASTNode ParseExpressionAt(Precedence minPrecedence, Boolean callStatementAllowed);
 
 	// Parse an expression (convenience method with default precedence)
 	public: inline ASTNode ParseExpression();
 
 	// Continue parsing an expression given a starting left operand.
 	// Used when we've already consumed a token (like an identifier) and need
-	// to continue with any infix operators that follow.
+	// to continue with any infix operators that follow.  This is only ever
+	// reached from ParseSimpleStatement, so a call statement is allowed here.
 	private: inline ASTNode ParseExpressionFrom(ASTNode left);
 
 	// Parse a simple statement (grammar: simpleStatement)
@@ -356,9 +394,11 @@ inline Boolean Parser::Check(TokenType type) { return get()->Check(type); }
 inline Boolean Parser::Match(TokenType type) { return get()->Match(type); }
 inline Token Parser::Consume() { return get()->Consume(); }
 inline Token Parser::Expect(TokenType type,String errorMessage) { return get()->Expect(type, errorMessage); }
-inline Precedence Parser::GetPrecedence() { return get()->GetPrecedence(); }
+inline Precedence Parser::GetPrecedence(Boolean callStatementAllowed) { return get()->GetPrecedence(callStatementAllowed); }
 inline Boolean Parser::CanStartExpression(TokenType type) { return get()->CanStartExpression(type); }
+inline Boolean Parser::AtCallArgument() { return get()->AtCallArgument(); }
 inline ASTNode Parser::ParseExpression(Precedence minPrecedence) { return get()->ParseExpression(minPrecedence); }
+inline ASTNode Parser::ParseExpressionAt(Precedence minPrecedence,Boolean callStatementAllowed) { return get()->ParseExpressionAt(minPrecedence, callStatementAllowed); }
 inline ASTNode Parser::ParseExpression() { return get()->ParseExpression(); }
 inline ASTNode Parser::ParseExpressionFrom(ASTNode left) { return get()->ParseExpressionFrom(left); }
 inline ASTNode Parser::ParseSimpleStatement() { return get()->ParseSimpleStatement(); }

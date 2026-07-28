@@ -26,6 +26,7 @@ void ParserStorage::RegisterParselets() {
 
 	// Unary operators
 	RegisterPrefix(TokenType::MINUS,  UnaryOpParselet::New(Op::MINUS, Precedence::UNARY_MINUS));
+	RegisterPrefix(TokenType::STRONG_NEGATE,  UnaryOpParselet::New(Op::MINUS, Precedence::UNARY_MINUS));
 	RegisterPrefix(TokenType::NOT,  UnaryOpParselet::New(Op::NOT, Precedence::NOT));
 	RegisterPrefix(TokenType::ADDRESS_OF,  AddressOfParselet::New());
 	RegisterPrefix(TokenType::NEW,  UnaryOpParselet::New(Op::NEW, Precedence::UNARY_MINUS));
@@ -38,6 +39,10 @@ void ParserStorage::RegisterParselets() {
 	// Binary operators
 	RegisterInfix(TokenType::PLUS,  BinaryOpParselet::New(Op::PLUS, Precedence::SUM));
 	RegisterInfix(TokenType::MINUS,  BinaryOpParselet::New(Op::MINUS, Precedence::SUM));
+	// STRONG_NEGATE subtracts too, but only below statement level -- see
+	// GetPrecedence.  That is what makes "m.f -5" a call while "x = a -b"
+	// stays a subtraction.
+	RegisterInfix(TokenType::STRONG_NEGATE,  BinaryOpParselet::New(Op::MINUS, Precedence::SUM));
 	RegisterInfix(TokenType::TIMES,  BinaryOpParselet::New(Op::TIMES, Precedence::PRODUCT));
 	RegisterInfix(TokenType::DIVIDE,  BinaryOpParselet::New(Op::DIVIDE, Precedence::PRODUCT));
 	RegisterInfix(TokenType::MOD,  BinaryOpParselet::New(Op::MOD, Precedence::PRODUCT));
@@ -162,10 +167,19 @@ Token ParserStorage::Expect(TokenType type,String errorMessage) {
 	ReportError(errorMessage);
 	return Token(TokenType::ERROR, "", _current.Line, _current.Column);
 }
-Precedence ParserStorage::GetPrecedence() {
+Precedence ParserStorage::GetPrecedence(Boolean callStatementAllowed) {
 	// A '[' preceded by whitespace is not an index operator; it begins a
 	// separate list argument (e.g. "foo.push [1, 2]" is a call, not an index).
 	if (_current.Type == TokenType::LBRACKET && _current.AfterSpace) {
+		return Precedence::NONE;
+	}
+	// A STRONG_NEGATE ('-' with a space before it but not after it) cannot
+	// be subtraction where a call statement is allowed: in `m.f -5` it
+	// begins the argument list, so stop and let AtCallArgument have it.
+	// Anywhere else it is ordinary subtraction, which is what keeps
+	// `x = a -b` working.  This one test is all that MiniScript 1.x needed
+	// its `statementStart` parameter for.
+	if (_current.Type == TokenType::STRONG_NEGATE && callStatementAllowed) {
 		return Precedence::NONE;
 	}
 	InfixParselet parselet = nullptr;
@@ -182,6 +196,7 @@ Boolean ParserStorage::CanStartExpression(TokenType type) {
 		|| type == TokenType::LBRACKET
 		|| type == TokenType::LBRACE
 		|| type == TokenType::MINUS
+		|| type == TokenType::STRONG_NEGATE
 		|| type == TokenType::ADDRESS_OF
 		|| type == TokenType::NOT
 		|| type == TokenType::NEW
@@ -192,7 +207,15 @@ Boolean ParserStorage::CanStartExpression(TokenType type) {
 		|| type == TokenType::GLOBALS
 		|| type == TokenType::FUNCTION;
 }
+Boolean ParserStorage::AtCallArgument() {
+	if (!_current.AfterSpace) return Boolean(false);
+	if (_current.Type == TokenType::MINUS) return Boolean(false);
+	return CanStartExpression(_current.Type);
+}
 ASTNode ParserStorage::ParseExpression(Precedence minPrecedence) {
+	return ParseExpressionAt(minPrecedence, Boolean(false));
+}
+ASTNode ParserStorage::ParseExpressionAt(Precedence minPrecedence,Boolean callStatementAllowed) {
 	Parser _this(std::static_pointer_cast<ParserStorage>(shared_from_this()));
 	Token token = _current;
 	Advance();
@@ -214,7 +237,7 @@ ASTNode ParserStorage::ParseExpression(Precedence minPrecedence) {
 	ASTNode left = prefix.Parse(_this, token);
 
 	// Continue parsing infix expressions while precedence allows
-	while ((Int32)minPrecedence < (Int32)GetPrecedence()) {
+	while ((Int32)minPrecedence < (Int32)GetPrecedence(callStatementAllowed)) {
 		token = _current;
 		Advance();
 
@@ -231,7 +254,7 @@ ASTNode ParserStorage::ParseExpression() {
 }
 ASTNode ParserStorage::ParseExpressionFrom(ASTNode left) {
 	Parser _this(std::static_pointer_cast<ParserStorage>(shared_from_this()));
-	while ((Int32)Precedence::NONE < (Int32)GetPrecedence()) {
+	while ((Int32)Precedence::NONE < (Int32)GetPrecedence(Boolean(true))) {
 		Token token = _current;
 		Advance();
 		InfixParselet infix = nullptr;
@@ -299,7 +322,7 @@ ASTNode ParserStorage::ParseSimpleStatement() {
 		// (but NOT '(' which would be handled as func(args) by expression parsing).
 		// IMPORTANT: Whitespace is required between identifier and argument to
 		// distinguish "print [1,2,3]" (call) from "list[0]" (index expression).
-		if (_current.AfterSpace && CanStartExpression(_current.Type)) {
+		if (AtCallArgument()) {
 			// This is a call statement like "print 42" or "print x, y"
 			List<ASTNode> args =  List<ASTNode>::New();
 			args.Add(ParseExpression());
@@ -345,7 +368,7 @@ ASTNode ParserStorage::ParseSimpleStatement() {
 		}
 
 		// Check for no-parens call on an expression result, e.g. funcs[0] 10
-		if (_current.AfterSpace && CanStartExpression(_current.Type)) {
+		if (AtCallArgument()) {
 			List<ASTNode> args =  List<ASTNode>::New();
 			args.Add(ParseExpression());
 			while (Match(TokenType::COMMA)) {
@@ -357,8 +380,9 @@ ASTNode ParserStorage::ParseSimpleStatement() {
 		return expr;
 	}
 
-	// Not an identifier - parse as expression statement
-	ASTNode expr2 = ParseExpression();
+	// Not an identifier - parse as expression statement.  A call statement
+	// is still possible here (e.g. "super.speak msg"), so say so.
+	ASTNode expr2 = ParseExpressionAt(Precedence::NONE, Boolean(true));
 	IndexNode idxNode2 = As<IndexNode, IndexNodeStorage>(expr2);
 	if (!IsNull(idxNode2) && IsAssignOp(_current.Type)) {
 		String compoundOp2 = CompoundAssignOp(_current.Type);
@@ -384,7 +408,7 @@ ASTNode ParserStorage::ParseSimpleStatement() {
 	}
 
 	// Check for no-parens call on an expression result, e.g. super.speak msg
-	if (_current.AfterSpace && CanStartExpression(_current.Type)) {
+	if (AtCallArgument()) {
 		List<ASTNode> args =  List<ASTNode>::New();
 		args.Add(ParseExpression());
 		while (Match(TokenType::COMMA)) {

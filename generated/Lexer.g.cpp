@@ -240,12 +240,27 @@ Token Lexer::NextToken() {
 		return commentTok;
 	}
 
+	// A '-' that is preceded by whitespace but *not* followed by whitespace
+	// binds tightly to what follows, and so can only be negation, never
+	// subtraction: "f -5" is a call, while "f - 5", "f- 5" and "f-5" all
+	// subtract.  The lexer settles that here, by returning a distinct token
+	// type, so that the grammar need not know where a statement began.
+	// See notes/UNARY_MINUS_QUIRK.md.
+	Boolean strongNegate = (c == '-' && hadWhitespace
+		&& _position + 1 < _input.Length() && !IsWhiteSpace(_input[_position + 1]));
+
 	// Single-character operators and punctuation
 	Advance();
 	Token singleTok;
 	switch (c) {
 		case '+': singleTok = Token(TokenType::PLUS, "+", startLine, startColumn); break;
-		case '-': singleTok = Token(TokenType::MINUS, "-", startLine, startColumn); break;
+		case '-':
+			if (strongNegate) {
+				singleTok = Token(TokenType::STRONG_NEGATE, "-", startLine, startColumn);
+			} else {
+				singleTok = Token(TokenType::MINUS, "-", startLine, startColumn);
+			}
+			break;
 		case '*': singleTok = Token(TokenType::TIMES, "*", startLine, startColumn); break;
 		case '/': singleTok = Token(TokenType::DIVIDE, "/", startLine, startColumn); break;
 		case '%': singleTok = Token(TokenType::MOD, "%", startLine, startColumn); break;

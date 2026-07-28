@@ -355,25 +355,45 @@ public class CodeGenerator : IASTVisitor {
 		}
 
 		Int32 varReg;
+		String at = addressOf ? "@" : "";
 		if (_variableRegs.TryGetValue(node.Name, out varReg)) {
 			// Variable found - emit LOADC (load-and-call for implicit function invocation)
-			Int32 nameIdx = _emitter.AddConstant(Value.make_string(node.Name));
-			Opcode op = addressOf ? Opcode.LOADV_rA_rB_kC : Opcode.LOADC_rA_rB_kC;
-			String a = addressOf ? "@" : "";
-			_emitter.EmitABC(op, resultReg, varReg, nameIdx,
-				$"r{resultReg} = {a}{node.Name}");
+			EmitNamedLoad(addressOf, resultReg, varReg, Value.make_string(node.Name),
+				$"r{resultReg} = {at}{node.Name}");
 		} else {
 			// Variable not in local scope — emit LOADC/LOADV referencing r0 with
 			// the variable name. At runtime, the name check on r0 will fail,
 			// triggering LookupVariable to search outer/global scope.
-			Int32 nameIdx = _emitter.AddConstant(Value.make_string(node.Name));
-			Opcode op = addressOf ? Opcode.LOADV_rA_rB_kC : Opcode.LOADC_rA_rB_kC;
-			String a = addressOf ? "@" : "";
-			_emitter.EmitABC(op, resultReg, 0, nameIdx,
-				$"r{resultReg} = {a}{node.Name} (outer)");
+			EmitNamedLoad(addressOf, resultReg, 0, Value.make_string(node.Name),
+				$"r{resultReg} = {at}{node.Name} (outer)");
 		}
 
 		return resultReg;
+	}
+
+	// Emit a LOADV (addressOf) or LOADC (auto-invoking) that copies R[srcReg]
+	// into R[resultReg] after checking that srcReg is still named nameVal,
+	// falling back to a runtime lookup by that name if it is not.
+	//
+	// The usual kC forms carry the name's constant-pool index in the 8-bit C
+	// field, so they can only reach the first 256 constants.  Past that we emit
+	// the rC forms instead: a LOAD_rA_kBC (whose constant index is 16-bit) puts
+	// the name in a scratch register, and the opcode reads it from there.  The
+	// two instructions are adjacent and the scratch register is freed right
+	// after, so it costs nothing in the common case.
+	private void EmitNamedLoad(Boolean addressOf, Int32 resultReg, Int32 srcReg, Value nameVal, String comment) {
+		Int32 nameIdx = _emitter.AddConstant(nameVal);
+		if (nameIdx <= 255) {
+			Opcode op = addressOf ? Opcode.LOADV_rA_rB_kC : Opcode.LOADC_rA_rB_kC;
+			_emitter.EmitABC(op, resultReg, srcReg, nameIdx, comment);
+			return;
+		}
+		Opcode regOp = addressOf ? Opcode.LOADV_rA_rB_rC : Opcode.LOADC_rA_rB_rC;
+		Int32 nameReg = AllocReg();
+		_emitter.EmitAB(Opcode.LOAD_rA_kBC, nameReg, nameIdx,
+			$"r{nameReg} = name for {comment}");
+		_emitter.EmitABC(regOp, resultReg, srcReg, nameReg, comment);
+		FreeReg(nameReg);
 	}
 
 	public Int32 Visit(IdentifierNode node) {
@@ -730,8 +750,7 @@ public class CodeGenerator : IASTVisitor {
 		// Not a known local — resolve at runtime via LOADV (outer/global/intrinsic).
 		// We use LOADV (not LOADC) to get the funcref without auto-invoking it.
 		Int32 funcReg = AllocReg();
-		Int32 nameIdx = _emitter.AddConstant(Value.make_string(node.Function));
-		_emitter.EmitABC(Opcode.LOADV_rA_rB_kC, funcReg, 0, nameIdx,
+		EmitNamedLoad(true, funcReg, 0, Value.make_string(node.Function),
 			$"r{funcReg} = @{node.Function} (runtime lookup)");
 
 		Int32 result = CompileUserCall(node, funcReg, explicitTarget);
@@ -1505,8 +1524,7 @@ public class CodeGenerator : IASTVisitor {
 	public Int32 Visit(SelfNode node) {
 		Int32 resultReg = GetTargetOrAlloc();
 		Int32 selfReg = GetSelfReg();
-		Int32 nameIdx = _emitter.AddConstant(Value.selfString);
-		_emitter.EmitABC(Opcode.LOADV_rA_rB_kC, resultReg, selfReg, nameIdx,
+		EmitNamedLoad(true, resultReg, selfReg, Value.selfString,
 			$"r{resultReg} = self");
 		return resultReg;
 	}
@@ -1514,8 +1532,7 @@ public class CodeGenerator : IASTVisitor {
 	public Int32 Visit(SuperNode node) {
 		Int32 resultReg = GetTargetOrAlloc();
 		Int32 superReg = GetSuperReg();
-		Int32 nameIdx = _emitter.AddConstant(Value.superString);
-		_emitter.EmitABC(Opcode.LOADV_rA_rB_kC, resultReg, superReg, nameIdx,
+		EmitNamedLoad(true, resultReg, superReg, Value.superString,
 			$"r{resultReg} = super");
 		return resultReg;
 	}

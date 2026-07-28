@@ -57,6 +57,14 @@ Boolean BytecodeUtil::CheckEmitPattern(Opcode opcode,EmitPattern expected) {
 	IOHelper::Print(Interp("ERROR: Opcode {} expects Emit{} but Emit{} was called", mnemonic, actual, expected));
 	return Boolean(false);
 }
+Boolean BytecodeUtil::CheckOperandRange(Opcode opcode,String field,Int32 value,Int32 minValue,Int32 maxValue) {
+	if (!ValidateOpcodes) return Boolean(true);
+	if (value >= minValue && value <= maxValue) return Boolean(true);
+
+	String mnemonic = ToMnemonic(opcode);
+	IOHelper::Print(Interp("ERROR: Opcode {} operand {} out of range: {} (must be {} to {})", mnemonic, field, value, minValue, maxValue));
+	return Boolean(false);
+}
 Int32 BytecodeUtil::ABCs(UInt32 instruction) {
 	UInt32 value = ABCu(instruction);
 	// If bit 23 is set (sign bit), extend the sign to upper 8 bits
@@ -74,6 +82,8 @@ String BytecodeUtil::ToMnemonic(Opcode opcode) {
 		case Opcode::LOADNULL_rA:    return "LOADNULL_rA";
 		case Opcode::LOADV_rA_rB_kC: return "LOADV_rA_rB_kC";
 		case Opcode::LOADC_rA_rB_kC: return "LOADC_rA_rB_kC";
+		case Opcode::LOADV_rA_rB_rC: return "LOADV_rA_rB_rC";
+		case Opcode::LOADC_rA_rB_rC: return "LOADC_rA_rB_rC";
 		case Opcode::FUNCREF_iA_iBC: return "FUNCREF_iA_iBC";
 		case Opcode::ASSIGN_rA_rB_kC:return "ASSIGN_rA_rB_kC";
 		case Opcode::NAME_rA_kBC:    return "NAME_rA_kBC";
@@ -156,6 +166,8 @@ Opcode BytecodeUtil::FromMnemonic(String s) {
 	if (s == "LOADNULL_rA")     return Opcode::LOADNULL_rA;
 	if (s == "LOADV_rA_rB_kC")  return Opcode::LOADV_rA_rB_kC;
 	if (s == "LOADC_rA_rB_kC")  return Opcode::LOADC_rA_rB_kC;
+	if (s == "LOADV_rA_rB_rC")  return Opcode::LOADV_rA_rB_rC;
+	if (s == "LOADC_rA_rB_rC")  return Opcode::LOADC_rA_rB_rC;
 	if (s == "FUNCREF_iA_iBC")  return Opcode::FUNCREF_iA_iBC;
 	if (s == "ASSIGN_rA_rB_kC") return Opcode::ASSIGN_rA_rB_kC;
 	if (s == "NAME_rA_kBC")     return Opcode::NAME_rA_kBC;

@@ -1096,4 +1096,14 @@ Working today on some issues related to resolving variable values while building
 
 But this led to discovery of a related bug; something like `y = [y]` where `y` is a global results in `[null]`, rather than a list containing whatever the value of `y` was.  This appears to be because the NAME opcode pulls in the value of the register.  This NAME opcode has to be done before we evaluate the RHS in an assignment (since if we do it after, it would pull in the old/stale value and clobber the result we just computed).  ...Well, unless we compile the RHS into a temp, and then copy the temp into the register.  Which might be the right solution here.
 
+## Jul 28, 2026
+
+Discovered a couple of obscure bugs today.  The first was more of a design oversight: errors returned by a function-call statement were being silently dropped, which is confusing to the user.  It came up in the context of a compiler error in an imported module; as usual, the call site just said `import "foo"`, which ignores the return value.  So I've added a new ERRCHK opcode that checks whether the result in r0 is an error, and if so, terminates the program and reports the error; the code generator emits this only in the case of an expression statement, i.e., when the value would otherwise be discarded.  It works great; now with things like `import` or any other function that normally works and returns nothing you care about, you can just call it like a statement and trust it to abort your program if things go sideways; or you can get the return value, check whether it `isa error`, and do something about it at runtime.
+
+I'm really feeling good about the new error handling in MS2.
+
+But then I ran into a really bizarre-looking bug where in some real code (the TextDisplay test harness being developed for Soda), we got an unexpected "import: library name required" error being thrown on a `yield` call!  It was very sensitive to any changes to the code, and resisted our efforts to make a minimal repro example.  Eventually figured out what was going on: we were exceeding more than 255 constants in this function, and so our LOADC_rA_rB_kC opcode was silently wrapping the constant number, then invoking the wrong function.
+
+I've added backstop range checks to CodeEmitter, and then added new fallback forms which use two instructions instead of one when necessary.  This raises the constant ceiling from 256 to 65536.  We still have a limit of 256 registers per function, though.  At least if we exceed that now, the backstops should make it obvious, rather than sending us on another wild bug hunt.
+
 

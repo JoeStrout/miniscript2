@@ -937,6 +937,69 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				VM_NEXT();
 			}
 
+			VM_CASE(LOADV_rA_rB_rC) {
+				// R[A] = R[B], but verify that register B has name matching R[C].
+				// Same as LOADV_rA_rB_kC, except the expected name comes from a
+				// register instead of the constant pool.  The code generator uses
+				// this form when the name's constant index exceeds 255 (which the
+				// 8-bit C field of the kC form cannot hold); a preceding
+				// LOAD_rA_kBC, whose constant index is 16-bit, puts the name in
+				// R[C].
+				Byte a = BytecodeUtil::Au(instruction);
+				Byte b = BytecodeUtil::Bu(instruction);
+				Byte c = BytecodeUtil::Cu(instruction);
+
+				// Check if the source register has the expected name
+				valC = localStack[c];  // expected name
+				valB = names[baseIndex + b];  // actual name
+				if (valC.RefEquals(valB)) {
+					localStack[a] = localStack[b];
+				} else {
+					// Variable not found in current scope, look in outer context
+					localStack[a] = LookupVariable(valC);
+				}
+				VM_NEXT();
+			}
+
+			VM_CASE(LOADC_rA_rB_rC) {
+				// R[A] = R[B], but verify that register B has name matching R[C],
+				// and call the function if the value is a function reference.
+				// Register-name counterpart of LOADC_rA_rB_kC; see LOADV_rA_rB_rC.
+				Byte a = BytecodeUtil::Au(instruction);
+				Byte b = BytecodeUtil::Bu(instruction);
+				Byte c = BytecodeUtil::Cu(instruction);
+
+				// Check if the source register has the expected name
+				valC = localStack[c];  // expected name
+				valB = names[baseIndex + b];  // actual name
+				if (valC.RefEquals(valB)) {
+					valB = localStack[b];
+				} else {
+					// Variable not found in current scope, look in outer context
+					valB = LookupVariable(valC);
+				}
+
+				if (!valB.IsFuncRef()) {
+					// Simple case: value is not a funcref, so just copy it
+					localStack[a] = valB;
+				} else {
+					// Value is a funcref — auto-invoke with zero args
+					FuncDef autoCallee = nullptr;
+					Int32 status = AutoInvokeFuncRef(valB, a, pc, baseIndex, currentFunc, &autoCallee);
+					if (status == -2) {
+						// Native callback pending — exit RunInner
+						cyclesLeft = 0;
+					} else if (status == 0) {
+						// Frame was pushed — switch to callee
+						baseIndex += curFuncRaw->MaxRegs;
+						pc = 0;
+						currentFunc = autoCallee;
+						SwitchFrame(currentFunc, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack, stackPtr);
+					}
+				}
+				VM_NEXT();
+			}
+
 			VM_CASE(FUNCREF_iA_iBC) {
 				// R[A] := a closure: the FuncDef from the template funcref at
 				// constants[BC], bound with our locals as the closure context.

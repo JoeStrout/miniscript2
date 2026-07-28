@@ -25,6 +25,8 @@ public enum Opcode : Byte {
 	LOADNULL_rA,
 	LOADV_rA_rB_kC,
 	LOADC_rA_rB_kC,
+	LOADV_rA_rB_rC,
+	LOADC_rA_rB_rC,
 	FUNCREF_iA_iBC,
 	ASSIGN_rA_rB_kC,
 	NAME_rA_kBC,
@@ -156,6 +158,27 @@ public static class BytecodeUtil {
 		return false;
 	}
 
+	// Validate that an operand fits the instruction field it is about to be
+	// encoded into.  The Emit methods narrow their Int32 operands to Byte or
+	// Int16, which in C# and C++ alike wraps silently -- an out-of-range value
+	// then encodes as some *other* legal-looking operand, and the resulting
+	// bytecode misbehaves far from the mistake that caused it.
+	//
+	// Callers are expected to keep operands in range; this is purely a backstop
+	// so that a violated assumption is reported at the point of encoding rather
+	// than corrupting the program.  It is deliberately generic: these fields
+	// hold registers, constant-pool indices, jump offsets and immediates
+	// depending on the opcode, so the message names only the field and range.
+	// Returns true if valid, false if out of range (and prints error).
+	public static Boolean CheckOperandRange(Opcode opcode, String field, Int32 value, Int32 minValue, Int32 maxValue) {
+		if (!ValidateOpcodes) return true;
+		if (value >= minValue && value <= maxValue) return true;
+
+		String mnemonic = ToMnemonic(opcode);
+		IOHelper.Print($"ERROR: Opcode {mnemonic} operand {field} out of range: {value} (must be {minValue} to {maxValue})");
+		return false;
+	}
+
 	// Instruction field extraction helpers
 	public static Byte OP(UInt32 instruction) => (Byte)((instruction >> 24) & 0xFF);
 	
@@ -202,6 +225,8 @@ public static class BytecodeUtil {
 			case Opcode.LOADNULL_rA:    return "LOADNULL_rA";
 			case Opcode.LOADV_rA_rB_kC: return "LOADV_rA_rB_kC";
 			case Opcode.LOADC_rA_rB_kC: return "LOADC_rA_rB_kC";
+			case Opcode.LOADV_rA_rB_rC: return "LOADV_rA_rB_rC";
+			case Opcode.LOADC_rA_rB_rC: return "LOADC_rA_rB_rC";
 			case Opcode.FUNCREF_iA_iBC: return "FUNCREF_iA_iBC";
 			case Opcode.ASSIGN_rA_rB_kC:return "ASSIGN_rA_rB_kC";
 			case Opcode.NAME_rA_kBC:    return "NAME_rA_kBC";
@@ -285,6 +310,8 @@ public static class BytecodeUtil {
 		if (s == "LOADNULL_rA")     return Opcode.LOADNULL_rA;
 		if (s == "LOADV_rA_rB_kC")  return Opcode.LOADV_rA_rB_kC;
 		if (s == "LOADC_rA_rB_kC")  return Opcode.LOADC_rA_rB_kC;
+		if (s == "LOADV_rA_rB_rC")  return Opcode.LOADV_rA_rB_rC;
+		if (s == "LOADC_rA_rB_rC")  return Opcode.LOADC_rA_rB_rC;
 		if (s == "FUNCREF_iA_iBC")  return Opcode.FUNCREF_iA_iBC;
 		if (s == "ASSIGN_rA_rB_kC") return Opcode.ASSIGN_rA_rB_kC;
 		if (s == "NAME_rA_kBC")     return Opcode.NAME_rA_kBC;

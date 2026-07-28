@@ -119,6 +119,17 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 
 	private: Int32 VisitIdentifier(IdentifierNode node, bool addressOf);
 
+	// Emit a LOADV (addressOf) or LOADC (auto-invoking) that copies R[srcReg]
+	// into R[resultReg] after checking that srcReg is still named nameVal,
+	// falling back to a runtime lookup by that name if it is not.
+	// The usual kC forms carry the name's constant-pool index in the 8-bit C
+	// field, so they can only reach the first 256 constants.  Past that we emit
+	// the rC forms instead: a LOAD_rA_kBC (whose constant index is 16-bit) puts
+	// the name in a scratch register, and the opcode reads it from there.  The
+	// two instructions are adjacent and the scratch register is freed right
+	// after, so it costs nothing in the common case.
+	private: void EmitNamedLoad(Boolean addressOf, Int32 resultReg, Int32 srcReg, Value nameVal, String comment);
+
 	public: Int32 Visit(IdentifierNode node);
 
 	public: Int32 Visit(AssignmentNode node);
@@ -363,6 +374,17 @@ struct CodeGenerator : public IASTVisitor {
 
 	private: inline Int32 VisitIdentifier(IdentifierNode node, bool addressOf);
 
+	// Emit a LOADV (addressOf) or LOADC (auto-invoking) that copies R[srcReg]
+	// into R[resultReg] after checking that srcReg is still named nameVal,
+	// falling back to a runtime lookup by that name if it is not.
+	// The usual kC forms carry the name's constant-pool index in the 8-bit C
+	// field, so they can only reach the first 256 constants.  Past that we emit
+	// the rC forms instead: a LOAD_rA_kBC (whose constant index is 16-bit) puts
+	// the name in a scratch register, and the opcode reads it from there.  The
+	// two instructions are adjacent and the scratch register is freed right
+	// after, so it costs nothing in the common case.
+	private: inline void EmitNamedLoad(Boolean addressOf, Int32 resultReg, Int32 srcReg, Value nameVal, String comment);
+
 	public: inline Int32 Visit(IdentifierNode node);
 
 	public: inline Int32 Visit(AssignmentNode node);
@@ -528,6 +550,7 @@ inline FuncDef CodeGenerator::CompileProgram(List<ASTNode> statements,String fun
 inline Int32 CodeGenerator::Visit(NumberNode node) { return get()->Visit(node); }
 inline Int32 CodeGenerator::Visit(StringNode node) { return get()->Visit(node); }
 inline Int32 CodeGenerator::VisitIdentifier(IdentifierNode node,bool addressOf) { return get()->VisitIdentifier(node, addressOf); }
+inline void CodeGenerator::EmitNamedLoad(Boolean addressOf,Int32 resultReg,Int32 srcReg,Value nameVal,String comment) { return get()->EmitNamedLoad(addressOf, resultReg, srcReg, nameVal, comment); }
 inline Int32 CodeGenerator::Visit(IdentifierNode node) { return get()->Visit(node); }
 inline Int32 CodeGenerator::Visit(AssignmentNode node) { return get()->Visit(node); }
 inline Int32 CodeGenerator::Visit(IndexedAssignmentNode node) { return get()->Visit(node); }

@@ -269,25 +269,34 @@ Int32 CodeGeneratorStorage::VisitIdentifier(IdentifierNode node,bool addressOf) 
 	}
 
 	Int32 varReg;
+	String at = addressOf ? "@" : "";
 	if (_variableRegs.TryGetValue(node.Name(), &varReg)) {
 		// Variable found - emit LOADC (load-and-call for implicit function invocation)
-		Int32 nameIdx = _emitter.AddConstant(Value::make_string(node.Name()));
-		Opcode op = addressOf ? Opcode::LOADV_rA_rB_kC : Opcode::LOADC_rA_rB_kC;
-		String a = addressOf ? "@" : "";
-		_emitter.EmitABC(op, resultReg, varReg, nameIdx,
-			Interp("r{} = {}{}", resultReg, a, node.Name()));
+		EmitNamedLoad(addressOf, resultReg, varReg, Value::make_string(node.Name()),
+			Interp("r{} = {}{}", resultReg, at, node.Name()));
 	} else {
 		// Variable not in local scope — emit LOADC/LOADV referencing r0 with
 		// the variable name. At runtime, the name check on r0 will fail,
 		// triggering LookupVariable to search outer/global scope.
-		Int32 nameIdx = _emitter.AddConstant(Value::make_string(node.Name()));
-		Opcode op = addressOf ? Opcode::LOADV_rA_rB_kC : Opcode::LOADC_rA_rB_kC;
-		String a = addressOf ? "@" : "";
-		_emitter.EmitABC(op, resultReg, 0, nameIdx,
-			Interp("r{} = {}{} (outer)", resultReg, a, node.Name()));
+		EmitNamedLoad(addressOf, resultReg, 0, Value::make_string(node.Name()),
+			Interp("r{} = {}{} (outer)", resultReg, at, node.Name()));
 	}
 
 	return resultReg;
+}
+void CodeGeneratorStorage::EmitNamedLoad(Boolean addressOf,Int32 resultReg,Int32 srcReg,Value nameVal,String comment) {
+	Int32 nameIdx = _emitter.AddConstant(nameVal);
+	if (nameIdx <= 255) {
+		Opcode op = addressOf ? Opcode::LOADV_rA_rB_kC : Opcode::LOADC_rA_rB_kC;
+		_emitter.EmitABC(op, resultReg, srcReg, nameIdx, comment);
+		return;
+	}
+	Opcode regOp = addressOf ? Opcode::LOADV_rA_rB_rC : Opcode::LOADC_rA_rB_rC;
+	Int32 nameReg = AllocReg();
+	_emitter.EmitAB(Opcode::LOAD_rA_kBC, nameReg, nameIdx,
+		Interp("r{} = name for {}", nameReg, comment));
+	_emitter.EmitABC(regOp, resultReg, srcReg, nameReg, comment);
+	FreeReg(nameReg);
 }
 Int32 CodeGeneratorStorage::Visit(IdentifierNode node) {
 	return VisitIdentifier(node, Boolean(false));
@@ -634,8 +643,7 @@ Int32 CodeGeneratorStorage::Visit(CallNode node) {
 	// Not a known local — resolve at runtime via LOADV (outer/global/intrinsic).
 	// We use LOADV (not LOADC) to get the funcref without auto-invoking it.
 	Int32 funcReg = AllocReg();
-	Int32 nameIdx = _emitter.AddConstant(Value::make_string(node.Function()));
-	_emitter.EmitABC(Opcode::LOADV_rA_rB_kC, funcReg, 0, nameIdx,
+	EmitNamedLoad(Boolean(true), funcReg, 0, Value::make_string(node.Function()),
 		Interp("r{} = @{} (runtime lookup)", funcReg, node.Function()));
 
 	Int32 result = CompileUserCall(node, funcReg, explicitTarget);
@@ -1369,16 +1377,14 @@ void CodeGeneratorStorage::ScanNode(ASTNode node) {
 Int32 CodeGeneratorStorage::Visit(SelfNode node) {
 	Int32 resultReg = GetTargetOrAlloc();
 	Int32 selfReg = GetSelfReg();
-	Int32 nameIdx = _emitter.AddConstant(Value::selfString);
-	_emitter.EmitABC(Opcode::LOADV_rA_rB_kC, resultReg, selfReg, nameIdx,
+	EmitNamedLoad(Boolean(true), resultReg, selfReg, Value::selfString,
 		Interp("r{} = self", resultReg));
 	return resultReg;
 }
 Int32 CodeGeneratorStorage::Visit(SuperNode node) {
 	Int32 resultReg = GetTargetOrAlloc();
 	Int32 superReg = GetSuperReg();
-	Int32 nameIdx = _emitter.AddConstant(Value::superString);
-	_emitter.EmitABC(Opcode::LOADV_rA_rB_kC, resultReg, superReg, nameIdx,
+	EmitNamedLoad(Boolean(true), resultReg, superReg, Value::superString,
 		Interp("r{} = super", resultReg));
 	return resultReg;
 }

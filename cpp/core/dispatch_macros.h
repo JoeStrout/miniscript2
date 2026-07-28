@@ -40,6 +40,8 @@
 	X(LOADNULL_rA) \
 	X(LOADV_rA_rB_kC) \
 	X(LOADC_rA_rB_kC) \
+	X(LOADV_rA_rB_rC) \
+	X(LOADC_rA_rB_rC) \
 	X(FUNCREF_iA_iBC) \
 	X(ASSIGN_rA_rB_kC) \
 	X(NAME_rA_kBC) \

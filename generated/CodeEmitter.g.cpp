@@ -34,18 +34,26 @@ void BytecodeEmitterStorage::Emit(Opcode op,String comment) {
 }
 void BytecodeEmitterStorage::EmitA(Opcode op,Int32 a,String comment) {
 	BytecodeUtil::CheckEmitPattern(op, EmitPattern::A);
+	BytecodeUtil::CheckOperandRange(op, "A", a, 0, 255);
 	PendingFunc.AddInstruction(BytecodeUtil::INS_A(op, (Byte)a), CurrentLine);
 }
 void BytecodeEmitterStorage::EmitAB(Opcode op,Int32 a,Int32 bc,String comment) {
 	BytecodeUtil::CheckEmitPattern(op, EmitPattern::AB);
+	BytecodeUtil::CheckOperandRange(op, "A", a, 0, 255);
+	BytecodeUtil::CheckOperandRange(op, "BC", bc, -32768, 65535);
 	PendingFunc.AddInstruction(BytecodeUtil::INS_AB(op, (Byte)a, (Int16)bc), CurrentLine);
 }
 void BytecodeEmitterStorage::EmitBC(Opcode op,Int32 ab,Int32 c,String comment) {
 	BytecodeUtil::CheckEmitPattern(op, EmitPattern::BC);
+	BytecodeUtil::CheckOperandRange(op, "AB", ab, -32768, 65535);
+	BytecodeUtil::CheckOperandRange(op, "C", c, 0, 255);
 	PendingFunc.AddInstruction(BytecodeUtil::INS_BC(op, (Int16)ab, (Byte)c), CurrentLine);
 }
 void BytecodeEmitterStorage::EmitABC(Opcode op,Int32 a,Int32 b,Int32 c,String comment) {
 	BytecodeUtil::CheckEmitPattern(op, EmitPattern::ABC);
+	BytecodeUtil::CheckOperandRange(op, "A", a, 0, 255);
+	BytecodeUtil::CheckOperandRange(op, "B", b, 0, 255);
+	BytecodeUtil::CheckOperandRange(op, "C", c, 0, 255);
 	PendingFunc.AddInstruction(BytecodeUtil::INS_ABC(op, (Byte)a, (Byte)b, (Byte)c), CurrentLine);
 }
 Int32 BytecodeEmitterStorage::CreateLabel() {
@@ -95,12 +103,15 @@ FuncDef BytecodeEmitterStorage::Finalize(String name) {
 		if (labelRef.IsABC) {
 			// 24-bit offset for JUMP_iABC
 			// Encode offset in lower 24 bits (A, B, C fields combined)
+			BytecodeUtil::CheckOperandRange(labelRef.Op, "ABC", offset, -8388608, 8388607);
 			Byte a = (Byte)((offset >> 16) & 0xFF);
 			Byte b = (Byte)((offset >> 8) & 0xFF);
 			Byte c = (Byte)(offset & 0xFF);
 			code[labelRef.CodeIndex] = BytecodeUtil::INS_ABC(labelRef.Op, a, b, c);
 		} else {
 			// 8-bit register + 16-bit offset for BRFALSE_rA_iBC, BRTRUE_rA_iBC
+			BytecodeUtil::CheckOperandRange(labelRef.Op, "A", labelRef.A, 0, 255);
+			BytecodeUtil::CheckOperandRange(labelRef.Op, "BC", offset, -32768, 32767);
 			code[labelRef.CodeIndex] = BytecodeUtil::INS_AB(labelRef.Op, (Byte)labelRef.A, (Int16)offset);
 		}
 	}

@@ -19,6 +19,8 @@ Our internal opcode names include a verb/mnemonic, and a description of how the 
 | LOADNULL_rA | R[A] := null (no constant pool lookup needed) |
 | LOADV_rA_rB_kC | R[A] := R[B], but verify that register B has name matching constants[C] |
 | LOADC_rA_rB_kC | R[A] := R[B], but verify name matches constants[C] and call if funcref |
+| LOADV_rA_rB_rC | as LOADV_rA_rB_kC, but the expected name comes from R[C] |
+| LOADC_rA_rB_rC | as LOADC_rA_rB_kC, but the expected name comes from R[C] |
 | FUNCREF_iA_iBC | R[A] := make_funcref(BC) (create function reference to function BC) |
 | ASSIGN_rA_rB_kC | R[A] := R[B] and name[A] := constants[C] (copy value and assign variable name) |
 | NAME_rA_kBC | name[A] := constants[BC] (assign variable name without changing value) |
@@ -101,6 +103,23 @@ Our internal opcode names include a verb/mnemonic, and a description of how the 
 | ERRCHK_rA | if R[A] is an error, terminate with an "Uncaught" runtime error; otherwise do nothing |
 
 (More opcodes will be added as the prototype develops.)
+
+### Naming a variable past constant 255
+
+The `kC` operand is only 8 bits, so `LOADV_rA_rB_kC` and `LOADC_rA_rB_kC` can
+only name one of the first 256 constants.  A function whose constant pool grows
+beyond that (a big module body compiled as `@main` gets there easily) needs the
+`rC` forms, which take the expected name from a register instead:
+
+```
+LOAD  r7, k300      # LOAD_rA_kBC — 16-bit constant index
+LOADC r4, r0, r7    # name comes from r7, not the constant pool
+```
+
+`CodeGenerator.EmitNamedLoad` picks the form automatically, so the two-
+instruction sequence appears only where it is actually needed.  Note that the
+register operands are still 8-bit, so this raises the constant ceiling to 65535
+but leaves the 256-register-per-function limit unchanged.
 
 ## Assembly Language
 

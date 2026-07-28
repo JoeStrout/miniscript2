@@ -205,6 +205,7 @@ UInt32 AssemblerStorage::AddLine(String line,Int32 lineNumber) {
 
 	} else if (mnemonic == "LOADV") {
 		// LOADV r1, r2, "varname"  -->  LOADV_rA_rB_kC
+		// LOADV r1, r2, r3         -->  LOADV_rA_rB_rC  (name comes from r3)
 		// Load value from r2 into r1, but verify that r2 has name matching varname
 		if (parts.Count() != 4) {
 			Error("Syntax error: LOADV requires exactly 3 operands");
@@ -214,15 +215,23 @@ UInt32 AssemblerStorage::AddLine(String line,Int32 lineNumber) {
 		Current.ReserveRegister(dest);
 		Byte src = ParseRegister(parts[2]);
 
-		constantValue = ParseAsConstant(parts[3]);
-		if (!constantValue.IsString()) Error("Variable name must be a string");
-		Int32 constIdx = AddConstant(constantValue);
-		if (constIdx > 255) Error("Constant index out of range for LOADV opcode");
-		if (HasError) return 0;
-		instruction = BytecodeUtil::INS_ABC(Opcode::LOADV_rA_rB_kC, dest, src, (Byte)constIdx);
+		if (parts[3][0] == 'r') {
+			// Register form: no constant-pool index, so no 255 limit.
+			Byte nameReg = ParseRegister(parts[3]);
+			if (HasError) return 0;
+			instruction = BytecodeUtil::INS_ABC(Opcode::LOADV_rA_rB_rC, dest, src, nameReg);
+		} else {
+			constantValue = ParseAsConstant(parts[3]);
+			if (!constantValue.IsString()) Error("Variable name must be a string");
+			Int32 constIdx = AddConstant(constantValue);
+			if (constIdx > 255) Error("Constant index out of range for LOADV opcode (use the LOADV rA, rB, rC form)");
+			if (HasError) return 0;
+			instruction = BytecodeUtil::INS_ABC(Opcode::LOADV_rA_rB_kC, dest, src, (Byte)constIdx);
+		}
 
 	} else if (mnemonic == "LOADC") {
 		// LOADC r1, r2, "varname"  -->  LOADC_rA_rB_kC
+		// LOADC r1, r2, r3         -->  LOADC_rA_rB_rC  (name comes from r3)
 		// Load value from r2 into r1, but verify name matches varname and call if funcref
 		if (parts.Count() != 4) {
 			Error("Syntax error: LOADC requires exactly 3 operands");
@@ -232,12 +241,19 @@ UInt32 AssemblerStorage::AddLine(String line,Int32 lineNumber) {
 		Current.ReserveRegister(dest);
 		Byte src = ParseRegister(parts[2]);
 
-		constantValue = ParseAsConstant(parts[3]);
-		if (!constantValue.IsString()) Error("Variable name must be a string");
-		Int32 constIdx = AddConstant(constantValue);
-		if (constIdx > 255) Error("Constant index out of range for LOADC opcode");
-		if (HasError) return 0;
-		instruction = BytecodeUtil::INS_ABC(Opcode::LOADC_rA_rB_kC, dest, src, (Byte)constIdx);
+		if (parts[3][0] == 'r') {
+			// Register form: no constant-pool index, so no 255 limit.
+			Byte nameReg = ParseRegister(parts[3]);
+			if (HasError) return 0;
+			instruction = BytecodeUtil::INS_ABC(Opcode::LOADC_rA_rB_rC, dest, src, nameReg);
+		} else {
+			constantValue = ParseAsConstant(parts[3]);
+			if (!constantValue.IsString()) Error("Variable name must be a string");
+			Int32 constIdx = AddConstant(constantValue);
+			if (constIdx > 255) Error("Constant index out of range for LOADC opcode (use the LOADC rA, rB, rC form)");
+			if (HasError) return 0;
+			instruction = BytecodeUtil::INS_ABC(Opcode::LOADC_rA_rB_kC, dest, src, (Byte)constIdx);
+		}
 
 	} else if (mnemonic == "FUNCREF") {
 		// FUNCREF r1, someFunc  -->  FUNCREF_iA_iBC

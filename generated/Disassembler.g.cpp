@@ -16,6 +16,8 @@ String Disassembler::AssemOp(Opcode opcode) {
 		case Opcode::LOADNULL_rA:   return "LOADNULL";
 		case Opcode::LOADV_rA_rB_kC: return "LOADV";
 		case Opcode::LOADC_rA_rB_kC: return "LOADC";
+		case Opcode::LOADV_rA_rB_rC: return "LOADV";
+		case Opcode::LOADC_rA_rB_rC: return "LOADC";
 		case Opcode::FUNCREF_iA_iBC: return "FUNCREF";
 		case Opcode::ASSIGN_rA_rB_kC: return "ASSIGN";
 		case Opcode::NAME_rA_kBC:   return "NAME";
@@ -212,6 +214,8 @@ String Disassembler::ToString(UInt32 instruction) {
 		case Opcode::METHFIND_rA_rB_rC:
 		case Opcode::IDXGET_rA_rB_rC:
 		case Opcode::ITERGET_rA_rB_rC:
+		case Opcode::LOADV_rA_rB_rC:
+		case Opcode::LOADC_rA_rB_rC:
 			return StringUtils::Format("{0} r{1}, r{2}, r{3}",
 				mnemonic,
 				(Int32)BytecodeUtil::Au(instruction),

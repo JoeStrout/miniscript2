@@ -29,6 +29,8 @@ enum class Opcode : Byte {
 	LOADNULL_rA,
 	LOADV_rA_rB_kC,
 	LOADC_rA_rB_kC,
+	LOADV_rA_rB_rC,
+	LOADC_rA_rB_rC,
 	FUNCREF_iA_iBC,
 	ASSIGN_rA_rB_kC,
 	NAME_rA_kBC,
@@ -112,6 +114,19 @@ class BytecodeUtil {
 	// Validate that an opcode matches the expected emit pattern
 	// Returns true if valid, false if mismatch (and prints error)
 	public: static Boolean CheckEmitPattern(Opcode opcode, EmitPattern expected);
+
+	// Validate that an operand fits the instruction field it is about to be
+	// encoded into.  The Emit methods narrow their Int32 operands to Byte or
+	// Int16, which in C# and C++ alike wraps silently -- an out-of-range value
+	// then encodes as some *other* legal-looking operand, and the resulting
+	// bytecode misbehaves far from the mistake that caused it.
+	// Callers are expected to keep operands in range; this is purely a backstop
+	// so that a violated assumption is reported at the point of encoding rather
+	// than corrupting the program.  It is deliberately generic: these fields
+	// hold registers, constant-pool indices, jump offsets and immediates
+	// depending on the opcode, so the message names only the field and range.
+	// Returns true if valid, false if out of range (and prints error).
+	public: static Boolean CheckOperandRange(Opcode opcode, String field, Int32 value, Int32 minValue, Int32 maxValue);
 	public: static Byte OP(UInt32 instruction) { return (Byte)((instruction >> 24) & 0xFF); }
 	public: static Byte Au(UInt32 instruction) { return (Byte)((instruction >> 16) & 0xFF); }
 	public: static Byte Bu(UInt32 instruction) { return (Byte)((instruction >> 8) & 0xFF); }

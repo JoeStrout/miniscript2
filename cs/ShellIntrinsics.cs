@@ -68,6 +68,7 @@ namespace MiniScript {
 public static class ShellIntrinsics {
 	public static Boolean ExitASAP = false;
 	public static Int32 ExitCode = 0;
+	private static List<String> _shellArgStrings = null;
 	private static Value _shellArgs = Value.Null;
 	private static Value _envMap = Value.Null;
 
@@ -115,16 +116,29 @@ public static class ShellIntrinsics {
 	struct CppRawBuf    { uint8_t* bytes; int length; };
 	*** END CPP_ONLY ***/
 
-	// Populate _shellArgs from the given argument list, starting at startIdx.
-	// Call this from App.MainProgram after parsing command-line switches.
+	// Remember the shell arguments: everything in args from startIdx on.
+	// Call this from App.MainProgram after parsing command-line options.
+	// We keep the plain strings, because the Value list built from them is a
+	// GC object that gets swept whenever the intrinsic caches are invalidated;
+	// GetShellArgs rebuilds it on demand (as GetEnvMap does for `env`).
 	public static void SetShellArgs(List<String> args, Int32 startIdx) {
-		Int32 count = args.Count - startIdx;
-		if (count < 0) count = 0;
-		_shellArgs = Value.make_list(count);
+		_shellArgStrings = new List<String>();
 		for (Int32 i = startIdx; i < args.Count; i++) {
-			_shellArgs.Push(Value.make_string(args[i]));
+			_shellArgStrings.Add(args[i]);
+		}
+		_shellArgs = Value.Null;
+	}
+
+	// Build and cache the shell-argument list.
+	private static Value GetShellArgs() {
+		if (!_shellArgs.IsNull()) return _shellArgs;
+		Int32 count = (_shellArgStrings == null ? 0 : _shellArgStrings.Count);
+		_shellArgs = Value.make_list(count);
+		for (Int32 i = 0; i < count; i++) {
+			_shellArgs.Push(Value.make_string(_shellArgStrings[i]));
 		}
 		_shellArgs.Freeze();
+		return _shellArgs;
 	}
 
 	// Build and cache the environment-variable map.
@@ -2192,7 +2206,7 @@ public static class ShellIntrinsics {
 		// shellArgs — return the command-line arguments following the script path.
 		f = Intrinsic.Create("shellArgs");
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
-			return new IntrinsicResult(_shellArgs);
+			return new IntrinsicResult(GetShellArgs());
 		};
 
 		// env — return a map of all environment variables.

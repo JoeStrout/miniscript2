@@ -18,6 +18,7 @@ namespace MiniScript {
 class ShellIntrinsics {
 	public: static Boolean ExitASAP;
 	public: static Int32 ExitCode;
+	private: static List<String> _shellArgStrings;
 	private: static Value _shellArgs;
 	private: static Value _envMap;
 	private: static Value _fileModuleMap;
@@ -37,9 +38,15 @@ class ShellIntrinsics {
 
 	// Platform-specific wrapper types for FileHandle and RawData.
 
-	// Populate _shellArgs from the given argument list, starting at startIdx.
-	// Call this from App.MainProgram after parsing command-line switches.
+	// Remember the shell arguments: everything in args from startIdx on.
+	// Call this from App.MainProgram after parsing command-line options.
+	// We keep the plain strings, because the Value list built from them is a
+	// GC object that gets swept whenever the intrinsic caches are invalidated;
+	// GetShellArgs rebuilds it on demand (as GetEnvMap does for `env`).
 	public: static void SetShellArgs(List<String> args, Int32 startIdx);
+
+	// Build and cache the shell-argument list.
+	private: static Value GetShellArgs();
 
 	// Build and cache the environment-variable map.
 	// C# reads System.Environment; C++ reads the POSIX environ array.

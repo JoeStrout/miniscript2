@@ -60,6 +60,7 @@ namespace MiniScript {
 
 Boolean ShellIntrinsics::ExitASAP = Boolean(false);
 Int32 ShellIntrinsics::ExitCode = 0;
+List<String> ShellIntrinsics::_shellArgStrings = nullptr;
 Value ShellIntrinsics::_shellArgs = Value::Null;
 Value ShellIntrinsics::_envMap = Value::Null;
 // C++ exec state: parallel arrays capped at 64 concurrent jobs.
@@ -81,13 +82,21 @@ List<String> ShellIntrinsics::_keyKeys = nullptr;
 struct CppFileHandle { FILE* f; };
 struct CppRawBuf    { uint8_t* bytes; int length; };
 void ShellIntrinsics::SetShellArgs(List<String> args,Int32 startIdx) {
-	Int32 count = args.Count() - startIdx;
-	if (count < 0) count = 0;
-	_shellArgs = Value::make_list(count);
+	_shellArgStrings =  List<String>::New();
 	for (Int32 i = startIdx; i < args.Count(); i++) {
-		_shellArgs.Push(Value::make_string(args[i]));
+		_shellArgStrings.Add(args[i]);
+	}
+	_shellArgs = Value::Null;
+}
+Value ShellIntrinsics::GetShellArgs() {
+	if (!_shellArgs.IsNull()) return _shellArgs;
+	Int32 count = (IsNull(_shellArgStrings) ? 0 : _shellArgStrings.Count());
+	_shellArgs = Value::make_list(count);
+	for (Int32 i = 0; i < count; i++) {
+		_shellArgs.Push(Value::make_string(_shellArgStrings[i]));
 	}
 	_shellArgs.Freeze();
+	return _shellArgs;
 }
 Value ShellIntrinsics::GetEnvMap() {
 	if (!_envMap.IsNull()) return _envMap;
@@ -1487,7 +1496,7 @@ void ShellIntrinsics::Init() {
 	// shellArgs — return the command-line arguments following the script path.
 	f = Intrinsic::Create("shellArgs");
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
-		return IntrinsicResult(_shellArgs);
+		return IntrinsicResult(GetShellArgs());
 	});
 
 	// env — return a map of all environment variables.

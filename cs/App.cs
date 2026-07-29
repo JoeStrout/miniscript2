@@ -46,6 +46,7 @@ public struct App {
 	public static bool debugMode = false;
 	public static bool visMode = false;
 	public static bool quietMode = false;
+	public static bool testMode = false;
 
 	public static void MainProgram(List<String> args) {
 		// CPP: value_init_constants();
@@ -66,28 +67,78 @@ public struct App {
 		ErrorTypes.Init();
 		ShellIntrinsics.Init();
 
-		// Parse command-line switches
+		// Parse command-line options.  Option parsing stops at the first
+		// non-option argument (the script path), so anything after that is
+		// passed through to the script rather than interpreted by us.
+		String progName = GetPathFilename(args[0]);
 		Int32 fileArgIndex = -1;
 		String inlineCode = null;
-		for (Int32 i = 1; i < args.Count; i++) {
-			if (args[i] == "-debug" || args[i] == "-d") {
-				debugMode = true;
-			} else if (args[i] == "-vis") {
-				visMode = true;
-			} else if (args[i] == "-q") {
-				quietMode = true;
-			} else if (args[i] == "-c" && i + 1 < args.Count) {
-				// Inline code follows -c
-				i = i + 1;
-				inlineCode = args[i];
-			} else if (!args[i].StartsWith("-")) {
-				// First non-switch argument is the file
-				if (fileArgIndex == -1) fileArgIndex = i;
+		Int32 argIdx = 1;
+		while (argIdx < args.Count) {
+			String arg = args[argIdx];
+			if (arg == "--") {
+				// Explicit end of options; whatever follows is the script.
+				argIdx++;
+				break;
+			}
+			// A bare "-", or anything not starting with "-", ends option parsing.
+			if (arg.Length < 2 || arg[0] != '-') break;
+
+			if (arg[1] == '-') {
+				// Long option.
+				if (arg == "--help") { PrintUsage(progName); return; }
+				else if (arg == "--version") { PrintVersion(); return; }
+				else if (arg == "--debug") debugMode = true;
+				else if (arg == "--test") testMode = true;
+				else if (arg == "--vis") visMode = true;
+				else if (arg == "--quiet") quietMode = true;
+				else { UsageError(progName, StringUtils.Format("unknown option: {0}", arg)); return; }
+				argIdx++;
+			} else {
+				// Short option, possibly a cluster like -dq.
+				bool consumedNext = false;
+				Int32 j = 1;
+				while (j < arg.Length) {
+					String ch = arg.Substring(j, 1);
+					if (ch == "h") { PrintUsage(progName); return; }
+					else if (ch == "v") { PrintVersion(); return; }
+					else if (ch == "d") debugMode = true;
+					else if (ch == "q") quietMode = true;
+					else if (ch == "c") {
+						// The rest of this argument is the code; if there is no
+						// rest, the code is the next argument.
+						if (j + 1 < arg.Length) {
+							inlineCode = arg.Substring(j + 1);
+						} else if (argIdx + 1 < args.Count) {
+							inlineCode = args[argIdx + 1];
+							consumedNext = true;
+						} else {
+							UsageError(progName, "option -c requires an argument");
+							return;
+						}
+						break;
+					} else {
+						UsageError(progName, StringUtils.Format("unknown option: -{0}", ch));
+						return;
+					}
+					j++;
+				}
+				argIdx++;
+				if (consumedNext) argIdx++;
+				// -c consumes the rest of the command line: everything after the
+				// code is an argument for the code, even if it looks like an
+				// option.  (Same as python -c.)
+				if (inlineCode != null) break;
 			}
 		}
-		
-		// Populate shell args: everything after the script path (or empty if none).
-		Int32 shellArgsStart = (fileArgIndex >= 0) ? fileArgIndex + 1 : args.Count;
+
+		// Whatever remains is the script path (unless we have inline code)
+		// followed by the script's own arguments.
+		Int32 shellArgsStart = argIdx;
+		if (inlineCode == null && argIdx < args.Count) {
+			fileArgIndex = argIdx;
+			shellArgsStart = argIdx + 1;
+		}
 		ShellIntrinsics.SetShellArgs(args, shellArgsStart);
 
 		/*** BEGIN CPP_ONLY ***
@@ -97,7 +148,10 @@ public struct App {
 		#define VARIANT "(switch)"
 		#endif
 		*** END CPP_ONLY ***/
-		if (!quietMode) {
+		// The startup banner is for interactive use only: it appears when we're
+		// about to enter the REPL, and not when running a script or -c code.
+		bool enteringREPL = (inlineCode == null && fileArgIndex == -1 && !testMode);
+		if (enteringREPL && !quietMode) {
 			IOHelper.Print("MiniScript 2.0", TextStyle.Strong);
 			IOHelper.Print(
 				"Build: C# version", // CPP: "Build: C++ " VARIANT " version, built " __DATE__ " " __TIME__,
@@ -106,7 +160,7 @@ public struct App {
 			IOHelper.Print("Enter !help for REPL help.", TextStyle.Subdued);
 		}
 
-		if (debugMode) {
+		if (testMode) {
 			IOHelper.Print("Running unit tests...");
 			if (!UnitTests.RunAll()) return;
 			IOHelper.Print("Unit tests complete.");
@@ -204,12 +258,48 @@ public struct App {
 					if (ShellIntrinsics.ExitASAP) DoExit();
 				}
 			}
-		} else if (!debugMode) {
+		} else if (!testMode) {
 			// No file or inline code: enter REPL mode
 			RunREPL();
 		}
+	}
 
-		if (!quietMode) IOHelper.Print("All done!");
+	// Print usage/help text to standard output.
+	private static void PrintUsage(String progName) {
+		IOHelper.Print(StringUtils.Format("Usage: {0} [options] [script.ms [args...]]", progName));
+		IOHelper.Print("");
+		IOHelper.Print("With no script and no -c, starts an interactive REPL.");
+		IOHelper.Print("");
+		IOHelper.Print("Options:");
+		IOHelper.Print("  -c CODE        run CODE directly instead of a script file");
+		IOHelper.Print("  -d, --debug    print diagnostic detail while compiling and running");
+		IOHelper.Print("  -q, --quiet    suppress the startup banner in the REPL");
+		IOHelper.Print("      --vis      run with VM visualization");
+		IOHelper.Print("      --test     run the unit and integration test suites");
+		IOHelper.Print("  -h, --help     show this help and exit");
+		IOHelper.Print("  -v, --version  show version information and exit");
+		IOHelper.Print("");
+		IOHelper.Print("Options must precede the script path (or the -c code); everything after");
+		IOHelper.Print("that is passed along as arguments, and is available via shellArgs.  Use");
+		IOHelper.Print("-- to end options, for a script whose name begins with a dash.");
+		IOHelper.Print(StringUtils.Format("See {0} for more.", CoreIntrinsics.hostInfo));
+	}
+
+	// Print version information to standard output.
+	private static void PrintVersion() {
+		IOHelper.Print(StringUtils.Format("MiniScript {0}", CoreIntrinsics.hostVersion));
+		IOHelper.Print(
+			"Build: C# version", // CPP: "Build: C++ " VARIANT " version, built " __DATE__ " " __TIME__,
+			TextStyle.Subdued
+		);
+		IOHelper.SetStyle(TextStyle.Normal);
+	}
+
+	// Report a command-line usage error on stderr and exit with status 2.
+	private static void UsageError(String progName, String message) {
+		IOHelper.PrintErr(StringUtils.Format("{0}: {1}", progName, message));
+		IOHelper.PrintErr(StringUtils.Format("Try '{0} --help' for more information.", progName));
+		System.Environment.Exit(2); // CPP: exit(2);
 	}
 
 	// Exit the process with the code set by the `exit` intrinsic.
@@ -452,7 +542,9 @@ public struct App {
 		}
 
 		if (vm.Error.IsNull()) {
-			if (!quietMode) {
+			// Diagnostic trailer: like the banner, this is not program output,
+			// so it appears only under --debug.
+			if (debugMode) {
 				IOHelper.Print("\nVM execution complete. Result in r0:");
 				IOHelper.Print(StringUtils.Format("\x1b[1;93m{0}\x1b[0m", result)); // (bold bright yellow)
 			}

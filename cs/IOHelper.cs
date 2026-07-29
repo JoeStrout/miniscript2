@@ -123,6 +123,13 @@ public static class IOHelper {
 		Console.WriteLine(message);  // CPP: std::cout << message.c_str() << std::endl;
 	}
 	
+	// Print to standard error (for usage errors and the like).  Style codes are
+	// written to stderr too, so they stay correct when stdout is redirected.
+	public static void PrintErr(String message) {
+		String text = GetStyleTermCode(TextStyle.Error) + message + GetStyleTermCode(currentStyle);
+		Console.Error.WriteLine(text);  // CPP: std::cerr << text.c_str() << std::endl;
+	}
+
 	public static void PrintNoCR(String message, TextStyle style=TextStyle.Normal) {
 		SetStyle(style);
 		Console.Write(message);  // CPP: std::cout << message.c_str() << std::flush;

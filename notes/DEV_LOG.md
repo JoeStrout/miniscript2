@@ -1110,4 +1110,12 @@ Then, I also ran into a case where a call like `td.setCursor -5, -5` generated a
 
 To fix this, I'm switching to the approach described under "Possible Alternative", i.e., separate STRONG_NEGATE and WEAK_NEGATE tokens from the lexer.  I think that will make the parser much simpler and more reliable.  I'll also make sure the test suite covers this feature thoroughly -- we really should have caught this ages ago.
 
+## Jul 29, 2026
+
+Discord user @shellrider has pointed out that when MiniScript is run with a file, it shouldn't print out its header info (name/version/help).  There is a -q (quiet) option that suppresses the headers, but it's not very discoverable, because we don't support anything like -h to get command-line help.  Our command line options were never thoughtfully designed; they just sort of grew as we needed them.
+
+So, today I'm buttoning all that up, matching existing standards wherever possible.  This will include a -h/--help option, as well as printing the help if you enter an invalid switch, so the interface is discoverable.
+
+
+
 

@@ -99,6 +99,10 @@ void IOHelper::Print(String message,TextStyle style) {
 	SetStyle(style);
 	std::cout << message.c_str() << std::endl;
 }
+void IOHelper::PrintErr(String message) {
+	String text = GetStyleTermCode(TextStyle::Error) + message + GetStyleTermCode(currentStyle);
+	std::cerr << text.c_str() << std::endl;
+}
 void IOHelper::PrintNoCR(String message,TextStyle style) {
 	SetStyle(style);
 	std::cout << message.c_str() << std::flush;

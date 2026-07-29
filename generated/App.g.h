@@ -13,8 +13,18 @@ struct App {
 	public: static bool debugMode;
 	public: static bool visMode;
 	public: static bool quietMode;
+	public: static bool testMode;
 
 	public: static void MainProgram(List<String> args);
+
+	// Print usage/help text to standard output.
+	private: static void PrintUsage(String progName);
+
+	// Print version information to standard output.
+	private: static void PrintVersion();
+
+	// Report a command-line usage error on stderr and exit with status 2.
+	private: static void UsageError(String progName, String message);
 
 	// Exit the process with the code set by the `exit` intrinsic.
 	private: static void DoExit();

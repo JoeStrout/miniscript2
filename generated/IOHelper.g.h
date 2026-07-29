@@ -32,6 +32,10 @@ class IOHelper {
 
 	public: static void Print(String message, TextStyle style=TextStyle::Normal);
 	
+	// Print to standard error (for usage errors and the like).  Style codes are
+	// written to stderr too, so they stay correct when stdout is redirected.
+	public: static void PrintErr(String message);
+
 	public: static void PrintNoCR(String message, TextStyle style=TextStyle::Normal);
 	
 	public: static String Input(String prompt, TextStyle promptStyle=TextStyle::Normal, TextStyle inputStyle=TextStyle::Normal);

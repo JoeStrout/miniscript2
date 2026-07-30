@@ -72,6 +72,10 @@ public static class ShellIntrinsics {
 	private static Value _shellArgs = Value.Null;
 	private static Value _envMap = Value.Null;
 
+	// Default import search path, used when MS_IMPORT_PATH is not already set in
+	// the environment.  Variables are expanded at import time, not here.
+	private const String kDefaultImportPath = "$MS_SCRIPT_DIR:$MS_SCRIPT_DIR/lib:$MS_EXE_DIR/lib";
+
 	//*** BEGIN CS_ONLY ***
 	// C# exec state: one slot per running job; slots accumulate and are never reused.
 	private static List<System.Diagnostics.Process> _csExecProcs = null;
@@ -165,6 +169,15 @@ public static class ShellIntrinsics {
 			_envMap.MapSet(Value::make_string(varName), Value::make_string(valueStr));
 		}
 		*** END CPP_ONLY ***/
+		// Seed the default import search path, unless the user already set
+		// MS_IMPORT_PATH in the environment.  Seeding it into the map (rather
+		// than defaulting at import time) lets scripts read and extend it, e.g.
+		// env.MS_IMPORT_PATH = env.MS_IMPORT_PATH + ":" + myDir.
+		Value importPathKey = Value.make_string("MS_IMPORT_PATH");
+		Value existing;
+		if (!_envMap.TryGet(importPathKey, out existing) || existing.IsNull()) {
+			_envMap.MapSet(importPathKey, Value.make_string(kDefaultImportPath));
+		}
 		return _envMap;
 	}
 
@@ -2321,7 +2334,7 @@ public static class ShellIntrinsics {
 			Value pathVal;
 			String searchPath;
 			if (!GetEnvMap().TryGet(Value.make_string("MS_IMPORT_PATH"), out pathVal) || pathVal.IsNull()) {
-				searchPath = "$MS_SCRIPT_DIR:$MS_SCRIPT_DIR/lib:$MS_EXE_DIR/lib";
+				searchPath = kDefaultImportPath;	// (shouldn't happen; GetEnvMap seeds it)
 			} else {
 				searchPath = pathVal.AsCString();
 			}

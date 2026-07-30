@@ -63,6 +63,7 @@ Int32 ShellIntrinsics::ExitCode = 0;
 List<String> ShellIntrinsics::_shellArgStrings = nullptr;
 Value ShellIntrinsics::_shellArgs = Value::Null;
 Value ShellIntrinsics::_envMap = Value::Null;
+const String ShellIntrinsics::kDefaultImportPath = "$MS_SCRIPT_DIR:$MS_SCRIPT_DIR/lib:$MS_EXE_DIR/lib";
 // C++ exec state: parallel arrays capped at 64 concurrent jobs.
 static FILE* _cppExecPipes[64];
 static String _cppExecOutputs[64];
@@ -107,6 +108,15 @@ Value ShellIntrinsics::GetEnvMap() {
 		String varName(*current, (size_t)(eqPos - *current));
 		String valueStr(eqPos + 1);
 		_envMap.MapSet(Value::make_string(varName), Value::make_string(valueStr));
+	}
+	// Seed the default import search path, unless the user already set
+	// MS_IMPORT_PATH in the environment.  Seeding it into the map (rather
+	// than defaulting at import time) lets scripts read and extend it, e.g.
+	// env.MS_IMPORT_PATH = env.MS_IMPORT_PATH + ":" + myDir.
+	Value importPathKey = Value::make_string("MS_IMPORT_PATH");
+	Value existing;
+	if (!_envMap.TryGet(importPathKey, &existing) || existing.IsNull()) {
+		_envMap.MapSet(importPathKey, Value::make_string(kDefaultImportPath));
 	}
 	return _envMap;
 }
@@ -1611,7 +1621,7 @@ void ShellIntrinsics::Init() {
 		Value pathVal;
 		String searchPath;
 		if (!GetEnvMap().TryGet(Value::make_string("MS_IMPORT_PATH"), &pathVal) || pathVal.IsNull()) {
-			searchPath = "$MS_SCRIPT_DIR:$MS_SCRIPT_DIR/lib:$MS_EXE_DIR/lib";
+			searchPath = kDefaultImportPath;	// (shouldn't happen; GetEnvMap seeds it)
 		} else {
 			searchPath = pathVal.AsCString();
 		}

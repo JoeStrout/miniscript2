@@ -9,6 +9,15 @@ cd "$PROJECT_ROOT"
 echo "=== MiniScript2 Build Script ==="
 echo "Project root: $(pwd)"
 
+# Always name the C# project explicitly.  The cs/ folder also holds a solution
+# file (and editors may drop more alongside it), so pointing dotnet at the
+# folder is ambiguous and fails with MSB1050.
+CSPROJ="cs/MiniScript2.csproj"
+if [ ! -f "$CSPROJ" ]; then
+    echo "Error: C# project not found at $CSPROJ" >&2
+    exit 1
+fi
+
 # Parse command line arguments
 TARGET="${1:-all}"
 GOTO_MODE="${2:-auto}"  # auto, on, off
@@ -146,7 +155,7 @@ dist_csharp() {
     rm -rf "$PUBLISH" "$ZIPDIR"
     mkdir -p "$PUBLISH" "$ZIPDIR" build/dist
 
-    dotnet publish cs -c Release -o "$PUBLISH" --nologo -v quiet
+    dotnet publish "$CSPROJ" -c Release -o "$PUBLISH" --nologo -v quiet
 
     cp "$PUBLISH/miniscript2.dll"                    "$ZIPDIR/miniscript2-csharp.dll"
     cp "$PUBLISH/miniscript2.runtimeconfig.json"     "$ZIPDIR/miniscript2-csharp.runtimeconfig.json"
@@ -216,8 +225,7 @@ case "$TARGET" in
 
     "cs")
         echo "Building C# version..."
-        cd cs
-        dotnet build MiniScript2.csproj -o ../build/cs/
+        dotnet build "$CSPROJ" -o build/cs/
         echo "C# build complete."
         ;;
     
@@ -337,7 +345,7 @@ case "$TARGET" in
         echo "Cleaning all build artifacts..."
         rm -rf build/cs/* build/cpp/* build/temp/* build/dist/*
         rm -rf generated/*.g.h generated/*.g.cpp
-        cd cs && dotnet clean
+        dotnet clean "$CSPROJ"
         if [ -f cpp/Makefile ]; then
             make -C cpp clean
         fi

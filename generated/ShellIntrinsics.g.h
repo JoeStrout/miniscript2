@@ -21,6 +21,7 @@ class ShellIntrinsics {
 	private: static List<String> _shellArgStrings;
 	private: static Value _shellArgs;
 	private: static Value _envMap;
+	private: static const String kDefaultImportPath;
 	private: static Value _fileModuleMap;
 	private: static Value _fileHandleClassMap;
 	private: static Value _rawDataClassMap;
@@ -31,6 +32,9 @@ class ShellIntrinsics {
 	private: static Value _keyModuleMap;
 	private: static Int32 _keyStart;
 	private: static List<String> _keyKeys;
+
+	// Default import search path, used when MS_IMPORT_PATH is not already set in
+	// the environment.  Variables are expanded at import time, not here.
 
 	// ── File module static fields ─────────────────────────────────────────────
 

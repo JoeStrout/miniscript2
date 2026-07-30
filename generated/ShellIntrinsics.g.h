@@ -79,6 +79,12 @@ class ShellIntrinsics {
 	// (empty parts are skipped).
 	private: static List<String> SplitOn(String s, String delim);
 
+	// Split MS_IMPORT_PATH into its entries (empty entries are skipped).  Both
+	// ';' and ':' separate entries on all platforms, except that a ':' forming a
+	// Windows drive letter (the second character of an entry, as in "C:\lib") is
+	// part of the path rather than a separator.
+	private: static List<String> SplitImportPath(String s);
+
 	// Expand shell variable references ($VAR, ${VAR}) in a path string,
 	// looking up values in the cached env map.
 	private: static String ExpandVariables(String path);

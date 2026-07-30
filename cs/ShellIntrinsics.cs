@@ -362,6 +362,40 @@ public static class ShellIntrinsics {
 		return result;
 	}
 
+	// Split MS_IMPORT_PATH into its entries (empty entries are skipped).  Both
+	// ';' and ':' separate entries on all platforms, except that a ':' forming a
+	// Windows drive letter (the second character of an entry, as in "C:\lib") is
+	// part of the path rather than a separator.
+	private static List<String> SplitImportPath(String s) {
+		List<String> result = new List<String>();
+		Int32 entryStart = 0;
+		Int32 i = 0;
+		while (i <= s.Length) {
+			Boolean atEnd = (i == s.Length);
+			Boolean isSep = false;
+			if (!atEnd) {
+				Char c = s[i];
+				if (c == ';') {
+					isSep = true;
+				} else if (c == ':') {
+					// A drive letter is a single letter at the start of the entry,
+					// followed by ':' and then a path separator.
+					Char d = s[entryStart];
+					Boolean isLetter = (d >= 'a' && d <= 'z') || (d >= 'A' && d <= 'Z');
+					Boolean driveLetter = (i == entryStart + 1) && isLetter
+						&& (i + 1 < s.Length) && (s[i + 1] == '/' || s[i + 1] == '\\');
+					isSep = !driveLetter;
+				}
+			}
+			if (atEnd || isSep) {
+				if (i > entryStart) result.Add(s.Substring(entryStart, i - entryStart));
+				entryStart = i + 1;
+			}
+			i = i + 1;
+		}
+		return result;
+	}
+
 	// Expand shell variable references ($VAR, ${VAR}) in a path string,
 	// looking up values in the cached env map.
 	private static String ExpandVariables(String path) {
@@ -2309,8 +2343,8 @@ public static class ShellIntrinsics {
 		// import(libname) — load and run a MiniScript module, then store its locals
 		// under the library name in the caller's scope.  Uses the partialResult
 		// mechanism and ManuallyPushCall so the module runs inside the current VM.
-		// Search path comes from the MS_IMPORT_PATH env var (colon-separated);
-		// defaults to "$MS_SCRIPT_DIR:$MS_SCRIPT_DIR/lib:$MS_EXE_DIR/lib".
+		// Search path comes from the MS_IMPORT_PATH env var (see SplitImportPath);
+		// defaults to kDefaultImportPath.
 		f = Intrinsic.Create("import");
 		f.AddParam("libname", Value.emptyString);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
@@ -2338,7 +2372,7 @@ public static class ShellIntrinsics {
 			} else {
 				searchPath = pathVal.AsCString();
 			}
-			List<String> libDirs = SplitOn(searchPath, ":");
+			List<String> libDirs = SplitImportPath(searchPath);
 			// Find and read the module source file.
 			String source = "";
 			Boolean found = false;

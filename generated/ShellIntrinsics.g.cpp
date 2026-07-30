@@ -225,6 +225,35 @@ List<String> ShellIntrinsics::SplitOn(String s,String delim) {
 	}
 	return result;
 }
+List<String> ShellIntrinsics::SplitImportPath(String s) {
+	List<String> result =  List<String>::New();
+	Int32 entryStart = 0;
+	Int32 i = 0;
+	while (i <= s.Length()) {
+		Boolean atEnd = (i == s.Length());
+		Boolean isSep = Boolean(false);
+		if (!atEnd) {
+			Char c = s[i];
+			if (c == ';') {
+				isSep = Boolean(true);
+			} else if (c == ':') {
+				// A drive letter is a single letter at the start of the entry,
+				// followed by ':' and then a path separator.
+				Char d = s[entryStart];
+				Boolean isLetter = (d >= 'a' && d <= 'z') || (d >= 'A' && d <= 'Z');
+				Boolean driveLetter = (i == entryStart + 1) && isLetter
+					&& (i + 1 < s.Length()) && (s[i + 1] == '/' || s[i + 1] == '\\');
+				isSep = !driveLetter;
+			}
+		}
+		if (atEnd || isSep) {
+			if (i > entryStart) result.Add(s.Substring(entryStart, i - entryStart));
+			entryStart = i + 1;
+		}
+		i = i + 1;
+	}
+	return result;
+}
 String ShellIntrinsics::ExpandVariables(String path) {
 	Value envMap = GetEnvMap();
 	Value varVal;
@@ -1596,8 +1625,8 @@ void ShellIntrinsics::Init() {
 	// import(libname) — load and run a MiniScript module, then store its locals
 	// under the library name in the caller's scope.  Uses the partialResult
 	// mechanism and ManuallyPushCall so the module runs inside the current VM.
-	// Search path comes from the MS_IMPORT_PATH env var (colon-separated);
-	// defaults to "$MS_SCRIPT_DIR:$MS_SCRIPT_DIR/lib:$MS_EXE_DIR/lib".
+	// Search path comes from the MS_IMPORT_PATH env var (see SplitImportPath);
+	// defaults to kDefaultImportPath.
 	f = Intrinsic::Create("import");
 	f.AddParam("libname", Value::emptyString);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
@@ -1625,7 +1654,7 @@ void ShellIntrinsics::Init() {
 		} else {
 			searchPath = pathVal.AsCString();
 		}
-		List<String> libDirs = SplitOn(searchPath, ":");
+		List<String> libDirs = SplitImportPath(searchPath);
 		// Find and read the module source file.
 		String source = "";
 		Boolean found = Boolean(false);

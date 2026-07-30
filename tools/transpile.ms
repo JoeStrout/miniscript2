@@ -490,7 +490,7 @@ Transpiler.transformStatement = function(trimmedLine)
 	// non-identifier string.
 	tokens = roughTokenize(trimmedLine)
 	
-	deepDebug = false //trimmedLine.contains("singleTok");
+	deepDebug = trimmedLine.contains("s[i + 1]");
 	ddprint = function(s); if deepDebug then print "====> " + s; end function
 	summarize = function(obj)
 		if obj == null then return "<null>"
@@ -641,7 +641,7 @@ Transpiler.transformStatement = function(trimmedLine)
 			// Get the type of the current reference
 			arrayType = self.lookup(curInfo.type)
 			continue
-		else if tokens[i].startsWith("]") and arrayType then
+		else if tokens[i].contains("]") and arrayType then
 			// Look up the `[]` (indexer) method in our array type
 			self.assert arrayType, "Got [] without clear array type"
 			curInfo = self.lookup("[]", arrayType)
@@ -649,7 +649,7 @@ Transpiler.transformStatement = function(trimmedLine)
 			if curInfo then curInfo = self.lookup(curInfo.type)
 			ddprint "resolved [] in " + summarize(arrayType) + " to: " + summarize(curInfo)
 			arrayType = null
-			if tokens[i].contains(" ") then
+			if tokens[i][-1] != "]" then
 				ddprint "...but cleared that out, because it looks like we have an operator"
 				curInfo = null
 			end if

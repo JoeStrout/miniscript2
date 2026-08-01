@@ -58,8 +58,6 @@ extern "C" {
 
 namespace MiniScript {
 
-Boolean ShellIntrinsics::ExitASAP = Boolean(false);
-Int32 ShellIntrinsics::ExitCode = 0;
 List<String> ShellIntrinsics::_shellArgStrings = nullptr;
 Value ShellIntrinsics::_shellArgs = Value::Null;
 Value ShellIntrinsics::_envMap = Value::Null;
@@ -1519,16 +1517,17 @@ void ShellIntrinsics::Init() {
 
 	Intrinsic f;
 
-	// exit(resultCode=null) — stop the VM and signal the host to exit.
+	// exit(resultCode=0) — stop the VM and signal its host to exit.
+	// The request is recorded on the VM, not in a static here: `exit` in a
+	// child interpreter is that child's business, and must not shut down a
+	// host that is merely running it.  See VM.ExitRequested.
 	f = Intrinsic::Create("exit");
 	f.AddParam("resultCode", Value::Null);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
-		ShellIntrinsics::ExitASAP = Boolean(true);
 		Value resultCode = ctx.GetArg(0);
-		if (!resultCode.IsNull()) {
-			ShellIntrinsics::ExitCode = (Int32)resultCode.DoubleValue();
-		}
-		ctx.vm.Stop();
+		Int32 code = 0;
+		if (!resultCode.IsNull()) code = (Int32)resultCode.DoubleValue();
+		ctx.vm.RequestExit(code);
 		return IntrinsicResult::Null;
 	});
 

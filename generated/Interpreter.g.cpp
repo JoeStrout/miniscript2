@@ -169,7 +169,14 @@ void InterpreterStorage::Step() {
 }
 void InterpreterStorage::REPL(String sourceLine,double timeLimit) {
 	Interpreter _this(std::static_pointer_cast<InterpreterStorage>(shared_from_this()));
-	if (IsNull(sourceLine)) return;
+	// An empty line is not nothing: with no VM yet it is how a host asks for
+	// one, so that globals can be seeded before any user code runs (see the
+	// empty-statements case below).  Null is treated the same, and must be:
+	// the C++ port represents an empty string AS null (CS_String.cpp), so
+	// there a caller passing "" arrives here indistinguishable from null,
+	// and bailing out would make that bootstrap impossible on that side.
+	// Parsing empty source is a path Compile() already relies on.
+	if (IsNull(sourceLine)) sourceLine = "";
 
 	// Accumulate source lines
 	if (IsNull(_pendingSource)) {
@@ -195,8 +202,13 @@ void InterpreterStorage::REPL(String sourceLine,double timeLimit) {
 		return;
 	}
 
-	// Nothing to do if no statements
-	if (statements.Count() == 0) {
+	// Nothing to do if no statements -- unless we have no VM yet.  A host
+	// that calls REPL("") before any user code is asking for a machine to
+	// prepare: in MiniScript 1.x that was the standard way to get one, so
+	// that globals could be seeded (SetGlobalValue needs the globals VarMap
+	// that only a compile creates) before the first real line.  Compiling
+	// the empty program below builds @main and takes that path.
+	if (statements.Count() == 0 && !IsNull(vm)) {
 		_pendingSource = nullptr;
 		return;
 	}
@@ -208,8 +220,11 @@ void InterpreterStorage::REPL(String sourceLine,double timeLimit) {
 
 	// Detect implicit output: last statement is a bare expression
 	// (not an assignment, block statement, break, continue, or return)
-	ASTNode lastStmt = statements[statements.Count() - 1];
-	Boolean hasImplicitOutput = !lastStmt.IsStatement();
+	Boolean hasImplicitOutput = Boolean(false);
+	if (statements.Count() > 0) {
+		ASTNode lastStmt = statements[statements.Count() - 1];
+		hasImplicitOutput = !lastStmt.IsStatement();
+	}
 
 	// Compile to bytecode.  Each REPL line is its own @main; previously
 	// defined functions are reached as funcref values in the globals VarMap.
@@ -281,29 +296,41 @@ bool InterpreterStorage::Running() {
 bool InterpreterStorage::Done() {
 	return !Running();
 }
+bool InterpreterStorage::ExitRequested() {
+	return !IsNull(vm) && vm.ExitRequested();
+}
+Int32 InterpreterStorage::ExitCode() {
+	if (IsNull(vm)) return 0;
+	return vm.ExitCode();
+}
 bool InterpreterStorage::NeedMoreInput() {
 	return !IsNull(_pendingSource) && !IsNull(parser) && parser.NeedMoreInput();
 }
 Value InterpreterStorage::GetGlobalValue(String varName) {
-	if (IsNull(vm)) return Value::Null;
-	// Search the @main frame (base 0) for a register with this name
-	Value nameVal = Value::make_string(varName);
-	Int32 regCount = !IsNull(vm.CurrentFunction()) ? vm.StackSize() : 0;
-	// Look through all named registers at base 0 (the global frame)
-	Value name;
-	for (Int32 i = 0; i < regCount; i++) {
-		name = vm.GetStackName(i);
-		if (!name.IsNull() && name == nameVal) {
-			return vm.GetStackValue(i);
-		}
+	if (IsNull(vm) || IsNull(vm.CurrentFunction())) return Value::Null;
+	// Ask the globals VarMap, which is what "globals" means everywhere else
+	// in the VM (see VM.GetGlobalsVarMap and VM.LookupVariable).  It covers
+	// both ways a global can be held -- a named register of the @main frame
+	// when compiled code assigned it, an entry in the hash table when the
+	// host set it with SetGlobalValue or a Rebind gathered it -- and it
+	// covers ONLY that frame.
+	//
+	// Scanning the VM's register stack directly, as this used to, ran past
+	// @main to the whole stack: with a program stopped mid-call, a local of
+	// whatever function was executing could shadow (or invent) a global of
+	// the same name.
+	Value globals = vm.GetGlobalsVarMap();
+	Value result;
+	if (globals.IsMap() && globals.TryGet(Value::make_string(varName), &result)) {
+		return result;
 	}
 	return Value::Null;
 }
 void InterpreterStorage::SetGlobalValue(String varName,Value value) {
 	// In REPL mode the persistent globals live in _replGlobals, a VarMap.
 	// Setting a key here makes it visible to subsequent user code as a
-	// global variable.  If a global VarMap doesn't exist yet (e.g. no REPL
-	// entry has run), there is nothing to set.
+	// global variable.  If a global VarMap doesn't exist yet, there is
+	// nothing to set: call REPL("") first, which exists to build one.
 	if (_replGlobals.IsNull()) return;
 	_replGlobals.MapSet(varName, value);
 }

@@ -135,6 +135,17 @@ public class VM {
 	public Int32 BaseIndex { get; private set; }
 	public Value Error { get; private set; }
 
+	// Set by the `exit` intrinsic: this run has asked its host to shut down,
+	// and with what result code.  Per-VM rather than a host-side static because
+	// a process can have several interpreters running at once -- a REPL driving
+	// a child program, say -- and only the machine whose code called `exit` is
+	// exiting.  Whoever drives that VM decides what exiting means for it: the
+	// top-level host ends the process, while a host running a child program
+	// just notes that the program is over.  Cleared by Reset, so each program
+	// starts out not exiting.
+	public Boolean ExitRequested { get; private set; }
+	public Int32 ExitCode { get; private set; }
+
 	// True when a runtime error has been raised but its stack trace has not
 	// yet been attached.  Errors are often raised mid-instruction, before VM
 	// state (PC, CurrentFunction) has been saved; the stack trace is therefore
@@ -627,6 +638,8 @@ public class VM {
 		callStack[0] = new CallInfo(0, 0, mainFunc);
 		callStackTop = 1;
 		Error = Value.Null;
+		ExitRequested = false;
+		ExitCode = 0;
 		pendingSelf = Value.Null;
 		pendingSuper = Value.Null;
 		hasPendingContext = false;
@@ -664,6 +677,15 @@ public class VM {
 	}
 
 	public void Stop() {
+		IsRunning = false;
+	}
+
+	// Stop the VM, recording that its code asked the host to exit and with what
+	// result code.  This is what the `exit` intrinsic calls; see ExitRequested
+	// above for why the state belongs to the VM rather than to the host.
+	public void RequestExit(Int32 resultCode) {
+		ExitRequested = true;
+		ExitCode = resultCode;
 		IsRunning = false;
 	}
 

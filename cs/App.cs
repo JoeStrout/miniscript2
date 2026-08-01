@@ -213,7 +213,7 @@ public struct App {
 			Interpreter interp = CreateInterpreter();
 			interp.Reset(inlineCode);
 			RunInterpreter(interp);
-			if (ShellIntrinsics.ExitASAP) DoExit();
+			if (interp.ExitRequested()) DoExit(interp.ExitCode());
 		} else if (fileArgIndex != -1) {
 			String filePath = args[fileArgIndex];
 			//*** BEGIN CS_ONLY ***
@@ -247,7 +247,7 @@ public struct App {
 					interp.SourceFile = GetPathFilename(filePath);
 					interp.Reset(source);
 					RunInterpreter(interp);
-					if (ShellIntrinsics.ExitASAP) DoExit();
+					if (interp.ExitRequested()) DoExit(interp.ExitCode());
 				}
 			} else {
 				// Assembly file (.msa or any other extension)
@@ -255,7 +255,7 @@ public struct App {
 				if (functions != null) {
 					interp.Reset(functions);
 					RunInterpreter(interp);
-					if (ShellIntrinsics.ExitASAP) DoExit();
+					if (interp.ExitRequested()) DoExit(interp.ExitCode());
 				}
 			}
 		} else if (!testMode) {
@@ -302,9 +302,9 @@ public struct App {
 		System.Environment.Exit(2); // CPP: exit(2);
 	}
 
-	// Exit the process with the code set by the `exit` intrinsic.
-	private static void DoExit() {
-		System.Environment.Exit(ShellIntrinsics.ExitCode); // CPP: exit(ShellIntrinsics::ExitCode);
+	// Exit the process with the code the `exit` intrinsic recorded on the VM.
+	private static void DoExit(Int32 exitCode) {
+		System.Environment.Exit(exitCode); // CPP: exit(exitCode);
 	}
 
 	// Return just the filename portion of a path (e.g. "/foo/bar.ms" -> "bar.ms").
@@ -723,7 +723,7 @@ public struct App {
 
 			inListBefore = CoreIntrinsics.replInList;
 			interp.REPL(line, 60);
-			if (ShellIntrinsics.ExitASAP) DoExit();
+			if (interp.ExitRequested()) DoExit(interp.ExitCode());
 
 			// When the interaction completes, record it and display implicit output.
 			// Skip recording if reset was called (it replaces the lists with fresh ones).

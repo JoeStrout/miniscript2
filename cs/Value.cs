@@ -1036,7 +1036,19 @@ public readonly struct Value {
 		if (!IsMap()) return;
 		Int32 idx = ItemIndex();
 		VarMapBacking vmb = GCManager.Maps.Get(idx)._vmb;
-		if (vmb != null) vmb.Rebind(idx, registers, names);
+		if (vmb != null) {
+			vmb.Rebind(idx, registers, names);
+		} else {
+			// Detached: Gather() copied the register entries into the hash table
+			// and left no backing behind.  Without this, rebinding would do
+			// nothing at all -- the map would keep answering with whatever was
+			// true when Gather ran, forever, while the VM carried on using
+			// registers directly and showed no sign of the split.  Re-attach an
+			// empty backing on the new arrays, which is exactly the state
+			// VarMapBacking.Rebind leaves behind (its own Gather having already
+			// moved the old entries into the table).
+			GCManager.Maps.SetVmb(idx, new VarMapBacking(registers, names, 0, -1));
+		}
 	}
 
 	public void MapToRegister(Value varName, List<Value> registers, int regIndex) {

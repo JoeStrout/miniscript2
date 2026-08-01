@@ -490,7 +490,7 @@ Transpiler.transformStatement = function(trimmedLine)
 	// non-identifier string.
 	tokens = roughTokenize(trimmedLine)
 	
-	deepDebug = trimmedLine.contains("s[i + 1]");
+	deepDebug = false //trimmedLine.contains("s[i + 1]");
 	ddprint = function(s); if deepDebug then print "====> " + s; end function
 	summarize = function(obj)
 		if obj == null then return "<null>"

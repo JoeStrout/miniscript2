@@ -72,6 +72,8 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	public: Boolean IsRunning;
 	public: Int32 BaseIndex;
 	public: Value Error;
+	public: Boolean ExitRequested;
+	public: Int32 ExitCode;
 	private: Boolean _errorStackPending = Boolean(false);
 	public: Value ReplGlobals = Value::Null;
 	private: Value pendingSelf;
@@ -97,6 +99,15 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	// Invariant: callStackTop >= 1 during all execution (set up in Reset).
 
 	// Execution state (persistent across RunSteps calls)
+
+	// Set by the `exit` intrinsic: this run has asked its host to shut down,
+	// and with what result code.  Per-VM rather than a host-side static because
+	// a process can have several interpreters running at once -- a REPL driving
+	// a child program, say -- and only the machine whose code called `exit` is
+	// exiting.  Whoever drives that VM decides what exiting means for it: the
+	// top-level host ends the process, while a host running a child program
+	// just notes that the program is over.  Cleared by Reset, so each program
+	// starts out not exiting.
 
 	// True when a runtime error has been raised but its stack trace has not
 	// yet been attached.  Errors are often raised mid-instruction, before VM
@@ -223,6 +234,11 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	public: void Reset(List<FuncDef> allFunctions, Value replGlobals);
 
 	public: void Stop();
+
+	// Stop the VM, recording that its code asked the host to exit and with what
+	// result code.  This is what the `exit` intrinsic calls; see ExitRequested
+	// above for why the state belongs to the VM rather than to the host.
+	public: void RequestExit(Int32 resultCode);
 
 	// Stop the VM with a runtime error described by a string message.
 	// Creates an error Value and stores it in Error.  The stack trace is
@@ -397,6 +413,10 @@ struct VM {
 	public: void set_BaseIndex(Int32 _v);
 	public: Value Error();
 	public: void set_Error(Value _v);
+	public: Boolean ExitRequested();
+	public: void set_ExitRequested(Boolean _v);
+	public: Int32 ExitCode();
+	public: void set_ExitCode(Int32 _v);
 	private: Boolean _errorStackPending();
 	private: void set__errorStackPending(Boolean _v);
 	public: Value ReplGlobals();
@@ -438,6 +458,15 @@ struct VM {
 	// Invariant: callStackTop >= 1 during all execution (set up in Reset).
 
 	// Execution state (persistent across RunSteps calls)
+
+	// Set by the `exit` intrinsic: this run has asked its host to shut down,
+	// and with what result code.  Per-VM rather than a host-side static because
+	// a process can have several interpreters running at once -- a REPL driving
+	// a child program, say -- and only the machine whose code called `exit` is
+	// exiting.  Whoever drives that VM decides what exiting means for it: the
+	// top-level host ends the process, while a host running a child program
+	// just notes that the program is over.  Cleared by Reset, so each program
+	// starts out not exiting.
 
 	// True when a runtime error has been raised but its stack trace has not
 	// yet been attached.  Errors are often raised mid-instruction, before VM
@@ -563,6 +592,11 @@ struct VM {
 	public: inline void Reset(List<FuncDef> allFunctions, Value replGlobals);
 
 	public: inline void Stop();
+
+	// Stop the VM, recording that its code asked the host to exit and with what
+	// result code.  This is what the `exit` intrinsic calls; see ExitRequested
+	// above for why the state belongs to the VM rather than to the host.
+	public: inline void RequestExit(Int32 resultCode);
 
 	// Stop the VM with a runtime error described by a string message.
 	// Creates an error Value and stores it in Error.  The stack trace is
@@ -711,6 +745,10 @@ inline Int32 VM::BaseIndex() { return get()->BaseIndex; }
 inline void VM::set_BaseIndex(Int32 _v) { get()->BaseIndex = _v; }
 inline Value VM::Error() { return get()->Error; }
 inline void VM::set_Error(Value _v) { get()->Error = _v; }
+inline Boolean VM::ExitRequested() { return get()->ExitRequested; }
+inline void VM::set_ExitRequested(Boolean _v) { get()->ExitRequested = _v; }
+inline Int32 VM::ExitCode() { return get()->ExitCode; }
+inline void VM::set_ExitCode(Int32 _v) { get()->ExitCode = _v; }
 inline Boolean VM::_errorStackPending() { return get()->_errorStackPending; }
 inline void VM::set__errorStackPending(Boolean _v) { get()->_errorStackPending = _v; }
 inline Value VM::ReplGlobals() { return get()->ReplGlobals; }
@@ -765,6 +803,7 @@ inline Value VM::RunFunction(Value funcRef,List<Value> args) { return get()->Run
 inline void VM::Reset(List<FuncDef> allFunctions) { return get()->Reset(allFunctions); }
 inline void VM::Reset(List<FuncDef> allFunctions,Value replGlobals) { return get()->Reset(allFunctions, replGlobals); }
 inline void VM::Stop() { return get()->Stop(); }
+inline void VM::RequestExit(Int32 resultCode) { return get()->RequestExit(resultCode); }
 inline void VM::RaiseRuntimeError(String message) { return get()->RaiseRuntimeError(message); }
 inline void VM::FinalizeErrorStackTrace() { return get()->FinalizeErrorStackTrace(); }
 inline void VM::RaiseRuntimeError(Value error) { return get()->RaiseRuntimeError(error); }

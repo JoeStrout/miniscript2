@@ -26,8 +26,8 @@ struct App {
 	// Report a command-line usage error on stderr and exit with status 2.
 	private: static void UsageError(String progName, String message);
 
-	// Exit the process with the code set by the `exit` intrinsic.
-	private: static void DoExit();
+	// Exit the process with the code the `exit` intrinsic recorded on the VM.
+	private: static void DoExit(Int32 exitCode);
 
 	// Return just the filename portion of a path (e.g. "/foo/bar.ms" -> "bar.ms").
 	private: static String GetPathFilename(String filePath);

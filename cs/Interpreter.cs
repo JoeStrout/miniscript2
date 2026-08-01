@@ -383,7 +383,14 @@ public class Interpreter {
 	// <param name="sourceLine">line of source code to parse and run</param>
 	// <param name="timeLimit">time limit in seconds</param>
 	public void REPL(String sourceLine, double timeLimit=60) {
-		if (sourceLine == null) return;
+		// An empty line is not nothing: with no VM yet it is how a host asks for
+		// one, so that globals can be seeded before any user code runs (see the
+		// empty-statements case below).  Null is treated the same, and must be:
+		// the C++ port represents an empty string AS null (CS_String.cpp), so
+		// there a caller passing "" arrives here indistinguishable from null,
+		// and bailing out would make that bootstrap impossible on that side.
+		// Parsing empty source is a path Compile() already relies on.
+		if (sourceLine == null) sourceLine = "";
 
 		// Accumulate source lines
 		if (_pendingSource == null) {
@@ -409,8 +416,13 @@ public class Interpreter {
 			return;
 		}
 
-		// Nothing to do if no statements
-		if (statements.Count == 0) {
+		// Nothing to do if no statements -- unless we have no VM yet.  A host
+		// that calls REPL("") before any user code is asking for a machine to
+		// prepare: in MiniScript 1.x that was the standard way to get one, so
+		// that globals could be seeded (SetGlobalValue needs the globals VarMap
+		// that only a compile creates) before the first real line.  Compiling
+		// the empty program below builds @main and takes that path.
+		if (statements.Count == 0 && vm != null) {
 			_pendingSource = null;
 			return;
 		}
@@ -422,8 +434,11 @@ public class Interpreter {
 
 		// Detect implicit output: last statement is a bare expression
 		// (not an assignment, block statement, break, continue, or return)
-		ASTNode lastStmt = statements[statements.Count - 1];
-		Boolean hasImplicitOutput = !lastStmt.IsStatement();
+		Boolean hasImplicitOutput = false;
+		if (statements.Count > 0) {
+			ASTNode lastStmt = statements[statements.Count - 1];
+			hasImplicitOutput = !lastStmt.IsStatement();
+		}
 
 		// Compile to bytecode.  Each REPL line is its own @main; previously
 		// defined functions are reached as funcref values in the globals VarMap.
@@ -509,6 +524,26 @@ public class Interpreter {
 	}
 
 	//
+	// Report whether the program in this interpreter called `exit`, and with
+	// what result code.  A host main loop polls this after running a slice to
+	// decide whether to shut down; a host running a *child* interpreter (an
+	// embedded REPL, say) can use it to tell a program that exited from one
+	// that simply reached its end.  The state lives on the VM and is cleared
+	// whenever a new program is compiled, so this describes the current run.
+	//
+	public bool ExitRequested() {
+		return vm != null && vm.ExitRequested;
+	}
+
+	//
+	// The result code passed to `exit`, or 0 if the program did not call it.
+	//
+	public Int32 ExitCode() {
+		if (vm == null) return 0;
+		return vm.ExitCode;
+	}
+
+	//
 	// Return whether the parser needs more input, for example because we have
 	// run out of source code in the middle of an "if" block.  This is typically
 	// used with REPL for making an interactive console, so you can change the
@@ -525,17 +560,22 @@ public class Interpreter {
 	// <param name="varName">name of global variable to get</param>
 	// <returns>Value of the named variable, or Value.Null if not found</returns>
 	public Value GetGlobalValue(String varName) {
-		if (vm == null) return Value.Null;
-		// Search the @main frame (base 0) for a register with this name
-		Value nameVal = Value.make_string(varName);
-		Int32 regCount = vm.CurrentFunction != null ? vm.StackSize() : 0;
-		// Look through all named registers at base 0 (the global frame)
-		Value name;
-		for (Int32 i = 0; i < regCount; i++) {
-			name = vm.GetStackName(i);
-			if (!name.IsNull() && name == nameVal) {
-				return vm.GetStackValue(i);
-			}
+		if (vm == null || vm.CurrentFunction == null) return Value.Null;
+		// Ask the globals VarMap, which is what "globals" means everywhere else
+		// in the VM (see VM.GetGlobalsVarMap and VM.LookupVariable).  It covers
+		// both ways a global can be held -- a named register of the @main frame
+		// when compiled code assigned it, an entry in the hash table when the
+		// host set it with SetGlobalValue or a Rebind gathered it -- and it
+		// covers ONLY that frame.
+		//
+		// Scanning the VM's register stack directly, as this used to, ran past
+		// @main to the whole stack: with a program stopped mid-call, a local of
+		// whatever function was executing could shadow (or invent) a global of
+		// the same name.
+		Value globals = vm.GetGlobalsVarMap();
+		Value result;
+		if (globals.IsMap() && globals.TryGet(Value.make_string(varName), out result)) {
+			return result;
 		}
 		return Value.Null;
 	}
@@ -549,8 +589,8 @@ public class Interpreter {
 	public void SetGlobalValue(String varName, Value value) {
 		// In REPL mode the persistent globals live in _replGlobals, a VarMap.
 		// Setting a key here makes it visible to subsequent user code as a
-		// global variable.  If a global VarMap doesn't exist yet (e.g. no REPL
-		// entry has run), there is nothing to set.
+		// global variable.  If a global VarMap doesn't exist yet, there is
+		// nothing to set: call REPL("") first, which exists to build one.
 		if (_replGlobals.IsNull()) return;
 		_replGlobals.MapSet(varName, value);
 	}

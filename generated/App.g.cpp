@@ -195,7 +195,7 @@ void App::MainProgram(List<String> args) {
 		Interpreter interp = CreateInterpreter();
 		interp.Reset(inlineCode);
 		RunInterpreter(interp);
-		if (ShellIntrinsics::ExitASAP) DoExit();
+		if (interp.ExitRequested()) DoExit(interp.ExitCode());
 	} else if (fileArgIndex != -1) {
 		String filePath = args[fileArgIndex];
 		{
@@ -223,7 +223,7 @@ void App::MainProgram(List<String> args) {
 				interp.set_SourceFile(GetPathFilename(filePath));
 				interp.Reset(source);
 				RunInterpreter(interp);
-				if (ShellIntrinsics::ExitASAP) DoExit();
+				if (interp.ExitRequested()) DoExit(interp.ExitCode());
 			}
 		} else {
 			// Assembly file (.msa or any other extension)
@@ -231,7 +231,7 @@ void App::MainProgram(List<String> args) {
 			if (!IsNull(functions)) {
 				interp.Reset(functions);
 				RunInterpreter(interp);
-				if (ShellIntrinsics::ExitASAP) DoExit();
+				if (interp.ExitRequested()) DoExit(interp.ExitCode());
 			}
 		}
 	} else if (!testMode) {
@@ -271,8 +271,8 @@ void App::UsageError(String progName,String message) {
 	IOHelper::PrintErr(StringUtils::Format("Try '{0} --help' for more information.", progName));
 	exit(2);
 }
-void App::DoExit() {
-	exit(ShellIntrinsics::ExitCode);
+void App::DoExit(Int32 exitCode) {
+	exit(exitCode);
 }
 String App::GetPathFilename(String filePath) {
 	int pos = filePath.LastIndexOf('/');
@@ -647,7 +647,7 @@ void App::RunREPL() {
 
 		inListBefore = CoreIntrinsics::replInList;
 		interp.REPL(line, 60);
-		if (ShellIntrinsics::ExitASAP) DoExit();
+		if (interp.ExitRequested()) DoExit(interp.ExitCode());
 
 		// When the interaction completes, record it and display implicit output.
 		// Skip recording if reset was called (it replaces the lists with fresh ones).

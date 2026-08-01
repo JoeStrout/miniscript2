@@ -16,8 +16,6 @@ namespace MiniScript {
 // DECLARATIONS
 
 class ShellIntrinsics {
-	public: static Boolean ExitASAP;
-	public: static Int32 ExitCode;
 	private: static List<String> _shellArgStrings;
 	private: static Value _shellArgs;
 	private: static Value _envMap;

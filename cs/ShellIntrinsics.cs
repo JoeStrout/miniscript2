@@ -66,8 +66,6 @@ using System.Collections.Generic;
 namespace MiniScript {
 
 public static class ShellIntrinsics {
-	public static Boolean ExitASAP = false;
-	public static Int32 ExitCode = 0;
 	private static List<String> _shellArgStrings = null;
 	private static Value _shellArgs = Value.Null;
 	private static Value _envMap = Value.Null;
@@ -2237,16 +2235,17 @@ public static class ShellIntrinsics {
 
 		Intrinsic f;
 
-		// exit(resultCode=null) — stop the VM and signal the host to exit.
+		// exit(resultCode=0) — stop the VM and signal its host to exit.
+		// The request is recorded on the VM, not in a static here: `exit` in a
+		// child interpreter is that child's business, and must not shut down a
+		// host that is merely running it.  See VM.ExitRequested.
 		f = Intrinsic.Create("exit");
 		f.AddParam("resultCode", Value.Null);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
-			ShellIntrinsics.ExitASAP = true;
 			Value resultCode = ctx.GetArg(0);
-			if (!resultCode.IsNull()) {
-				ShellIntrinsics.ExitCode = (Int32)resultCode.DoubleValue();
-			}
-			ctx.vm.Stop();
+			Int32 code = 0;
+			if (!resultCode.IsNull()) code = (Int32)resultCode.DoubleValue();
+			ctx.vm.RequestExit(code);
 			return IntrinsicResult.Null;
 		};
 

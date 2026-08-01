@@ -21,6 +21,7 @@ while [[ $# -gt 0 ]]; do
             echo "Usage: $0 [-lang=LANGUAGES]"
             echo "  -lang=LANGUAGES  Run specific languages (cs,cpp-switch,cpp-goto,msa,ms1,python,lua) or 'all' (default)"
             echo "  Each MS2 language (cs, cpp-switch, cpp-goto) runs both .msa (asm) and .ms (source) benchmarks"
+            echo "  Benchmarks marked 'src' in BENCHMARKS have no .msa form; their asm cell shows '-'"
             echo "  Examples:"
             echo "    $0 -lang=msa"
             echo "    $0 -lang=msa,lua"
@@ -78,15 +79,33 @@ verify_result() {
 }
 
 
-EXPECTED_ITER_FIB="832040"                 # fib(30) * 500000 iterations  
+EXPECTED_ITER_FIB="832040"                 # fib(30) * 500000 iterations
 EXPECTED_RECUR_FIB="3524578"              # fib(33)
+EXPECTED_GLOBAL_LOOP="21534"              # see tools/benchmarks/global_loop.ms
+EXPECTED_GLOBAL_CHURN="160238"            # see tools/benchmarks/global_churn.ms
 
-# Benchmark definitions  
+# Benchmark definitions: file:Name:expected[:kinds]
+#   kinds  "all" (default, when the field is absent) runs both the .msa and the
+#          .ms form; "src" runs only the .ms form, for benchmarks that have no
+#          hand-written assembly counterpart.
 BENCHMARKS=(
     "factorial_iterative:Iterative Factorial:unused"
-    "iter_fib:Iterative Fibonacci:$EXPECTED_ITER_FIB" 
+    "iter_fib:Iterative Fibonacci:$EXPECTED_ITER_FIB"
     "recur_fib:Recursive Fibonacci:$EXPECTED_RECUR_FIB"
+    "global_loop:Global Loop:$EXPECTED_GLOBAL_LOOP:src"
+    "global_loop_fn:Global Loop (locals):$EXPECTED_GLOBAL_LOOP:src"
+    "global_churn:Global Churn:$EXPECTED_GLOBAL_CHURN:src"
 )
+
+# True if this benchmark has an assembly (.msa) form.
+has_asm() {
+    [[ "$1" != "src" ]]
+}
+
+# Render a timing for the summary table: "1.23s", or "-" for a skipped cell.
+fmt_time() {
+    if [[ "$1" == "-" || -z "$1" ]]; then echo "-"; else echo "$1s"; fi
+}
 
 # For quick testing, uncomment the line below to run only one benchmark:
 # BENCHMARKS=("factorial_iterative.msa:Iterative Factorial:unused")
@@ -160,7 +179,9 @@ if should_run_language "cs"; then
     echo -e "${BOLD}Running C# benchmarks (asm)...${NC}"
     for i in "${!BENCHMARKS[@]}"; do
         benchmark_def="${BENCHMARKS[i]}"
-        IFS=':' read -r file name expected <<< "$benchmark_def"
+        IFS=':' read -r file name expected kinds <<< "$benchmark_def"
+        # No .msa form for this benchmark; keep the column aligned.
+        if ! has_asm "$kinds"; then CS_ASM_TIMES+=("-"); continue; fi
 
         echo -e "${BLUE}  $name...${NC}"
         cs_time=$(run_benchmark "$file" "$name" "$expected" "dotnet" "build/cs/miniscript2.dll" "msa")
@@ -169,7 +190,7 @@ if should_run_language "cs"; then
     echo -e "${BOLD}Running C# benchmarks (source)...${NC}"
     for i in "${!BENCHMARKS[@]}"; do
         benchmark_def="${BENCHMARKS[i]}"
-        IFS=':' read -r file name expected <<< "$benchmark_def"
+        IFS=':' read -r file name expected kinds <<< "$benchmark_def"
 
         echo -e "${BLUE}  $name...${NC}"
         cs_time=$(run_benchmark "$file" "$name" "$expected" "dotnet" "build/cs/miniscript2.dll" "ms")
@@ -189,7 +210,9 @@ if should_run_language "cpp-switch"; then
     echo -e "${BOLD}Running C++ switch benchmarks (asm)...${NC}"
     for i in "${!BENCHMARKS[@]}"; do
         benchmark_def="${BENCHMARKS[i]}"
-        IFS=':' read -r file name expected <<< "$benchmark_def"
+        IFS=':' read -r file name expected kinds <<< "$benchmark_def"
+        # No .msa form for this benchmark; keep the column aligned.
+        if ! has_asm "$kinds"; then CPP_SWITCH_ASM_TIMES+=("-"); continue; fi
 
         echo -e "${BLUE}  $name...${NC}"
         t=$(run_benchmark "$file" "$name" "$expected" "direct" "build/cpp/miniscript2" "msa")
@@ -198,7 +221,7 @@ if should_run_language "cpp-switch"; then
     echo -e "${BOLD}Running C++ switch benchmarks (source)...${NC}"
     for i in "${!BENCHMARKS[@]}"; do
         benchmark_def="${BENCHMARKS[i]}"
-        IFS=':' read -r file name expected <<< "$benchmark_def"
+        IFS=':' read -r file name expected kinds <<< "$benchmark_def"
 
         echo -e "${BLUE}  $name...${NC}"
         t=$(run_benchmark "$file" "$name" "$expected" "direct" "build/cpp/miniscript2" "ms")
@@ -218,7 +241,9 @@ if should_run_language "cpp-goto" || should_run_language "msa"; then
     echo -e "${BOLD}Running C++ goto benchmarks (asm)...${NC}"
     for i in "${!BENCHMARKS[@]}"; do
         benchmark_def="${BENCHMARKS[i]}"
-        IFS=':' read -r file name expected <<< "$benchmark_def"
+        IFS=':' read -r file name expected kinds <<< "$benchmark_def"
+        # No .msa form for this benchmark; keep the column aligned.
+        if ! has_asm "$kinds"; then CPP_GOTO_ASM_TIMES+=("-"); continue; fi
 
         echo -e "${BLUE}  $name...${NC}"
         t=$(run_benchmark "$file" "$name" "$expected" "direct" "build/cpp/miniscript2" "msa")
@@ -227,7 +252,7 @@ if should_run_language "cpp-goto" || should_run_language "msa"; then
     echo -e "${BOLD}Running C++ goto benchmarks (source)...${NC}"
     for i in "${!BENCHMARKS[@]}"; do
         benchmark_def="${BENCHMARKS[i]}"
-        IFS=':' read -r file name expected <<< "$benchmark_def"
+        IFS=':' read -r file name expected kinds <<< "$benchmark_def"
 
         echo -e "${BLUE}  $name...${NC}"
         t=$(run_benchmark "$file" "$name" "$expected" "direct" "build/cpp/miniscript2" "ms")
@@ -241,7 +266,7 @@ if should_run_language "ms1"; then
     echo -e "${BOLD}Running MiniScript 1.0 benchmarks...${NC}"
     for i in "${!BENCHMARKS[@]}"; do
         benchmark_def="${BENCHMARKS[i]}"
-        IFS=':' read -r file name expected <<< "$benchmark_def"
+        IFS=':' read -r file name expected kinds <<< "$benchmark_def"
 
         echo -e "${BLUE}  $name...${NC}"
         t=$(run_benchmark "$file" "$name" "$expected" "direct" "miniscript" "ms")
@@ -255,7 +280,7 @@ if should_run_language "python"; then
     echo -e "${BOLD}Running Python benchmarks...${NC}"
     for i in "${!BENCHMARKS[@]}"; do
         benchmark_def="${BENCHMARKS[i]}"
-        IFS=':' read -r file name expected <<< "$benchmark_def"
+        IFS=':' read -r file name expected kinds <<< "$benchmark_def"
 
         echo -e "${BLUE}  $name...${NC}"
         t=$(run_benchmark "$file" "$name" "$expected" "direct" "python" "py")
@@ -269,7 +294,7 @@ if should_run_language "lua"; then
     echo -e "${BOLD}Running Lua benchmarks...${NC}"
     for i in "${!BENCHMARKS[@]}"; do
         benchmark_def="${BENCHMARKS[i]}"
-        IFS=':' read -r file name expected <<< "$benchmark_def"
+        IFS=':' read -r file name expected kinds <<< "$benchmark_def"
 
         echo -e "${BLUE}  $name...${NC}"
         t=$(run_benchmark "$file" "$name" "$expected" "direct" "lua" "lua")
@@ -326,29 +351,29 @@ echo "$table_separator"
 
 # Build dynamic table rows
 for i in "${!BENCHMARKS[@]}"; do
-    IFS=':' read -r file name expected <<< "${BENCHMARKS[i]}"
+    IFS=':' read -r file name expected kinds <<< "${BENCHMARKS[i]}"
     printf_args=("$name")
 
     if should_run_language "cs"; then
-        printf_args+=("${CS_ASM_TIMES[i]}s")
-        printf_args+=("${CS_SRC_TIMES[i]}s")
+        printf_args+=("$(fmt_time "${CS_ASM_TIMES[i]}")")
+        printf_args+=("$(fmt_time "${CS_SRC_TIMES[i]}")")
     fi
     if should_run_language "cpp-switch"; then
-        printf_args+=("${CPP_SWITCH_ASM_TIMES[i]}s")
-        printf_args+=("${CPP_SWITCH_SRC_TIMES[i]}s")
+        printf_args+=("$(fmt_time "${CPP_SWITCH_ASM_TIMES[i]}")")
+        printf_args+=("$(fmt_time "${CPP_SWITCH_SRC_TIMES[i]}")")
     fi
     if should_run_language "cpp-goto" || should_run_language "msa"; then
-        printf_args+=("${CPP_GOTO_ASM_TIMES[i]}s")
-        printf_args+=("${CPP_GOTO_SRC_TIMES[i]}s")
+        printf_args+=("$(fmt_time "${CPP_GOTO_ASM_TIMES[i]}")")
+        printf_args+=("$(fmt_time "${CPP_GOTO_SRC_TIMES[i]}")")
     fi
     if should_run_language "ms1"; then
-        printf_args+=("${MS1_TIMES[i]}s")
+        printf_args+=("$(fmt_time "${MS1_TIMES[i]}")")
     fi
     if should_run_language "python"; then
-        printf_args+=("${PY_TIMES[i]}s")
+        printf_args+=("$(fmt_time "${PY_TIMES[i]}")")
     fi
     if should_run_language "lua"; then
-        printf_args+=("${LUA_TIMES[i]}s")
+        printf_args+=("$(fmt_time "${LUA_TIMES[i]}")")
     fi
 
     printf "$format_string" "${printf_args[@]}"

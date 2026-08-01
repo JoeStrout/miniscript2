@@ -431,6 +431,8 @@ void VMStorage::Reset(List<FuncDef> allFunctions,Value replGlobals) {
 	callStack[0] = CallInfo(0, 0, mainFunc);
 	callStackTop = 1;
 	Error = Value::Null;
+	ExitRequested = Boolean(false);
+	ExitCode = 0;
 	pendingSelf = Value::Null;
 	pendingSuper = Value::Null;
 	hasPendingContext = Boolean(false);
@@ -467,6 +469,11 @@ void VMStorage::Reset(List<FuncDef> allFunctions,Value replGlobals) {
 	}
 }
 void VMStorage::Stop() {
+	IsRunning = Boolean(false);
+}
+void VMStorage::RequestExit(Int32 resultCode) {
+	ExitRequested = Boolean(true);
+	ExitCode = resultCode;
 	IsRunning = Boolean(false);
 }
 void VMStorage::RaiseRuntimeError(String message) {

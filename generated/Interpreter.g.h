@@ -226,6 +226,17 @@ class InterpreterStorage : public std::enable_shared_from_this<InterpreterStorag
 	// for parity with MiniScript 1.x, where host main loops commonly test Done).
 	public: bool Done();
 
+	// Report whether the program in this interpreter called `exit`, and with
+	// what result code.  A host main loop polls this after running a slice to
+	// decide whether to shut down; a host running a *child* interpreter (an
+	// embedded REPL, say) can use it to tell a program that exited from one
+	// that simply reached its end.  The state lives on the VM and is cleared
+	// whenever a new program is compiled, so this describes the current run.
+	public: bool ExitRequested();
+
+	// The result code passed to `exit`, or 0 if the program did not call it.
+	public: Int32 ExitCode();
+
 	// Return whether the parser needs more input, for example because we have
 	// run out of source code in the middle of an "if" block.  This is typically
 	// used with REPL for making an interactive console, so you can change the
@@ -506,6 +517,17 @@ struct Interpreter {
 	// for parity with MiniScript 1.x, where host main loops commonly test Done).
 	public: inline bool Done();
 
+	// Report whether the program in this interpreter called `exit`, and with
+	// what result code.  A host main loop polls this after running a slice to
+	// decide whether to shut down; a host running a *child* interpreter (an
+	// embedded REPL, say) can use it to tell a program that exited from one
+	// that simply reached its end.  The state lives on the VM and is cleared
+	// whenever a new program is compiled, so this describes the current run.
+	public: inline bool ExitRequested();
+
+	// The result code passed to `exit`, or 0 if the program did not call it.
+	public: inline Int32 ExitCode();
+
 	// Return whether the parser needs more input, for example because we have
 	// run out of source code in the middle of an "if" block.  This is typically
 	// used with REPL for making an interactive console, so you can change the
@@ -598,6 +620,8 @@ inline void Interpreter::Step() { return get()->Step(); }
 inline void Interpreter::REPL(String sourceLine,double timeLimit) { return get()->REPL(sourceLine, timeLimit); }
 inline bool Interpreter::Running() { return get()->Running(); }
 inline bool Interpreter::Done() { return get()->Done(); }
+inline bool Interpreter::ExitRequested() { return get()->ExitRequested(); }
+inline Int32 Interpreter::ExitCode() { return get()->ExitCode(); }
 inline bool Interpreter::NeedMoreInput() { return get()->NeedMoreInput(); }
 inline Value Interpreter::GetGlobalValue(String varName) { return get()->GetGlobalValue(varName); }
 inline void Interpreter::SetGlobalValue(String varName,Value value) { return get()->SetGlobalValue(varName, value); }

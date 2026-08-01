@@ -22,4 +22,23 @@ done:
 @main:
 	LOAD r0, 33				# Fibonacci number to find
 	CALLF 0, @fib			# r0 = fib(r0)
+
+	# ── Report the result ────────────────────────────────────────────────────
+	# tools/benchmark.sh greps for the marker line and reads the value from the
+	# line after it.  (The host's own "Result in r0:" trailer prints only under
+	# --debug, which traces every instruction and so cannot be used on a timed
+	# run.)  r0 is saved first: the CALL sequence below clobbers low registers.
+	# r12-r16 are scratch, chosen clear of every register the benchmark uses.
+	LOAD   r15, r0
+	LOADV  r12, r0, "print"
+	LOAD   r13, "Result in r0:"
+	ARGBLK 1
+	ARG    r13
+	CALL   r14, r16, r12
+	LOADV  r12, r0, "print"
+	LOAD   r13, r15
+	ARGBLK 1
+	ARG    r13
+	CALL   r14, r16, r12
+
 	RETURN					# return r0

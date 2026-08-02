@@ -59,11 +59,6 @@ class VarMapBackingStorage : public std::enable_shared_from_this<VarMapBackingSt
 	// this VarMapBacking (setting map._vmb = null).
 	public: void Gather(Int32 mapIdx);
 
-	// Gather existing register values into the map, then bind to a new set of
-	// registers and names arrays. Used by REPL mode when @main is re-compiled.
-	// After Rebind, new bindings are added as NAME/ASSIGN opcodes execute.
-	public: void Rebind(Int32 mapIdx, List<Value> registers, List<Value> names);
-
 	// Map a variable name to a specific register index.
 	// If the name already exists as a plain map entry, copy the value into
 	// the register and remove it from the map.
@@ -149,11 +144,6 @@ struct VarMapBacking {
 	// this VarMapBacking (setting map._vmb = null).
 	public: inline void Gather(Int32 mapIdx);
 
-	// Gather existing register values into the map, then bind to a new set of
-	// registers and names arrays. Used by REPL mode when @main is re-compiled.
-	// After Rebind, new bindings are added as NAME/ASSIGN opcodes execute.
-	public: inline void Rebind(Int32 mapIdx, List<Value> registers, List<Value> names);
-
 	// Map a variable name to a specific register index.
 	// If the name already exists as a plain map entry, copy the value into
 	// the register and remove it from the map.
@@ -194,7 +184,6 @@ inline Value VarMapBacking::GetRegEntryKey(Int32 i) { return get()->GetRegEntryK
 inline Value VarMapBacking::GetRegEntryValue(Int32 i) { return get()->GetRegEntryValue(i); }
 inline void VarMapBacking::MarkChildren() { return get()->MarkChildren(); }
 inline void VarMapBacking::Gather(Int32 mapIdx) { return get()->Gather(mapIdx); }
-inline void VarMapBacking::Rebind(Int32 mapIdx,List<Value> registers,List<Value> names) { return get()->Rebind(mapIdx, registers, names); }
 inline void VarMapBacking::MapToRegister(Int32 mapIdx,Value varName,List<Value> registers,Int32 regIndex) { return get()->MapToRegister(mapIdx, varName, registers, regIndex); }
 inline void VarMapBacking::Clear() { return get()->Clear(); }
 inline Int32 VarMapBacking::FindOrderIdx(Value key) { return get()->FindOrderIdx(key); }

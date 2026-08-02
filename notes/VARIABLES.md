@@ -10,6 +10,13 @@ MiniScript 2.0 uses a register-based VM, so we want to map variables to register
 
 This document attempts to develop an approach to making all this work, while maintaining good performance.
 
+> **Out of date on globals.**  Everything below treats `globals` as the VarMap of
+> the bottommost call frame, i.e. as `@main`'s registers plus an overflow hash
+> table.  That is no longer how it works: global variables are slots in a
+> `Globals` table that does not belong to any compiled program, and top-level
+> named variables get no registers at all.  See [GLOBALS.md](GLOBALS.md).  The
+> treatment of *locals* and *outer* here is still current.
+
 ## Register Metadata
 
 The VM maintains a stack of Values.  Each call frame gets a section of this stack, which maps to its Register 0, Register 1, ... Register N.  Assembly instructions like `LOAD r1, 42` load a value (42) into a particular slot in this stack (the slot which is Register 1 for the current call frame).

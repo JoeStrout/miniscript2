@@ -6,11 +6,11 @@
 
 namespace MiniScript {
 
-	List<Intrinsic> IntrinsicStorage::_all;
-	Dictionary<String, Intrinsic> IntrinsicStorage::_byName;
-	Boolean IntrinsicStorage::_initialized;
-	List<Value> IntrinsicStorage::_shortNameKeys;
-	List<String> IntrinsicStorage::_shortNameVals;
+List<Intrinsic> IntrinsicStorage::_all =  List<Intrinsic>::New();
+Dictionary<String, Intrinsic> IntrinsicStorage::_byName =  Dictionary<String, Intrinsic>::New();
+Boolean IntrinsicStorage::_initialized = Boolean(false);
+List<Value> IntrinsicStorage::_shortNameKeys =  List<Value>::New();
+List<String> IntrinsicStorage::_shortNameVals =  List<String>::New();
 void IntrinsicStorage::AddShortName(Value v,String name) {
 	_shortNameKeys.Add(v);
 	_shortNameVals.Add(name);

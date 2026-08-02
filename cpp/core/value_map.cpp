@@ -284,24 +284,5 @@ void Value::Gather() const {
     if (!vmb_is_null(m._vmb)) m._vmb.Gather(idx);
 }
 
-void Value::Rebind(List<Value> registers, List<Value> names) const {
-    Value map_val = *this;
-    if (!map_val.IsMap()) return;
-    int32_t idx = map_val.ItemIndex();
-    GCMap m = GCManager::Maps.Get(idx);
-    if (!vmb_is_null(m._vmb)) {
-        m._vmb.Rebind(idx, registers, names);
-    } else {
-        // Detached: Gather() copied the register entries into the hash table
-        // and left no backing behind.  Without this, rebinding would do nothing
-        // at all -- the map would keep answering with whatever was true when
-        // Gather ran, forever, while the VM carried on using registers directly
-        // and showed no sign of the split.  Re-attach an empty backing on the
-        // new arrays, which is exactly the state VarMapBacking::Rebind leaves
-        // behind (its own Gather having already moved the old entries into the
-        // table).  Mirrors Value.Rebind in cs/Value.cs.
-        GCManager::Maps.SetVmb(idx, VarMapBacking::New(registers, names, 0, -1));
-    }
-}
 
 }  // namespace MiniScript

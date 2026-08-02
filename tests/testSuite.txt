@@ -1403,7 +1403,7 @@ print m
 6
 hi!
 [1, 2, 3]
-{"outer": {"k": "v"}}
+{"outer": m}
 5
 hi
 [1, 2]

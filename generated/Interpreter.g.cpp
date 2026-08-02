@@ -20,6 +20,14 @@ void InterpreterStorage::Init(String _source,TextOutputMethod _standardOutput,Te
 	standardOutput = _standardOutput;
 	errorOutput = _errorOutput;
 	Error = Value::Null;
+	_globals = nullptr;
+}
+Globals InterpreterStorage::GetGlobals() {
+	if (IsNull(_globals)) _globals = Globals::Create();
+	return _globals;
+}
+void InterpreterStorage::ClearGlobals() {
+	if (!IsNull(_globals)) _globals.Clear();
 }
 InterpreterStorage::InterpreterStorage(List<String> sourceList,TextOutputMethod standardOutput,TextOutputMethod errorOutput) {
 	String source = String::Join("\n", sourceList);
@@ -35,16 +43,20 @@ void InterpreterStorage::Reset(String _source) {
 	vm = nullptr;
 	compiledFunctions = nullptr;
 	Error = Value::Null;
-	_keptGlobals = Value::Null;
+	// A new program gets a new namespace.  Releasing the old one drops the GC
+	// root its map holds; anything still referring to it (a function compiled
+	// by the old program and handed to a host, say) keeps it alive normally.
+	if (!IsNull(_globals)) {
+		_globals.Release();
+		_globals = nullptr;
+	}
 }
 void InterpreterStorage::ResetPreservingGlobals(String _source) {
-	Value keptGlobals = Value::Null;
-	if (!IsNull(vm)) {
-		keptGlobals = vm.GetGlobalsVarMap();
-		vm.Stop();
-	}
+	if (!IsNull(vm)) vm.Stop();
+	Globals keptGlobals = GetGlobals();
+	_globals = nullptr;         // hide it from Reset, which Releases what it finds
 	Reset(_source);
-	_keptGlobals = keptGlobals;
+	_globals = keptGlobals;  // still rooted, since Reset never saw it
 	Compile();
 }
 void InterpreterStorage::Reset(List<FuncDef> functions) {
@@ -54,10 +66,16 @@ void InterpreterStorage::Reset(List<FuncDef> functions) {
 	compiledFunctions = functions;
 	Error = Value::Null;
 
+	// A new program gets a new namespace, as in Reset(String).
+	if (!IsNull(_globals)) {
+		_globals.Release();
+		_globals = nullptr;
+	}
+
 	// Create and configure VM
 	vm =  VM::New();
 	vm.SetInterpreter(_this);
-	vm.Reset(functions);
+	vm.Reset(functions, GetGlobals());
 }
 void InterpreterStorage::Compile() {
 	Interpreter _this(std::static_pointer_cast<InterpreterStorage>(shared_from_this()));
@@ -96,13 +114,12 @@ void InterpreterStorage::Compile() {
 
 	compiledFunctions = generator.GetFunctions();
 
-	// Create and configure VM.  _keptGlobals is Value.Null unless we were
-	// entered from ResetPreservingGlobals, in which case it holds the
-	// outgoing program's globals for the new VM to adopt.
+	// Create and configure VM, running in this interpreter's namespace --
+	// which already holds anything a host seeded, or (via
+	// ResetPreservingGlobals) the outgoing program's globals.
 	vm =  VM::New();
 	vm.SetInterpreter(_this);
-	vm.Reset(compiledFunctions, _keptGlobals);
-	_keptGlobals = Value::Null;
+	vm.Reset(compiledFunctions, GetGlobals());
 }
 FuncDef InterpreterStorage::CompileToFunc(String source,String fileName,Value* error) {
 	*error = Value::Null;
@@ -202,13 +219,11 @@ void InterpreterStorage::REPL(String sourceLine,double timeLimit) {
 		return;
 	}
 
-	// Nothing to do if no statements -- unless we have no VM yet.  A host
-	// that calls REPL("") before any user code is asking for a machine to
-	// prepare: in MiniScript 1.x that was the standard way to get one, so
-	// that globals could be seeded (SetGlobalValue needs the globals VarMap
-	// that only a compile creates) before the first real line.  Compiling
-	// the empty program below builds @main and takes that path.
-	if (statements.Count() == 0 && !IsNull(vm)) {
+	// Nothing to do if there are no statements.  (This used to make an
+	// exception for REPL("") with no VM yet, because seeding globals needed a
+	// compile to have created somewhere to put them.  SetGlobalValue now works
+	// before the first compile, so that bootstrap is gone.)
+	if (statements.Count() == 0) {
 		_pendingSource = nullptr;
 		return;
 	}
@@ -227,7 +242,7 @@ void InterpreterStorage::REPL(String sourceLine,double timeLimit) {
 	}
 
 	// Compile to bytecode.  Each REPL line is its own @main; previously
-	// defined functions are reached as funcref values in the globals VarMap.
+	// defined functions are reached as funcref values in the globals table.
 	BytecodeEmitter emitter =  BytecodeEmitter::New();
 	CodeGenerator generator =  CodeGenerator::New(emitter);
 	generator.CompileProgram(statements, "@main");
@@ -246,18 +261,12 @@ void InterpreterStorage::REPL(String sourceLine,double timeLimit) {
 	//	IOHelper.Print(line);
 	//}
 
-	// Create/reset VM
+	// Create/reset VM.  The namespace is the interpreter's, so it is the same
+	// one every line -- there is no first-line special case, and nothing is
+	// rebound onto the new @main's registers.
 	if (IsNull(vm)) vm =  VM::New();
 	vm.SetInterpreter(_this);
-	vm.Reset(functions, _replGlobals);
-
-	// If this is the first REPL entry, create the initial globals VarMap
-	if (_replGlobals.IsNull()) {
-		_replGlobals = Value::make_varmap(vm.GetStack(), vm.GetNames(), 0, 
-			functions[0].MaxRegs());
-		// ToDo: make the transpiler smart enough to do this ---^ on its own
-		vm.set_ReplGlobals(_replGlobals);
-	}
+	vm.Reset(functions, GetGlobals());
 
 	// Run
 	double startTime = vm.ElapsedTime();
@@ -307,36 +316,14 @@ bool InterpreterStorage::NeedMoreInput() {
 	return !IsNull(_pendingSource) && !IsNull(parser) && parser.NeedMoreInput();
 }
 Value InterpreterStorage::GetGlobalValue(String varName) {
-	if (IsNull(vm) || IsNull(vm.CurrentFunction())) return Value::Null;
-	// Ask the globals VarMap, which is what "globals" means everywhere else
-	// in the VM (see VM.GetGlobalsVarMap and VM.LookupVariable).  It covers
-	// both ways a global can be held -- a named register of the @main frame
-	// when compiled code assigned it, an entry in the hash table when the
-	// host set it with SetGlobalValue or a Rebind gathered it -- and it
-	// covers ONLY that frame.
-	//
-	// Scanning the VM's register stack directly, as this used to, ran past
-	// @main to the whole stack: with a program stopped mid-call, a local of
-	// whatever function was executing could shadow (or invent) a global of
-	// the same name.
-	Value globals = vm.GetGlobalsVarMap();
-	Value result;
-	if (globals.IsMap() && globals.TryGet(Value::make_string(varName), &result)) {
-		return result;
-	}
-	return Value::Null;
+	Globals globals = GetGlobals();
+	Int32 slot = globals.Find(Value::make_string(varName));
+	if (slot < 0 || !globals.SlotIsAssigned(slot)) return Value::Null;
+	return globals.ValueAtSlot(slot);
 }
 void InterpreterStorage::SetGlobalValue(String varName,Value value) {
-	// In REPL mode the persistent globals live in _replGlobals, a VarMap.
-	// Setting a key here makes it visible to subsequent user code as a
-	// global variable.  If a global VarMap doesn't exist yet, there is
-	// nothing to set: call REPL("") first, which exists to build one.
-	if (_replGlobals.IsNull()) return;
-	_replGlobals.MapSet(varName, value);
-}
-void InterpreterStorage::ResetReplGlobals() {
-	_replGlobals = Value::Null;
-	if (!IsNull(vm)) vm.set_ReplGlobals(Value::Null);
+	Globals globals = GetGlobals();
+	globals.SetSlot(globals.Resolve(Value::make_string(varName)), value);
 }
 void InterpreterStorage::ReportError(Value error) {
 	ReportError(ErrorTypes::DescribeError(error));

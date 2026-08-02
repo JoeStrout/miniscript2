@@ -12,7 +12,7 @@
 
 namespace MiniScript {
 
-// make_varmap / varmap_map_to_register / varmap_gather / varmap_rebind are now
+// make_varmap / varmap_map_to_register / varmap_gather are now
 // Value:: static methods (they take List<Value>, which value.h sees via
 // CS_String.h -> CS_List.h).
 

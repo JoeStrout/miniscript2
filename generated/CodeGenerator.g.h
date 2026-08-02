@@ -27,8 +27,19 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 	private: List<Int32> _loopExitLabels; // Stack of loop exit labels for break
 	private: List<Int32> _loopContinueLabels; // Stack of loop continue labels for continue
 	private: List<FuncDef> _functions; // Compile-time registry of all functions (for naming + disassembly)
+	private: Boolean _globalScope;
+	private: Int32 _globalsReg; // register holding the globals map, or -1
 	public: String FileName = ""; // Source file name, copied to each compiled FuncDef
 	public: Value Error;
+
+	// True while compiling code whose named variables are GLOBALS rather than
+	// registers -- that is, @main and only @main.  A module compiled for `import`
+	// is a function returning its own locals, so its top-level names are locals
+	// and this stays false there.  See notes/GLOBALS.md.
+	// At global scope a named variable is a slot in the Globals table, so it gets
+	// no register and no NAME op: assignments become a map store through
+	// _globalsReg, and reads fall into VisitIdentifier's "not a known register"
+	// path, which resolves through LookupVariable at run time.
 
 	public: CodeGeneratorStorage(CodeEmitterBase emitter);
 
@@ -100,6 +111,26 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 	// assigns the variable (e.g. both branches of a single-line if).
 	private: void EnsureNamed(String varName, Int32 varReg);
 
+	// ── Global scope ─────────────────────────────────────────────────────────
+
+	// Keys under which internal (non-user) registers are parked in _variableRegs.
+	// That dictionary doubles as the set of registers ResetTempRegisters must
+	// preserve, and '@' cannot appear in an identifier, so no user variable can
+	// ever collide with one of these.
+	private: static String GlobalsRegKey();
+
+	private: static String LoopVarRegKey(String varName);
+
+	// Begin compiling top-level code: claim a register to hold the globals map for
+	// the life of @main, so each global store is two instructions rather than
+	// three.  The map object is stable -- even `reset` clears the namespace in
+	// place rather than replacing it -- so caching it cannot go stale.
+	private: void BeginGlobalScope();
+
+	// Store a register into the named global.  Creates the global if it is new;
+	// this is the only way a name comes into existence at top level.
+	private: void EmitGlobalStore(String varName, Int32 valueReg);
+
 	// Compile a complete function from a single expression/statement
 	public: FuncDef CompileFunction(ASTNode ast, String funcName);
 
@@ -133,6 +164,16 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 	public: Int32 Visit(IdentifierNode node);
 
 	public: Int32 Visit(AssignmentNode node);
+
+	// Assignment at top level: evaluate the right-hand side into a temp, then
+	// store it into the named global.
+	// None of the register bookkeeping in the local case applies here.  There is
+	// no NAME op, because the variable is not a register.  There is no
+	// first-assignment special case either: the slot is not written until the RHS
+	// has been evaluated, so `n = n + 1` creating a global reads the enclosing
+	// scope (or fails as undefined) exactly the way it should, with no temp needed
+	// to order things.
+	private: Int32 VisitGlobalAssignment(AssignmentNode node);
 
 	public: Int32 Visit(IndexedAssignmentNode node);
 
@@ -278,10 +319,23 @@ struct CodeGenerator : public IASTVisitor {
 	private: void set__loopContinueLabels(List<Int32> _v); // Stack of loop continue labels for continue
 	private: List<FuncDef> _functions(); // Compile-time registry of all functions (for naming + disassembly)
 	private: void set__functions(List<FuncDef> _v); // Compile-time registry of all functions (for naming + disassembly)
+	private: Boolean _globalScope();
+	private: void set__globalScope(Boolean _v);
+	private: Int32 _globalsReg(); // register holding the globals map, or -1
+	private: void set__globalsReg(Int32 _v); // register holding the globals map, or -1
 	public: String FileName(); // Source file name, copied to each compiled FuncDef
 	public: void set_FileName(String _v); // Source file name, copied to each compiled FuncDef
 	public: Value Error();
 	public: void set_Error(Value _v);
+
+	// True while compiling code whose named variables are GLOBALS rather than
+	// registers -- that is, @main and only @main.  A module compiled for `import`
+	// is a function returning its own locals, so its top-level names are locals
+	// and this stays false there.  See notes/GLOBALS.md.
+	// At global scope a named variable is a slot in the Globals table, so it gets
+	// no register and no NAME op: assignments become a map store through
+	// _globalsReg, and reads fall into VisitIdentifier's "not a known register"
+	// path, which resolves through LookupVariable at run time.
 
 	public: static CodeGenerator New(CodeEmitterBase emitter) {
 		return CodeGenerator(std::make_shared<CodeGeneratorStorage>(emitter));
@@ -355,6 +409,26 @@ struct CodeGenerator : public IASTVisitor {
 	// assigns the variable (e.g. both branches of a single-line if).
 	private: inline void EnsureNamed(String varName, Int32 varReg);
 
+	// ── Global scope ─────────────────────────────────────────────────────────
+
+	// Keys under which internal (non-user) registers are parked in _variableRegs.
+	// That dictionary doubles as the set of registers ResetTempRegisters must
+	// preserve, and '@' cannot appear in an identifier, so no user variable can
+	// ever collide with one of these.
+	private: static String GlobalsRegKey() { return CodeGeneratorStorage::GlobalsRegKey(); }
+
+	private: static String LoopVarRegKey(String varName) { return CodeGeneratorStorage::LoopVarRegKey(varName); }
+
+	// Begin compiling top-level code: claim a register to hold the globals map for
+	// the life of @main, so each global store is two instructions rather than
+	// three.  The map object is stable -- even `reset` clears the namespace in
+	// place rather than replacing it -- so caching it cannot go stale.
+	private: inline void BeginGlobalScope();
+
+	// Store a register into the named global.  Creates the global if it is new;
+	// this is the only way a name comes into existence at top level.
+	private: inline void EmitGlobalStore(String varName, Int32 valueReg);
+
 	// Compile a complete function from a single expression/statement
 	public: inline FuncDef CompileFunction(ASTNode ast, String funcName);
 
@@ -388,6 +462,16 @@ struct CodeGenerator : public IASTVisitor {
 	public: inline Int32 Visit(IdentifierNode node);
 
 	public: inline Int32 Visit(AssignmentNode node);
+
+	// Assignment at top level: evaluate the right-hand side into a temp, then
+	// store it into the named global.
+	// None of the register bookkeeping in the local case applies here.  There is
+	// no NAME op, because the variable is not a register.  There is no
+	// first-assignment special case either: the slot is not written until the RHS
+	// has been evaluated, so `n = n + 1` creating a global reads the enclosing
+	// scope (or fails as undefined) exactly the way it should, with no temp needed
+	// to order things.
+	private: inline Int32 VisitGlobalAssignment(AssignmentNode node);
 
 	public: inline Int32 Visit(IndexedAssignmentNode node);
 
@@ -527,6 +611,10 @@ inline List<Int32> CodeGenerator::_loopContinueLabels() { return get()->_loopCon
 inline void CodeGenerator::set__loopContinueLabels(List<Int32> _v) { get()->_loopContinueLabels = _v; } // Stack of loop continue labels for continue
 inline List<FuncDef> CodeGenerator::_functions() { return get()->_functions; } // Compile-time registry of all functions (for naming + disassembly)
 inline void CodeGenerator::set__functions(List<FuncDef> _v) { get()->_functions = _v; } // Compile-time registry of all functions (for naming + disassembly)
+inline Boolean CodeGenerator::_globalScope() { return get()->_globalScope; }
+inline void CodeGenerator::set__globalScope(Boolean _v) { get()->_globalScope = _v; }
+inline Int32 CodeGenerator::_globalsReg() { return get()->_globalsReg; } // register holding the globals map, or -1
+inline void CodeGenerator::set__globalsReg(Int32 _v) { get()->_globalsReg = _v; } // register holding the globals map, or -1
 inline String CodeGenerator::FileName() { return get()->FileName; } // Source file name, copied to each compiled FuncDef
 inline void CodeGenerator::set_FileName(String _v) { get()->FileName = _v; } // Source file name, copied to each compiled FuncDef
 inline Value CodeGenerator::Error() { return get()->Error; }
@@ -544,6 +632,8 @@ inline void CodeGenerator::CompileBody(List<ASTNode> body) { return get()->Compi
 inline void CodeGenerator::EmitDiscardCheck(ASTNode stmt,Int32 resultReg) { return get()->EmitDiscardCheck(stmt, resultReg); }
 inline void CodeGenerator::CompileConditionalBody(List<ASTNode> body) { return get()->CompileConditionalBody(body); }
 inline void CodeGenerator::EnsureNamed(String varName,Int32 varReg) { return get()->EnsureNamed(varName, varReg); }
+inline void CodeGenerator::BeginGlobalScope() { return get()->BeginGlobalScope(); }
+inline void CodeGenerator::EmitGlobalStore(String varName,Int32 valueReg) { return get()->EmitGlobalStore(varName, valueReg); }
 inline FuncDef CodeGenerator::CompileFunction(ASTNode ast,String funcName) { return get()->CompileFunction(ast, funcName); }
 inline List<FuncDef> CodeGenerator::CompileImport(List<ASTNode> statements,String funcName) { return get()->CompileImport(statements, funcName); }
 inline FuncDef CodeGenerator::CompileProgram(List<ASTNode> statements,String funcName) { return get()->CompileProgram(statements, funcName); }
@@ -553,6 +643,7 @@ inline Int32 CodeGenerator::VisitIdentifier(IdentifierNode node,bool addressOf) 
 inline void CodeGenerator::EmitNamedLoad(Boolean addressOf,Int32 resultReg,Int32 srcReg,Value nameVal,String comment) { return get()->EmitNamedLoad(addressOf, resultReg, srcReg, nameVal, comment); }
 inline Int32 CodeGenerator::Visit(IdentifierNode node) { return get()->Visit(node); }
 inline Int32 CodeGenerator::Visit(AssignmentNode node) { return get()->Visit(node); }
+inline Int32 CodeGenerator::VisitGlobalAssignment(AssignmentNode node) { return get()->VisitGlobalAssignment(node); }
 inline Int32 CodeGenerator::Visit(IndexedAssignmentNode node) { return get()->Visit(node); }
 inline Int32 CodeGenerator::Visit(UnaryOpNode node) { return get()->Visit(node); }
 inline Int32 CodeGenerator::Visit(BinaryOpNode node) { return get()->Visit(node); }

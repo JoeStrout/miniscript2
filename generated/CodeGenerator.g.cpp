@@ -18,6 +18,8 @@ CodeGeneratorStorage::CodeGeneratorStorage(CodeEmitterBase emitter) {
 	_loopExitLabels =  List<Int32>::New();
 	_loopContinueLabels =  List<Int32>::New();
 	_functions =  List<FuncDef>::New();
+	_globalScope = Boolean(false);
+	_globalsReg = -1;
 	Error = Value::Null;
 }
 List<FuncDef> CodeGeneratorStorage::GetFunctions() {
@@ -162,6 +164,27 @@ void CodeGeneratorStorage::EnsureNamed(String varName,Int32 varReg) {
 	_emitter.EmitAB(Opcode::NAME_rA_kBC, varReg, nameIdx, Interp("use r{} for {}", varReg, varName));
 	_namedStack.Add(varName);
 }
+String CodeGeneratorStorage::GlobalsRegKey() {
+	return "@globals";
+}
+String CodeGeneratorStorage::LoopVarRegKey(String varName) {
+	return "@loopvar " + varName;
+}
+void CodeGeneratorStorage::BeginGlobalScope() {
+	_globalScope = Boolean(true);
+	ResetTempRegisters();               // reserves r0
+	_globalsReg = AllocReg();
+	_variableRegs[GlobalsRegKey()] = _globalsReg;
+	_emitter.EmitA(Opcode::GLOBALS_rA, _globalsReg, Interp("r{} = globals", _globalsReg));
+}
+void CodeGeneratorStorage::EmitGlobalStore(String varName,Int32 valueReg) {
+	Int32 nameReg = AllocReg();
+	Int32 constIdx = _emitter.AddConstant(Value::make_string(varName));
+	_emitter.EmitAB(Opcode::LOAD_rA_kBC, nameReg, constIdx, Interp("r{} = \"{}\"", nameReg, varName));
+	_emitter.EmitABC(Opcode::IDXSET_rA_rB_rC, _globalsReg, nameReg, valueReg,
+		Interp("{} = r{}", varName, valueReg));
+	FreeReg(nameReg);
+}
 FuncDef CodeGeneratorStorage::CompileFunction(ASTNode ast,String funcName) {
 	CodeGenerator _this(std::static_pointer_cast<CodeGeneratorStorage>(shared_from_this()));
 	_regInUse.Clear();
@@ -169,6 +192,8 @@ FuncDef CodeGeneratorStorage::CompileFunction(ASTNode ast,String funcName) {
 	_maxRegUsed = -1;
 	_variableRegs.Clear();
 	_namedStack.Clear();
+	_globalScope = Boolean(false);
+	_globalsReg = -1;
 
 	Int32 resultReg = ast.Accept(_this);
 
@@ -186,6 +211,10 @@ List<FuncDef> CodeGeneratorStorage::CompileImport(List<ASTNode> statements,Strin
 	_maxRegUsed = -1;
 	_variableRegs.Clear();
 	_namedStack.Clear();
+	// A module's top-level names are its LOCALS, not globals -- that is the
+	// whole point of returning them as a map -- so this is not global scope.
+	_globalScope = Boolean(false);
+	_globalsReg = -1;
 
 	_functions.Clear();
 	_functions.Add(nullptr);
@@ -215,6 +244,8 @@ FuncDef CodeGeneratorStorage::CompileProgram(List<ASTNode> statements,String fun
 	// Reserve index 0 for @main
 	_functions.Clear();
 	_functions.Add(nullptr);
+
+	BeginGlobalScope();
 
 	// Compile each statement, putting result into r0
 	for (Int32 i = 0; i < statements.Count(); i++) {
@@ -305,7 +336,9 @@ Int32 CodeGeneratorStorage::Visit(AssignmentNode node) {
 	if (_targetReg > 0) {
 		if (Error.IsNull()) Error = ErrorTypes::CompilerError(StringUtils::Format("unexpected target register {0} in assignment", _targetReg));
 	}
-	
+
+	if (_globalScope) return VisitGlobalAssignment(node);
+
 	// Get or allocate register for this variable.
 	Int32 varReg;
 	Boolean isNew = !_variableRegs.TryGetValue(node.Variable(), &varReg);
@@ -346,10 +379,9 @@ Int32 CodeGeneratorStorage::Visit(AssignmentNode node) {
 		Int32 tempReg = AllocReg();
 		Int32 rhsReg = CompileInto(node.Value(), tempReg);
 		// NAME is not a passive binding: via MapToRegister it imports any existing
-		// value for this name out of a live VarMap (ReplGlobals, or the frame's
-		// LocalVarMap) into the register, which is how REPL globals persist across
-		// lines.  Copying the temp in afterwards overwrites that stale import with
-		// the value we just computed, so the copy must follow the NAME.
+		// value for this name out of the frame's live LocalVarMap into the
+		// register.  Copying the temp in afterwards overwrites that stale import
+		// with the value we just computed, so the copy must follow the NAME.
 		EnsureNamed(node.Variable(), varReg);
 		_emitter.EmitABC(Opcode::LOAD_rA_rB, varReg, rhsReg, 0, Interp("r{} = r{}", varReg, rhsReg));
 		FreeReg(tempReg);
@@ -376,6 +408,23 @@ Int32 CodeGeneratorStorage::Visit(AssignmentNode node) {
 	// the value there as well.  Not sure why that would ever be the case (since
 	// assignment can't be used in an expression in MiniScript).  So:
 	return varReg;
+}
+Int32 CodeGeneratorStorage::VisitGlobalAssignment(AssignmentNode node) {
+	// If the RHS is a function expression, note the current function count so
+	// we can name the resulting FuncDef afterward.
+	FunctionNode rhsFunc = As<FunctionNode, FunctionNodeStorage>(node.Value());
+	Int32 funcIndexBeforeRHS = _functions.Count();
+
+	Int32 valueReg = AllocReg();
+	CompileInto(node.Value(), valueReg);
+
+	if (!IsNull(rhsFunc) && funcIndexBeforeRHS < _functions.Count()) {
+		FuncDef rhsFuncDef = _functions[funcIndexBeforeRHS];
+		if (!IsNull(rhsFuncDef)) rhsFuncDef.set_Name(node.Variable());
+	}
+
+	EmitGlobalStore(node.Variable(), valueReg);
+	return valueReg;
 }
 Int32 CodeGeneratorStorage::Visit(IndexedAssignmentNode node) {
 	CodeGenerator _this(std::static_pointer_cast<CodeGeneratorStorage>(shared_from_this()));
@@ -1037,9 +1086,16 @@ Int32 CodeGeneratorStorage::Visit(ForNode node) {
 	_variableRegs[idxName] = indexReg;
 	_variableRegs[listName] = listReg;
 
-	// Get or create register for loop variable
+	// Get or create register for loop variable.  At global scope the loop
+	// variable is a global like any other top-level name, so the register is
+	// only where ITERGET drops each element on its way to the slot; it is
+	// parked under an internal key so the body's ResetTempRegisters leaves it
+	// alone, and it is never findable by the user's name.
 	Int32 varReg;
-	if (_variableRegs.TryGetValue(node.Variable(), &varReg)) {
+	if (_globalScope) {
+		varReg = AllocReg();
+		_variableRegs[LoopVarRegKey(node.Variable())] = varReg;
+	} else if (_variableRegs.TryGetValue(node.Variable(), &varReg)) {
 		// Variable already exists
 	} else {
 		varReg = AllocReg();
@@ -1047,7 +1103,7 @@ Int32 CodeGeneratorStorage::Visit(ForNode node) {
 	}
 	// The loop variable is assigned each iteration; this NAME runs once before
 	// the loop, so it dominates the body but not code after a zero-iteration loop.
-	EnsureNamed(node.Variable(), varReg);
+	if (!_globalScope) EnsureNamed(node.Variable(), varReg);
 
 	// Place loopStart label
 	_emitter.PlaceLabel(loopStart);
@@ -1059,6 +1115,9 @@ Int32 CodeGeneratorStorage::Visit(ForNode node) {
 	// Get current element by position: varReg = iterget(listReg, indexReg)
 	// For lists/strings this is the same as INDEX; for maps it returns {"key":k, "value":v}
 	_emitter.EmitABC(Opcode::ITERGET_rA_rB_rC, varReg, listReg, indexReg, Interp("{} = iterget(container, index)", node.Variable()));
+
+	// At global scope, publish the element as a global before running the body.
+	if (_globalScope) EmitGlobalStore(node.Variable(), varReg);
 
 	// Compile body statements
 	CompileConditionalBody(node.Body());
@@ -1076,6 +1135,10 @@ Int32 CodeGeneratorStorage::Visit(ForNode node) {
 	// Remove internal variable names and free the registers
 	_variableRegs.Remove(idxName);
 	_variableRegs.Remove(listName);
+	if (_globalScope) {
+		_variableRegs.Remove(LoopVarRegKey(node.Variable()));
+		FreeReg(varReg);
+	}
 	FreeReg(indexReg);
 	FreeReg(listReg);
 

@@ -98,12 +98,12 @@ public class Interpreter {
 
 	// REPL state
 	private String _pendingSource;       // accumulated REPL lines so far
-	private Value _replGlobals = Value.Null; // persistent globals VarMap
 
-	// Globals carried over from the outgoing program, set by
-	// ResetPreservingGlobals and consumed by the next Compile.  Value.Null
-	// (the usual case) means the next program starts with empty globals.
-	private Value _keptGlobals = Value.Null;
+	// This interpreter's global namespace.  Created on demand and then kept for
+	// the life of the interpreter unless Reset replaces it, so it is stable across
+	// REPL lines, across a program ending, and across chaining to a new program.
+	// Handed to each VM at Reset.  See notes/GLOBALS.md.
+	private Globals _globals;
 
 	// H_WRAPPER: public: Interpreter(InterpreterStorage* p) : storage(p ? p->shared_from_this() : nullptr) {}  
   
@@ -123,6 +123,28 @@ public class Interpreter {
 		standardOutput = _standardOutput;
 		errorOutput = _errorOutput;
 		Error = Value.Null;
+		_globals = null;
+	}
+
+	//
+	// This interpreter's global namespace, created if it does not exist yet.
+	// Available before the first compile, which is what lets a host seed globals
+	// (and read them back) without any program having run -- the job the REPL("")
+	// bootstrap used to do.
+	//
+	public Globals GetGlobals() {
+		if (_globals == null) _globals = Globals.Create();
+		return _globals;
+	}
+
+	//
+	// Discard every global, in place.  The namespace object and its slot numbering
+	// survive, so this takes effect immediately for code that is already running --
+	// including the rest of the statement that asked for it, which is what the
+	// `reset` intrinsic needs.
+	//
+	public void ClearGlobals() {
+		if (_globals != null) _globals.Clear();
 	}
 
 	// 
@@ -165,7 +187,13 @@ public class Interpreter {
 		vm = null;
 		compiledFunctions = null;
 		Error = Value.Null;
-		_keptGlobals = Value.Null;
+		// A new program gets a new namespace.  Releasing the old one drops the GC
+		// root its map holds; anything still referring to it (a function compiled
+		// by the old program and handed to a host, say) keeps it alive normally.
+		if (_globals != null) {
+			_globals.Release();
+			_globals = null;
+		}
 	}
 
 	//
@@ -175,12 +203,11 @@ public class Interpreter {
 	// intrinsic (`run`) needs: the outgoing script's state stays available, and
 	// any global the new script assigns simply overwrites the inherited value.
 	// Functions carried over keep working too, since a top-level function's
-	// closure captures this very globals map.
+	// closure captures this very namespace.
 	//
-	// Reset and Compile happen together here because the globals are held in a
-	// live map between the two steps; there is no meaningful state in which to
-	// leave the interpreter in between.  On a compile error the interpreter is
-	// left with no VM (as with Reset + Compile), and the globals are dropped.
+	// This is now just Reset without the part that drops the namespace: the
+	// globals were never bound to the outgoing program's registers, so there is
+	// nothing to gather off them and nothing to rebind.
 	//
 	// The outgoing VM is stopped, which matters when (as with `run`) this is
 	// called from an intrinsic: we are then inside that VM's own Run loop, and
@@ -188,13 +215,11 @@ public class Interpreter {
 	// executing the rest of the abandoned program after the intrinsic returns.
 	//
 	public void ResetPreservingGlobals(String _source="") {
-		Value keptGlobals = Value.Null;
-		if (vm != null) {
-			keptGlobals = vm.GetGlobalsVarMap();
-			vm.Stop();
-		}
+		if (vm != null) vm.Stop();
+		Globals keptGlobals = GetGlobals();
+		_globals = null;         // hide it from Reset, which Releases what it finds
 		Reset(_source);
-		_keptGlobals = keptGlobals;
+		_globals = keptGlobals;  // still rooted, since Reset never saw it
 		Compile();
 	}
 
@@ -208,10 +233,16 @@ public class Interpreter {
 		compiledFunctions = functions;
 		Error = Value.Null;
 
+		// A new program gets a new namespace, as in Reset(String).
+		if (_globals != null) {
+			_globals.Release();
+			_globals = null;
+		}
+
 		// Create and configure VM
 		vm = new VM();
 		vm.SetInterpreter(this);
-		vm.Reset(functions);
+		vm.Reset(functions, GetGlobals());
 	}
 
 	// 
@@ -254,13 +285,12 @@ public class Interpreter {
 
 		compiledFunctions = generator.GetFunctions();
 
-		// Create and configure VM.  _keptGlobals is Value.Null unless we were
-		// entered from ResetPreservingGlobals, in which case it holds the
-		// outgoing program's globals for the new VM to adopt.
+		// Create and configure VM, running in this interpreter's namespace --
+		// which already holds anything a host seeded, or (via
+		// ResetPreservingGlobals) the outgoing program's globals.
 		vm = new VM();
 		vm.SetInterpreter(this);
-		vm.Reset(compiledFunctions, _keptGlobals);
-		_keptGlobals = Value.Null;
+		vm.Reset(compiledFunctions, GetGlobals());
 	}
 
 	//
@@ -416,13 +446,11 @@ public class Interpreter {
 			return;
 		}
 
-		// Nothing to do if no statements -- unless we have no VM yet.  A host
-		// that calls REPL("") before any user code is asking for a machine to
-		// prepare: in MiniScript 1.x that was the standard way to get one, so
-		// that globals could be seeded (SetGlobalValue needs the globals VarMap
-		// that only a compile creates) before the first real line.  Compiling
-		// the empty program below builds @main and takes that path.
-		if (statements.Count == 0 && vm != null) {
+		// Nothing to do if there are no statements.  (This used to make an
+		// exception for REPL("") with no VM yet, because seeding globals needed a
+		// compile to have created somewhere to put them.  SetGlobalValue now works
+		// before the first compile, so that bootstrap is gone.)
+		if (statements.Count == 0) {
 			_pendingSource = null;
 			return;
 		}
@@ -441,7 +469,7 @@ public class Interpreter {
 		}
 
 		// Compile to bytecode.  Each REPL line is its own @main; previously
-		// defined functions are reached as funcref values in the globals VarMap.
+		// defined functions are reached as funcref values in the globals table.
 		BytecodeEmitter emitter = new BytecodeEmitter();
 		CodeGenerator generator = new CodeGenerator(emitter);
 		generator.CompileProgram(statements, "@main");
@@ -460,18 +488,12 @@ public class Interpreter {
 		//	IOHelper.Print(line);
 		//}
 
-		// Create/reset VM
+		// Create/reset VM.  The namespace is the interpreter's, so it is the same
+		// one every line -- there is no first-line special case, and nothing is
+		// rebound onto the new @main's registers.
 		if (vm == null) vm = new VM();
 		vm.SetInterpreter(this);
-		vm.Reset(functions, _replGlobals);
-
-		// If this is the first REPL entry, create the initial globals VarMap
-		if (_replGlobals.IsNull()) {
-			_replGlobals = Value.make_varmap(vm.GetStack(), vm.GetNames(), 0, 
-				functions[0].MaxRegs);  // CPP: functions[0].MaxRegs());
-			// ToDo: make the transpiler smart enough to do this ---^ on its own
-			vm.ReplGlobals = _replGlobals;
-		}
+		vm.Reset(functions, GetGlobals());
 
 		// Run
 		double startTime = vm.ElapsedTime();
@@ -555,54 +577,29 @@ public class Interpreter {
 
 	// 
 	// Get a value from the global namespace of this interpreter.
-	// Searches the @main frame's named registers for the given variable name.
-	// 
+	//
+	// This and SetGlobalValue read and write the same slot, so they agree in every
+	// mode.  Both work before the first compile, after the program has ended, and
+	// at any call depth -- the namespace does not belong to a running program.
+	//
 	// <param name="varName">name of global variable to get</param>
 	// <returns>Value of the named variable, or Value.Null if not found</returns>
 	public Value GetGlobalValue(String varName) {
-		if (vm == null || vm.CurrentFunction == null) return Value.Null;
-		// Ask the globals VarMap, which is what "globals" means everywhere else
-		// in the VM (see VM.GetGlobalsVarMap and VM.LookupVariable).  It covers
-		// both ways a global can be held -- a named register of the @main frame
-		// when compiled code assigned it, an entry in the hash table when the
-		// host set it with SetGlobalValue or a Rebind gathered it -- and it
-		// covers ONLY that frame.
-		//
-		// Scanning the VM's register stack directly, as this used to, ran past
-		// @main to the whole stack: with a program stopped mid-call, a local of
-		// whatever function was executing could shadow (or invent) a global of
-		// the same name.
-		Value globals = vm.GetGlobalsVarMap();
-		Value result;
-		if (globals.IsMap() && globals.TryGet(Value.make_string(varName), out result)) {
-			return result;
-		}
-		return Value.Null;
+		Globals globals = GetGlobals();
+		Int32 slot = globals.Find(Value.make_string(varName));
+		if (slot < 0 || !globals.SlotIsAssigned(slot)) return Value.Null;
+		return globals.ValueAtSlot(slot);
 	}
 
-	// 
-	// Set a value in the global namespace of this interpreter.
-	// Searches the @main frame's named registers and updates the first match.
-	// 
+	//
+	// Set a value in the global namespace of this interpreter, creating the
+	// global if it does not exist yet.  See GetGlobalValue.
+	//
 	// <param name="varName">name of global variable to set</param>
 	// <param name="value">value to set</param>
 	public void SetGlobalValue(String varName, Value value) {
-		// In REPL mode the persistent globals live in _replGlobals, a VarMap.
-		// Setting a key here makes it visible to subsequent user code as a
-		// global variable.  If a global VarMap doesn't exist yet, there is
-		// nothing to set: call REPL("") first, which exists to build one.
-		if (_replGlobals.IsNull()) return;
-		_replGlobals.MapSet(varName, value);
-	}
-
-	// 
-	// Discard the persistent REPL globals VarMap.  The next REPL() call will
-	// rebuild it from scratch, effectively clearing all user-defined globals.
-	// Called by the `reset` intrinsic to take effect immediately during execution.
-	// 
-	public void ResetReplGlobals() {
-		_replGlobals = Value.Null;
-		if (vm != null) vm.ReplGlobals = Value.Null;
+		Globals globals = GetGlobals();
+		globals.SetSlot(globals.Resolve(Value.make_string(varName)), value);
 	}
 
 	// 

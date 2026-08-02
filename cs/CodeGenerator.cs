@@ -24,6 +24,19 @@ public class CodeGenerator : IASTVisitor {
 	private List<Int32> _loopExitLabels;      // Stack of loop exit labels for break
 	private List<Int32> _loopContinueLabels;  // Stack of loop continue labels for continue
 	private List<FuncDef> _functions;          // Compile-time registry of all functions (for naming + disassembly)
+
+	// True while compiling code whose named variables are GLOBALS rather than
+	// registers -- that is, @main and only @main.  A module compiled for `import`
+	// is a function returning its own locals, so its top-level names are locals
+	// and this stays false there.  See notes/GLOBALS.md.
+	//
+	// At global scope a named variable is a slot in the Globals table, so it gets
+	// no register and no NAME op: assignments become a map store through
+	// _globalsReg, and reads fall into VisitIdentifier's "not a known register"
+	// path, which resolves through LookupVariable at run time.
+	private Boolean _globalScope;
+	private Int32 _globalsReg;                 // register holding the globals map, or -1
+
 	public String FileName = "";               // Source file name, copied to each compiled FuncDef
 	public Value Error;
 
@@ -38,6 +51,8 @@ public class CodeGenerator : IASTVisitor {
 		_loopExitLabels = new List<Int32>();
 		_loopContinueLabels = new List<Int32>();
 		_functions = new List<FuncDef>();
+		_globalScope = false;
+		_globalsReg = -1;
 		Error = Value.Null;
 	}
 
@@ -237,6 +252,43 @@ public class CodeGenerator : IASTVisitor {
 		_namedStack.Add(varName);
 	}
 
+	// ── Global scope ─────────────────────────────────────────────────────────
+
+	// Keys under which internal (non-user) registers are parked in _variableRegs.
+	// That dictionary doubles as the set of registers ResetTempRegisters must
+	// preserve, and '@' cannot appear in an identifier, so no user variable can
+	// ever collide with one of these.
+	private static String GlobalsRegKey() {
+		return "@globals";
+	}
+
+	private static String LoopVarRegKey(String varName) {
+		return "@loopvar " + varName;
+	}
+
+	// Begin compiling top-level code: claim a register to hold the globals map for
+	// the life of @main, so each global store is two instructions rather than
+	// three.  The map object is stable -- even `reset` clears the namespace in
+	// place rather than replacing it -- so caching it cannot go stale.
+	private void BeginGlobalScope() {
+		_globalScope = true;
+		ResetTempRegisters();               // reserves r0
+		_globalsReg = AllocReg();
+		_variableRegs[GlobalsRegKey()] = _globalsReg;
+		_emitter.EmitA(Opcode.GLOBALS_rA, _globalsReg, $"r{_globalsReg} = globals");
+	}
+
+	// Store a register into the named global.  Creates the global if it is new;
+	// this is the only way a name comes into existence at top level.
+	private void EmitGlobalStore(String varName, Int32 valueReg) {
+		Int32 nameReg = AllocReg();
+		Int32 constIdx = _emitter.AddConstant(Value.make_string(varName));
+		_emitter.EmitAB(Opcode.LOAD_rA_kBC, nameReg, constIdx, $"r{nameReg} = \"{varName}\"");
+		_emitter.EmitABC(Opcode.IDXSET_rA_rB_rC, _globalsReg, nameReg, valueReg,
+			$"{varName} = r{valueReg}");
+		FreeReg(nameReg);
+	}
+
 	// Compile a complete function from a single expression/statement
 	public FuncDef CompileFunction(ASTNode ast, String funcName) {
 		_regInUse.Clear();
@@ -244,6 +296,8 @@ public class CodeGenerator : IASTVisitor {
 		_maxRegUsed = -1;
 		_variableRegs.Clear();
 		_namedStack.Clear();
+		_globalScope = false;
+		_globalsReg = -1;
 
 		Int32 resultReg = ast.Accept(this);
 
@@ -265,6 +319,10 @@ public class CodeGenerator : IASTVisitor {
 		_maxRegUsed = -1;
 		_variableRegs.Clear();
 		_namedStack.Clear();
+		// A module's top-level names are its LOCALS, not globals -- that is the
+		// whole point of returning them as a map -- so this is not global scope.
+		_globalScope = false;
+		_globalsReg = -1;
 
 		_functions.Clear();
 		_functions.Add(null);
@@ -296,6 +354,8 @@ public class CodeGenerator : IASTVisitor {
 		// Reserve index 0 for @main
 		_functions.Clear();
 		_functions.Add(null);
+
+		BeginGlobalScope();
 
 		// Compile each statement, putting result into r0
 		for (Int32 i = 0; i < statements.Count; i++) {
@@ -404,7 +464,9 @@ public class CodeGenerator : IASTVisitor {
 		if (_targetReg > 0) {
 			if (Error.IsNull()) Error = ErrorTypes.CompilerError(StringUtils.Format("unexpected target register {0} in assignment", _targetReg));
 		}
-		
+
+		if (_globalScope) return VisitGlobalAssignment(node);
+
 		// Get or allocate register for this variable.
 		Int32 varReg;
 		Boolean isNew = !_variableRegs.TryGetValue(node.Variable, out varReg);
@@ -445,10 +507,9 @@ public class CodeGenerator : IASTVisitor {
 			Int32 tempReg = AllocReg();
 			Int32 rhsReg = CompileInto(node.Value, tempReg);
 			// NAME is not a passive binding: via MapToRegister it imports any existing
-			// value for this name out of a live VarMap (ReplGlobals, or the frame's
-			// LocalVarMap) into the register, which is how REPL globals persist across
-			// lines.  Copying the temp in afterwards overwrites that stale import with
-			// the value we just computed, so the copy must follow the NAME.
+			// value for this name out of the frame's live LocalVarMap into the
+			// register.  Copying the temp in afterwards overwrites that stale import
+			// with the value we just computed, so the copy must follow the NAME.
 			EnsureNamed(node.Variable, varReg);
 			_emitter.EmitABC(Opcode.LOAD_rA_rB, varReg, rhsReg, 0, $"r{varReg} = r{rhsReg}");
 			FreeReg(tempReg);
@@ -475,6 +536,35 @@ public class CodeGenerator : IASTVisitor {
 		// the value there as well.  Not sure why that would ever be the case (since
 		// assignment can't be used in an expression in MiniScript).  So:
 		return varReg;
+	}
+
+	//
+	// Assignment at top level: evaluate the right-hand side into a temp, then
+	// store it into the named global.
+	//
+	// None of the register bookkeeping in the local case applies here.  There is
+	// no NAME op, because the variable is not a register.  There is no
+	// first-assignment special case either: the slot is not written until the RHS
+	// has been evaluated, so `n = n + 1` creating a global reads the enclosing
+	// scope (or fails as undefined) exactly the way it should, with no temp needed
+	// to order things.
+	//
+	private Int32 VisitGlobalAssignment(AssignmentNode node) {
+		// If the RHS is a function expression, note the current function count so
+		// we can name the resulting FuncDef afterward.
+		FunctionNode rhsFunc = node.Value as FunctionNode;
+		Int32 funcIndexBeforeRHS = _functions.Count;
+
+		Int32 valueReg = AllocReg();
+		CompileInto(node.Value, valueReg);
+
+		if (rhsFunc != null && funcIndexBeforeRHS < _functions.Count) {
+			FuncDef rhsFuncDef = _functions[funcIndexBeforeRHS];
+			if (rhsFuncDef != null) rhsFuncDef.Name = node.Variable;
+		}
+
+		EmitGlobalStore(node.Variable, valueReg);
+		return valueReg;
 	}
 
 	public Int32 Visit(IndexedAssignmentNode node) {
@@ -1158,9 +1248,16 @@ public class CodeGenerator : IASTVisitor {
 		_variableRegs[idxName] = indexReg;
 		_variableRegs[listName] = listReg;
 
-		// Get or create register for loop variable
+		// Get or create register for loop variable.  At global scope the loop
+		// variable is a global like any other top-level name, so the register is
+		// only where ITERGET drops each element on its way to the slot; it is
+		// parked under an internal key so the body's ResetTempRegisters leaves it
+		// alone, and it is never findable by the user's name.
 		Int32 varReg;
-		if (_variableRegs.TryGetValue(node.Variable, out varReg)) {
+		if (_globalScope) {
+			varReg = AllocReg();
+			_variableRegs[LoopVarRegKey(node.Variable)] = varReg;
+		} else if (_variableRegs.TryGetValue(node.Variable, out varReg)) {
 			// Variable already exists
 		} else {
 			varReg = AllocReg();
@@ -1168,7 +1265,7 @@ public class CodeGenerator : IASTVisitor {
 		}
 		// The loop variable is assigned each iteration; this NAME runs once before
 		// the loop, so it dominates the body but not code after a zero-iteration loop.
-		EnsureNamed(node.Variable, varReg);
+		if (!_globalScope) EnsureNamed(node.Variable, varReg);
 
 		// Place loopStart label
 		_emitter.PlaceLabel(loopStart);
@@ -1180,6 +1277,9 @@ public class CodeGenerator : IASTVisitor {
 		// Get current element by position: varReg = iterget(listReg, indexReg)
 		// For lists/strings this is the same as INDEX; for maps it returns {"key":k, "value":v}
 		_emitter.EmitABC(Opcode.ITERGET_rA_rB_rC, varReg, listReg, indexReg, $"{node.Variable} = iterget(container, index)");
+
+		// At global scope, publish the element as a global before running the body.
+		if (_globalScope) EmitGlobalStore(node.Variable, varReg);
 
 		// Compile body statements
 		CompileConditionalBody(node.Body);
@@ -1197,6 +1297,10 @@ public class CodeGenerator : IASTVisitor {
 		// Remove internal variable names and free the registers
 		_variableRegs.Remove(idxName);
 		_variableRegs.Remove(listName);
+		if (_globalScope) {
+			_variableRegs.Remove(LoopVarRegKey(node.Variable));
+			FreeReg(varReg);
+		}
 		FreeReg(indexReg);
 		FreeReg(listReg);
 

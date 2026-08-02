@@ -124,3 +124,64 @@ this; if it moves, the change has leaked into the non-global path.
   `Global Loop` and `Global Loop (locals)` are unaffected (no strings).  **Use
   0.962s as the Global Churn baseline** for comparing later stages; the table
   above is left as taken so the two effects stay separable.
+
+---
+
+# After the model-only step (stages 2+3)
+
+Taken 2026-08-02, same machine, on the commit that makes `Globals` authoritative
+and compiles top-level named variables to map get/set.  **C# only** — the C++
+side had not been transpiled yet.  Re-run `tools/benchmark.sh -lang=cpp-goto`
+and fill in the second half of this table once it has.
+
+| Benchmark | C# asm before | C# asm after | C# src before | C# src after |
+|---|---|---|---|---|
+| Iterative Factorial | 3.016s | 2.718s | 8.120s | 22.535s |
+| Iterative Fibonacci | 4.473s | 4.157s | 17.865s | 33.049s |
+| Recursive Fibonacci | 5.072s | 4.770s | 10.652s | 12.119s |
+| Global Loop | – | – | 8.365s | **34.001s** |
+| Global Loop (locals) | – | – | 8.169s | **8.043s** |
+| Global Churn | – | – | 5.728s | **2.039s** |
+
+The asm column moved about 10% *faster* across the board even though `.msa`
+programs never touch the globals namespace, so treat that as the run-to-run
+noise floor for this session and do not read anything into differences that
+size.  Everything below is far outside it.
+
+### 1. The regression is worse than predicted
+
+| | before | after | Python | Lua |
+|---|---|---|---|---|
+| globals ÷ locals | 1.02x | **4.23x** | 2.51x | 3.39x |
+
+`Global Loop (locals)` is unchanged (8.169s → 8.043s), which is the control
+working: function-local code was not touched.  All of the 4.23x is the global
+access path.
+
+This overshoots the Python/Lua bracket the baseline predicted, and it overshoots
+the "near 2.5x" figure §4.3 named as the acceptable landing spot for this step.
+The reason is layering, not algorithm: a top-level read is an r0-form `LOADC`
+whose name compare fails, then a `LookupVariable` call, two null checks for the
+frame's locals and outer maps, a `GCMap` indirection, and only then the
+`Dictionary<Value,Int32>` lookup that Python and Lua reach directly.  A write
+adds a constant load and an `IDXSET` on top of that.
+
+The three pre-existing source benchmarks regressed for the same reason — their
+loops are also at top level.  `Recursive Fibonacci` moved least (1.14x), which
+is consistent: it is nearly all function-local work.
+
+**This makes stage 4 required rather than optional.**  The slot opcodes replace
+that whole chain with one integer compare and two array indexes, and the numbers
+to beat are now recorded above.
+
+### 2. The pathological case is fixed
+
+| | before | after |
+|---|---|---|
+| Global Churn | 5.728s | **2.039s** |
+
+2.8x faster, and this is the case the baseline measured at 9.7x slower than the
+same loop on an ordinary map.  `VarMapBacking`'s two linear scans per access are
+gone.  Reaching a global by name from inside a function — which is what most
+real code does — is now materially better than before, and that is the half of
+the trade the top-level regression has to be weighed against.

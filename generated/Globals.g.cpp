@@ -8,7 +8,7 @@
 
 namespace MiniScript {
 
-	Int32 GlobalsStorage::_lastId = 0;
+Int32 GlobalsStorage::_lastId = 0;
 Globals GlobalsStorage::Create() {
 	Globals g =  Globals::New();
 	g.AttachMap(GCManager::NewGlobalsMap(g));

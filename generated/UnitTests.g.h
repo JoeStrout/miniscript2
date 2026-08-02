@@ -61,6 +61,15 @@ class UnitTests {
 	// ── Chaining to a new program, preserving globals ────────────────────────────
 
 	public: static Boolean TestResetPreservingGlobals();
+
+	// ── The host global API ──────────────────────────────────────────────────────
+
+	// Get/SetGlobalValue used to disagree: Set wrote the REPL globals map and so
+	// did nothing at all outside REPL mode, while Get read the VM's globals and
+	// answered in both.  They now reach the same slot, which this pins down --
+	// along with the two timing cases that used to need the REPL("") bootstrap:
+	// seeding before any compile, and reading after the program has ended.
+	public: static Boolean TestHostGlobals();
 	private: static Int32 _handleFinalizerCallCount;
 
 	// ── GCHandle test ────────────────────────────────────────────────────────────

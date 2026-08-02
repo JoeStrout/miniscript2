@@ -38,8 +38,7 @@ class InterpreterStorage : public std::enable_shared_from_this<InterpreterStorag
 	public: Value Error;
 	public: Value lastImplicitResult = Value::Null;
 	private: String _pendingSource; // accumulated REPL lines so far
-	private: Value _replGlobals = Value::Null; // persistent globals VarMap
-	private: Value _keptGlobals = Value::Null;
+	private: Globals _globals;
 
 	// 
 	// standardOutput: receives the output of the "print" intrinsic.
@@ -96,9 +95,10 @@ class InterpreterStorage : public std::enable_shared_from_this<InterpreterStorag
 
 	// REPL state
 
-	// Globals carried over from the outgoing program, set by
-	// ResetPreservingGlobals and consumed by the next Compile.  Value.Null
-	// (the usual case) means the next program starts with empty globals.
+	// This interpreter's global namespace.  Created on demand and then kept for
+	// the life of the interpreter unless Reset replaces it, so it is stable across
+	// REPL lines, across a program ending, and across chaining to a new program.
+	// Handed to each VM at Reset.  See notes/GLOBALS.md.
 
   
 	// 
@@ -107,6 +107,18 @@ class InterpreterStorage : public std::enable_shared_from_this<InterpreterStorag
 	public: InterpreterStorage(String source=nullptr, TextOutputMethod standardOutput=nullptr, TextOutputMethod errorOutput=nullptr);
 	
 	private: void Init(String _source, TextOutputMethod _standardOutput, TextOutputMethod _errorOutput);
+
+	// This interpreter's global namespace, created if it does not exist yet.
+	// Available before the first compile, which is what lets a host seed globals
+	// (and read them back) without any program having run -- the job the REPL("")
+	// bootstrap used to do.
+	public: Globals GetGlobals();
+
+	// Discard every global, in place.  The namespace object and its slot numbering
+	// survive, so this takes effect immediately for code that is already running --
+	// including the rest of the statement that asked for it, which is what the
+	// `reset` intrinsic needs.
+	public: void ClearGlobals();
 
 	// 
 	// Constructor taking source code in the form of a list of strings.
@@ -133,11 +145,10 @@ class InterpreterStorage : public std::enable_shared_from_this<InterpreterStorag
 	// intrinsic (`run`) needs: the outgoing script's state stays available, and
 	// any global the new script assigns simply overwrites the inherited value.
 	// Functions carried over keep working too, since a top-level function's
-	// closure captures this very globals map.
-	// Reset and Compile happen together here because the globals are held in a
-	// live map between the two steps; there is no meaningful state in which to
-	// leave the interpreter in between.  On a compile error the interpreter is
-	// left with no VM (as with Reset + Compile), and the globals are dropped.
+	// closure captures this very namespace.
+	// This is now just Reset without the part that drops the namespace: the
+	// globals were never bound to the outgoing program's registers, so there is
+	// nothing to gather off them and nothing to rebind.
 	// The outgoing VM is stopped, which matters when (as with `run`) this is
 	// called from an intrinsic: we are then inside that VM's own Run loop, and
 	// replacing this.vm does not stop it -- without the Stop it would carry on
@@ -246,26 +257,18 @@ class InterpreterStorage : public std::enable_shared_from_this<InterpreterStorag
 
 	// 
 	// Get a value from the global namespace of this interpreter.
-	// Searches the @main frame's named registers for the given variable name.
-	// 
+	// This and SetGlobalValue read and write the same slot, so they agree in every
+	// mode.  Both work before the first compile, after the program has ended, and
+	// at any call depth -- the namespace does not belong to a running program.
 	// <param name="varName">name of global variable to get</param>
 	// <returns>Value of the named variable, or Value.Null if not found</returns>
 	public: Value GetGlobalValue(String varName);
 
-	// 
-	// Set a value in the global namespace of this interpreter.
-	// Searches the @main frame's named registers and updates the first match.
-	// 
+	// Set a value in the global namespace of this interpreter, creating the
+	// global if it does not exist yet.  See GetGlobalValue.
 	// <param name="varName">name of global variable to set</param>
 	// <param name="value">value to set</param>
 	public: void SetGlobalValue(String varName, Value value);
-
-	// 
-	// Discard the persistent REPL globals VarMap.  The next REPL() call will
-	// rebuild it from scratch, effectively clearing all user-defined globals.
-	// Called by the `reset` intrinsic to take effect immediately during execution.
-	// 
-	public: void ResetReplGlobals();
 
 	// 
 	// Report an error value to the user via errorOutput.  The default
@@ -322,10 +325,8 @@ struct Interpreter {
 	public: void set_lastImplicitResult(Value _v);
 	private: String _pendingSource(); // accumulated REPL lines so far
 	private: void set__pendingSource(String _v); // accumulated REPL lines so far
-	private: Value _replGlobals(); // persistent globals VarMap
-	private: void set__replGlobals(Value _v); // persistent globals VarMap
-	private: Value _keptGlobals();
-	private: void set__keptGlobals(Value _v);
+	private: Globals _globals();
+	private: void set__globals(Globals _v);
 	public: Interpreter(InterpreterStorage* p) : storage(p ? p->shared_from_this() : nullptr) {}  
 
 	// 
@@ -383,9 +384,10 @@ struct Interpreter {
 
 	// REPL state
 
-	// Globals carried over from the outgoing program, set by
-	// ResetPreservingGlobals and consumed by the next Compile.  Value.Null
-	// (the usual case) means the next program starts with empty globals.
+	// This interpreter's global namespace.  Created on demand and then kept for
+	// the life of the interpreter unless Reset replaces it, so it is stable across
+	// REPL lines, across a program ending, and across chaining to a new program.
+	// Handed to each VM at Reset.  See notes/GLOBALS.md.
 
   
 	// 
@@ -396,6 +398,18 @@ struct Interpreter {
 	}
 	
 	private: inline void Init(String _source, TextOutputMethod _standardOutput, TextOutputMethod _errorOutput);
+
+	// This interpreter's global namespace, created if it does not exist yet.
+	// Available before the first compile, which is what lets a host seed globals
+	// (and read them back) without any program having run -- the job the REPL("")
+	// bootstrap used to do.
+	public: inline Globals GetGlobals();
+
+	// Discard every global, in place.  The namespace object and its slot numbering
+	// survive, so this takes effect immediately for code that is already running --
+	// including the rest of the statement that asked for it, which is what the
+	// `reset` intrinsic needs.
+	public: inline void ClearGlobals();
 
 	// 
 	// Constructor taking source code in the form of a list of strings.
@@ -424,11 +438,10 @@ struct Interpreter {
 	// intrinsic (`run`) needs: the outgoing script's state stays available, and
 	// any global the new script assigns simply overwrites the inherited value.
 	// Functions carried over keep working too, since a top-level function's
-	// closure captures this very globals map.
-	// Reset and Compile happen together here because the globals are held in a
-	// live map between the two steps; there is no meaningful state in which to
-	// leave the interpreter in between.  On a compile error the interpreter is
-	// left with no VM (as with Reset + Compile), and the globals are dropped.
+	// closure captures this very namespace.
+	// This is now just Reset without the part that drops the namespace: the
+	// globals were never bound to the outgoing program's registers, so there is
+	// nothing to gather off them and nothing to rebind.
 	// The outgoing VM is stopped, which matters when (as with `run`) this is
 	// called from an intrinsic: we are then inside that VM's own Run loop, and
 	// replacing this.vm does not stop it -- without the Stop it would carry on
@@ -537,26 +550,18 @@ struct Interpreter {
 
 	// 
 	// Get a value from the global namespace of this interpreter.
-	// Searches the @main frame's named registers for the given variable name.
-	// 
+	// This and SetGlobalValue read and write the same slot, so they agree in every
+	// mode.  Both work before the first compile, after the program has ended, and
+	// at any call depth -- the namespace does not belong to a running program.
 	// <param name="varName">name of global variable to get</param>
 	// <returns>Value of the named variable, or Value.Null if not found</returns>
 	public: inline Value GetGlobalValue(String varName);
 
-	// 
-	// Set a value in the global namespace of this interpreter.
-	// Searches the @main frame's named registers and updates the first match.
-	// 
+	// Set a value in the global namespace of this interpreter, creating the
+	// global if it does not exist yet.  See GetGlobalValue.
 	// <param name="varName">name of global variable to set</param>
 	// <param name="value">value to set</param>
 	public: inline void SetGlobalValue(String varName, Value value);
-
-	// 
-	// Discard the persistent REPL globals VarMap.  The next REPL() call will
-	// rebuild it from scratch, effectively clearing all user-defined globals.
-	// Called by the `reset` intrinsic to take effect immediately during execution.
-	// 
-	public: inline void ResetReplGlobals();
 
 	// 
 	// Report an error value to the user via errorOutput.  The default
@@ -603,11 +608,11 @@ inline Value Interpreter::lastImplicitResult() { return get()->lastImplicitResul
 inline void Interpreter::set_lastImplicitResult(Value _v) { get()->lastImplicitResult = _v; }
 inline String Interpreter::_pendingSource() { return get()->_pendingSource; } // accumulated REPL lines so far
 inline void Interpreter::set__pendingSource(String _v) { get()->_pendingSource = _v; } // accumulated REPL lines so far
-inline Value Interpreter::_replGlobals() { return get()->_replGlobals; } // persistent globals VarMap
-inline void Interpreter::set__replGlobals(Value _v) { get()->_replGlobals = _v; } // persistent globals VarMap
-inline Value Interpreter::_keptGlobals() { return get()->_keptGlobals; }
-inline void Interpreter::set__keptGlobals(Value _v) { get()->_keptGlobals = _v; }
+inline Globals Interpreter::_globals() { return get()->_globals; }
+inline void Interpreter::set__globals(Globals _v) { get()->_globals = _v; }
 inline void Interpreter::Init(String _source,TextOutputMethod _standardOutput,TextOutputMethod _errorOutput) { return get()->Init(_source, _standardOutput, _errorOutput); }
+inline Globals Interpreter::GetGlobals() { return get()->GetGlobals(); }
+inline void Interpreter::ClearGlobals() { return get()->ClearGlobals(); }
 inline void Interpreter::Stop() { return get()->Stop(); }
 inline void Interpreter::Reset(String _source) { return get()->Reset(_source); }
 inline void Interpreter::ResetPreservingGlobals(String _source) { return get()->ResetPreservingGlobals(_source); }
@@ -625,7 +630,6 @@ inline Int32 Interpreter::ExitCode() { return get()->ExitCode(); }
 inline bool Interpreter::NeedMoreInput() { return get()->NeedMoreInput(); }
 inline Value Interpreter::GetGlobalValue(String varName) { return get()->GetGlobalValue(varName); }
 inline void Interpreter::SetGlobalValue(String varName,Value value) { return get()->SetGlobalValue(varName, value); }
-inline void Interpreter::ResetReplGlobals() { return get()->ResetReplGlobals(); }
 inline void Interpreter::ReportError(Value error) { return get()->ReportError(error); }
 inline void Interpreter::ReportError(String message) { return get()->ReportError(message); }
 

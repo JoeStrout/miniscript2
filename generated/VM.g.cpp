@@ -68,6 +68,12 @@ Interpreter VM::GetInterpreter() { return get()->GetInterpreter(); } // NO_INLIN
 Interpreter VMStorage::GetInterpreter() { // NO_INLINE
 	return Interpreter(interpreter);
 }
+Globals VMStorage::GetGlobals() {
+	return _globals;
+}
+void VMStorage::SetGlobals(Globals globals) {
+	_globals = globals;
+}
 double VMStorage::ElapsedTime() {
 	auto now = std::chrono::steady_clock::now();
 	return std::chrono::duration<double>(now - _startTime).count();
@@ -101,12 +107,16 @@ CallInfo VMStorage::GetCallStackFrame(Int32 index) {
 	return callStack[index];
 }
 String VMStorage::FindShortName(Value v) {
-	// Search global variable names directly on the stack — allocation-free and GC-safe.
-	FuncDef rf = callStack[0].ReturnFunc;
-	Int32 regCount = rf.MaxRegs();
-	for (Int32 i = 0; i < regCount; i++) {
-		if (!names[i].IsNull() && stack[i].RefEquals(v) && !names[i].RefEquals(v))
-			return names[i].ToString(nullptr);
+	// Walk the global slot table directly — allocation-free and GC-safe.
+	// (This used to scan @main's named registers, which is where globals
+	// lived before notes/GLOBALS.md.)
+	if (!IsNull(_globals)) {
+		Int32 slotCount = _globals.SlotCount();
+		for (Int32 i = 0; i < slotCount; i++) {
+			if (!_globals.ValueAtSlot(i).RefEquals(v)) continue;
+			Value slotName = _globals.NameAtSlot(i);
+			if (!slotName.RefEquals(v)) return slotName.ToString(nullptr);
+		}
 	}
 	// Fall back to the intrinsic short-name registry (type maps, etc.)
 	return Intrinsic::GetShortName(v);
@@ -119,6 +129,7 @@ void VMStorage::InitVM(Int32 stackSlots,Int32 callSlots) {
 	names =  List<Value>::New();
 	callStack =  List<CallInfo>::New();
 	callStackTop = 0;
+	_globals = nullptr;   // created (or adopted) at Reset
 	_pendingCallStack =  List<PendingCallState>::New();
 	Error = Value::Null;
 
@@ -197,11 +208,11 @@ void VMStorage::MarkRoots(object user_data) {
 		vm.MarkFuncConstants(vm.callStack()[ci].ReturnFunc);
 	}
 	GCManager::Mark(vm.ManualCallResult());
-	// The persistent globals map (REPL, or globals carried over from a
-	// previous program) is reachable only from here: it is not on the stack,
-	// and its gathered entries -- globals the current program never names --
-	// live in its hash table, not in any register.
-	GCManager::Mark(vm.ReplGlobals());
+	// The global namespace is not on the register stack, so mark it here.
+	// (Globals.AttachMap also roots the map directly, which covers a Globals
+	// that no VM has adopted yet; this mark is what keeps it alive for a VM
+	// that outlives its creator.)
+	if (!IsNull(vm._globals())) GCManager::Mark(vm._globals().AsMap());
 	// Manual-call results saved on the pending-call stack (nested imports).
 	for (Int32 pi = 0; pi < vm._pendingCallStack().Count(); pi++) {
 		GCManager::Mark(vm._pendingCallStack()[pi].ManualResult);
@@ -255,12 +266,7 @@ void VMStorage::ManuallyPushCall(Int32 intrinsicCalleeBase,FuncDef importMain) {
 	_pendingIsManual = Boolean(true);
 }
 void VMStorage::SetVar(String varName,Value value) {
-	Value targetMap;
-	if (!ReplGlobals.IsNull() && callStackTop <= 1) {
-		targetMap = ReplGlobals;
-	} else {
-		targetMap = GetCurrentLocalVarMap(BaseIndex, CurrentFunction.MaxRegs());
-	}
+	Value targetMap = GetCurrentLocalVarMap(BaseIndex, CurrentFunction.MaxRegs());
 	targetMap.MapSet(varName, value);
 }
 Value VMStorage::RunFunction(Value funcRef,List<Value> args) {
@@ -385,10 +391,11 @@ Value VMStorage::RunFunction(Value funcRef,List<Value> args) {
 	return result;
 }
 void VMStorage::Reset(List<FuncDef> allFunctions) {
-	Reset(allFunctions, Value::Null);
+	Reset(allFunctions, nullptr);
 }
-void VMStorage::Reset(List<FuncDef> allFunctions,Value replGlobals) {
-	bool partialReset = !replGlobals.IsNull();
+void VMStorage::Reset(List<FuncDef> allFunctions,Globals globals) {
+	if (!IsNull(globals)) _globals = globals;
+	if (IsNull(_globals)) _globals = Globals::Create();
 
 	// Locate @main.  All other functions are reachable from @main via its
 	// constant pool (nested-function templates), so the VM keeps no
@@ -399,9 +406,7 @@ void VMStorage::Reset(List<FuncDef> allFunctions,Value replGlobals) {
 	}
 
 	// Intrinsics are built once and shared; build the name->funcref table if
-	// this VM doesn't have one yet.  (Keyed on the table rather than on
-	// partialReset because a VM can be freshly constructed *and* be given
-	// persistent globals -- that is how chaining to a new program works.)
+	// this VM doesn't have one yet.
 	if (IsNull(_intrinsics)) {
 		_intrinsics =  Dictionary<String, Value>::New();
 		Intrinsic::RegisterAll(_intrinsics);
@@ -424,10 +429,10 @@ void VMStorage::Reset(List<FuncDef> allFunctions,Value replGlobals) {
 	CurrentFunction = mainFunc;
 	IsRunning = Boolean(true);
 	callStackTop = 0;
-	// Push @main's own execution-context frame at callStack[0] so that
-	// globals (= @main's locals) are always accessible via callStack[0].
-	// This means real function calls start at callStack[1], callStack[2], etc.
-	// ReturnFunc is set to @main so GetGlobalsVarMap can find @main's MaxRegs.
+	// Push @main's own execution-context frame at callStack[0], so that real
+	// function calls start at callStack[1], callStack[2], etc. and depth 0 is
+	// recognizable as top level.  ReturnFunc is set to @main by convention for
+	// this slot (it has no caller to record).
 	callStack[0] = CallInfo(0, 0, mainFunc);
 	callStackTop = 1;
 	Error = Value::Null;
@@ -444,22 +449,6 @@ void VMStorage::Reset(List<FuncDef> allFunctions,Value replGlobals) {
 	_pendingCallStack.Clear();
 
 	EnsureFrame(BaseIndex, CurrentFunction.MaxRegs());
-
-	// In REPL mode, rebind the persistent globals VarMap to the new stack arrays
-	if (partialReset) {
-		ReplGlobals = replGlobals;
-		Int32 capacity = stack.Count();
-		// careful: don't release old stacks until after varmap_rebind (below)
-		List<Value> newStack =  List<Value>::New(capacity);	
-		List<Value> newNames =  List<Value>::New(capacity);
-		for (int i=0; i<capacity; i++) {
-			newStack.Add(Value::Null);
-			newNames.Add(Value::Null);
-		}
-		ReplGlobals.Rebind(newStack, newNames);
-		stack = newStack;
-		names = newNames;
-	}
 
 	// Start the run timer (e.g. for the `time` intrinsic)
 	_startTime = std::chrono::steady_clock::now();
@@ -1028,12 +1017,6 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				localStack[a] = localStack[b];
 				valC = curConstants[c];
 				names[baseIndex + a] = valC;
-				// In REPL mode, register this variable in the globals VarMap
-				if (baseIndex == 0 && !ReplGlobals.IsNull()) {
-					ReplGlobals.MapToRegister(valC, 
-						stack,
-						baseIndex + a);
-				}
 				VM_NEXT();
 			}
 
@@ -1044,23 +1027,22 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				valC = curConstants[constIdx];
 				names[baseIndex + a] = valC;
 				// Keep any live VarMap for this scope in sync with the new
-				// variable.  In REPL mode at the top level that is ReplGlobals;
-				// otherwise it is the current frame's LocalVarMap, if one has
-				// already been created (e.g. by a FUNCREF closure capture or a
-				// `locals` reference earlier in the function).  Without this,
-				// variables declared after the first closure/`locals` use would
-				// be missing from the locals map.
-				if (baseIndex == 0 && !ReplGlobals.IsNull()) {
-					ReplGlobals.MapToRegister(valC,
+				// variable: the current frame's LocalVarMap, if one has already
+				// been created (e.g. by a FUNCREF closure capture or a `locals`
+				// reference earlier in the function).  Without this, variables
+				// declared after the first closure/`locals` use would be missing
+				// from the locals map.
+				//
+				// Global scope needs nothing here: top-level named variables are
+				// slots in the Globals table, not registers, so @main emits no
+				// NAME for them (see notes/GLOBALS.md).  A hand-written .msa can
+				// still name a register at base 0, but that is a register name,
+				// not a global.
+				CallInfo nameFrame = callStack[callStackTop - 1];
+				if (!nameFrame.LocalVarMap.IsNull()) {
+					nameFrame.LocalVarMap.MapToRegister(valC,
 						stack,
 						baseIndex + a);
-				} else {
-					CallInfo nameFrame = callStack[callStackTop - 1];
-					if (!nameFrame.LocalVarMap.IsNull()) {
-						nameFrame.LocalVarMap.MapToRegister(valC,
-							stack,
-							baseIndex + a);
-					}
 				}
 				VM_NEXT();
 			}
@@ -2263,13 +2245,8 @@ FORCE_INLINE void VMStorage::SwitchFrame(const FuncDef& currentFunc, Int32 baseI
 	localStack = stackPtr + baseIndex;
 }
 Value VMStorage::GetGlobalsVarMap() {
-	if (!ReplGlobals.IsNull()) return ReplGlobals;
-	CallInfo gframe = callStack[0];
-	FuncDef rf = gframe.ReturnFunc;
-	Int32 regCount = rf.MaxRegs();
-	Value result = gframe.GetLocalVarMap(stack, names, 0, regCount);
-	callStack[0] = gframe;  // write back (CallInfo is a struct)
-	return result;
+	if (IsNull(_globals)) return Value::Null;
+	return _globals.AsMap();
 }
 Value VMStorage::LookupParamByName(String varName) {
 	// Look up a parameter by name in the current frame.  This is provided
@@ -2305,11 +2282,11 @@ Value VMStorage::LookupVariable(Value varName) {
 		}
 	}
 
-	// Check global variables via VarMap (registers at base 0 in the @main frame)
-	Value globalMap;
-	if (callStackTop > 0 || !ReplGlobals.IsNull()) {
-		globalMap = GetGlobalsVarMap();
-		if (globalMap.TryGet(varName, &result)) {
+	// Check the global namespace.  Unassigned slots (a global that was removed,
+	// or one a not-yet-executed reference created) report as absent, so the
+	// search falls through to the intrinsics exactly as if the name were new.
+	if (!IsNull(_globals)) {
+		if (_globals.AsMap().TryGet(varName, &result)) {
 			return result;
 		}
 	}

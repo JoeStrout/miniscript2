@@ -1014,6 +1014,57 @@ public static class UnitTests {
 		return ok;
 	}
 
+	// ── The host global API ──────────────────────────────────────────────────────
+
+	// Get/SetGlobalValue used to disagree: Set wrote the REPL globals map and so
+	// did nothing at all outside REPL mode, while Get read the VM's globals and
+	// answered in both.  They now reach the same slot, which this pins down --
+	// along with the two timing cases that used to need the REPL("") bootstrap:
+	// seeding before any compile, and reading after the program has ended.
+	public static Boolean TestHostGlobals() {
+		Boolean ok = true;
+
+		List<String> output = new List<String>();
+		// CPP: gTestOutput = output;
+		Interpreter interp;
+		interp = new Interpreter("print seeded\nresult = seeded * 2\nmine = \"here\"");
+		interp.standardOutput = (String s, bool eol) => { output.Add(s); }; // CPP:
+		// CPP: interp.set_standardOutput([](String s, Boolean) { gTestOutput.Add(s); });
+		interp.errorOutput = (String s, bool eol) => { output.Add(s); }; // CPP:
+		// CPP: interp.set_errorOutput([](String s, Boolean) { gTestOutput.Add(s); });
+
+		// Seed before anything is compiled -- there is no VM at this point.
+		interp.SetGlobalValue("seeded", new Value(21));
+		ok = ok && Assert(interp.GetGlobalValue("seeded") == new Value(21),
+			"host Set then Get, before the first compile");
+
+		interp.RunUntilDone(10, false);
+		ok = ok && Assert(output.Count == 1 && output[0] == "21",
+			StringUtils.Format("program should see the seeded global, got '{0}'",
+				output.Count > 0 ? output[0] : "(no output)"));
+
+		// Read after the program has ended.  Both a global the program computed
+		// from the seed and one it invented from nothing must still be there;
+		// @main's registers are long gone, and that used to take half of them
+		// with it.
+		ok = ok && Assert(interp.GetGlobalValue("result") == new Value(42),
+			"global computed by the program, read after it ended");
+		ok = ok && Assert(interp.GetGlobalValue("mine") == Value.make_string("here"),
+			"global created by the program, read after it ended");
+
+		// An unset name is null, not an error and not the Unassigned sentinel.
+		ok = ok && Assert(interp.GetGlobalValue("neverSet").IsNull(),
+			"unset global should read as null");
+
+		// Reset drops the namespace.
+		interp.Reset("");
+		ok = ok && Assert(interp.GetGlobalValue("mine").IsNull(),
+			"Reset should discard globals");
+
+		if (!ok) IOHelper.Print("TestHostGlobals FAILED");
+		return ok;
+	}
+
 	// ── GCHandle test ────────────────────────────────────────────────────────────
 
 	private static Int32 _handleFinalizerCallCount = 0;
@@ -1318,6 +1369,7 @@ public static class UnitTests {
 			&& TestParserNeedMoreInput()
 			&& TestREPL()
 			&& TestResetPreservingGlobals()
+		&& TestHostGlobals()
 			&& TestGCHandle();
 	}
 }

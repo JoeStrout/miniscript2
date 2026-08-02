@@ -1268,7 +1268,7 @@ void CoreIntrinsics::Init() {
 		replInList = Value::make_list(0);
 		replOutList = Value::make_list(0);
 		Interpreter interp = ctx.vm.GetInterpreter();
-		if (!IsNull(interp)) interp.ResetReplGlobals();
+		if (!IsNull(interp)) interp.ClearGlobals();
 		GCManager::FullCollectGarbage();
 		return IntrinsicResult::Null;
 	});

@@ -334,11 +334,14 @@ slot).  Identical to `foo = 42` at top level, by construction.
 **`globals.remove "x"`** — slot marked `Unassigned`; reads raise Undefined
 Identifier; iteration skips it; a later `x = 1` reuses the slot.
 
-**The `reset` intrinsic, mid-statement** — replace the `Globals` (new `Id`).
-Every cached slot reference is invalidated by the id compare, and — because
-there are no register copies of globals anywhere — the clear is genuinely
-immediate, including for the rest of the line that called it.  Today it clears
-`ReplGlobals` while the running `@main` keeps answering from its registers.
+**The `reset` intrinsic, mid-statement** — *implemented as `Globals.Clear()`
+rather than as the replacement this section originally proposed.*  Clearing in
+place keeps the object, its map, its slot numbering, and its `Id`, so nothing
+anywhere can be left holding a stale namespace — including the globals map that
+the running `@main` has cached in a register.  Because there are no register
+copies of individual globals, the clear is genuinely immediate, for the rest of
+the line that called it included.  (The old code cleared `ReplGlobals` while the
+running `@main` kept answering from its registers.)
 
 **`locals` at top level** — returns the globals map, which is correct
 MiniScript semantics and is now literally the same object rather than a
@@ -376,26 +379,40 @@ goes in the backing alongside the existing `GCMap.Frozen` handling.
 
 ## 6. What gets deleted
 
+All done in stage 3 except where noted.
+
 - `VM.ReplGlobals` and both hot-path tests in `ASSIGN_rA_rB_kC` / `NAME_rA_kBC`
 - `VM.Reset(allFunctions, replGlobals)`'s entire partial-reset branch, including
-  the per-line reallocation of `stack` and `names`
-- `Value.Rebind` and `VarMapBacking.Rebind` (globals were the only caller)
-- `VarMapBacking.MapToRegister`'s detach-around-lookup, and probably the
-  hash-import path with it (a plain frame only needs it for the narrow
-  `locals["x"] = 1` before `x` is named case)
-- `Interpreter._replGlobals`, `_keptGlobals`, and `ResetReplGlobals`
+  the per-line reallocation of `stack` and `names`.  The overload now takes a
+  `Globals` instead, and null means "keep the one this VM already has".
+- `Value.Rebind` and `VarMapBacking.Rebind` (globals were the only caller), in
+  both the C# and the hand-written C++ (`cpp/core/value_map.cpp`, `value.h`)
+- ~~`VarMapBacking.MapToRegister`'s detach-around-lookup~~ — **kept.**  Real
+  call frames still need it for `locals["x"] = 1` before `x` is named, which is
+  exactly the case the detach exists for.
+- `Interpreter._replGlobals`, `_keptGlobals`, and `ResetReplGlobals` (the last
+  replaced by `ClearGlobals`)
 - the `REPL("")` bootstrap special case
-- `GetGlobalsVarMap`'s two-branch logic, and `callStack[0].LocalVarMap`
-- the `Gather` of `callStack[0]` on `RETURN` from `@main`
+- `GetGlobalsVarMap`'s two-branch logic.  The name is kept, since embedding
+  hosts call it; it now just returns `Globals.AsMap()`.
+- `callStack[0].LocalVarMap` and the `Gather` of it on `RETURN` from `@main`.
+  Both are now dead by construction — nothing ever sets that field, because
+  `GetCurrentLocalVarMap` returns the globals map at depth 0 — so the `RETURN`
+  code is left as-is and simply never fires there.
 - `VM.SetVar`'s `callStackTop <= 1` branch
+
+One thing this list did not anticipate: `VM.FindShortName` scanned `@main`'s
+named registers, so it had to be rewritten to walk the slot table.  That is what
+changes the one test expectation noted in §8.
 
 ## 7. Risks and open questions
 
-**Top-level performance.**  Must be measured with `tools/benchmark.sh` before
-and after, on programs that do real work at top level.  The model-only step will
-show a regression there; that is the point of measuring it before deciding
-whether the slot opcodes are needed.  `.msa` benchmarks are unaffected — they
-address registers directly and never touch the globals namespace.
+**Top-level performance.**  *Measured; see the stage 2+3 section of
+[GLOBALS_BASELINE.md](GLOBALS_BASELINE.md).*  The regression landed at 4.23x on
+`Global Loop`, worse than the 2.5x this section expected, and `Global Churn`
+improved 2.8x.  The answer to "are the slot opcodes needed?" is yes.  `.msa`
+benchmarks are unaffected, as predicted — they address registers directly and
+never touch the globals namespace.
 
 Three benchmarks now cover this — `global_loop`, `global_loop_fn`, and
 `global_churn` in `tools/benchmarks/` — and the pre-change numbers are recorded
@@ -449,15 +466,28 @@ embedding hosts keep compiling.
    `cs/Globals.cs`, `GCMap._gb`, `GCManager.Unassigned`, `Value.IsUnassigned()`,
    and `UnitTests.TestGlobals`.  Nothing is wired into the VM yet, so behavior
    is unchanged and 695/695 integration tests still pass.
-2. Wire `vm.Globals` and `Interpreter.Globals`; `GetGlobalsVarMap`, `SetVar`,
-   `GLOBALS_rA`, `LOCALS_rA`-at-depth-0, `LookupVariable`, and the host
-   Get/Set API all route to it.  `@main` still register-based at this point, so
-   both representations exist for one commit only — do not stop here.
-3. Code generator: global scope compiles named variables to map get/set on the
-   globals map.  Delete everything in §6.  Full test suite; this is the commit
-   where the semantics become uniform.
-4. Measure.  If top-level code needs it: `GETGLOBAL`/`GETGLOBALV`/`SETGLOBAL`,
-   the per-`FuncDef` reference table, assembler and disassembler support.
+2. ~~Wire `vm.Globals` and `Interpreter.Globals` while `@main` stays
+   register-based, so both representations exist for one commit.~~
+   **Abandoned: not implementable.**  Once a top-level variable exists,
+   `x = x + 1` compiles straight into its register (see `Visit(AssignmentNode)`
+   in `cs/CodeGenerator.cs`) — no `ASSIGN`, no `NAME`, no opcode at all.  There
+   is therefore no hook to write through to the slot table and none to read back
+   from it, so `globals.x` would go stale the moment any arithmetic updated `x`.
+   The current code only avoids this because the globals `VarMap` reads the
+   register *live*.  Merged into stage 3.
+3. **Done.**  Wiring and code generator in one commit: `Globals` is
+   authoritative, global scope compiles named variables to map get/set on the
+   globals map, and everything in §6 is deleted.  701/701 integration tests.
+   One expected-output change, in the "first assignment reads the enclosing
+   variable" test: a nested collection reached via `globals.m = ...` now
+   abbreviates to `m` when printed, exactly as one reached via a plain top-level
+   `m = ...` always did.  The two agreeing is the point of the change.
+4. **Required, not optional** — see the measurements appended to
+   [GLOBALS_BASELINE.md](GLOBALS_BASELINE.md).  The model-only step costs 4.23x
+   on top-level access, overshooting the ~2.5x §4.3 predicted, while winning
+   2.8x on `Global Churn`.  So: `GETGLOBAL`/`GETGLOBALV`/`SETGLOBAL`, the
+   per-`FuncDef` reference table, assembler and disassembler support.  Follow
+   [OPCODE_ADDITION.md](OPCODE_ADDITION.md).
 5. Follow-on (optional): resolve free names inside functions to `GETGLOBAL` when
    the code generator can prove they are not enclosing locals.
 

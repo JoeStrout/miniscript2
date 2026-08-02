@@ -273,7 +273,6 @@ typedef struct Value {
     static Value  make_varmap(List<Value> registers, List<Value> names, int firstIndex, int count);
     void          MapToRegister(Value var_name, List<Value> registers, int reg_index) const;
     void          Gather() const;
-    void          Rebind(List<Value> registers, List<Value> names) const;
 
     // Errors / funcrefs / freeze (instance form, mirroring cs/Value.cs)
     static Value  make_error(Value message, Value inner, Value stack, Value isa);

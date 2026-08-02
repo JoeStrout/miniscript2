@@ -116,16 +116,6 @@ void VarMapBackingStorage::Gather(Int32 mapIdx) {
 	}
 	// Leave _vmb = null (gathered; no more register backing).
 }
-void VarMapBackingStorage::Rebind(Int32 mapIdx,List<Value> registers,List<Value> names) {
-	VarMapBacking _this(std::static_pointer_cast<VarMapBackingStorage>(shared_from_this()));
-	Gather(mapIdx);
-	// Re-attach with new arrays (Gather set _vmb = null; we have to restore it).
-	_registers = registers;
-	_names     = names;
-	_regOrder.Clear();
-	_regIndices.Clear();
-	GCManager::Maps.SetVmb(mapIdx, _this);
-}
 void VarMapBackingStorage::MapToRegister(Int32 mapIdx,Value varName,List<Value> registers,Int32 regIndex) {
 	Int32 orderIdx = FindOrderIdx(varName);
 	if (orderIdx < 0) {

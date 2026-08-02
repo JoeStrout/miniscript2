@@ -164,21 +164,6 @@ public class VarMapBacking {
 	}
 
 	//
-	// Gather existing register values into the map, then bind to a new set of
-	// registers and names arrays. Used by REPL mode when @main is re-compiled.
-	// After Rebind, new bindings are added as NAME/ASSIGN opcodes execute.
-	//
-	public void Rebind(Int32 mapIdx, List<Value> registers, List<Value> names) {
-		Gather(mapIdx);
-		// Re-attach with new arrays (Gather set _vmb = null; we have to restore it).
-		_registers = registers;
-		_names     = names;
-		_regOrder.Clear();
-		_regIndices.Clear();
-		GCManager.Maps.SetVmb(mapIdx, this);
-	}
-
-	//
 	// Map a variable name to a specific register index.
 	// If the name already exists as a plain map entry, copy the value into
 	// the register and remove it from the map.

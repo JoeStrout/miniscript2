@@ -12,6 +12,7 @@
 #include <vector>
 #include <chrono>
 #include "GCManager.g.h"
+#include "Globals.g.h"
 
 namespace MiniScript {
 
@@ -75,23 +76,7 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	public: Boolean ExitRequested;
 	public: Int32 ExitCode;
 	private: Boolean _errorStackPending = Boolean(false);
-	public: Value ReplGlobals = Value::Null;
-	private: Value pendingSelf;
-	private: Value pendingSuper;
-	private: bool hasPendingContext;
-	private: NativeCallbackDelegate _pendingCallback = nullptr;
-	private: FuncDef _pendingCallee = nullptr; // callee FuncDef, for reconstructing Context (param names)
-	private: Int32 _pendingCalleeBase = 0; // base index for reconstructing Context
-	private: Int32 _pendingArgCount = 0; // arg count for reconstructing Context
-	private: Int32 _pendingResultIndex = 0; // absolute stack index for result (and partial result)
-	private: Boolean _hasPendingManualCall = Boolean(false);
-	private: Int32 _pendingManualCallDepth = 0; // callStackTop value after the push
-	public: Value ManualCallResult = Value::Null; // return value of the manually-pushed call
-	private: Boolean _pendingIsManual = Boolean(false);
-	private: List<PendingCallState> _pendingCallStack;
-	private: Int32 _nativeFrameTop = 0;
-	public: bool yielding = Boolean(false);
-	private: std::chrono::steady_clock::time_point _startTime;
+	private: Globals _globals;
 
 	// callStack is indexed by execution depth: callStack[0] is always @main's execution
 	// context (globals live here), callStack[1] is the first user function call, etc.
@@ -114,8 +99,38 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	// state (PC, CurrentFunction) has been saved; the stack trace is therefore
 	// built later, at the next SaveState, when that state is accurate.
 
-	// REPL mode: persistent globals VarMap shared across REPL entries.
-	// When set (not Value.Null), used instead of callStack[0].GetLocalVarMap for globals.
+	// The global namespace.  This is the ONE place a global lives: there is no
+	// register copy, no second tier, and no REPL-versus-not distinction.  It
+	// outlives any individual compilation, so a REPL line, a chained program, or
+	// an embedded interpreter all keep the same object (see notes/GLOBALS.md).
+	// The reference is on the VM rather than only on the Interpreter on purpose:
+	// a function compiled by interpreter A but called from VM B resolves its
+	// globals in B, which is what makes seeding a child interpreter from a parent
+	// work.  Normally the owning Interpreter hands one in at Reset; a standalone
+	// VM makes its own.
+
+	public: Globals GetGlobals();
+
+	// Run in someone else's global namespace from here on.  Takes effect at once,
+	// mid-run included: nothing caches a global anywhere.  The caller keeps
+	// ownership of both namespaces -- this does not Release the outgoing one.
+	public: void SetGlobals(Globals globals);
+	private: Value pendingSelf;
+	private: Value pendingSuper;
+	private: bool hasPendingContext;
+	private: NativeCallbackDelegate _pendingCallback = nullptr;
+	private: FuncDef _pendingCallee = nullptr; // callee FuncDef, for reconstructing Context (param names)
+	private: Int32 _pendingCalleeBase = 0; // base index for reconstructing Context
+	private: Int32 _pendingArgCount = 0; // arg count for reconstructing Context
+	private: Int32 _pendingResultIndex = 0; // absolute stack index for result (and partial result)
+	private: Boolean _hasPendingManualCall = Boolean(false);
+	private: Int32 _pendingManualCallDepth = 0; // callStackTop value after the push
+	public: Value ManualCallResult = Value::Null; // return value of the manually-pushed call
+	private: Boolean _pendingIsManual = Boolean(false);
+	private: List<PendingCallState> _pendingCallStack;
+	private: Int32 _nativeFrameTop = 0;
+	public: bool yielding = Boolean(false);
+	private: std::chrono::steady_clock::time_point _startTime;
 
 	// Pending self/super for method calls, set by METHFIND/SETSELF,
 	// consumed by the next CALL instruction
@@ -199,8 +214,8 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	// Matches the runtime behavior of user code "locals[varName] = value":
 	// if varName is already a named register, the value lands there directly;
 	// otherwise a plain map entry is created and LookupVariable will find it.
-	// In REPL mode (ReplGlobals != null) at the top level, writes to ReplGlobals
-	// so the variable persists across REPL iterations.
+	// At the top level there is no special case: the current frame's locals map
+	// simply IS the globals map (see GetCurrentLocalVarMap).
 	public: void SetVar(String varName, Value value);
 
 	// Synchronously invoke a MiniScript function value with the given arguments,
@@ -223,15 +238,14 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 
 	public: void Reset(List<FuncDef> allFunctions);
 
-	// Reset to run allFunctions, with a persistent globals VarMap.  Pass Value.Null
-	// for a normal (full) reset.  A non-null replGlobals makes the given map the
-	// new program's globals: it is gathered off whatever registers it was bound to
-	// and rebound to this VM's, so the variables in it survive into the new program.
-	// Two callers use this: the REPL, which passes the same VM its own globals map
-	// each line, and a host chaining to a new program via
-	// Interpreter.ResetPreservingGlobals, which passes a *fresh* VM the globals of
-	// the outgoing one.
-	public: void Reset(List<FuncDef> allFunctions, Value replGlobals);
+	// Reset to run allFunctions in the given global namespace.  Pass null to keep
+	// whatever namespace this VM already has (making one if it has none), which is
+	// what a REPL wants: every line is a new @main over the same globals.  A host
+	// chaining to a new program hands the outgoing interpreter's Globals to the
+	// incoming VM, and the variables in it simply carry over -- there is nothing to
+	// gather off registers and nothing to rebind, because globals were never in
+	// registers to begin with.
+	public: void Reset(List<FuncDef> allFunctions, Globals globals);
 
 	public: void Stop();
 
@@ -347,16 +361,13 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 
 	// Switch all frame-local execution state to the given function.
 
-	// Get the globals VarMap: a live map view of the top-level (@main) variables,
-	// the same map the `globals` intrinsic returns.  In REPL mode, this is the
-	// persistent ReplGlobals.  Otherwise it is @main's cached
-	// callStack[0].LocalVarMap (created on first use).  The cache stays current
-	// because NAME_rA_kBC keeps a live frame VarMap in sync as new variables are
-	// declared.  callStack[0].ReturnFunc holds @main's own function index (by
-	// convention for this slot), used to find @main's MaxRegs.
-	// Public because host code needs it to carry globals from one program to the
-	// next: hand the result to VM.Reset of the VM running the new program (see
-	// Interpreter.ResetPreservingGlobals).
+	// The `globals` map: an ordinary map whose entire storage is this VM's global
+	// namespace, and the same object the `globals` intrinsic returns.  There is no
+	// caching and no mode switch -- the map is created once with the Globals it
+	// views and lives as long as it does.
+	// The "VarMap" in the name is now historical; it is kept because embedding
+	// hosts call it.  To carry globals from one program to the next, hand
+	// GetGlobals() (not this) to the new VM's Reset.
 	public: Value GetGlobalsVarMap();
 
 	// Get or create a VarMap for the current call frame's local variables.
@@ -419,8 +430,46 @@ struct VM {
 	public: void set_ExitCode(Int32 _v);
 	private: Boolean _errorStackPending();
 	private: void set__errorStackPending(Boolean _v);
-	public: Value ReplGlobals();
-	public: void set_ReplGlobals(Value _v);
+	private: Globals _globals();
+	private: void set__globals(Globals _v);
+
+	// callStack is indexed by execution depth: callStack[0] is always @main's execution
+	// context (globals live here), callStack[1] is the first user function call, etc.
+	// callStackTop is the index of the next free slot (== current depth + 1).
+	// Invariant: callStackTop >= 1 during all execution (set up in Reset).
+
+	// Execution state (persistent across RunSteps calls)
+
+	// Set by the `exit` intrinsic: this run has asked its host to shut down,
+	// and with what result code.  Per-VM rather than a host-side static because
+	// a process can have several interpreters running at once -- a REPL driving
+	// a child program, say -- and only the machine whose code called `exit` is
+	// exiting.  Whoever drives that VM decides what exiting means for it: the
+	// top-level host ends the process, while a host running a child program
+	// just notes that the program is over.  Cleared by Reset, so each program
+	// starts out not exiting.
+
+	// True when a runtime error has been raised but its stack trace has not
+	// yet been attached.  Errors are often raised mid-instruction, before VM
+	// state (PC, CurrentFunction) has been saved; the stack trace is therefore
+	// built later, at the next SaveState, when that state is accurate.
+
+	// The global namespace.  This is the ONE place a global lives: there is no
+	// register copy, no second tier, and no REPL-versus-not distinction.  It
+	// outlives any individual compilation, so a REPL line, a chained program, or
+	// an embedded interpreter all keep the same object (see notes/GLOBALS.md).
+	// The reference is on the VM rather than only on the Interpreter on purpose:
+	// a function compiled by interpreter A but called from VM B resolves its
+	// globals in B, which is what makes seeding a child interpreter from a parent
+	// work.  Normally the owning Interpreter hands one in at Reset; a standalone
+	// VM makes its own.
+
+	public: inline Globals GetGlobals();
+
+	// Run in someone else's global namespace from here on.  Takes effect at once,
+	// mid-run included: nothing caches a global anywhere.  The caller keeps
+	// ownership of both namespaces -- this does not Release the outgoing one.
+	public: inline void SetGlobals(Globals globals);
 	private: Value pendingSelf();
 	private: void set_pendingSelf(Value _v);
 	private: Value pendingSuper();
@@ -451,30 +500,6 @@ struct VM {
 	private: void set__nativeFrameTop(Int32 _v);
 	public: bool yielding();
 	public: void set_yielding(bool _v);
-
-	// callStack is indexed by execution depth: callStack[0] is always @main's execution
-	// context (globals live here), callStack[1] is the first user function call, etc.
-	// callStackTop is the index of the next free slot (== current depth + 1).
-	// Invariant: callStackTop >= 1 during all execution (set up in Reset).
-
-	// Execution state (persistent across RunSteps calls)
-
-	// Set by the `exit` intrinsic: this run has asked its host to shut down,
-	// and with what result code.  Per-VM rather than a host-side static because
-	// a process can have several interpreters running at once -- a REPL driving
-	// a child program, say -- and only the machine whose code called `exit` is
-	// exiting.  Whoever drives that VM decides what exiting means for it: the
-	// top-level host ends the process, while a host running a child program
-	// just notes that the program is over.  Cleared by Reset, so each program
-	// starts out not exiting.
-
-	// True when a runtime error has been raised but its stack trace has not
-	// yet been attached.  Errors are often raised mid-instruction, before VM
-	// state (PC, CurrentFunction) has been saved; the stack trace is therefore
-	// built later, at the next SaveState, when that state is accurate.
-
-	// REPL mode: persistent globals VarMap shared across REPL entries.
-	// When set (not Value.Null), used instead of callStack[0].GetLocalVarMap for globals.
 
 	// Pending self/super for method calls, set by METHFIND/SETSELF,
 	// consumed by the next CALL instruction
@@ -557,8 +582,8 @@ struct VM {
 	// Matches the runtime behavior of user code "locals[varName] = value":
 	// if varName is already a named register, the value lands there directly;
 	// otherwise a plain map entry is created and LookupVariable will find it.
-	// In REPL mode (ReplGlobals != null) at the top level, writes to ReplGlobals
-	// so the variable persists across REPL iterations.
+	// At the top level there is no special case: the current frame's locals map
+	// simply IS the globals map (see GetCurrentLocalVarMap).
 	public: inline void SetVar(String varName, Value value);
 
 	// Synchronously invoke a MiniScript function value with the given arguments,
@@ -581,15 +606,14 @@ struct VM {
 
 	public: inline void Reset(List<FuncDef> allFunctions);
 
-	// Reset to run allFunctions, with a persistent globals VarMap.  Pass Value.Null
-	// for a normal (full) reset.  A non-null replGlobals makes the given map the
-	// new program's globals: it is gathered off whatever registers it was bound to
-	// and rebound to this VM's, so the variables in it survive into the new program.
-	// Two callers use this: the REPL, which passes the same VM its own globals map
-	// each line, and a host chaining to a new program via
-	// Interpreter.ResetPreservingGlobals, which passes a *fresh* VM the globals of
-	// the outgoing one.
-	public: inline void Reset(List<FuncDef> allFunctions, Value replGlobals);
+	// Reset to run allFunctions in the given global namespace.  Pass null to keep
+	// whatever namespace this VM already has (making one if it has none), which is
+	// what a REPL wants: every line is a new @main over the same globals.  A host
+	// chaining to a new program hands the outgoing interpreter's Globals to the
+	// incoming VM, and the variables in it simply carry over -- there is nothing to
+	// gather off registers and nothing to rebind, because globals were never in
+	// registers to begin with.
+	public: inline void Reset(List<FuncDef> allFunctions, Globals globals);
 
 	public: inline void Stop();
 
@@ -696,16 +720,13 @@ struct VM {
 
 	// Switch all frame-local execution state to the given function.
 
-	// Get the globals VarMap: a live map view of the top-level (@main) variables,
-	// the same map the `globals` intrinsic returns.  In REPL mode, this is the
-	// persistent ReplGlobals.  Otherwise it is @main's cached
-	// callStack[0].LocalVarMap (created on first use).  The cache stays current
-	// because NAME_rA_kBC keeps a live frame VarMap in sync as new variables are
-	// declared.  callStack[0].ReturnFunc holds @main's own function index (by
-	// convention for this slot), used to find @main's MaxRegs.
-	// Public because host code needs it to carry globals from one program to the
-	// next: hand the result to VM.Reset of the VM running the new program (see
-	// Interpreter.ResetPreservingGlobals).
+	// The `globals` map: an ordinary map whose entire storage is this VM's global
+	// namespace, and the same object the `globals` intrinsic returns.  There is no
+	// caching and no mode switch -- the map is created once with the Globals it
+	// views and lives as long as it does.
+	// The "VarMap" in the name is now historical; it is kept because embedding
+	// hosts call it.  To carry globals from one program to the next, hand
+	// GetGlobals() (not this) to the new VM's Reset.
 	public: inline Value GetGlobalsVarMap();
 
 	// Get or create a VarMap for the current call frame's local variables.
@@ -751,8 +772,10 @@ inline Int32 VM::ExitCode() { return get()->ExitCode; }
 inline void VM::set_ExitCode(Int32 _v) { get()->ExitCode = _v; }
 inline Boolean VM::_errorStackPending() { return get()->_errorStackPending; }
 inline void VM::set__errorStackPending(Boolean _v) { get()->_errorStackPending = _v; }
-inline Value VM::ReplGlobals() { return get()->ReplGlobals; }
-inline void VM::set_ReplGlobals(Value _v) { get()->ReplGlobals = _v; }
+inline Globals VM::_globals() { return get()->_globals; }
+inline void VM::set__globals(Globals _v) { get()->_globals = _v; }
+inline Globals VM::GetGlobals() { return get()->GetGlobals(); }
+inline void VM::SetGlobals(Globals globals) { return get()->SetGlobals(globals); }
 inline Value VM::pendingSelf() { return get()->pendingSelf; }
 inline void VM::set_pendingSelf(Value _v) { get()->pendingSelf = _v; }
 inline Value VM::pendingSuper() { return get()->pendingSuper; }
@@ -801,7 +824,7 @@ inline void VM::ManuallyPushCall(Int32 intrinsicCalleeBase,FuncDef importMain) {
 inline void VM::SetVar(String varName,Value value) { return get()->SetVar(varName, value); }
 inline Value VM::RunFunction(Value funcRef,List<Value> args) { return get()->RunFunction(funcRef, args); }
 inline void VM::Reset(List<FuncDef> allFunctions) { return get()->Reset(allFunctions); }
-inline void VM::Reset(List<FuncDef> allFunctions,Value replGlobals) { return get()->Reset(allFunctions, replGlobals); }
+inline void VM::Reset(List<FuncDef> allFunctions,Globals globals) { return get()->Reset(allFunctions, globals); }
 inline void VM::Stop() { return get()->Stop(); }
 inline void VM::RequestExit(Int32 resultCode) { return get()->RequestExit(resultCode); }
 inline void VM::RaiseRuntimeError(String message) { return get()->RaiseRuntimeError(message); }

@@ -185,3 +185,83 @@ same loop on an ordinary map.  `VarMapBacking`'s two linear scans per access are
 gone.  Reaching a global by name from inside a function — which is what most
 real code does — is now materially better than before, and that is the half of
 the trade the top-level regression has to be weighed against.
+
+---
+
+# After the slot opcodes (stage 4)
+
+Taken 2026-08-02, same machine, **C# only** — the C++ side has not been
+transpiled.  Unlike the section above, all three columns here were measured in
+one sitting, from git worktrees of the two earlier commits, so they are directly
+comparable to each other; do not compare them to the numbers further up the
+page, which come from different sessions.
+
+Method: minimum of three runs for baseline and stage 4 (single-run timings on
+these benchmarks scatter by 10–15%, enough to swamp some of the differences
+below).  Stage 2+3 is a single run, which is all it needs — its numbers are far
+outside anyone's noise.
+
+| Benchmark | baseline `7e1d828` | stage 2+3 `08e9781` | stage 4 |
+|---|---|---|---|
+| Global Loop | 7.28s | 30.06s | **10.93s** |
+| Global Loop (locals) | 7.17s | 7.56s | **7.28s** |
+| Global Churn | 4.96s | 1.88s | **1.81s** |
+| Iterative Factorial (src) | 6.95s | 23.69s | **8.91s** |
+| Iterative Fibonacci (src) | 15.85s | 30.71s | **11.72s** |
+| Recursive Fibonacci (src) | 9.53s | 10.58s | **10.50s** |
+
+### 1. Most of the regression is recovered, but not all of it
+
+| | baseline | stage 2+3 | stage 4 | target |
+|---|---|---|---|---|
+| globals ÷ locals | 1.02x | 3.98x | **1.50x** | under ~1.3x |
+
+`Global Loop (locals)` is unchanged throughout, which is the control working.
+
+1.50x is a long way back from 3.98x and it beats both Python (2.51x) and Lua
+(3.39x) on the same pair — but it misses the bar §4.3 set, and the miss is
+structural rather than something left on the table.  The loop body compiles to
+21 instructions where the register form needed 17: `GLOADC` replaces `LOADC`
+one-for-one, but each of the four assignments now needs an explicit `GSTORE`
+where the register form simply wrote the variable's register as a side effect of
+computing into it.  Four extra instructions on seventeen is 1.24x before any
+per-instruction difference, and `GLOADC` does two list indexes and an
+unassigned-test where `LOADC` did a register move and a name compare.
+
+Closing the rest would mean not storing at all — keeping a top-level variable in
+a register between its assignment and its next use, and writing through to the
+slot only where something could observe it.  That is real work and it is not
+stage 5; note it and move on.
+
+### 2. The pathological case stays fixed, and costs nothing further
+
+`Global Churn` is 1.81s against a 4.96s baseline: 2.7x faster, essentially all
+of it already won in stage 2+3 (1.88s).  Slot indexing neither helps nor hurts
+here, which is expected — that benchmark reaches globals from inside functions,
+by computed name, so it goes through the map backing rather than through these
+opcodes.
+
+### 3. Two results in the control group that need saying
+
+**`Iterative Fibonacci` is 1.35x faster than the pre-globals baseline** (15.85s
+vs 11.72s), not merely recovered.  It was the worst-hit of the three controls in
+stage 2+3 and is now the best.  This is reproducible across runs and I do not
+have an explanation for it; @main's `MaxRegs` drops from 15 to 10, which is real
+but far too small to account for 25%.  Worth understanding before anyone quotes
+it as a win.
+
+**`Iterative Factorial` is 1.28x slower than baseline** (6.95s vs 8.91s).  That
+one is unsurprising: its hot loop is entirely top-level global arithmetic, so it
+is `Global Loop` wearing a different hat.
+
+`Recursive Fibonacci` is 1.10x slower, which is at the edge of the noise band
+even with min-of-three, and its hot path is all function-local — worth a second
+look when the C++ numbers land, but not evidence of a leak into the local path
+on its own.
+
+### Still to do
+
+Re-run `tools/benchmark.sh -lang=cpp-goto` after transpiling and fill in the C++
+column.  The C++ side is where the design should look best: `GlobalSlots` and
+`_values` are contiguous vectors there, so the two list indexes on the hot path
+become genuine array indexes.

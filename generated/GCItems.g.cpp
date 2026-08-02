@@ -205,6 +205,10 @@ void GCFunction::MarkChildren() {
 		for (Int32 i = 0; i < pnames.Count(); i++) GCManager::Mark(pnames[i]);
 		List<Value> pdefs = Func.ParamDefaults();
 		for (Int32 i = 0; i < pdefs.Count(); i++) GCManager::Mark(pdefs[i]);
+		// Global-reference names live outside the constant pool; see
+		// VM.MarkFuncConstants.
+		List<Value> gnames = Func.GlobalNames();
+		for (Int32 i = 0; i < gnames.Count(); i++) GCManager::Mark(gnames[i]);
 	}
 }
 

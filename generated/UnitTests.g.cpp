@@ -60,7 +60,15 @@ Boolean UnitTests::TestStringUtils() {
 }
 Boolean UnitTests::TestDisassembler() {
 	return
-		AssertEqual(Disassembler::ToString(0x01050A00), "LOAD    r5, r10");
+		AssertEqual(Disassembler::ToString(0x01050A00), "LOAD    r5, r10")
+	// Global references print as gN, not kN: the operand indexes the
+	// function's global-reference table, not its constant pool.
+	&&	AssertEqual(Disassembler::ToString(BytecodeUtil::INS_AB(Opcode::GLOADC_rA_iBC, 3, 7)),
+			"GLOADC  r3, g7")
+	&&	AssertEqual(Disassembler::ToString(BytecodeUtil::INS_AB(Opcode::GLOADV_rA_iBC, 1, 0)),
+			"GLOADV  r1, g0")
+	&&	AssertEqual(Disassembler::ToString(BytecodeUtil::INS_AB(Opcode::GSTORE_rA_iBC, 2, 5)),
+			"GSTORE  r2, g5");
 }
 Boolean UnitTests::TestAssembler() {
 	// Test tokenization
@@ -111,6 +119,18 @@ Boolean UnitTests::TestAssembler() {
 
 	asmOk = asmOk && AssertEqualU(assem.AddLine("RETURN"),
 		BytecodeUtil::INS(Opcode::RETURN));
+
+	// Global access.  The name is interned into the function's
+	// global-reference table, so the first mention of "gx" is g0 and the
+	// second mention of the same name reuses it.
+	asmOk = asmOk && AssertEqualU(assem.AddLine("GSTORE r1, \"gx\""),
+		BytecodeUtil::INS_AB(Opcode::GSTORE_rA_iBC, 1, 0));
+
+	asmOk = asmOk && AssertEqualU(assem.AddLine("GLOADC r2, \"gy\""),
+		BytecodeUtil::INS_AB(Opcode::GLOADC_rA_iBC, 2, 1));
+
+	asmOk = asmOk && AssertEqualU(assem.AddLine("GLOADV r3, \"gx\""),
+		BytecodeUtil::INS_AB(Opcode::GLOADV_rA_iBC, 3, 0));
 	
 	// Test label assembly with two-pass approach
 	List<String> labelTest =  List<String>::New({

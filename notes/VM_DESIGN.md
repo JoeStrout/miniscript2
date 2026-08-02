@@ -32,6 +32,36 @@ Our internal opcode names include a verb/mnemonic, and a description of how the 
 | SLICE_rA_rB_rC | R[A] := R[B][R[C]:R[C+1]] (slice; end index in adjacent register) |
 | LOCALS_rA | R[A] := new VarMap for local variables (r0-r4) |
 
+### Globals
+
+Global variables are slots in the interpreter's `Globals` table, not registers;
+see [GLOBALS.md](GLOBALS.md).  The BC operand of these three opcodes is an index
+into the *global-reference table* of the enclosing FuncDef (`GlobalNames` /
+`GlobalSlots`), which is a separate table from the constant pool — the
+disassembler writes those operands as `gN` rather than `kN`.  The reference is
+resolved to a slot number the first time the function runs against a given
+namespace, and re-resolved if it is ever run against another one.
+
+Only top-level code (`@main`) emits these.  Inside a function a free name might
+still be an enclosing local, so those keep using `LOADC`/`LOADV`.
+
+| Mnemonic | Description |
+| --- | --- |
+| GLOADC_rA_iBC | R[A] := the global named by reference BC, invoking it if it is a funcref (globals counterpart of LOADC) |
+| GLOADV_rA_iBC | R[A] := the global named by reference BC, as stored (globals counterpart of LOADV; the `@name` form) |
+| GSTORE_rA_iBC | the global named by reference BC := R[A] |
+
+Assembly syntax names the global directly, and the assembler interns it:
+
+```
+GSTORE r1, "count"     # count = r1
+GLOADC r2, "print"     # r2 = print  (invoking it, if it is a function)
+GLOADV r2, "print"     # r2 = @print
+```
+
+A read whose slot is unassigned — never bound, or removed — falls through to the
+intrinsics table, and raises Undefined Identifier if it is not there either.
+
 ### Math
 
 | ADD_rA_rB_rC | R[A] := R[B] + R[C] |

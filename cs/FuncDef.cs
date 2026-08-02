@@ -29,6 +29,33 @@ public class FuncDef {
 	public String SourceLoc = "";
 	public String FileName = "";
 
+	// ── Global-reference table ────────────────────────────────────────────────
+	//
+	// The names this function reaches as globals, in the order the BC operand of
+	// GLOADC/GLOADV/GSTORE indexes them.  GlobalNames is filled at compile time
+	// and never changes; GlobalSlots is its resolution into slots of some
+	// particular Globals table, and is valid only while GlobalCacheId equals that
+	// table's Id.  See notes/GLOBALS.md section 4.3 for why the cache is guarded
+	// rather than baked in: the same FuncDef may be called against a different
+	// namespace than the one it was compiled alongside, which is what makes
+	// cross-interpreter seeding work.
+	//
+	// Id 0 is never issued (Globals pre-increments), so 0 means "never resolved".
+	public List<Value> GlobalNames = new List<Value>();
+	public List<Int32> GlobalSlots = new List<Int32>();
+	public Int32 GlobalCacheId = 0;
+
+	// Intern a name into the global-reference table, returning its index.  Used
+	// by the code generator and the assembler while building this function.
+	public Int32 AddGlobalRef(Value name) {
+		for (Int32 i = 0; i < GlobalNames.Count; i++) {
+			if (GlobalNames[i] == name) return i;
+		}
+		GlobalNames.Add(name);
+		GlobalSlots.Add(-1);
+		return GlobalNames.Count - 1;
+	}
+
 	// RLE line-number table: _lineRLEPC[i] is the first bytecode PC whose source
 	// line is _lineRLELine[i].  The run continues until the next entry.
 	// Use AddInstruction (not Code.Add) when building bytecode so that this

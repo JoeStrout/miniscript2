@@ -77,6 +77,7 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	public: Int32 ExitCode;
 	private: Boolean _errorStackPending = Boolean(false);
 	private: Globals _globals;
+	private: Int32 _globalsId;
 
 	// callStack is indexed by execution depth: callStack[0] is always @main's execution
 	// context (globals live here), callStack[1] is the first user function call, etc.
@@ -109,11 +110,19 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	// work.  Normally the owning Interpreter hands one in at Reset; a standalone
 	// VM makes its own.
 
+	// _globals.Id(), kept alongside so the per-access cache guard in GlobalSlot is
+	// a bare field compare rather than a walk out to the Globals object.  Must be
+	// updated everywhere _globals is.  Zero is never a valid Id, so a VM with no
+	// namespace can never validate a stale FuncDef cache.
+
 	public: Globals GetGlobals();
 
 	// Run in someone else's global namespace from here on.  Takes effect at once,
 	// mid-run included: nothing caches a global anywhere.  The caller keeps
 	// ownership of both namespaces -- this does not Release the outgoing one.
+	// Compiled code does cache name -> slot resolutions, but those are guarded by
+	// the namespace's Id, so switching here invalidates every one of them at a
+	// stroke; the next global access re-resolves against the new table.
 	public: void SetGlobals(Globals globals);
 	private: Value pendingSelf;
 	private: Value pendingSuper;
@@ -361,6 +370,24 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 
 	// Switch all frame-local execution state to the given function.
 
+	// ── Global-reference resolution (GLOADC / GLOADV / GSTORE) ────────────────
+	// The cold half of a global access.  The function's cached slot indices were
+	// resolved against some other namespace (or none yet), so re-resolve the whole
+	// table and hand back the one slot the instruction asked for.  Resolving the
+	// table wholesale rather than one entry at a time is what lets the hot path be
+	// a single Id compare; see notes/GLOBALS.md section 4.3.
+	// This runs about once per function per namespace: adding a slot never
+	// invalidates an existing one, so Id changes only when the VM is pointed at a
+	// different Globals object altogether.
+	private: Int32 ResolveGlobalRef(FuncDef func, Int32 refIdx);
+
+	// A global reference whose slot is unassigned: either the name has never been
+	// bound, or it was removed.  Intrinsics deliberately do not occupy slots (so
+	// `globals.indexes` does not list 150 built-ins), so this is where they are
+	// found -- one never-taken branch on the hot path, and the same cost as the
+	// intrinsic step of LookupVariable when it is taken.
+	private: Value GlobalMiss(FuncDef func, Int32 refIdx);
+
 	// The `globals` map: an ordinary map whose entire storage is this VM's global
 	// namespace, and the same object the `globals` intrinsic returns.  There is no
 	// caching and no mode switch -- the map is created once with the Globals it
@@ -432,6 +459,8 @@ struct VM {
 	private: void set__errorStackPending(Boolean _v);
 	private: Globals _globals();
 	private: void set__globals(Globals _v);
+	private: Int32 _globalsId();
+	private: void set__globalsId(Int32 _v);
 
 	// callStack is indexed by execution depth: callStack[0] is always @main's execution
 	// context (globals live here), callStack[1] is the first user function call, etc.
@@ -464,11 +493,19 @@ struct VM {
 	// work.  Normally the owning Interpreter hands one in at Reset; a standalone
 	// VM makes its own.
 
+	// _globals.Id(), kept alongside so the per-access cache guard in GlobalSlot is
+	// a bare field compare rather than a walk out to the Globals object.  Must be
+	// updated everywhere _globals is.  Zero is never a valid Id, so a VM with no
+	// namespace can never validate a stale FuncDef cache.
+
 	public: inline Globals GetGlobals();
 
 	// Run in someone else's global namespace from here on.  Takes effect at once,
 	// mid-run included: nothing caches a global anywhere.  The caller keeps
 	// ownership of both namespaces -- this does not Release the outgoing one.
+	// Compiled code does cache name -> slot resolutions, but those are guarded by
+	// the namespace's Id, so switching here invalidates every one of them at a
+	// stroke; the next global access re-resolves against the new table.
 	public: inline void SetGlobals(Globals globals);
 	private: Value pendingSelf();
 	private: void set_pendingSelf(Value _v);
@@ -720,6 +757,24 @@ struct VM {
 
 	// Switch all frame-local execution state to the given function.
 
+	// ── Global-reference resolution (GLOADC / GLOADV / GSTORE) ────────────────
+	// The cold half of a global access.  The function's cached slot indices were
+	// resolved against some other namespace (or none yet), so re-resolve the whole
+	// table and hand back the one slot the instruction asked for.  Resolving the
+	// table wholesale rather than one entry at a time is what lets the hot path be
+	// a single Id compare; see notes/GLOBALS.md section 4.3.
+	// This runs about once per function per namespace: adding a slot never
+	// invalidates an existing one, so Id changes only when the VM is pointed at a
+	// different Globals object altogether.
+	private: inline Int32 ResolveGlobalRef(FuncDef func, Int32 refIdx);
+
+	// A global reference whose slot is unassigned: either the name has never been
+	// bound, or it was removed.  Intrinsics deliberately do not occupy slots (so
+	// `globals.indexes` does not list 150 built-ins), so this is where they are
+	// found -- one never-taken branch on the hot path, and the same cost as the
+	// intrinsic step of LookupVariable when it is taken.
+	private: inline Value GlobalMiss(FuncDef func, Int32 refIdx);
+
 	// The `globals` map: an ordinary map whose entire storage is this VM's global
 	// namespace, and the same object the `globals` intrinsic returns.  There is no
 	// caching and no mode switch -- the map is created once with the Globals it
@@ -774,6 +829,8 @@ inline Boolean VM::_errorStackPending() { return get()->_errorStackPending; }
 inline void VM::set__errorStackPending(Boolean _v) { get()->_errorStackPending = _v; }
 inline Globals VM::_globals() { return get()->_globals; }
 inline void VM::set__globals(Globals _v) { get()->_globals = _v; }
+inline Int32 VM::_globalsId() { return get()->_globalsId; }
+inline void VM::set__globalsId(Int32 _v) { get()->_globalsId = _v; }
 inline Globals VM::GetGlobals() { return get()->GetGlobals(); }
 inline void VM::SetGlobals(Globals globals) { return get()->SetGlobals(globals); }
 inline Value VM::pendingSelf() { return get()->pendingSelf; }
@@ -854,6 +911,8 @@ inline bool VMStorage::EnsureFrame(Int32 baseIndex,UInt16 neededRegs) {
 	}
 	return Boolean(true);
 }
+inline Int32 VM::ResolveGlobalRef(FuncDef func,Int32 refIdx) { return get()->ResolveGlobalRef(func, refIdx); }
+inline Value VM::GlobalMiss(FuncDef func,Int32 refIdx) { return get()->GlobalMiss(func, refIdx); }
 inline Value VM::GetGlobalsVarMap() { return get()->GetGlobalsVarMap(); }
 inline Value VM::GetCurrentLocalVarMap(Int32 baseIndex,UInt16 maxRegs) { return get()->GetCurrentLocalVarMap(baseIndex, maxRegs); }
 inline Value VMStorage::GetCurrentLocalVarMap(Int32 baseIndex,UInt16 maxRegs) {

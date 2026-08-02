@@ -28,7 +28,6 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 	private: List<Int32> _loopContinueLabels; // Stack of loop continue labels for continue
 	private: List<FuncDef> _functions; // Compile-time registry of all functions (for naming + disassembly)
 	private: Boolean _globalScope;
-	private: Int32 _globalsReg; // register holding the globals map, or -1
 	public: String FileName = ""; // Source file name, copied to each compiled FuncDef
 	public: Value Error;
 
@@ -37,9 +36,9 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 	// is a function returning its own locals, so its top-level names are locals
 	// and this stays false there.  See notes/GLOBALS.md.
 	// At global scope a named variable is a slot in the Globals table, so it gets
-	// no register and no NAME op: assignments become a map store through
-	// _globalsReg, and reads fall into VisitIdentifier's "not a known register"
-	// path, which resolves through LookupVariable at run time.
+	// no register and no NAME op.  Assignments compile to GSTORE and reads to
+	// GLOADC/GLOADV, all of which name the variable through this function's
+	// global-reference table rather than through a register or the constant pool.
 
 	public: CodeGeneratorStorage(CodeEmitterBase emitter);
 
@@ -113,23 +112,31 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 
 	// ── Global scope ─────────────────────────────────────────────────────────
 
-	// Keys under which internal (non-user) registers are parked in _variableRegs.
+	// Key under which an internal (non-user) register is parked in _variableRegs.
 	// That dictionary doubles as the set of registers ResetTempRegisters must
 	// preserve, and '@' cannot appear in an identifier, so no user variable can
 	// ever collide with one of these.
-	private: static String GlobalsRegKey();
-
 	private: static String LoopVarRegKey(String varName);
 
-	// Begin compiling top-level code: claim a register to hold the globals map for
-	// the life of @main, so each global store is two instructions rather than
-	// three.  The map object is stable -- even `reset` clears the namespace in
-	// place rather than replacing it -- so caching it cannot go stale.
+	// Intern a global name in this function's global-reference table.  The BC
+	// operand of GLOADC/GLOADV/GSTORE is an index into that table, resolved to a
+	// slot number the first time the function runs against a given namespace.
+	private: Int32 AddGlobalRef(String varName);
+
+	// Begin compiling top-level code.  Nothing to set up: at global scope a named
+	// variable is a slot, reached by name through the reference table, so there is
+	// no globals map to cache in a register and no register allocation to do.
 	private: void BeginGlobalScope();
 
 	// Store a register into the named global.  Creates the global if it is new;
 	// this is the only way a name comes into existence at top level.
 	private: void EmitGlobalStore(String varName, Int32 valueReg);
+
+	// Read a free variable -- one with no register of its own -- into resultReg.
+	// At global scope that is a slot access; anywhere else the name might still
+	// turn out to be an enclosing local, so it has to go through the run-time
+	// search (see EmitNamedLoad's r0 form).
+	private: void EmitFreeLoad(Boolean addressOf, Int32 resultReg, String varName, String comment);
 
 	// Compile a complete function from a single expression/statement
 	public: FuncDef CompileFunction(ASTNode ast, String funcName);
@@ -321,8 +328,6 @@ struct CodeGenerator : public IASTVisitor {
 	private: void set__functions(List<FuncDef> _v); // Compile-time registry of all functions (for naming + disassembly)
 	private: Boolean _globalScope();
 	private: void set__globalScope(Boolean _v);
-	private: Int32 _globalsReg(); // register holding the globals map, or -1
-	private: void set__globalsReg(Int32 _v); // register holding the globals map, or -1
 	public: String FileName(); // Source file name, copied to each compiled FuncDef
 	public: void set_FileName(String _v); // Source file name, copied to each compiled FuncDef
 	public: Value Error();
@@ -333,9 +338,9 @@ struct CodeGenerator : public IASTVisitor {
 	// is a function returning its own locals, so its top-level names are locals
 	// and this stays false there.  See notes/GLOBALS.md.
 	// At global scope a named variable is a slot in the Globals table, so it gets
-	// no register and no NAME op: assignments become a map store through
-	// _globalsReg, and reads fall into VisitIdentifier's "not a known register"
-	// path, which resolves through LookupVariable at run time.
+	// no register and no NAME op.  Assignments compile to GSTORE and reads to
+	// GLOADC/GLOADV, all of which name the variable through this function's
+	// global-reference table rather than through a register or the constant pool.
 
 	public: static CodeGenerator New(CodeEmitterBase emitter) {
 		return CodeGenerator(std::make_shared<CodeGeneratorStorage>(emitter));
@@ -411,23 +416,31 @@ struct CodeGenerator : public IASTVisitor {
 
 	// ── Global scope ─────────────────────────────────────────────────────────
 
-	// Keys under which internal (non-user) registers are parked in _variableRegs.
+	// Key under which an internal (non-user) register is parked in _variableRegs.
 	// That dictionary doubles as the set of registers ResetTempRegisters must
 	// preserve, and '@' cannot appear in an identifier, so no user variable can
 	// ever collide with one of these.
-	private: static String GlobalsRegKey() { return CodeGeneratorStorage::GlobalsRegKey(); }
-
 	private: static String LoopVarRegKey(String varName) { return CodeGeneratorStorage::LoopVarRegKey(varName); }
 
-	// Begin compiling top-level code: claim a register to hold the globals map for
-	// the life of @main, so each global store is two instructions rather than
-	// three.  The map object is stable -- even `reset` clears the namespace in
-	// place rather than replacing it -- so caching it cannot go stale.
+	// Intern a global name in this function's global-reference table.  The BC
+	// operand of GLOADC/GLOADV/GSTORE is an index into that table, resolved to a
+	// slot number the first time the function runs against a given namespace.
+	private: inline Int32 AddGlobalRef(String varName);
+
+	// Begin compiling top-level code.  Nothing to set up: at global scope a named
+	// variable is a slot, reached by name through the reference table, so there is
+	// no globals map to cache in a register and no register allocation to do.
 	private: inline void BeginGlobalScope();
 
 	// Store a register into the named global.  Creates the global if it is new;
 	// this is the only way a name comes into existence at top level.
 	private: inline void EmitGlobalStore(String varName, Int32 valueReg);
+
+	// Read a free variable -- one with no register of its own -- into resultReg.
+	// At global scope that is a slot access; anywhere else the name might still
+	// turn out to be an enclosing local, so it has to go through the run-time
+	// search (see EmitNamedLoad's r0 form).
+	private: inline void EmitFreeLoad(Boolean addressOf, Int32 resultReg, String varName, String comment);
 
 	// Compile a complete function from a single expression/statement
 	public: inline FuncDef CompileFunction(ASTNode ast, String funcName);
@@ -613,8 +626,6 @@ inline List<FuncDef> CodeGenerator::_functions() { return get()->_functions; } /
 inline void CodeGenerator::set__functions(List<FuncDef> _v) { get()->_functions = _v; } // Compile-time registry of all functions (for naming + disassembly)
 inline Boolean CodeGenerator::_globalScope() { return get()->_globalScope; }
 inline void CodeGenerator::set__globalScope(Boolean _v) { get()->_globalScope = _v; }
-inline Int32 CodeGenerator::_globalsReg() { return get()->_globalsReg; } // register holding the globals map, or -1
-inline void CodeGenerator::set__globalsReg(Int32 _v) { get()->_globalsReg = _v; } // register holding the globals map, or -1
 inline String CodeGenerator::FileName() { return get()->FileName; } // Source file name, copied to each compiled FuncDef
 inline void CodeGenerator::set_FileName(String _v) { get()->FileName = _v; } // Source file name, copied to each compiled FuncDef
 inline Value CodeGenerator::Error() { return get()->Error; }
@@ -632,8 +643,10 @@ inline void CodeGenerator::CompileBody(List<ASTNode> body) { return get()->Compi
 inline void CodeGenerator::EmitDiscardCheck(ASTNode stmt,Int32 resultReg) { return get()->EmitDiscardCheck(stmt, resultReg); }
 inline void CodeGenerator::CompileConditionalBody(List<ASTNode> body) { return get()->CompileConditionalBody(body); }
 inline void CodeGenerator::EnsureNamed(String varName,Int32 varReg) { return get()->EnsureNamed(varName, varReg); }
+inline Int32 CodeGenerator::AddGlobalRef(String varName) { return get()->AddGlobalRef(varName); }
 inline void CodeGenerator::BeginGlobalScope() { return get()->BeginGlobalScope(); }
 inline void CodeGenerator::EmitGlobalStore(String varName,Int32 valueReg) { return get()->EmitGlobalStore(varName, valueReg); }
+inline void CodeGenerator::EmitFreeLoad(Boolean addressOf,Int32 resultReg,String varName,String comment) { return get()->EmitFreeLoad(addressOf, resultReg, varName, comment); }
 inline FuncDef CodeGenerator::CompileFunction(ASTNode ast,String funcName) { return get()->CompileFunction(ast, funcName); }
 inline List<FuncDef> CodeGenerator::CompileImport(List<ASTNode> statements,String funcName) { return get()->CompileImport(statements, funcName); }
 inline FuncDef CodeGenerator::CompileProgram(List<ASTNode> statements,String funcName) { return get()->CompileProgram(statements, funcName); }

@@ -43,6 +43,12 @@ Int32 GlobalsStorage::Resolve(Value name) {
 	_index[name] = slot;
 	return slot;
 }
+void GlobalsStorage::ResolveRefs(FuncDef func) {
+	List<Value> names = func.GlobalNames();
+	List<Int32> slots = func.GlobalSlots();
+	for (Int32 i = 0; i < names.Count(); i++) slots[i] = Resolve(names[i]);
+	func.set_GlobalCacheId(_id);
+}
 Boolean GlobalsStorage::TryGet(Value key,Value* value) {
 	Int32 slot = Find(key);
 	if (slot >= 0) {

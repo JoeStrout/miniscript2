@@ -31,11 +31,10 @@ public class CodeGenerator : IASTVisitor {
 	// and this stays false there.  See notes/GLOBALS.md.
 	//
 	// At global scope a named variable is a slot in the Globals table, so it gets
-	// no register and no NAME op: assignments become a map store through
-	// _globalsReg, and reads fall into VisitIdentifier's "not a known register"
-	// path, which resolves through LookupVariable at run time.
+	// no register and no NAME op.  Assignments compile to GSTORE and reads to
+	// GLOADC/GLOADV, all of which name the variable through this function's
+	// global-reference table rather than through a register or the constant pool.
 	private Boolean _globalScope;
-	private Int32 _globalsReg;                 // register holding the globals map, or -1
 
 	public String FileName = "";               // Source file name, copied to each compiled FuncDef
 	public Value Error;
@@ -52,7 +51,6 @@ public class CodeGenerator : IASTVisitor {
 		_loopContinueLabels = new List<Int32>();
 		_functions = new List<FuncDef>();
 		_globalScope = false;
-		_globalsReg = -1;
 		Error = Value.Null;
 	}
 
@@ -254,39 +252,50 @@ public class CodeGenerator : IASTVisitor {
 
 	// ── Global scope ─────────────────────────────────────────────────────────
 
-	// Keys under which internal (non-user) registers are parked in _variableRegs.
+	// Key under which an internal (non-user) register is parked in _variableRegs.
 	// That dictionary doubles as the set of registers ResetTempRegisters must
 	// preserve, and '@' cannot appear in an identifier, so no user variable can
 	// ever collide with one of these.
-	private static String GlobalsRegKey() {
-		return "@globals";
-	}
-
 	private static String LoopVarRegKey(String varName) {
 		return "@loopvar " + varName;
 	}
 
-	// Begin compiling top-level code: claim a register to hold the globals map for
-	// the life of @main, so each global store is two instructions rather than
-	// three.  The map object is stable -- even `reset` clears the namespace in
-	// place rather than replacing it -- so caching it cannot go stale.
+	// Intern a global name in this function's global-reference table.  The BC
+	// operand of GLOADC/GLOADV/GSTORE is an index into that table, resolved to a
+	// slot number the first time the function runs against a given namespace.
+	private Int32 AddGlobalRef(String varName) {
+		Int32 refIdx = _emitter.AddGlobalRef(Value.make_string(varName));
+		if (refIdx > 65535 && Error.IsNull()) {
+			Error = ErrorTypes.CompilerError("too many distinct global variables in one function");
+		}
+		return refIdx;
+	}
+
+	// Begin compiling top-level code.  Nothing to set up: at global scope a named
+	// variable is a slot, reached by name through the reference table, so there is
+	// no globals map to cache in a register and no register allocation to do.
 	private void BeginGlobalScope() {
 		_globalScope = true;
-		ResetTempRegisters();               // reserves r0
-		_globalsReg = AllocReg();
-		_variableRegs[GlobalsRegKey()] = _globalsReg;
-		_emitter.EmitA(Opcode.GLOBALS_rA, _globalsReg, $"r{_globalsReg} = globals");
 	}
 
 	// Store a register into the named global.  Creates the global if it is new;
 	// this is the only way a name comes into existence at top level.
 	private void EmitGlobalStore(String varName, Int32 valueReg) {
-		Int32 nameReg = AllocReg();
-		Int32 constIdx = _emitter.AddConstant(Value.make_string(varName));
-		_emitter.EmitAB(Opcode.LOAD_rA_kBC, nameReg, constIdx, $"r{nameReg} = \"{varName}\"");
-		_emitter.EmitABC(Opcode.IDXSET_rA_rB_rC, _globalsReg, nameReg, valueReg,
+		_emitter.EmitAB(Opcode.GSTORE_rA_iBC, valueReg, AddGlobalRef(varName),
 			$"{varName} = r{valueReg}");
-		FreeReg(nameReg);
+	}
+
+	// Read a free variable -- one with no register of its own -- into resultReg.
+	// At global scope that is a slot access; anywhere else the name might still
+	// turn out to be an enclosing local, so it has to go through the run-time
+	// search (see EmitNamedLoad's r0 form).
+	private void EmitFreeLoad(Boolean addressOf, Int32 resultReg, String varName, String comment) {
+		if (_globalScope) {
+			Opcode op = addressOf ? Opcode.GLOADV_rA_iBC : Opcode.GLOADC_rA_iBC;
+			_emitter.EmitAB(op, resultReg, AddGlobalRef(varName), comment);
+			return;
+		}
+		EmitNamedLoad(addressOf, resultReg, 0, Value.make_string(varName), comment);
 	}
 
 	// Compile a complete function from a single expression/statement
@@ -297,7 +306,6 @@ public class CodeGenerator : IASTVisitor {
 		_variableRegs.Clear();
 		_namedStack.Clear();
 		_globalScope = false;
-		_globalsReg = -1;
 
 		Int32 resultReg = ast.Accept(this);
 
@@ -322,7 +330,6 @@ public class CodeGenerator : IASTVisitor {
 		// A module's top-level names are its LOCALS, not globals -- that is the
 		// whole point of returning them as a map -- so this is not global scope.
 		_globalScope = false;
-		_globalsReg = -1;
 
 		_functions.Clear();
 		_functions.Add(null);
@@ -421,10 +428,10 @@ public class CodeGenerator : IASTVisitor {
 			EmitNamedLoad(addressOf, resultReg, varReg, Value.make_string(node.Name),
 				$"r{resultReg} = {at}{node.Name}");
 		} else {
-			// Variable not in local scope — emit LOADC/LOADV referencing r0 with
-			// the variable name. At runtime, the name check on r0 will fail,
-			// triggering LookupVariable to search outer/global scope.
-			EmitNamedLoad(addressOf, resultReg, 0, Value.make_string(node.Name),
+			// Variable has no register here: at global scope it is a slot, and
+			// otherwise it may be an enclosing local, so the search happens at
+			// runtime.  EmitFreeLoad picks between the two.
+			EmitFreeLoad(addressOf, resultReg, node.Name,
 				$"r{resultReg} = {at}{node.Name} (outer)");
 		}
 
@@ -837,10 +844,10 @@ public class CodeGenerator : IASTVisitor {
 			return CompileUserCall(node, funcVarReg, explicitTarget);
 		}
 
-		// Not a known local — resolve at runtime via LOADV (outer/global/intrinsic).
-		// We use LOADV (not LOADC) to get the funcref without auto-invoking it.
+		// Not a known local — fetch the funcref by name, without auto-invoking it
+		// (so, the LOADV/GLOADV side of the pair rather than LOADC/GLOADC).
 		Int32 funcReg = AllocReg();
-		EmitNamedLoad(true, funcReg, 0, Value.make_string(node.Function),
+		EmitFreeLoad(true, funcReg, node.Function,
 			$"r{funcReg} = @{node.Function} (runtime lookup)");
 
 		Int32 result = CompileUserCall(node, funcReg, explicitTarget);

@@ -7,6 +7,14 @@
 
 namespace MiniScript {
 
+Int32 FuncDefStorage::AddGlobalRef(Value name) {
+	for (Int32 i = 0; i < GlobalNames.Count(); i++) {
+		if (GlobalNames[i] == name) return i;
+	}
+	GlobalNames.Add(name);
+	GlobalSlots.Add(-1);
+	return GlobalNames.Count() - 1;
+}
 void FuncDefStorage::AddInstruction(UInt32 instruction,Int32 lineNumber) {
 	Code.Add(instruction);
 	Int32 count = _lineRLELine.Count();

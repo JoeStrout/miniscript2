@@ -430,6 +430,28 @@ public class Assembler {
 			Current.ReserveRegister(reg);
 			instruction = BytecodeUtil.INS_A(Opcode.GLOBALS_rA, reg);
 
+		} else if (mnemonic == "GLOADC" || mnemonic == "GLOADV" || mnemonic == "GSTORE") {
+			// GLOADC r1, "name"   -->  r1 = the global `name`, invoking it if it is a function
+			// GLOADV r1, "name"   -->  r1 = the global `name`, as-is (the @name form)
+			// GSTORE r1, "name"   -->  the global `name` = r1
+			// The name goes in this function's global-reference table, not the
+			// constant pool, so the 16-bit BC field is a reference index.
+			if (parts.Count != 3) {
+				Error(StringUtils.Format("Syntax error: {0} requires exactly 2 operands", mnemonic));
+				return 0;
+			}
+			Byte reg = ParseRegister(parts[1]);
+			Current.ReserveRegister(reg);
+			constantValue = ParseAsConstant(parts[2]);
+			if (!constantValue.IsString()) Error("Global variable name must be a string");
+			if (HasError) return 0;
+			Int32 refIdx = Current.AddGlobalRef(constantValue);
+			if (refIdx > 65535) { Error("Too many global references in one function"); return 0; }
+			Opcode gop = Opcode.GSTORE_rA_iBC;
+			if (mnemonic == "GLOADC") gop = Opcode.GLOADC_rA_iBC;
+			else if (mnemonic == "GLOADV") gop = Opcode.GLOADV_rA_iBC;
+			instruction = BytecodeUtil.INS_AB(gop, reg, (Int16)refIdx);
+
 		} else if (mnemonic == "JUMP") {
 			if (parts.Count != 2) { Error("Syntax error"); return 0; }
 			String target = parts[1];

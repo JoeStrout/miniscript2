@@ -41,6 +41,9 @@ public static class Disassembler {
 			case Opcode.LOCALS_rA:     return "LOCALS";
 			case Opcode.OUTER_rA:      return "OUTER";
 			case Opcode.GLOBALS_rA:    return "GLOBALS";
+			case Opcode.GLOADC_rA_iBC: return "GLOADC";
+			case Opcode.GLOADV_rA_iBC: return "GLOADV";
+			case Opcode.GSTORE_rA_iBC: return "GSTORE";
 			case Opcode.SUB_rA_rB_rC:  return "SUB";
 			case Opcode.JUMP_iABC:     return "JUMP";
 			case Opcode.LT_rA_rB_rC:
@@ -153,6 +156,15 @@ public static class Disassembler {
 			// rA, kBC (constant-pool index)
 			case Opcode.FUNCREF_iA_iBC:
 				return StringUtils.Format("{0} r{1}, k{2}",
+					mnemonic,
+					(Int32)BytecodeUtil.Au(instruction),
+					(Int32)BytecodeUtil.BCu(instruction));
+			// rA, gBC (global-reference index; the name is in the function's
+			// global-reference table, which Disassemble lists alongside constants)
+			case Opcode.GLOADC_rA_iBC:
+			case Opcode.GLOADV_rA_iBC:
+			case Opcode.GSTORE_rA_iBC:
+				return StringUtils.Format("{0} r{1}, g{2}",
 					mnemonic,
 					(Int32)BytecodeUtil.Au(instruction),
 					(Int32)BytecodeUtil.BCu(instruction));
@@ -288,6 +300,13 @@ public static class Disassembler {
 			output.Add(StringUtils.Format("   {0}. {1}", i, funcDef.Constants[i]));
 		}
 		
+		if (funcDef.GlobalNames.Count > 0) {
+			output.Add(StringUtils.Format("Global refs ({0}):", funcDef.GlobalNames.Count));
+			for (Int32 i = 0; i < funcDef.GlobalNames.Count; i++) {
+				output.Add(StringUtils.Format("   g{0}. {1}", i, funcDef.GlobalNames[i]));
+			}
+		}
+
 		output.Add(StringUtils.Format("Instructions ({0}):", funcDef.Code.Count));
 		for (Int32 i = 0; i < funcDef.Code.Count; i++) {				
 			String s = ToString(funcDef.Code[i]);

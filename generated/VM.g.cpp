@@ -73,6 +73,7 @@ Globals VMStorage::GetGlobals() {
 }
 void VMStorage::SetGlobals(Globals globals) {
 	_globals = globals;
+	_globalsId = (!IsNull(globals)) ? globals.Id() : 0;
 }
 double VMStorage::ElapsedTime() {
 	auto now = std::chrono::steady_clock::now();
@@ -130,6 +131,7 @@ void VMStorage::InitVM(Int32 stackSlots,Int32 callSlots) {
 	callStack =  List<CallInfo>::New();
 	callStackTop = 0;
 	_globals = nullptr;   // created (or adopted) at Reset
+	_globalsId = 0;
 	_pendingCallStack =  List<PendingCallState>::New();
 	Error = Value::Null;
 
@@ -222,6 +224,12 @@ void VMStorage::MarkFuncConstants(FuncDef func) {
 	if (IsNull(func)) return;
 	List<Value> consts = func.Constants();
 	for (Int32 i = 0; i < consts.Count(); i++) GCManager::Mark(consts[i]);
+	// Global-reference names are not in the constant pool -- GSTORE and the
+	// GLOAD pair carry a reference index instead -- so they need marking of
+	// their own.  Names long enough to be heap strings would otherwise be
+	// swept out from under a function that has not run yet.
+	List<Value> gnames = func.GlobalNames();
+	for (Int32 i = 0; i < gnames.Count(); i++) GCManager::Mark(gnames[i]);
 }
 void VMStorage::ManuallyPushCall(Int32 intrinsicCalleeBase,FuncDef importMain) {
 	// Module frame sits just above the import intrinsic's 2-register frame (r0 + libname).
@@ -396,6 +404,7 @@ void VMStorage::Reset(List<FuncDef> allFunctions) {
 void VMStorage::Reset(List<FuncDef> allFunctions,Globals globals) {
 	if (!IsNull(globals)) _globals = globals;
 	if (IsNull(_globals)) _globals = Globals::Create();
+	_globalsId = _globals.Id();
 
 	// Locate @main.  All other functions are reachable from @main via its
 	// constant pool (nested-function templates), so the VM keeps no
@@ -1274,6 +1283,69 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				names[baseIndex + a] = Value::Null;   // temporarily clear it
 				localStack[a] = GetGlobalsVarMap();
 				names[baseIndex + a] = val;  // restore name
+				VM_NEXT();
+			}
+
+			VM_CASE(GLOADC_rA_iBC) {
+				// R[A] = the global named by reference BC, invoking it with no
+				// arguments if it turns out to be a function.  The globals
+				// counterpart of LOADC: one guarded array index instead of a walk
+				// out through LookupVariable.  Only @main emits this, because only
+				// there is a free name certainly not an enclosing local.
+				Byte a = BytecodeUtil::Au(instruction);
+				Int32 refIdx = BytecodeUtil::BCu(instruction);
+				Int32 slot = (curFuncRaw->GlobalCacheId == _globalsId) ? curFuncRaw->GlobalSlots[refIdx] : ResolveGlobalRef(currentFunc, refIdx);
+				valB = _globals.ValueAtSlot(slot);
+				if (valB.IsUnassigned()) {
+					// No such global (or it was removed): it may still be an
+					// intrinsic, which is the one branch that leaves this path.
+					valB = GlobalMiss(currentFunc, refIdx);
+				}
+
+				if (!valB.IsFuncRef()) {
+					localStack[a] = valB;
+				} else {
+					FuncDef autoCallee = nullptr;
+					Int32 status = AutoInvokeFuncRef(valB, a, pc, baseIndex, currentFunc, &autoCallee);
+					if (status == -2) {
+						// Native callback pending — exit RunInner
+						cyclesLeft = 0;
+					} else if (status == 0) {
+						// Frame was pushed — switch to callee
+						baseIndex += curFuncRaw->MaxRegs;
+						pc = 0;
+						currentFunc = autoCallee;
+						SwitchFrame(currentFunc, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack, stackPtr);
+					}
+				}
+				VM_NEXT();
+			}
+
+			VM_CASE(GLOADV_rA_iBC) {
+				// R[A] = the global named by reference BC, as stored -- no
+				// auto-invoke.  This is the `@name` form, and also how a call
+				// site fetches the funcref it is about to call.
+				Byte a = BytecodeUtil::Au(instruction);
+				Int32 refIdx = BytecodeUtil::BCu(instruction);
+				Int32 slot = (curFuncRaw->GlobalCacheId == _globalsId) ? curFuncRaw->GlobalSlots[refIdx] : ResolveGlobalRef(currentFunc, refIdx);
+				val = _globals.ValueAtSlot(slot);
+				if (val.IsUnassigned()) val = GlobalMiss(currentFunc, refIdx);
+				localStack[a] = val;
+				VM_NEXT();
+			}
+
+			VM_CASE(GSTORE_rA_iBC) {
+				// The global named by reference BC = R[A].  Creates the global if
+				// this is its first assignment; the slot itself already exists,
+				// since resolving the reference made one.
+				Byte a = BytecodeUtil::Au(instruction);
+				Int32 refIdx = BytecodeUtil::BCu(instruction);
+				Int32 slot = (curFuncRaw->GlobalCacheId == _globalsId) ? curFuncRaw->GlobalSlots[refIdx] : ResolveGlobalRef(currentFunc, refIdx);
+				if (_globals.AsMap().IsFrozen()) {
+					RaiseRuntimeError("Attempt to modify a frozen map");
+					VM_NEXT();
+				}
+				_globals.SetSlot(slot, localStack[a]);
 				VM_NEXT();
 			}
 
@@ -2243,6 +2315,22 @@ FORCE_INLINE void VMStorage::SwitchFrame(const FuncDef& currentFunc, Int32 baseI
 	curCode = &curFuncRaw->Code[0];
 	curConstants = curFuncRaw->Constants.Count() > 0 ? &curFuncRaw->Constants[0] : nullptr;
 	localStack = stackPtr + baseIndex;
+}
+Int32 VMStorage::ResolveGlobalRef(FuncDef func,Int32 refIdx) {
+	_globals.ResolveRefs(func);
+	return func.GlobalSlots()[refIdx];
+}
+Value VMStorage::GlobalMiss(FuncDef func,Int32 refIdx) {
+	Value name = func.GlobalNames()[refIdx];
+	Value result;
+	String nameStr = name.AsCString();
+	if (_intrinsics.TryGetValue(nameStr, &result)) return result;
+
+	// self/super read as null outside a method, matching LookupVariable.
+	if (name == Value::selfString || name == Value::superString) return Value::Null;
+
+	RaiseRuntimeError(StringUtils::Format("Undefined Identifier: '{0}' is unknown in this context", name));
+	return Value::Null;
 }
 Value VMStorage::GetGlobalsVarMap() {
 	if (IsNull(_globals)) return Value::Null;

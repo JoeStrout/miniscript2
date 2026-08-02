@@ -249,10 +249,13 @@ is a register move.
 table:
 
 ```
-GETGLOBAL_rA_iBC     R[A] = globals[slot of ref BC]     (auto-invokes funcrefs, like LOADC)
-GETGLOBALV_rA_iBC    same, no auto-invoke               (like LOADV, for @x)
-SETGLOBAL_iBC_rA     globals[slot of ref BC] = R[A]
+GLOADC_rA_iBC     R[A] = globals[slot of ref BC]     (auto-invokes funcrefs, like LOADC)
+GLOADV_rA_iBC     same, no auto-invoke               (like LOADV, for @x)
+GSTORE_rA_iBC     globals[slot of ref BC] = R[A]
 ```
+
+(These were called `GETGLOBAL`/`GETGLOBALV`/`SETGLOBAL` while this was a
+proposal; see §8 stage 4 for why they were renamed.)
 
 `BC` indexes a per-`FuncDef` global-reference table: `List<Value> GlobalNames`
 filled at compile time, `List<Int32> GlobalSlots` filled at run time, plus a
@@ -291,7 +294,7 @@ Notes on this path:
   name might be an enclosing local, so those keep emitting `LOADC`/`LOADV` and
   resolving through `LookupVariable`, whose globals step is now a table lookup.
   Teaching the code generator to prove a name is free through the whole lexical
-  chain, and emit `GETGLOBAL` for it, is worthwhile follow-on work — it would
+  chain, and emit `GLOADC` for it, is worthwhile follow-on work — it would
   make `print` inside a function fast too — but it is not part of this change.
 - Compiler-internal temporaries at top level (loop list/index registers, and so
   on — `cs/CodeGenerator.cs:1154`) stay registers.  Only user-named variables
@@ -407,12 +410,14 @@ changes the one test expectation noted in §8.
 
 ## 7. Risks and open questions
 
-**Top-level performance.**  *Measured; see the stage 2+3 section of
-[GLOBALS_BASELINE.md](GLOBALS_BASELINE.md).*  The regression landed at 4.23x on
-`Global Loop`, worse than the 2.5x this section expected, and `Global Churn`
-improved 2.8x.  The answer to "are the slot opcodes needed?" is yes.  `.msa`
-benchmarks are unaffected, as predicted — they address registers directly and
-never touch the globals namespace.
+**Top-level performance.**  *Settled; see [GLOBALS_BASELINE.md](GLOBALS_BASELINE.md).*
+The model-only step regressed `Global Loop` to 3.98x the cost of the same loop
+in a function, worse than the 2.5x this section expected; the slot opcodes
+brought that to 1.50x, better than Python and Lua but short of the 1.3x §4.3
+named.  `Global Churn` improved 2.7x and stayed there.  The answer to "are the
+slot opcodes needed?" was yes.  `.msa` benchmarks are unaffected throughout, as
+predicted — they address registers directly and never touch the globals
+namespace.
 
 Three benchmarks now cover this — `global_loop`, `global_loop_fn`, and
 `global_churn` in `tools/benchmarks/` — and the pre-change numbers are recorded
@@ -428,7 +433,7 @@ bear directly on the design:
   top-level regression on real code.
 
 **C++ pointer invalidation.**  The slot array grows.  Any raw base pointer into
-it must be re-fetched after anything that can add a slot (a `SETGLOBAL` miss, or
+it must be re-fetched after anything that can add a slot (a `GSTORE` miss, or
 any call).  Simplest is not to cache a base pointer at all — one extra
 indirection.  Worth confirming against how `stackPtr`/`localStack` are handled
 in the generated dispatch loop.
@@ -449,13 +454,17 @@ virtual call, which is why `IGCSet` was denied interface status.  An abstract
 carries two mutually exclusive nullable fields, `_vmb` and `_gb`.  A null check
 is also cheaper than virtual dispatch, and neither is a hot path.
 
-**Bytecode surface (slot step only).**  New opcodes mean assembler and
-disassembler support, and a way to write a global reference in `.msa`
-(`GETGLOBAL r1, "name"`, with the assembler interning into the FuncDef's table).
-Existing `.msa` files use `ASSIGN`/`NAME` on registers and `CALLF` on explicit
-function references, so they keep working — and keep register speed — but their
-top-level names stop being visible as globals to called functions.  Nothing in
-`examples/` relies on that; worth a sweep to confirm.
+**Bytecode surface (slot step only).**  *Done.*  `GLOADC r1, "name"` and
+friends; the assembler interns the name into the FuncDef's reference table and
+the disassembler prints the operand as `gN`, listing the table alongside the
+constant pool.  Existing `.msa` files use `ASSIGN`/`NAME` on registers and
+`CALLF` on explicit function references, so they keep working — and keep
+register speed — but their top-level names are not globals.  All thirteen
+`.msa` files in `examples/` were run and behave as before.  So do the `.ms`
+examples, apart from three pre-existing failures unrelated to this work:
+`textAdventure` and `therapist` hit the `input`-at-EOF crash
+([bugs.md](bugs.md) #2) when run with stdin closed, and `superstartrek` needs an
+import path for `listUtil`.
 
 **Host API.**  `GetGlobalsVarMap()` stays, returning the globals map, so
 embedding hosts keep compiling.
@@ -482,13 +491,38 @@ embedding hosts keep compiling.
    variable" test: a nested collection reached via `globals.m = ...` now
    abbreviates to `m` when printed, exactly as one reached via a plain top-level
    `m = ...` always did.  The two agreeing is the point of the change.
-4. **Required, not optional** — see the measurements appended to
-   [GLOBALS_BASELINE.md](GLOBALS_BASELINE.md).  The model-only step costs 4.23x
-   on top-level access, overshooting the ~2.5x §4.3 predicted, while winning
-   2.8x on `Global Churn`.  So: `GETGLOBAL`/`GETGLOBALV`/`SETGLOBAL`, the
-   per-`FuncDef` reference table, assembler and disassembler support.  Follow
-   [OPCODE_ADDITION.md](OPCODE_ADDITION.md).
-5. Follow-on (optional): resolve free names inside functions to `GETGLOBAL` when
+4. **Done.**  The slot opcodes, the per-`FuncDef` reference table, and assembler
+   and disassembler support.  701/701 integration tests, no expected-output
+   changes.  Three things differ from what this document proposed:
+   - **The opcodes are named `GLOADC` / `GLOADV` / `GSTORE`**, not
+     `GETGLOBAL` / `GETGLOBALV` / `SETGLOBAL`.  Two reasons.  The disassembler
+     truncates mnemonics to 7 characters (`Disassembler.ToString`), which would
+     have rendered `GETGLOBAL` and `GETGLOBALV` identically — a real ambiguity,
+     not just ugly output.  And the shorter names say what these are: the
+     globals counterparts of `LOADC`/`LOADV`, with the same C-calls/V-doesn't
+     distinction.  Field order in the raw names follows the existing convention
+     of physical order, so the store is `GSTORE_rA_iBC`, with A the *source*.
+   - **`ResolveRefs` lives on `Globals`, not on `FuncDef`.**  Putting it on
+     `FuncDef` would need `Globals` visible from `FuncDef.g.h`, and
+     `Globals.g.h` already includes that header.
+   - **The VM caches `_globals.Id()` in a field** (`VM._globalsId`), so the
+     per-access guard is a field-vs-field compare rather than a walk out to the
+     `Globals` object.  It must be updated everywhere `_globals` is.
+
+   Stage 3's `@main` preamble is gone with them: it opened with a `GLOBALS_rA`
+   into a reserved register, because a global store was an `IDXSET` on the map.
+   `GSTORE` names the variable itself, so there is nothing to cache and
+   `BeginGlobalScope` now only sets a flag.  Global names also leave the
+   constant pool, so `GCFunction.MarkChildren` and `VM.MarkFuncConstants` both
+   had to grow a pass over `GlobalNames` — a name long enough to be a heap
+   string would otherwise be swept from under a function that has not run yet.
+
+   Result: top-level access goes from 3.98x the cost of the same loop in a
+   function to **1.50x**, against the "under ~1.3x" §4.3 asked for.  The residue
+   is the four `GSTORE`s per loop iteration that the register form did not need
+   at all; see [GLOBALS_BASELINE.md](GLOBALS_BASELINE.md) for the full numbers
+   and for two control-group results that want explaining.
+5. Follow-on (optional): resolve free names inside functions to `GLOADC` when
    the code generator can prove they are not enclosing locals.
 
 ## 9. Rejected alternatives

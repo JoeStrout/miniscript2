@@ -19,7 +19,6 @@ CodeGeneratorStorage::CodeGeneratorStorage(CodeEmitterBase emitter) {
 	_loopContinueLabels =  List<Int32>::New();
 	_functions =  List<FuncDef>::New();
 	_globalScope = Boolean(false);
-	_globalsReg = -1;
 	Error = Value::Null;
 }
 List<FuncDef> CodeGeneratorStorage::GetFunctions() {
@@ -164,26 +163,30 @@ void CodeGeneratorStorage::EnsureNamed(String varName,Int32 varReg) {
 	_emitter.EmitAB(Opcode::NAME_rA_kBC, varReg, nameIdx, Interp("use r{} for {}", varReg, varName));
 	_namedStack.Add(varName);
 }
-String CodeGeneratorStorage::GlobalsRegKey() {
-	return "@globals";
-}
 String CodeGeneratorStorage::LoopVarRegKey(String varName) {
 	return "@loopvar " + varName;
 }
+Int32 CodeGeneratorStorage::AddGlobalRef(String varName) {
+	Int32 refIdx = _emitter.AddGlobalRef(Value::make_string(varName));
+	if (refIdx > 65535 && Error.IsNull()) {
+		Error = ErrorTypes::CompilerError("too many distinct global variables in one function");
+	}
+	return refIdx;
+}
 void CodeGeneratorStorage::BeginGlobalScope() {
 	_globalScope = Boolean(true);
-	ResetTempRegisters();               // reserves r0
-	_globalsReg = AllocReg();
-	_variableRegs[GlobalsRegKey()] = _globalsReg;
-	_emitter.EmitA(Opcode::GLOBALS_rA, _globalsReg, Interp("r{} = globals", _globalsReg));
 }
 void CodeGeneratorStorage::EmitGlobalStore(String varName,Int32 valueReg) {
-	Int32 nameReg = AllocReg();
-	Int32 constIdx = _emitter.AddConstant(Value::make_string(varName));
-	_emitter.EmitAB(Opcode::LOAD_rA_kBC, nameReg, constIdx, Interp("r{} = \"{}\"", nameReg, varName));
-	_emitter.EmitABC(Opcode::IDXSET_rA_rB_rC, _globalsReg, nameReg, valueReg,
+	_emitter.EmitAB(Opcode::GSTORE_rA_iBC, valueReg, AddGlobalRef(varName),
 		Interp("{} = r{}", varName, valueReg));
-	FreeReg(nameReg);
+}
+void CodeGeneratorStorage::EmitFreeLoad(Boolean addressOf,Int32 resultReg,String varName,String comment) {
+	if (_globalScope) {
+		Opcode op = addressOf ? Opcode::GLOADV_rA_iBC : Opcode::GLOADC_rA_iBC;
+		_emitter.EmitAB(op, resultReg, AddGlobalRef(varName), comment);
+		return;
+	}
+	EmitNamedLoad(addressOf, resultReg, 0, Value::make_string(varName), comment);
 }
 FuncDef CodeGeneratorStorage::CompileFunction(ASTNode ast,String funcName) {
 	CodeGenerator _this(std::static_pointer_cast<CodeGeneratorStorage>(shared_from_this()));
@@ -193,7 +196,6 @@ FuncDef CodeGeneratorStorage::CompileFunction(ASTNode ast,String funcName) {
 	_variableRegs.Clear();
 	_namedStack.Clear();
 	_globalScope = Boolean(false);
-	_globalsReg = -1;
 
 	Int32 resultReg = ast.Accept(_this);
 
@@ -214,7 +216,6 @@ List<FuncDef> CodeGeneratorStorage::CompileImport(List<ASTNode> statements,Strin
 	// A module's top-level names are its LOCALS, not globals -- that is the
 	// whole point of returning them as a map -- so this is not global scope.
 	_globalScope = Boolean(false);
-	_globalsReg = -1;
 
 	_functions.Clear();
 	_functions.Add(nullptr);
@@ -306,10 +307,10 @@ Int32 CodeGeneratorStorage::VisitIdentifier(IdentifierNode node,bool addressOf) 
 		EmitNamedLoad(addressOf, resultReg, varReg, Value::make_string(node.Name()),
 			Interp("r{} = {}{}", resultReg, at, node.Name()));
 	} else {
-		// Variable not in local scope — emit LOADC/LOADV referencing r0 with
-		// the variable name. At runtime, the name check on r0 will fail,
-		// triggering LookupVariable to search outer/global scope.
-		EmitNamedLoad(addressOf, resultReg, 0, Value::make_string(node.Name()),
+		// Variable has no register here: at global scope it is a slot, and
+		// otherwise it may be an enclosing local, so the search happens at
+		// runtime.  EmitFreeLoad picks between the two.
+		EmitFreeLoad(addressOf, resultReg, node.Name(),
 			Interp("r{} = {}{} (outer)", resultReg, at, node.Name()));
 	}
 
@@ -689,10 +690,10 @@ Int32 CodeGeneratorStorage::Visit(CallNode node) {
 		return CompileUserCall(node, funcVarReg, explicitTarget);
 	}
 
-	// Not a known local — resolve at runtime via LOADV (outer/global/intrinsic).
-	// We use LOADV (not LOADC) to get the funcref without auto-invoking it.
+	// Not a known local — fetch the funcref by name, without auto-invoking it
+	// (so, the LOADV/GLOADV side of the pair rather than LOADC/GLOADC).
 	Int32 funcReg = AllocReg();
-	EmitNamedLoad(Boolean(true), funcReg, 0, Value::make_string(node.Function()),
+	EmitFreeLoad(Boolean(true), funcReg, node.Function(),
 		Interp("r{} = @{} (runtime lookup)", funcReg, node.Function()));
 
 	Int32 result = CompileUserCall(node, funcReg, explicitTarget);

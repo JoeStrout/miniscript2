@@ -63,6 +63,9 @@
 	X(LOCALS_rA) \
 	X(OUTER_rA) \
 	X(GLOBALS_rA) \
+	X(GLOADC_rA_iBC) \
+	X(GLOADV_rA_iBC) \
+	X(GSTORE_rA_iBC) \
 	X(JUMP_iABC) \
 	X(LT_rA_rB_rC) \
 	X(LT_rA_rB_iC) \

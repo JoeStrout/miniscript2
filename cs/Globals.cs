@@ -215,6 +215,24 @@ public class Globals {
 		return !_values[slot].IsUnassigned();
 	}
 
+	// Resolve a function's global-reference table against this namespace, so its
+	// GLOADC/GLOADV/GSTORE operands become direct slot indices.  Every name the
+	// function mentions gets a slot, including ones it may never reach; those
+	// stay Unassigned, so resolving a reference does not bring a global into
+	// existence -- reading it still reports Undefined Identifier, and iteration
+	// still skips it.
+	//
+	// Rare enough not to matter: adding a slot never invalidates an existing one,
+	// so Id does not change and this runs once per function per namespace.  It
+	// lives here rather than on FuncDef because Globals.g.h already sees
+	// FuncDef.g.h, and the reverse would be a cycle.
+	public void ResolveRefs(FuncDef func) {
+		List<Value> names = func.GlobalNames;
+		List<Int32> slots = func.GlobalSlots;
+		for (Int32 i = 0; i < names.Count; i++) slots[i] = Resolve(names[i]);
+		func.GlobalCacheId = _id;
+	}
+
 	// ── Map backing hooks (called by GCMap; see cs/GCItems.cs) ────────────────
 
 	public Boolean TryGet(Value key, out Value value) {

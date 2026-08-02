@@ -13,6 +13,9 @@ Int32 CodeEmitterBaseStorage::AddConstant(Value value) {
 	constants.Add(value);
 	return constants.Count() - 1;
 }
+Int32 CodeEmitterBaseStorage::AddGlobalRef(Value name) {
+	return PendingFunc.AddGlobalRef(name);
+}
 void CodeEmitterBaseStorage::ReserveRegister(Int32 registerNumber) {
 	PendingFunc.ReserveRegister(registerNumber);
 }

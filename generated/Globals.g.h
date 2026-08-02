@@ -137,6 +137,18 @@ class GlobalsStorage : public std::enable_shared_from_this<GlobalsStorage> {
 	// True if the slot exists and currently holds a value.
 	public: Boolean SlotIsAssigned(Int32 slot);
 
+	// Resolve a function's global-reference table against this namespace, so its
+	// GLOADC/GLOADV/GSTORE operands become direct slot indices.  Every name the
+	// function mentions gets a slot, including ones it may never reach; those
+	// stay Unassigned, so resolving a reference does not bring a global into
+	// existence -- reading it still reports Undefined Identifier, and iteration
+	// still skips it.
+	// Rare enough not to matter: adding a slot never invalidates an existing one,
+	// so Id does not change and this runs once per function per namespace.  It
+	// lives here rather than on FuncDef because Globals.g.h already sees
+	// FuncDef.g.h, and the reverse would be a cycle.
+	public: void ResolveRefs(FuncDef func);
+
 	// ── Map backing hooks (called by GCMap; see cs/GCItems.cs) ────────────────
 
 	public: Boolean TryGet(Value key, Value* value);
@@ -283,6 +295,18 @@ struct Globals {
 	// True if the slot exists and currently holds a value.
 	public: inline Boolean SlotIsAssigned(Int32 slot);
 
+	// Resolve a function's global-reference table against this namespace, so its
+	// GLOADC/GLOADV/GSTORE operands become direct slot indices.  Every name the
+	// function mentions gets a slot, including ones it may never reach; those
+	// stay Unassigned, so resolving a reference does not bring a global into
+	// existence -- reading it still reports Undefined Identifier, and iteration
+	// still skips it.
+	// Rare enough not to matter: adding a slot never invalidates an existing one,
+	// so Id does not change and this runs once per function per namespace.  It
+	// lives here rather than on FuncDef because Globals.g.h already sees
+	// FuncDef.g.h, and the reverse would be a cycle.
+	public: inline void ResolveRefs(FuncDef func);
+
 	// ── Map backing hooks (called by GCMap; see cs/GCItems.cs) ────────────────
 
 	public: inline Boolean TryGet(Value key, Value* value);
@@ -390,6 +414,7 @@ inline Boolean GlobalsStorage::SlotIsAssigned(Int32 slot) {
 	if (slot < 0 || slot >= _values.Count()) return Boolean(false);
 	return !_values[slot].IsUnassigned();
 }
+inline void Globals::ResolveRefs(FuncDef func) { return get()->ResolveRefs(func); }
 inline Boolean Globals::TryGet(Value key,Value* value) { return get()->TryGet(key, value); }
 inline void Globals::Set(Value key,Value value) { return get()->Set(key, value); }
 inline Boolean Globals::Remove(Value key) { return get()->Remove(key); }

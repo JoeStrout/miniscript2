@@ -60,6 +60,11 @@ struct CodeEmitterBase {
 
 	// Add a constant to the constant pool, return its index
 	public: inline Int32 AddConstant(Value value);
+
+	// Add a name to the global-reference table, return its index.  This is the
+	// globals counterpart of AddConstant: the BC operand of GLOADC/GLOADV/GSTORE
+	// indexes this table, not the constant pool.
+	public: inline Int32 AddGlobalRef(Value name);
 	public: Int32 CreateLabel();
 	public: void PlaceLabel(Int32 labelId);
 	public: void EmitJump(Opcode op, Int32 labelId, String comment);
@@ -96,6 +101,11 @@ class CodeEmitterBaseStorage : public std::enable_shared_from_this<CodeEmitterBa
 
 	// Add a constant to the constant pool, return its index
 	public: Int32 AddConstant(Value value);
+
+	// Add a name to the global-reference table, return its index.  This is the
+	// globals counterpart of AddConstant: the BC operand of GLOADC/GLOADV/GSTORE
+	// indexes this table, not the constant pool.
+	public: Int32 AddGlobalRef(Value name);
 	public: virtual Int32 CreateLabel() = 0;
 	public: virtual void PlaceLabel(Int32 labelId) = 0;
 	public: virtual void EmitJump(Opcode op, Int32 labelId, String comment) = 0;
@@ -269,6 +279,7 @@ inline void CodeEmitterBase::EmitAB(Opcode op,Int32 a,Int32 bc,String comment) {
 inline void CodeEmitterBase::EmitBC(Opcode op,Int32 ab,Int32 c,String comment) { return get()->EmitBC(op, ab, c, comment); } // INS_BC: 16-bit AB + 8-bit C
 inline void CodeEmitterBase::EmitABC(Opcode op,Int32 a,Int32 b,Int32 c,String comment) { return get()->EmitABC(op, a, b, c, comment); } // INS_ABC: 8-bit A + 8-bit B + 8-bit C
 inline Int32 CodeEmitterBase::AddConstant(Value value) { return get()->AddConstant(value); }
+inline Int32 CodeEmitterBase::AddGlobalRef(Value name) { return get()->AddGlobalRef(name); }
 inline Int32 CodeEmitterBase::CreateLabel() { return get()->CreateLabel(); }
 inline void CodeEmitterBase::PlaceLabel(Int32 labelId) { return get()->PlaceLabel(labelId); }
 inline void CodeEmitterBase::EmitJump(Opcode op,Int32 labelId,String comment) { return get()->EmitJump(op, labelId, comment); }

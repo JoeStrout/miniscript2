@@ -36,6 +36,13 @@ public abstract class CodeEmitterBase {
 		return constants.Count - 1;
 	}
 
+	// Add a name to the global-reference table, return its index.  This is the
+	// globals counterpart of AddConstant: the BC operand of GLOADC/GLOADV/GSTORE
+	// indexes this table, not the constant pool.
+	public Int32 AddGlobalRef(Value name) {
+		return PendingFunc.AddGlobalRef(name);
+	}
+
 	// Label management for jumps
 	public abstract Int32 CreateLabel();
 	public abstract void PlaceLabel(Int32 labelId);

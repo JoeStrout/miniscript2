@@ -27,6 +27,24 @@ class FuncDefStorage : public std::enable_shared_from_this<FuncDefStorage> {
 	public: String Note = "";
 	public: String SourceLoc = "";
 	public: String FileName = "";
+	public: List<Value> GlobalNames = List<Value>::New();
+	public: List<Int32> GlobalSlots = List<Int32>::New();
+	public: Int32 GlobalCacheId = 0;
+
+	// ── Global-reference table ────────────────────────────────────────────────
+	// The names this function reaches as globals, in the order the BC operand of
+	// GLOADC/GLOADV/GSTORE indexes them.  GlobalNames is filled at compile time
+	// and never changes; GlobalSlots is its resolution into slots of some
+	// particular Globals table, and is valid only while GlobalCacheId equals that
+	// table's Id.  See notes/GLOBALS.md section 4.3 for why the cache is guarded
+	// rather than baked in: the same FuncDef may be called against a different
+	// namespace than the one it was compiled alongside, which is what makes
+	// cross-interpreter seeding work.
+	// Id 0 is never issued (Globals pre-increments), so 0 means "never resolved".
+
+	// Intern a name into the global-reference table, returning its index.  Used
+	// by the code generator and the assembler while building this function.
+	public: Int32 AddGlobalRef(Value name);
 	private: List<Int32> _lineRLEPC = List<Int32>::New();
 	private: List<Int32> _lineRLELine = List<Int32>::New();
 
@@ -95,6 +113,27 @@ struct FuncDef {
 	public: void set_SourceLoc(String _v);
 	public: String FileName();
 	public: void set_FileName(String _v);
+	public: List<Value> GlobalNames();
+	public: void set_GlobalNames(List<Value> _v);
+	public: List<Int32> GlobalSlots();
+	public: void set_GlobalSlots(List<Int32> _v);
+	public: Int32 GlobalCacheId();
+	public: void set_GlobalCacheId(Int32 _v);
+
+	// ── Global-reference table ────────────────────────────────────────────────
+	// The names this function reaches as globals, in the order the BC operand of
+	// GLOADC/GLOADV/GSTORE indexes them.  GlobalNames is filled at compile time
+	// and never changes; GlobalSlots is its resolution into slots of some
+	// particular Globals table, and is valid only while GlobalCacheId equals that
+	// table's Id.  See notes/GLOBALS.md section 4.3 for why the cache is guarded
+	// rather than baked in: the same FuncDef may be called against a different
+	// namespace than the one it was compiled alongside, which is what makes
+	// cross-interpreter seeding work.
+	// Id 0 is never issued (Globals pre-increments), so 0 means "never resolved".
+
+	// Intern a name into the global-reference table, returning its index.  Used
+	// by the code generator and the assembler while building this function.
+	public: inline Int32 AddGlobalRef(Value name);
 	private: List<Int32> _lineRLEPC();
 	private: void set__lineRLEPC(List<Int32> _v);
 	private: List<Int32> _lineRLELine();
@@ -158,6 +197,13 @@ inline String FuncDef::SourceLoc() { return get()->SourceLoc; }
 inline void FuncDef::set_SourceLoc(String _v) { get()->SourceLoc = _v; }
 inline String FuncDef::FileName() { return get()->FileName; }
 inline void FuncDef::set_FileName(String _v) { get()->FileName = _v; }
+inline List<Value> FuncDef::GlobalNames() { return get()->GlobalNames; }
+inline void FuncDef::set_GlobalNames(List<Value> _v) { get()->GlobalNames = _v; }
+inline List<Int32> FuncDef::GlobalSlots() { return get()->GlobalSlots; }
+inline void FuncDef::set_GlobalSlots(List<Int32> _v) { get()->GlobalSlots = _v; }
+inline Int32 FuncDef::GlobalCacheId() { return get()->GlobalCacheId; }
+inline void FuncDef::set_GlobalCacheId(Int32 _v) { get()->GlobalCacheId = _v; }
+inline Int32 FuncDef::AddGlobalRef(Value name) { return get()->AddGlobalRef(name); }
 inline List<Int32> FuncDef::_lineRLEPC() { return get()->_lineRLEPC; }
 inline void FuncDef::set__lineRLEPC(List<Int32> _v) { get()->_lineRLEPC = _v; }
 inline List<Int32> FuncDef::_lineRLELine() { return get()->_lineRLELine; }

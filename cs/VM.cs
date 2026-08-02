@@ -165,6 +165,12 @@ public class VM {
 	// VM makes its own.
 	private Globals _globals;
 
+	// _globals.Id(), kept alongside so the per-access cache guard in GlobalSlot is
+	// a bare field compare rather than a walk out to the Globals object.  Must be
+	// updated everywhere _globals is.  Zero is never a valid Id, so a VM with no
+	// namespace can never validate a stale FuncDef cache.
+	private Int32 _globalsId;
+
 	public Globals GetGlobals() {
 		return _globals;
 	}
@@ -172,8 +178,13 @@ public class VM {
 	// Run in someone else's global namespace from here on.  Takes effect at once,
 	// mid-run included: nothing caches a global anywhere.  The caller keeps
 	// ownership of both namespaces -- this does not Release the outgoing one.
+	//
+	// Compiled code does cache name -> slot resolutions, but those are guarded by
+	// the namespace's Id, so switching here invalidates every one of them at a
+	// stroke; the next global access re-resolves against the new table.
 	public void SetGlobals(Globals globals) {
 		_globals = globals;
+		_globalsId = (globals != null) ? globals.Id() : 0;
 	}
 
 	// Pending self/super for method calls, set by METHFIND/SETSELF,
@@ -296,6 +307,7 @@ public class VM {
 		callStack = new List<CallInfo>();
 		callStackTop = 0;
 		_globals = null;   // created (or adopted) at Reset
+		_globalsId = 0;
 		_pendingCallStack = new List<PendingCallState>();
 		Error = Value.Null;
 
@@ -402,6 +414,12 @@ public class VM {
 		if (func == null) return;
 		List<Value> consts = func.Constants;
 		for (Int32 i = 0; i < consts.Count; i++) GCManager.Mark(consts[i]);
+		// Global-reference names are not in the constant pool -- GSTORE and the
+		// GLOAD pair carry a reference index instead -- so they need marking of
+		// their own.  Names long enough to be heap strings would otherwise be
+		// swept out from under a function that has not run yet.
+		List<Value> gnames = func.GlobalNames;
+		for (Int32 i = 0; i < gnames.Count; i++) GCManager.Mark(gnames[i]);
 	}
 
 	// Push a manually-constructed call to a set of compiled functions (used by import).
@@ -616,6 +634,7 @@ public class VM {
 	public void Reset(List<FuncDef> allFunctions, Globals globals) {
 		if (globals != null) _globals = globals;
 		if (_globals == null) _globals = Globals.Create();
+		_globalsId = _globals.Id();
 
 		// Locate @main.  All other functions are reachable from @main via its
 		// constant pool (nested-function templates), so the VM keeps no
@@ -1582,6 +1601,70 @@ public class VM {
 					names[baseIndex + a] = Value.Null;   // temporarily clear it
 					localStack[a] = GetGlobalsVarMap();
 					names[baseIndex + a] = val;  // restore name
+					break;
+				}
+
+				case Opcode.GLOADC_rA_iBC: {
+					// R[A] = the global named by reference BC, invoking it with no
+					// arguments if it turns out to be a function.  The globals
+					// counterpart of LOADC: one guarded array index instead of a walk
+					// out through LookupVariable.  Only @main emits this, because only
+					// there is a free name certainly not an enclosing local.
+					Byte a = BytecodeUtil.Au(instruction);
+					Int32 refIdx = BytecodeUtil.BCu(instruction);
+					Int32 slot = (curFunc.GlobalCacheId == _globalsId) ? curFunc.GlobalSlots[refIdx] : ResolveGlobalRef(currentFunc, refIdx); // CPP: Int32 slot = (curFuncRaw->GlobalCacheId == _globalsId) ? curFuncRaw->GlobalSlots[refIdx] : ResolveGlobalRef(currentFunc, refIdx);
+					valB = _globals.ValueAtSlot(slot);
+					if (valB.IsUnassigned()) {
+						// No such global (or it was removed): it may still be an
+						// intrinsic, which is the one branch that leaves this path.
+						valB = GlobalMiss(currentFunc, refIdx);
+					}
+
+					if (!valB.IsFuncRef()) {
+						localStack[a] = valB;
+					} else {
+						FuncDef autoCallee = null;
+						Int32 status = AutoInvokeFuncRef(valB, a, pc, baseIndex, currentFunc, ref autoCallee);
+						if (status == -2) {
+							// Native callback pending — exit RunInner
+							cyclesLeft = 0;
+						} else if (status == 0) {
+							// Frame was pushed — switch to callee
+							baseIndex += curFunc.MaxRegs; // CPP: baseIndex += curFuncRaw->MaxRegs;
+							pc = 0;
+							currentFunc = autoCallee;
+							SwitchFrame(currentFunc, baseIndex, ref curFunc, ref codeCount, ref curCode, ref curConstants, ref localStack); // CPP:
+							// CPP: SwitchFrame(currentFunc, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack, stackPtr);
+						}
+					}
+					break;
+				}
+
+				case Opcode.GLOADV_rA_iBC: {
+					// R[A] = the global named by reference BC, as stored -- no
+					// auto-invoke.  This is the `@name` form, and also how a call
+					// site fetches the funcref it is about to call.
+					Byte a = BytecodeUtil.Au(instruction);
+					Int32 refIdx = BytecodeUtil.BCu(instruction);
+					Int32 slot = (curFunc.GlobalCacheId == _globalsId) ? curFunc.GlobalSlots[refIdx] : ResolveGlobalRef(currentFunc, refIdx); // CPP: Int32 slot = (curFuncRaw->GlobalCacheId == _globalsId) ? curFuncRaw->GlobalSlots[refIdx] : ResolveGlobalRef(currentFunc, refIdx);
+					val = _globals.ValueAtSlot(slot);
+					if (val.IsUnassigned()) val = GlobalMiss(currentFunc, refIdx);
+					localStack[a] = val;
+					break;
+				}
+
+				case Opcode.GSTORE_rA_iBC: {
+					// The global named by reference BC = R[A].  Creates the global if
+					// this is its first assignment; the slot itself already exists,
+					// since resolving the reference made one.
+					Byte a = BytecodeUtil.Au(instruction);
+					Int32 refIdx = BytecodeUtil.BCu(instruction);
+					Int32 slot = (curFunc.GlobalCacheId == _globalsId) ? curFunc.GlobalSlots[refIdx] : ResolveGlobalRef(currentFunc, refIdx); // CPP: Int32 slot = (curFuncRaw->GlobalCacheId == _globalsId) ? curFuncRaw->GlobalSlots[refIdx] : ResolveGlobalRef(currentFunc, refIdx);
+					if (_globals.AsMap().IsFrozen()) {
+						RaiseRuntimeError("Attempt to modify a frozen map");
+						break;
+					}
+					_globals.SetSlot(slot, localStack[a]);
 					break;
 				}
 
@@ -2602,6 +2685,40 @@ public class VM {
 		localStack = stackPtr + baseIndex;
 	}
 	*** END CPP_ONLY ***/
+
+	// ── Global-reference resolution (GLOADC / GLOADV / GSTORE) ────────────────
+	//
+	// The cold half of a global access.  The function's cached slot indices were
+	// resolved against some other namespace (or none yet), so re-resolve the whole
+	// table and hand back the one slot the instruction asked for.  Resolving the
+	// table wholesale rather than one entry at a time is what lets the hot path be
+	// a single Id compare; see notes/GLOBALS.md section 4.3.
+	//
+	// This runs about once per function per namespace: adding a slot never
+	// invalidates an existing one, so Id changes only when the VM is pointed at a
+	// different Globals object altogether.
+	private Int32 ResolveGlobalRef(FuncDef func, Int32 refIdx) {
+		_globals.ResolveRefs(func);
+		return func.GlobalSlots[refIdx];
+	}
+
+	// A global reference whose slot is unassigned: either the name has never been
+	// bound, or it was removed.  Intrinsics deliberately do not occupy slots (so
+	// `globals.indexes` does not list 150 built-ins), so this is where they are
+	// found -- one never-taken branch on the hot path, and the same cost as the
+	// intrinsic step of LookupVariable when it is taken.
+	private Value GlobalMiss(FuncDef func, Int32 refIdx) {
+		Value name = func.GlobalNames[refIdx];
+		Value result;
+		String nameStr = name.AsCString();
+		if (_intrinsics.TryGetValue(nameStr, out result)) return result;
+
+		// self/super read as null outside a method, matching LookupVariable.
+		if (name == Value.selfString || name == Value.superString) return Value.Null;
+
+		RaiseRuntimeError(StringUtils.Format("Undefined Identifier: '{0}' is unknown in this context", name));
+		return Value.Null;
+	}
 
 	// The `globals` map: an ordinary map whose entire storage is this VM's global
 	// namespace, and the same object the `globals` intrinsic returns.  There is no

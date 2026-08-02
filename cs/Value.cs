@@ -54,6 +54,10 @@ public readonly struct Value {
 	internal const ulong NULL_VALUE      = 0xFFF9_0000_0000_0000UL;
 	public  const ulong GC_TAG          = 0xFFFE_0000_0000_0000UL;
 	internal const ulong TINY_STRING_TAG = 0xFFFF_0000_0000_0000UL;
+	// Placeholder payload for Unassigned before GCManager.Init installs the real
+	// sentinel.  0xFFFA-0xFFFD are unused tags, so no make_* ever produces this
+	// and nothing compares equal to it.
+	internal const ulong UNASSIGNED_POISON = 0xFFFD_0000_0000_0000UL;
 	internal const ulong GC_TYPE_MASK    = NANISH_MASK | 0x0000_0007_0000_0000UL;
 
 	// ==== LIMITS =============================================================
@@ -74,6 +78,30 @@ public readonly struct Value {
 	public static readonly Value implicitResult = make_string("_");
 	public static readonly Value selfString     = make_string("self");
 	public static readonly Value superString    = make_string("super");
+
+	//
+	// Unassigned: a unique Value meaning "this location exists, but holds
+	// nothing".  That is a different statement from null, which is a perfectly
+	// good value for a variable to hold; it is the distinction that names[i]
+	// encodes for registers.  The global slot table (cs/Globals.cs) stores this
+	// in slots whose name is not currently bound.
+	//
+	// It is a funcref rather than a new NaN-box tag, which costs nothing and
+	// leaves the Value layout untouched: funcrefs compare by identity (see
+	// ScalarEqual below, which falls through to `return false` for two distinct
+	// same-type reference values), and this one is never handed out, so no value
+	// user code can construct is equal to it.
+	//
+	// It lives here, in the value layer, rather than on GCManager, so that
+	// IsUnassigned() has no upward dependency -- in C++, GCManager.g.h includes
+	// value.h, so value.h cannot see the other direction.  GCManager.Init()
+	// allocates the funcref and assigns it (and roots it); until then this holds
+	// a poison payload that no make_* ever produces, so IsUnassigned() is false
+	// for every real Value rather than accidentally true for null.
+	//
+	// NOT readonly: Init has to install the real sentinel.
+	//
+	public static Value Unassigned = FromBits(UNASSIGNED_POISON);
 
 	// ==== MS1 INSTANCE PREDICATES ============================================
 	[MethodImpl(MethodImplOptions.AggressiveInlining)] public bool IsNull()    => _u == NULL_VALUE;
@@ -227,6 +255,22 @@ public readonly struct Value {
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public bool IsGCObject() => (_u & NANISH_MASK) == GC_TAG;
+
+	//
+	// True for the one unique "this location exists but holds nothing" Value
+	// (Value.Unassigned, above).  Distinct from IsNull(): null is a value a
+	// variable may legitimately hold, this means there is no value at all.
+	// Currently used by the global slot table (cs/Globals.cs) for slots whose
+	// name is not bound; registers encode the same idea with a null name.
+	//
+	// This must never be true for anything user code can see.  Every read path
+	// out of a slot is responsible for testing it and reporting the location as
+	// undefined instead of passing the sentinel along.
+	//
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public bool IsUnassigned() {
+		return RefEquals(Unassigned);
+	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public bool IsHeapString() {

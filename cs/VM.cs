@@ -2603,7 +2603,7 @@ public class VM {
 		curFuncRaw = currentFunc.get_storage();
 		codeCount = curFuncRaw->Code.Count();
 		curCode = &curFuncRaw->Code[0];
-		curConstants = &curFuncRaw->Constants[0];
+		curConstants = curFuncRaw->Constants.Count() > 0 ? &curFuncRaw->Constants[0] : nullptr;
 		localStack = stackPtr + baseIndex;
 	}
 	*** END CPP_ONLY ***/

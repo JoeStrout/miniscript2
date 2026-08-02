@@ -64,6 +64,8 @@ Dictionary.methods.push MethodInfo.Make("Clear")
 
 Value = ClassInfo.Make("Value")
 Value.type = ClassType.STRUCT
+Value.fields.push VariableInfo.Make("Unassigned", "Value", "public", true)
+Value.fields.push VariableInfo.Make("Null", "Value", "public", true)
 Value.methods.push MethodInfo.Make("IsNull", false, "Boolean")
 Value.methods.push MethodInfo.Make("IsNumber", false, "Boolean")
 Value.methods.push MethodInfo.Make("IsString", false, "Boolean")
@@ -158,6 +160,7 @@ Value.methods.push MethodInfo.Make("Pow", false, "Value")
 Value.methods.push MethodInfo.Make("And", false, "Value")
 Value.methods.push MethodInfo.Make("Or", false, "Value")
 Value.methods.push MethodInfo.Make("ToFuzzyBool", false, "Double")
+Value.methods.push MethodInfo.Make("IsUnassigned", false, "Boolean")
 
 all = [String, List, Dictionary, Value]
 for cls in all; cls.elsewhere = true; end for

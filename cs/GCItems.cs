@@ -5,6 +5,7 @@ using static System.Runtime.CompilerServices.MethodImplOptions;
 // H: #include "GCInterfaces.g.h"
 // H: #include "value.h"
 // H: #include "VarMap.g.h"
+// H: #include "Globals.g.h"
 // H: #include "FuncDef.g.h"
 // H: #include "CS_Math.h"
 // CPP: #include "GCManager.g.h"
@@ -176,17 +177,35 @@ public struct GCList : IGCItem {
 
 // ── GCMap ─────────────────────────────────────────────────────────────────────
 // A simple wrapper around Dictionary<Value, Value>, plus a Frozen flag and an
-// optional VarMapBacking for register-binding behaviour. Hash/equality of keys
-// follows MiniScript == semantics via Value.Equals/GetHashCode (see Value.cs).
+// optional backing. Hash/equality of keys follows MiniScript == semantics via
+// Value.Equals/GetHashCode (see Value.cs).
+//
+// A map has at most one backing, and the two kinds are mutually exclusive:
+//
+//   _vmb  a call frame's locals: name -> register bindings layered OVER Items,
+//         so a key resolves to a register if bound and to a hash entry if not.
+//   _gb   the `globals` table: the SOLE storage, with Items left null.  There
+//         is no second tier and nothing to keep in sync.  See cs/Globals.cs.
+//
+// These are two fields rather than one polymorphic backing on purpose:
+// cs/GCInterfaces.cs explains why GC-managed types here avoid vtables (a
+// static-constructor-written vtable pointer can be zero in BSS on some
+// platforms, segfaulting on the first virtual call).  A null check is also
+// cheaper than virtual dispatch, and these paths are not the hot ones -- a
+// frame's locals are normally reached as registers, never through this map.
 
 public struct GCMap : IGCItem {
 	public Dictionary<Value, Value> Items;
 	public Boolean Frozen;
 
-	// Non-null for VarMap-backed maps (closures / REPL globals).
+	// Non-null for VarMap-backed maps (call-frame locals, closure contexts).
 	public VarMapBacking _vmb;
 
+	// Non-null for the `globals` map; then Items is null and _vmb is null.
+	public Globals _gb;
+
 	public Int32 Count() {
+		if (_gb != null) return _gb.Count();
 		Int32 n = (Items == null) ? 0 : Items.Count;
 		if (_vmb != null) n += _vmb.RegEntryCount();
 		return n;
@@ -196,9 +215,22 @@ public struct GCMap : IGCItem {
 		Items  = new Dictionary<Value, Value>(Math.Max(capacity, 4));
 		Frozen = false;
 		_vmb   = null;
+		_gb    = null;
+	}
+
+	// Initialize this slot as the view onto a global slot table.  Items stays
+	// null: the table is the storage, so an empty dictionary would be dead
+	// weight that Count/iteration would then have to skip past.
+	public void InitAsGlobals(Globals g) {
+		Items  = null;
+		Frozen = false;
+		_vmb   = null;
+		_gb    = g;
 	}
 
 	public Boolean TryGet(Value key, out Value value) {
+		if (_gb != null) return _gb.TryGet(key, out value);
+
 		// Check VarMap register bindings first.
 		if (_vmb != null && _vmb.TryGet(key, out value)) return true;
 
@@ -209,6 +241,8 @@ public struct GCMap : IGCItem {
 	}
 
 	public void Set(Value key, Value value) {
+		if (_gb != null) { _gb.Set(key, value); return; }
+
 		// Store in register if VarMap-backed and key is register-mapped.
 		if (_vmb != null && _vmb.TrySet(key, value)) return;
 
@@ -217,6 +251,7 @@ public struct GCMap : IGCItem {
 	}
 
 	public Boolean Remove(Value key) {
+		if (_gb != null) return _gb.Remove(key);
 		if (_vmb != null && _vmb.TryRemove(key)) return true;
 		if (Items == null) return false;
 		return Items.Remove(key);
@@ -229,6 +264,7 @@ public struct GCMap : IGCItem {
 	}
 
 	public void Clear() {
+		if (_gb != null) { _gb.Clear(); return; }
 		if (Items != null) Items.Clear();
 		if (_vmb != null) _vmb.Clear();
 	}
@@ -236,9 +272,14 @@ public struct GCMap : IGCItem {
 	// ── Iteration ─────────────────────────────────────────────────────────────
 	// iter = -1: start
 	// iter < -1: VarMap register entry -(i+2) where i is the reg-entry index
-	// iter >= 0: index into Items (in enumeration order)
+	// iter >= 0: index into Items (in enumeration order), or -- for a globals
+	//            map, where Items is null -- a slot index in the global table
 
 	public Int32 NextEntry(Int32 after) {
+		// Globals: iter is the slot index directly.  Unassigned slots are
+		// skipped, so this walks exactly the bound globals, O(1) per step.
+		if (_gb != null) return _gb.NextAssignedSlot((after < 0) ? 0 : after + 1);
+
 		// Phase 1: VarMap register entries (negative iter)
 		if (_vmb != null && after <= -1) {
 			Int32 startRegIdx = (after == -1) ? 0 : -(after) - 2 + 1;
@@ -254,6 +295,7 @@ public struct GCMap : IGCItem {
 	}
 
 	public Value KeyAt(Int32 i) {
+		if (_gb != null) return _gb.NameAtSlot(i);
 		if (i < -1 && _vmb != null) {
 			Int32 regIdx = -(i) - 2;
 			return _vmb.GetRegEntryKey(regIdx);
@@ -268,6 +310,7 @@ public struct GCMap : IGCItem {
 	}
 
 	public Value ValueAt(Int32 i) {
+		if (_gb != null) return _gb.ValueAtSlot(i);
 		if (i < -1 && _vmb != null) {
 			Int32 regIdx = -(i) - 2;
 			return _vmb.GetRegEntryValue(regIdx);
@@ -284,6 +327,7 @@ public struct GCMap : IGCItem {
 	// ── GC ────────────────────────────────────────────────────────────────────
 
 	public void MarkChildren() {
+		if (_gb != null) { _gb.MarkChildren(); return; }
 		if (Items != null) {
 			foreach (Value k in Items.Keys) {
 				GCManager.Mark(k);
@@ -299,6 +343,7 @@ public struct GCMap : IGCItem {
 		Items  = null;
 		Frozen = false;
 		_vmb   = null;
+		_gb    = null;
 	}
 }
 

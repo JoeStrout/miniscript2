@@ -80,6 +80,12 @@ class GCManager {
 	// through the other (matching MiniScript 1.x host semantics).
 	public: static Value NewMapFromDict(Dictionary<Value, Value> items);
 
+	// The `globals` map: a map whose entire storage is the given global slot
+	// table.  Unlike a VarMap-backed map there is no second tier -- Items stays
+	// null, and every key lives in a slot -- so there is nothing to gather,
+	// rebind, or keep in sync.  See cs/Globals.cs and notes/GLOBALS.md.
+	public: static Value NewGlobalsMap(Globals g);
+
 	public: static Value NewError(Value message, Value inner, Value stack, Value isa);
 
 	public: static Value NewFuncRef(FuncDef func, Value outerVars);

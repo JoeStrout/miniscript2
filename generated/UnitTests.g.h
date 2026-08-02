@@ -74,6 +74,11 @@ class UnitTests {
 
 	public: static Boolean TestMayReadVar();
 
+	// The global slot table (cs/Globals.cs), exercised on its own -- no VM, no
+	// compiled code.  See notes/GLOBALS.md; this is stage 1 of that plan, so
+	// nothing here goes through the VM yet.
+	public: static Boolean TestGlobals();
+
 	public: static Boolean RunAll();
 }; // end of struct UnitTests
 

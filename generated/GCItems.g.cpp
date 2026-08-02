@@ -73,6 +73,7 @@ void GCList::MarkChildren() {
 }
 
 Int32 GCMap::Count() {
+	if (!IsNull(_gb)) return _gb.Count();
 	Int32 n = (IsNull(Items)) ? 0 : Items.Count();
 	if (!IsNull(_vmb)) n += _vmb.RegEntryCount();
 	return n;
@@ -81,8 +82,17 @@ void GCMap::Init(Int32 capacity ) {
 	Items  =  Dictionary<Value, Value>::New(Math::Max(capacity, 4));
 	Frozen = Boolean(false);
 	_vmb   = nullptr;
+	_gb    = nullptr;
+}
+void GCMap::InitAsGlobals(Globals g) {
+	Items  = nullptr;
+	Frozen = Boolean(false);
+	_vmb   = nullptr;
+	_gb    = g;
 }
 Boolean GCMap::TryGet(Value key,Value* value) {
+	if (!IsNull(_gb)) return _gb.TryGet(key, &*value);
+
 	// Check VarMap register bindings first.
 	if (!IsNull(_vmb) && _vmb.TryGet(key, &*value)) return Boolean(true);
 
@@ -92,6 +102,8 @@ Boolean GCMap::TryGet(Value key,Value* value) {
 	return Boolean(false);
 }
 void GCMap::Set(Value key,Value value) {
+	if (!IsNull(_gb)) { _gb.Set(key, value); return; }
+
 	// Store in register if VarMap-backed and key is register-mapped.
 	if (!IsNull(_vmb) && _vmb.TrySet(key, value)) return;
 
@@ -99,15 +111,21 @@ void GCMap::Set(Value key,Value value) {
 	Items[key] = value;
 }
 Boolean GCMap::Remove(Value key) {
+	if (!IsNull(_gb)) return _gb.Remove(key);
 	if (!IsNull(_vmb) && _vmb.TryRemove(key)) return Boolean(true);
 	if (IsNull(Items)) return Boolean(false);
 	return Items.Remove(key);
 }
 void GCMap::Clear() {
+	if (!IsNull(_gb)) { _gb.Clear(); return; }
 	if (!IsNull(Items)) Items.Clear();
 	if (!IsNull(_vmb)) _vmb.Clear();
 }
 Int32 GCMap::NextEntry(Int32 after) {
+	// Globals: iter is the slot index directly.  Unassigned slots are
+	// skipped, so this walks exactly the bound globals, O(1) per step.
+	if (!IsNull(_gb)) return _gb.NextAssignedSlot((after < 0) ? 0 : after + 1);
+
 	// Phase 1: VarMap register entries (negative iter)
 	if (!IsNull(_vmb) && after <= -1) {
 		Int32 startRegIdx = (after == -1) ? 0 : -(after) - 2 + 1;
@@ -122,6 +140,7 @@ Int32 GCMap::NextEntry(Int32 after) {
 	return -1;
 }
 Value GCMap::KeyAt(Int32 i) {
+	if (!IsNull(_gb)) return _gb.NameAtSlot(i);
 	if (i < -1 && !IsNull(_vmb)) {
 		Int32 regIdx = -(i) - 2;
 		return _vmb.GetRegEntryKey(regIdx);
@@ -135,6 +154,7 @@ Value GCMap::KeyAt(Int32 i) {
 	return Value::Null;
 }
 Value GCMap::ValueAt(Int32 i) {
+	if (!IsNull(_gb)) return _gb.ValueAtSlot(i);
 	if (i < -1 && !IsNull(_vmb)) {
 		Int32 regIdx = -(i) - 2;
 		return _vmb.GetRegEntryValue(regIdx);
@@ -148,6 +168,7 @@ Value GCMap::ValueAt(Int32 i) {
 	return Value::Null;
 }
 void GCMap::MarkChildren() {
+	if (!IsNull(_gb)) { _gb.MarkChildren(); return; }
 	if (!IsNull(Items)) {
 		for (Value k : Items.Keys()) {
 			GCManager::Mark(k);
@@ -162,6 +183,7 @@ void GCMap::OnSweep() {
 	Items  = nullptr;
 	Frozen = Boolean(false);
 	_vmb   = nullptr;
+	_gb    = nullptr;
 }
 
 void GCError::MarkChildren() {

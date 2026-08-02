@@ -39,6 +39,17 @@ void GCManager::Init() {
 	_roots          =  List<Value>::New();
 	_markCallbackFns  =  List<MarkCallback>::New();
 	_markCallbackData =  List<object>::New();
+
+	// Install the unassigned-location sentinel.  The Value itself belongs to
+	// the value layer (Value.Unassigned, see cs/Value.cs) so that
+	// IsUnassigned() has no dependency on this class; we are only the ones
+	// who can allocate a funcref and root it.  A bare FuncDef is all we can
+	// build without reaching into the VM layer -- Globals installs the
+	// reporting callback on it.
+	FuncDef unassignedFunc =  FuncDef::New();
+	unassignedFunc.set_Name("<unassigned>");
+	Value::Unassigned = NewFuncRef(unassignedFunc, Value::Null);
+	AddRoot(Value::Unassigned);
 }
 Value GCManager::NewString(String s) {
 	Int32 idx = BigStrings.AllocItem();
@@ -75,6 +86,11 @@ Value GCManager::NewMap(Int32 capacity ) {
 Value GCManager::NewMapFromDict(Dictionary<Value, Value> items) {
 	Int32 idx = Maps.AllocItem();
 	Maps.SetItems(idx, items);
+	return Value::make_gc(MapSet, idx);
+}
+Value GCManager::NewGlobalsMap(Globals g) {
+	Int32 idx = Maps.AllocItem();
+	Maps.InitAsGlobals(idx, g);
 	return Value::make_gc(MapSet, idx);
 }
 Value GCManager::NewError(Value message,Value inner,Value stack,Value isa) {

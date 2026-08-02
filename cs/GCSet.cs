@@ -218,6 +218,13 @@ public class GCMapSet : GCSetBase {
 		_items[idx] = item;
 	}
 
+	// Initialize a slot as the `globals` map view; see GCManager.NewGlobalsMap.
+	public void InitAsGlobals(Int32 idx, Globals g) {
+		GCMap item = _items[idx];
+		item.InitAsGlobals(g);
+		_items[idx] = item;
+	}
+
 	[MethodImpl(AggressiveInlining)]
 	public void SetFrozen(Int32 idx, Boolean frozen) {
 		GCMap item = _items[idx];

@@ -116,6 +116,11 @@ void GCMapSetStorage::Init(Int32 idx,Int32 capacity) {
 	item.Init(capacity);
 	_items[idx] = item;
 }
+void GCMapSetStorage::InitAsGlobals(Int32 idx,Globals g) {
+	GCMap item = _items[idx];
+	item.InitAsGlobals(g);
+	_items[idx] = item;
+}
 
 GCErrorSetStorage::GCErrorSetStorage(Int32 initialCapacity ) {
 	_items =  List<GCError>::New(initialCapacity);

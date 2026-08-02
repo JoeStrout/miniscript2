@@ -7,6 +7,7 @@
 #include "GCInterfaces.g.h"
 #include "value.h"
 #include "VarMap.g.h"
+#include "Globals.g.h"
 #include "FuncDef.g.h"
 #include "CS_Math.h"
 
@@ -78,19 +79,38 @@ struct GCList {
 
 // ── GCMap ─────────────────────────────────────────────────────────────────────
 // A simple wrapper around Dictionary<Value, Value>, plus a Frozen flag and an
-// optional VarMapBacking for register-binding behaviour. Hash/equality of keys
-// follows MiniScript == semantics via Value.Equals/GetHashCode (see Value.cs).
+// optional backing. Hash/equality of keys follows MiniScript == semantics via
+// Value.Equals/GetHashCode (see Value.cs).
+// A map has at most one backing, and the two kinds are mutually exclusive:
+//   _vmb  a call frame's locals: name -> register bindings layered OVER Items,
+//         so a key resolves to a register if bound and to a hash entry if not.
+//   _gb   the `globals` table: the SOLE storage, with Items left null.  There
+//         is no second tier and nothing to keep in sync.  See cs/Globals.cs.
+// These are two fields rather than one polymorphic backing on purpose:
+// cs/GCInterfaces.cs explains why GC-managed types here avoid vtables (a
+// static-constructor-written vtable pointer can be zero in BSS on some
+// platforms, segfaulting on the first virtual call).  A null check is also
+// cheaper than virtual dispatch, and these paths are not the hot ones -- a
+// frame's locals are normally reached as registers, never through this map.
 
 struct GCMap {
 	public: Dictionary<Value, Value> Items;
 	public: Boolean Frozen;
 	public: VarMapBacking _vmb;
+	public: Globals _gb;
 
-	// Non-null for VarMap-backed maps (closures / REPL globals).
+	// Non-null for VarMap-backed maps (call-frame locals, closure contexts).
+
+	// Non-null for the `globals` map; then Items is null and _vmb is null.
 
 	public: Int32 Count();
 
 	public: void Init(Int32 capacity = 8);
+
+	// Initialize this slot as the view onto a global slot table.  Items stays
+	// null: the table is the storage, so an empty dictionary would be dead
+	// weight that Count/iteration would then have to skip past.
+	public: void InitAsGlobals(Globals g);
 
 	public: Boolean TryGet(Value key, Value* value);
 
@@ -105,7 +125,8 @@ struct GCMap {
 	// ── Iteration ─────────────────────────────────────────────────────────────
 	// iter = -1: start
 	// iter < -1: VarMap register entry -(i+2) where i is the reg-entry index
-	// iter >= 0: index into Items (in enumeration order)
+	// iter >= 0: index into Items (in enumeration order), or -- for a globals
+	//            map, where Items is null -- a slot index in the global table
 
 	public: Int32 NextEntry(Int32 after);
 

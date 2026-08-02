@@ -490,7 +490,7 @@ Transpiler.transformStatement = function(trimmedLine)
 	// non-identifier string.
 	tokens = roughTokenize(trimmedLine)
 	
-	deepDebug = false //trimmedLine.contains("s[i + 1]");
+	deepDebug = false // trimmedLine.contains("Unassigned");
 	ddprint = function(s); if deepDebug then print "====> " + s; end function
 	summarize = function(obj)
 		if obj == null then return "<null>"
@@ -1208,7 +1208,7 @@ Transpiler.updateStateCLASS = function
 			self.m.value = self.transformStatement(self.m.value)
 			if self.curClass.type == ClassType.CLASS then
 				self.curClass.storageLines.push self.fill("	≤scope≥: static ≤type≥ ≤name≥;")
-				self.curClass.defLines.push self.fill("	≤type≥ ≤className≥Storage::≤name≥;")
+				self.curClass.defLines.push self.fill("≤type≥ ≤className≥Storage::≤name≥ = ≤value≥;")
 				self.curClass.wrapperLines.push self.fill("	≤scope≥: ≤type≥ ≤name≥();")
 				self.curClass.inlineLines.push  self.fill("inline ≤type≥ ≤className≥::≤name≥() { return get()->≤name≥; }")
 				self.curClass.wrapperLines.push self.fill("	≤scope≥: void set_≤name≥(≤type≥ _v);")

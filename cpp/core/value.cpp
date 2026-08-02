@@ -94,6 +94,8 @@ Value Value::valueString    = Value::fromBits(NULL_VALUE);
 Value Value::implicitResult = Value::fromBits(NULL_VALUE);
 Value Value::selfString     = Value::fromBits(NULL_VALUE);
 Value Value::superString    = Value::fromBits(NULL_VALUE);
+// Poisoned until GCManager::Init installs the real sentinel (see value.h).
+Value Value::Unassigned     = Value::fromBits(UNASSIGNED_POISON);
 
 int Value::MAX_COLLECTION_SIZE = 0x7FFFFFFF;
 int Value::MAP_ITER_DONE = (-2147483647 - 1);  // INT_MIN; mirrors cs/Value.cs
@@ -523,7 +525,14 @@ Value Value::ToNumber() const {
 
 
 uint32_t value_hash(Value v) {
-    if (v.IsHeapString()) return get_string_hash(v);
+    // Every string hashes by CONTENT, tiny or heap alike.  This must agree with
+    // value_equal, which compares any two strings with string_equals (see the
+    // IsString() branch there): if a tiny string and a heap string with the same
+    // bytes hashed differently, they would be equal but land in different
+    // buckets, and a map keyed by one could not be read with the other.
+    // get_string_hash already handles both representations, running the same
+    // FNV-1a over the same bytes either way.
+    if (v.IsString())      return get_string_hash(v);
     if (v.IsList())        return list_hash(v);
     if (v.IsMap())         return map_hash(v);
     return uint64_hash(v.bits);

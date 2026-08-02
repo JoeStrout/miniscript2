@@ -173,6 +173,9 @@ class GCMapSetStorage : public GCSetBaseStorage {
 
 	public: void Init(Int32 idx, Int32 capacity);
 
+	// Initialize a slot as the `globals` map view; see GCManager.NewGlobalsMap.
+	public: void InitAsGlobals(Int32 idx, Globals g);
+
 	public: void SetFrozen(Int32 idx, Boolean frozen);
 
 	public: void SetVmb(Int32 idx, VarMapBacking vmb);
@@ -309,6 +312,9 @@ struct GCMapSet : public GCSetBase {
 	public: inline GCMap Get(Int32 idx);
 
 	public: inline void Init(Int32 idx, Int32 capacity);
+
+	// Initialize a slot as the `globals` map view; see GCManager.NewGlobalsMap.
+	public: inline void InitAsGlobals(Int32 idx, Globals g);
 
 	public: inline void SetFrozen(Int32 idx, Boolean frozen);
 
@@ -464,6 +470,7 @@ inline GCMap GCMapSetStorage::Get(Int32 idx) {
 	return _items[idx];
 }
 inline void GCMapSet::Init(Int32 idx,Int32 capacity) { return get()->Init(idx, capacity); }
+inline void GCMapSet::InitAsGlobals(Int32 idx,Globals g) { return get()->InitAsGlobals(idx, g); }
 inline void GCMapSet::SetFrozen(Int32 idx,Boolean frozen) { return get()->SetFrozen(idx, frozen); }
 inline void GCMapSetStorage::SetFrozen(Int32 idx,Boolean frozen) {
 	GCMap item = _items[idx];

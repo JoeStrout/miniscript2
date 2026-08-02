@@ -5336,6 +5336,116 @@ print g -4
 --------------------------------
 6
 6
+================================================================================
+==== SECTION: STRING REPRESENTATION AND MAP KEYS
+================================================================================
+==== A string built at run time must be interchangeable with the same string
+==== written as a literal -- as a map key, not just under `==`.  Regression for
+==== notes/bugs.md #1, where short strings had two representations (tiny, packed
+==== into the Value bits; and heap-allocated) that compared equal but hashed
+==== differently, so a map keyed by one could not be read with the other.
+a = "dyn" + 0
+b = "dyn0"
+print a == b
+m = {}
+m[a] = 1
+print m.hasIndex(b)
+print m[b]
+n = {}
+n[b] = 2
+print n.hasIndex(a)
+print n[a]
+--------------------------------
+1
+1
+1
+1
+2
+================================
+==== The bug was bounded by the tiny-string limit (5 bytes), so sweep either
+==== side of it.  Each line is: byte length, found-by-literal, equal-to-literal.
+lits = ["x", "xx", "xxx", "xxxx", "xxxxx", "xxxxxx", "xxxxxxx"]
+built = ""
+for i in range(0, 6)
+	built = built + "x"
+	m = {}
+	m[built] = i
+	print built.len + ":" + m.hasIndex(lits[i]) + (built == lits[i])
+end for
+--------------------------------
+1:11
+2:11
+3:11
+4:11
+5:11
+6:11
+7:11
+================================
+==== Every string-producing operation feeds the same canonicalization, so a
+==== result of any of them works as a map key alongside literals.
+m = {}
+m["hello world"[0:5]] = "slice"
+m["a-b".replace("-", "+")] = "replace"
+m["ABC".lower] = "lower"
+m["xyz".upper] = "upper"
+m[("p,q".split(","))[1]] = "split"
+print m["hello"]
+print m["a+b"]
+print m["abc"]
+print m["XYZ"]
+print m["q"]
+--------------------------------
+slice
+replace
+lower
+upper
+split
+================================
+==== The limit is 5 *bytes*, not characters, so multi-byte UTF-8 crosses it
+==== sooner: "éé" is 4 bytes but "ééé" is 6.  Note the accents are joined via a
+==== variable: a concatenation of two literals is constant-folded at compile
+==== time, which would build the key the same way as the literal and so test
+==== nothing.
+e = "é"
+m = {}
+m[e + e] = "two"
+m[e + e + e] = "three"
+print m["éé"]
+print m["ééé"]
+print (e + e) == "éé"
+print m.hasIndex("éé")
+--------------------------------
+two
+three
+1
+1
+================================
+==== Long (always heap-allocated) keys must still round-trip: the hash change
+==== must not have disturbed the path that already worked.
+long1 = "a string comfortably longer than any tiny-string limit"
+m = {}
+m[long1] = "found"
+print m["a string comfortably longer than any tiny-string limit"]
+print m.hasIndex(("a string comfortably longer than any " + "tiny-string limit"))
+print m.len
+--------------------------------
+found
+1
+1
+================================
+==== Keys that differ only in content must stay distinct -- the fix must not
+==== have made unequal strings collide.
+m = {}
+for i in range(0, 9)
+	m["k" + i] = i * 10
+end for
+print m.len
+print m["k0"] + "," + m["k5"] + "," + m["k9"]
+print m.hasIndex("k10")
+--------------------------------
+10
+0,50,90
+0
 ================================
 ==== END OF TESTS
 ================================================================================

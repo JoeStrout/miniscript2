@@ -144,6 +144,7 @@ typedef struct Value {
     inline bool         IsError()     const noexcept;
     inline bool         IsFuncRef()   const noexcept;
     inline bool         IsHandle()    const noexcept;
+    inline bool         IsUnassigned()const noexcept;
     inline unsigned int Hash()        const noexcept;
 
     // ── Accessors & predicates (instance form, mirroring cs/Value.cs) ────────
@@ -304,6 +305,24 @@ typedef struct Value {
     static Value selfString;     // "self"
     static Value superString;    // "super"
 
+    // Unassigned: a unique Value meaning "this location exists, but holds
+    // nothing".  That is a different statement from null, which is a perfectly
+    // good value for a variable to hold; it is the distinction that names[i]
+    // encodes for registers.  The global slot table (Globals.g.h, from
+    // cs/Globals.cs) stores this in slots whose name is not currently bound.
+    //
+    // It is a funcref rather than a new NaN-box tag, which costs nothing and
+    // leaves this layout untouched: funcrefs compare by identity, and this one
+    // is never handed out, so no value user code can construct is equal to it.
+    //
+    // It lives here, in the value layer, rather than on GCManager, because
+    // GCManager.g.h includes this header -- so IsUnassigned() could not see it
+    // the other way round.  GCManager::Init() allocates the funcref, assigns it
+    // here, and roots it; until then this holds UNASSIGNED_POISON, a payload no
+    // make_* ever produces, so IsUnassigned() is false for every real Value
+    // rather than accidentally true for null.  Mirrors cs/Value.cs.
+    static Value Unassigned;
+
 	// Maximum number of elements a list (or characters a string) may hold.
 	// Mirrors Value.MAX_COLLECTION_SIZE in cs/Value.cs.  Operations whose
 	// result would exceed this raise a runtime error instead of attempting a
@@ -335,6 +354,10 @@ static_assert(std::is_standard_layout<Value>::value,
 #define NULL_VALUE        0xFFF9000000000000ULL
 #define GC_TAG            0xFFFE000000000000ULL
 #define TINY_STRING_TAG   0xFFFF000000000000ULL
+// Placeholder payload for Value::Unassigned before GCManager::Init installs
+// the real sentinel.  0xFFFA-0xFFFD are unused tags, so no make_* ever
+// produces this and nothing compares equal to it.  Mirrors cs/Value.cs.
+#define UNASSIGNED_POISON 0xFFFD000000000000ULL
 // Mask covering top-16 tag bits plus the 3-bit GCSet field (bits 34-32).
 #define GC_TYPE_MASK      (NANISH_MASK | 0x0000000700000000ULL)
 
@@ -638,6 +661,11 @@ inline bool Value::IsMap()     const noexcept { return (bits & GC_TYPE_MASK) == 
 inline bool Value::IsError()   const noexcept { return (bits & GC_TYPE_MASK) == ERROR_TAG_PATTERN; }
 inline bool Value::IsFuncRef() const noexcept { return (bits & GC_TYPE_MASK) == FUNCREF_TAG_PATTERN; }
 inline bool Value::IsHandle()  const noexcept { return (bits & GC_TYPE_MASK) == HANDLE_TAG_PATTERN; }
+// True only for the one unique "exists but holds nothing" Value.  Distinct
+// from IsNull(): null is a value a variable may legitimately hold.  Must
+// never be true for anything user code can see -- every read path out of a
+// slot has to test this and report the location as undefined instead.
+inline bool Value::IsUnassigned() const noexcept { return bits == Unassigned.bits; }
 inline bool Value::BoolValue() const noexcept {
     if (IsNull()) return false;
     if (IsNumber()) return AsDouble() != 0.0;

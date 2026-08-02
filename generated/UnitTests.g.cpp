@@ -13,6 +13,7 @@
 #include "CodeEmitter.g.h"
 #include "CodeGenerator.g.h"
 #include "Interpreter.g.h"
+#include "Intrinsic.g.h"
 
 namespace MiniScript {
 
@@ -1061,11 +1062,200 @@ Boolean UnitTests::TestMayReadVar() {
 	if (!ok) IOHelper::Print("TestMayReadVar FAILED");
 	return ok;
 }
+Boolean UnitTests::TestGlobals() {
+	Globals g = Globals::Create();
+	Value map = g.AsMap();
+
+	Value nameX = Value::make_string("x");
+	Value nameY = Value::make_string("y");
+
+	// ── Create ────────────────────────────────────────────────────────────
+	Boolean createOk = Assert(map.IsMap(), "globals view should be a map")
+		&& AssertEqual(g.Count(), 0)
+		&& AssertEqual(g.SlotCount(), 0)
+		&& AssertEqual(map.MapCount(), 0)
+		&& Assert(g.Id() > 0, "Globals should have a positive Id");
+	if (!createOk) return Boolean(false);
+
+	// ── Resolve creates a slot but not a global ───────────────────────────
+	// A resolved-but-unset name must NOT read as a global; that is what lets
+	// compiled code resolve every name a function mentions up front.
+	Int32 slotX = g.Resolve(nameX);
+	Boolean resolveOk = AssertEqual(slotX, 0)
+		&& AssertEqual(g.SlotCount(), 1)
+		&& AssertEqual(g.Count(), 0)
+		&& Assert(!g.SlotIsAssigned(slotX), "a resolved slot starts unassigned")
+		&& Assert(!map.HasKey(nameX), "resolving must not create a global")
+		&& Assert(g.ValueAtSlot(slotX).IsUnassigned(), "empty slot holds the sentinel")
+		&& Assert(g.NameAtSlot(slotX) == nameX, "slot remembers its name")
+		&& AssertEqual(g.Resolve(nameX), 0)
+		&& Assert(g.Find(nameY) == -1, "Find must not create a slot");
+	if (!resolveOk) return Boolean(false);
+
+	// ── Assign, through both doors ────────────────────────────────────────
+	// Writing a slot directly and writing through the map must be the same
+	// operation -- that identity is the whole point of the design.
+	g.SetSlot(slotX, Value(42.0));
+	map.MapSet(nameY, Value::make_string("hello"));
+	Int32 slotY = g.Find(nameY);
+	Value readX;
+	Boolean assignOk = AssertEqual(g.Count(), 2)
+		&& AssertEqual(map.MapCount(), 2)
+		&& AssertEqual(slotY, 1)
+		&& AssertEqual(map.MapGet(nameX).DoubleValue(), 42.0)
+		&& Assert(g.TryGet(nameY, &readX), "TryGet should find y")
+		&& AssertEqual(readX.ToString(nullptr), "hello")
+		&& AssertEqual(g.ValueAtSlot(slotY).ToString(nullptr), "hello");
+	if (!assignOk) return Boolean(false);
+
+	// ── null is a value; Unassigned is not ────────────────────────────────
+	// Storing null must leave the global bound, and must not read back as
+	// the sentinel.  Conflating these is the bug the sentinel exists to
+	// prevent.
+	map.MapSet(nameX, Value::Null);
+	Value nullRead;
+	Boolean nullOk = Assert(map.HasKey(nameX), "a global set to null is still bound")
+		&& AssertEqual(g.Count(), 2)
+		&& Assert(g.SlotIsAssigned(slotX), "null-valued slot is assigned")
+		&& Assert(!g.ValueAtSlot(slotX).IsUnassigned(), "null is not Unassigned")
+		&& Assert(g.TryGet(nameX, &nullRead), "TryGet finds a null-valued global")
+		&& Assert(nullRead.IsNull(), "and reads back as null");
+	if (!nullOk) return Boolean(false);
+
+	// The sentinel must not equal anything user code can make, including
+	// itself-by-content: it is a funcref compared by identity.
+	Boolean sentinelOk = Assert(!Value::Null.IsUnassigned(), "null is not the sentinel")
+		&& Assert(!Value::make_string("x").IsUnassigned(), "a string is not the sentinel")
+		&& Assert(Value::Unassigned.IsUnassigned(), "the sentinel is itself")
+		&& Assert(!Value::Unassigned.IsNull(), "the sentinel is not null");
+	if (!sentinelOk) return Boolean(false);
+
+	// ── Remove, and re-add into the SAME slot ─────────────────────────────
+	// Slot stability is what lets compiled code cache a slot index forever.
+	Boolean removeOk = Assert(map.MapRemove(nameX), "removing a bound global reports true")
+		&& AssertEqual(g.Count(), 1)
+		&& AssertEqual(g.SlotCount(), 2)
+		&& Assert(!map.HasKey(nameX), "removed global is gone")
+		&& Assert(g.ValueAtSlot(slotX).IsUnassigned(), "its slot is unassigned again")
+		&& Assert(!g.Remove(nameX), "removing it twice reports false")
+		&& Assert(g.Find(nameX) == slotX, "but the slot is still reserved for the name");
+	if (!removeOk) return Boolean(false);
+
+	map.MapSet(nameX, Value(7.0));
+	Boolean readdOk = AssertEqual(g.Find(nameX), slotX)
+		&& AssertEqual(g.SlotCount(), 2)
+		&& AssertEqual(g.Count(), 2)
+		&& AssertEqual(map.MapGet(nameX).DoubleValue(), 7.0);
+	if (!readdOk) return Boolean(false);
+
+	// ── Iteration skips unassigned slots ──────────────────────────────────
+	map.MapSet(Value::make_string("z"), Value(3.0));
+	map.MapRemove(nameY);            // leaves a hole in the middle
+	Int32 seen = 0;
+	Boolean sawX = Boolean(false);
+	Boolean sawY = Boolean(false);
+	Boolean sawZ = Boolean(false);
+	MapIterator it = map.Iterator();
+	Value iterKey, iterVal;
+	while (map_iterator_next(&it, &iterKey, &iterVal)) {
+		seen++;			
+		if (iterKey == nameX) sawX = Boolean(true);
+		if (iterKey == nameY) sawY = Boolean(true);
+		if (iterKey == Value::make_string("z")) sawZ = Boolean(true);
+		if (iterVal.IsUnassigned()) {
+			Assert(Boolean(false), "iteration must never yield the sentinel");
+			return Boolean(false);
+		}
+	}
+	Boolean iterOk = AssertEqual(seen, 2)
+		&& Assert(sawX, "iteration should see x")
+		&& Assert(!sawY, "iteration should skip the removed y")
+		&& Assert(sawZ, "iteration should see z");
+	if (!iterOk) return Boolean(false);
+
+	// ── Non-string keys work, as they do on any map ───────────────────────
+	Value numKey = Value(42.0);
+	map.MapSet(numKey, Value::make_string("answer"));
+	Boolean numKeyOk = Assert(map.HasKey(numKey), "globals should accept a non-string key")
+		&& AssertEqual(map.MapGet(numKey).ToString(nullptr), "answer");
+	if (!numKeyOk) return Boolean(false);
+
+	// ── A name built at run time must match the same name as a literal ────
+	// The name->slot index is a hash, so this is the property it depends on:
+	// `globals["dyn" + i]` has to find the same slot as a compiled reference
+	// to `dyn0`.  It was broken in the C++ port for keys of 5 bytes or less
+	// (equal strings hashed differently depending on representation); the
+	// integration suite covers it more thoroughly under SECTION: STRING
+	// REPRESENTATION AND MAP KEYS.
+	Value builtName = Value::make_string("d").Add(Value::make_string("yn0"), nullptr);
+	map.MapSet(Value::make_string("dyn0"), Value(11.0));
+	Boolean keyReprOk = Assert(map.HasKey(builtName),
+		"a computed key must find the same global as the literal key");
+	if (!keyReprOk) return Boolean(false);
+
+	// ── Clear keeps the slots (and therefore cached slot indices) ─────────
+	Int32 slotsBeforeClear = g.SlotCount();
+	map.Clear();
+	Boolean clearOk = AssertEqual(g.Count(), 0)
+		&& AssertEqual(map.MapCount(), 0)
+		&& AssertEqual(g.SlotCount(), slotsBeforeClear)
+		&& AssertEqual(g.Find(nameX), slotX)
+		&& Assert(!map.HasKey(nameX), "cleared global is unbound")
+		;
+	if (!clearOk) return Boolean(false);
+
+	// ── Survives collection ───────────────────────────────────────────────
+	// The map is rooted by Globals.Create; the names and values hanging off
+	// the slot table are reachable only through GCMap.MarkChildren -> here.
+	// This uses a FULL collection on purpose: global names are short strings
+	// and therefore interned, and only a full pass sweeps the interned set.
+	Value survivor = Value::make_string("a string long enough to be heap-allocated, not tiny");
+	map.MapSet(nameX, survivor);
+	// Building the intrinsic funcrefs roots their parameter defaults.  Until
+	// that happens those defaults are unrooted and a full collection eats
+	// them -- an unrelated latent bug this test would otherwise trip over.
+	// See entry 1 in notes/bugs.md; remove these two lines once it is fixed.
+	Dictionary<String, Value> intrinsicsForRooting =  Dictionary<String, Value>::New();
+	Intrinsic::RegisterAll(intrinsicsForRooting);
+	GCManager::FullCollectGarbage();
+	Boolean gcOk = Assert(map.HasKey(nameX), "global should survive collection")
+		&& AssertEqual(map.MapGet(nameX).ToString(nullptr),
+			"a string long enough to be heap-allocated, not tiny")
+		&& AssertEqual(g.Count(), 1);
+	if (!gcOk) return Boolean(false);
+
+	// ── Distinct namespaces are independent, with distinct Ids ────────────
+	Globals g2 = Globals::Create();
+	g2.AsMap().MapSet(nameX, Value(99.0));
+	Boolean twoOk = Assert(g2.Id() != g.Id(), "each Globals gets its own Id")
+		&& AssertEqual(g2.AsMap().MapGet(nameX).DoubleValue(), 99.0)
+		&& AssertEqual(map.MapGet(nameX).ToString(nullptr),
+			"a string long enough to be heap-allocated, not tiny");
+	if (!twoOk) return Boolean(false);
+
+	// ── Freeze ────────────────────────────────────────────────────────────
+	// Done last, on its own table: Freeze is one-way, and the write that a
+	// frozen map rejects reports through VM.ActiveVM(), which is null here.
+	// Enforcement lives in Value.MapSet, above the backing, so there is
+	// nothing globals-specific to exercise beyond the flag round-tripping.
+	Globals g3 = Globals::Create();
+	g3.AsMap().MapSet(nameX, Value(1.0));
+	Boolean freezeOk = Assert(!g3.AsMap().IsFrozen(), "a new globals map is not frozen");
+	g3.AsMap().Freeze();
+	freezeOk = freezeOk && Assert(g3.AsMap().IsFrozen(), "globals map should report frozen");
+	if (!freezeOk) return Boolean(false);
+
+	g.Release();
+	g2.Release();
+	g3.Release();
+	return Boolean(true);
+}
 Boolean UnitTests::RunAll() {
 	return TestStringUtils()
 		&& TestDisassembler()
 		&& TestAssembler()
 		&& TestValueMap()
+		&& TestGlobals()
 		&& TestLexer()
 		&& TestParser()
 		&& TestMayReadVar()

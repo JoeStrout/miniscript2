@@ -36,13 +36,30 @@ const StringStorage* heap_string_storage(Value v) {
 }
 
 // Adopt a freshly malloc'd StringStorage* (e.g. from ss_*) into the GC system.
+//
+// A result short enough to be a tiny string becomes one, and the storage is
+// freed rather than adopted.  This keeps the representation CANONICAL: the same
+// bytes are always the same Value, however they were produced.  Without it,
+// every string built at run time was a heap string even when four bytes long,
+// so `"dyn" + 0` and the literal `"dyn0"` were equal but distinct map keys, and
+// short runtime strings silently lost the immediate-value fast path.
+//
+// Value::make_string and make_string_n check the tiny case before allocating,
+// so they never reach here with a short string; this covers everything built by
+// the ss_* operations (concat, substring, replace, case conversion, ...).
 Value adopt_ss(StringStorage* ss) {
     if (!ss) return Value::emptyString;
+    if (ss->lenB <= TINY_STRING_MAX_LEN) {
+        Value tiny = make_tiny_string(ss->data, ss->lenB);
+        std::free(ss);
+        return tiny;
+    }
     return GCManager::NewString(String::fromMallocStorage(ss));
 }
 
-// Build a Value from raw bytes (heap-string; caller has already ruled out
-// the tiny-string case or wants a heap allocation).
+// Build a Value from raw bytes.  Named for its usual outcome: the callers below
+// have already ruled out the tiny case, so this does allocate.  (Reaching it
+// with a short string is not an error -- adopt_ss canonicalizes.)
 Value make_heap_string_bytes(const char* str, int len) {
     StringStorage* ss = ss_createWithLength(len, std::malloc);
     if (!ss) return Value::emptyString;

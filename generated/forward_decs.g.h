@@ -10,6 +10,8 @@ class VMStorage;
 struct Context;
 struct IntrinsicResult;
 struct VMVis;
+struct Globals;
+class GlobalsStorage;
 struct CodeEmitterBase;
 class CodeEmitterBaseStorage;
 struct LabelReference;

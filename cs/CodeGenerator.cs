@@ -19,7 +19,19 @@ public class CodeGenerator : IASTVisitor {
 	private Int32 _firstAvailable;      // Lowest index that might be free
 	private Int32 _maxRegUsed;          // High water mark for register usage
 	private Dictionary<String, Int32> _variableRegs;  // variable name -> register
-	private List<String> _namedStack;   // variables whose NAME op dominates the current point (stack-disciplined by conditional nesting)
+	private List<String> _namedStack;   // variables definitely assigned at the current point (stack-disciplined by conditional nesting)
+	private List<Boolean> _namedIsReg;  // parallel to _namedStack: true if bound to a register by a NAME op, false if declared only via `locals.x =`
+	private String _localOnlyName;      // while compiling the RHS of a first assignment, the variable being created ("" when inactive)
+	// Definite assignment at the `break`s of each open loop -- what survives past a
+	// loop that only ends by breaking out of it.  See NoteBreak/EndLoopNames.  The
+	// per-loop accumulators are stacked end to end in _breakNames/_breakIsReg, with
+	// _breakStarts giving each one's first index; the innermost loop's is always the
+	// tail, so a loop's entries can be dropped by truncating.
+	private List<String> _breakNames;
+	private List<Boolean> _breakIsReg;
+	private List<Int32> _breakStarts;      // per open loop: where its accumulator starts
+	private List<Boolean> _breakSeen;      // per open loop: has any break contributed yet?
+	private List<Int32> _loopNameMarks;    // per open loop: _namedStack depth on entry
 	private Int32 _targetReg;           // Target register for next expression (-1 = allocate)
 	private List<Int32> _loopExitLabels;      // Stack of loop exit labels for break
 	private List<Int32> _loopContinueLabels;  // Stack of loop continue labels for continue
@@ -46,6 +58,13 @@ public class CodeGenerator : IASTVisitor {
 		_maxRegUsed = -1;
 		_variableRegs = new Dictionary<String, Int32>();
 		_namedStack = new List<String>();
+		_namedIsReg = new List<Boolean>();
+		_localOnlyName = "";
+		_breakNames = new List<String>();
+		_breakIsReg = new List<Boolean>();
+		_breakStarts = new List<Int32>();
+		_breakSeen = new List<Boolean>();
+		_loopNameMarks = new List<Int32>();
 		_targetReg = -1;
 		_loopExitLabels = new List<Int32>();
 		_loopContinueLabels = new List<Int32>();
@@ -226,15 +245,225 @@ public class CodeGenerator : IASTVisitor {
 		_emitter.EmitA(Opcode.ERRCHK_rA, resultReg, "halt if result is an uncaught error");
 	}
 
-	// Compile a body of statements that executes conditionally (an if/else branch
-	// or a loop body).  A NAME op emitted inside this body does not dominate code
-	// after it, so any names recorded while compiling the body are forgotten on
-	// exit (the body's names sit at the tail of _namedStack, since any nested
-	// conditional bodies have already been entered and exited).
+	// Compile a body of statements that may not execute (a loop body, or an if
+	// with no else).  Nothing it assigns is definitely assigned afterward, so any
+	// names recorded while compiling it are forgotten on exit (the body's names
+	// sit at the tail of _namedStack, since any nested conditional bodies have
+	// already been entered and exited).
+	//
+	// Visit(IfNode) does not use this: with both arms present it has to compare
+	// them rather than discard both, so it does its own marking.
 	private void CompileConditionalBody(List<ASTNode> body) {
 		Int32 mark = _namedStack.Count;
 		CompileBody(body);
-		while (_namedStack.Count > mark) _namedStack.RemoveAt(_namedStack.Count - 1);
+		PopNamesTo(mark);
+	}
+
+	// Combine the two arms of an if/else into what is definitely assigned after it.
+	// The "then" arm's names come in as thenNames/thenIsReg (already popped off the
+	// stack, since the else arm must not see them -- it is an alternative path, not
+	// a continuation).  The "else" arm's names are what sits above `mark` now.
+	//
+	// Normally that is the intersection: `if c then n = 1 else n = 0` leaves n
+	// assigned, which matters because MiniScript has no ternary operator and this
+	// is how you write one.  Both arms give the variable the same register --
+	// _variableRegs is not unwound between them, so the else arm reuses what the
+	// then arm allocated -- so an entry surviving the merge describes one register,
+	// as EnsureNamed requires.  It survives as register-bound only if both arms
+	// bound it; a NAME in one arm and a `locals.x =` in the other leaves the name
+	// assigned but its register not established on every path.
+	//
+	// An arm that cannot complete normally (it returns, breaks, or continues) is
+	// the exception: if control reaches the code after the if, that arm did not
+	// fall through to it, so only the other arm's assignments matter and they hold
+	// unconditionally.
+	private void MergeBranchNames(Int32 mark, List<String> thenNames, List<Boolean> thenIsReg, Boolean thenAbrupt, Boolean elseAbrupt) {
+		// Only one arm can reach past the if: keep exactly that arm's names.
+		if (thenAbrupt && !elseAbrupt) return;  // the else arm's names are already in place
+		if (elseAbrupt && !thenAbrupt) {
+			PopNamesTo(mark);
+			for (Int32 i = 0; i < thenNames.Count; i++) PushName(thenNames[i], thenIsReg[i]);
+			return;
+		}
+
+		// Otherwise keep what both arms assigned.  (If both are abrupt nothing
+		// after the if is reachable, so the intersection is as good as anything.)
+		List<String> keep = new List<String>();
+		List<Boolean> keepIsReg = new List<Boolean>();
+		for (Int32 i = 0; i < thenNames.Count; i++) {
+			for (Int32 j = mark; j < _namedStack.Count; j++) {
+				if (_namedStack[j] != thenNames[i]) continue;
+				keep.Add(thenNames[i]);
+				keepIsReg.Add(thenIsReg[i] && _namedIsReg[j]);
+				break;
+			}
+		}
+		PopNamesTo(mark);
+		for (Int32 i = 0; i < keep.Count; i++) PushName(keep[i], keepIsReg[i]);
+	}
+
+	// Can this body only be left by jumping somewhere else -- a return, or a break
+	// or continue out of the enclosing loop?  Used by MergeBranchNames; a body that
+	// ends this way never falls through to whatever follows it.
+	private Boolean EndsAbruptly(List<ASTNode> body) {
+		if (body.Count == 0) return false;
+		ASTNode last = body[body.Count - 1];
+
+		ReturnNode returnN = last as ReturnNode;
+		if (returnN != null) return true;
+		BreakNode breakN = last as BreakNode;
+		if (breakN != null) return true;
+		ContinueNode continueN = last as ContinueNode;
+		if (continueN != null) return true;
+
+		// A nested if leaves abruptly only if every way through it does.
+		IfNode ifN = last as IfNode;
+		if (ifN != null && ifN.ElseBody.Count > 0) {
+			return EndsAbruptly(ifN.ThenBody) && EndsAbruptly(ifN.ElseBody);
+		}
+		return false;
+	}
+
+	// ── Loop-body variable registers ─────────────────────────────────────────
+	//
+	// Register allocation assumes control flows straight through: a temp freed at
+	// the end of an expression is free for whatever comes next.  A loop breaks
+	// that assumption, because its back edge re-runs the condition after the body
+	// has been compiled -- so a variable first assigned in the body must not sit
+	// anywhere the condition writes.  Two things the condition writes are easy to
+	// miss: temps it frees before the body is compiled, and, for any call it makes,
+	// the entire callee frame from `calleeBase` up (see EmitCallSequence).
+	//
+	// Rather than try to enumerate those after the fact, we give the body's new
+	// variables their registers *before* compiling the condition.  Then they are
+	// simply part of the live set the condition allocates around, and the ordinary
+	// rules do the rest.
+	//
+	// The registers are parked under an internal key, not the variable's own name,
+	// so that the body compiles exactly as it did before: the variable is still
+	// "new" at its first assignment (which is what decides NAME ordering, and what
+	// lets `c = c + 1` in the body read an outer c), and a read before that
+	// assignment still misses and walks out to the enclosing scope.
+	private static String PendingVarRegKey(String varName) {
+		return "@pending " + varName;
+	}
+
+	// Reserve a register for each variable the given loop body creates.  Returns
+	// the names reserved, for ReleaseBodyVarRegs.  Does nothing at global scope,
+	// where top-level names are slots rather than registers.
+	private List<String> ReserveBodyVarRegs(List<ASTNode> body) {
+		List<String> reserved = new List<String>();
+		if (_globalScope) return reserved;
+
+		List<String> assigned = new List<String>();
+		CollectAssignedVars(body, assigned);
+		for (Int32 i = 0; i < assigned.Count; i++) {
+			String name = assigned[i];
+			Int32 existing;
+			// Already has a register (a parameter, an earlier statement, or an
+			// enclosing loop that reserved it), or we just reserved it ourselves.
+			if (_variableRegs.TryGetValue(name, out existing)) continue;
+			String key = PendingVarRegKey(name);
+			if (_variableRegs.TryGetValue(key, out existing)) continue;
+			_variableRegs[key] = AllocReg();
+			reserved.Add(name);
+		}
+		return reserved;
+	}
+
+	// Drop any reservation the body did not end up claiming.  A claimed one has
+	// already been renamed to the variable itself by TakeVarReg.
+	private void ReleaseBodyVarRegs(List<String> reserved) {
+		for (Int32 i = 0; i < reserved.Count; i++) {
+			String key = PendingVarRegKey(reserved[i]);
+			Int32 reg;
+			if (!_variableRegs.TryGetValue(key, out reg)) continue;
+			_variableRegs.Remove(key);
+			FreeReg(reg);
+		}
+	}
+
+	// Allocate the register for a variable being created.  If an enclosing loop
+	// reserved one for it, take that; the caller records it under the variable's
+	// own name, which is what retires the reservation.
+	private Int32 TakeVarReg(String varName) {
+		Int32 reg;
+		String key = PendingVarRegKey(varName);
+		if (_variableRegs.TryGetValue(key, out reg)) {
+			_variableRegs.Remove(key);
+			return reg;
+		}
+		return AllocReg();
+	}
+
+	// Collect the names of variables that assignments in this statement list
+	// create.  Descends into nested loop and if bodies, since those assignments
+	// happen in this scope too, but not into nested function bodies, whose
+	// variables are locals of that function.
+	private void CollectAssignedVars(List<ASTNode> body, List<String> result) {
+		for (Int32 i = 0; i < body.Count; i++) {
+			ASTNode node = body[i];
+
+			AssignmentNode assignN = node as AssignmentNode;
+			if (assignN != null) { result.Add(assignN.Variable); continue; }
+
+			WhileNode whileN = node as WhileNode;
+			if (whileN != null) { CollectAssignedVars(whileN.Body, result); continue; }
+
+			IfNode ifN = node as IfNode;
+			if (ifN != null) {
+				CollectAssignedVars(ifN.ThenBody, result);
+				CollectAssignedVars(ifN.ElseBody, result);
+				continue;
+			}
+
+			ForNode forN = node as ForNode;
+			if (forN != null) {
+				result.Add(forN.Variable);
+				CollectAssignedVars(forN.Body, result);
+				continue;
+			}
+		}
+	}
+
+	// ── Definite assignment ──────────────────────────────────────────────────
+	//
+	// _namedStack holds the variables that are definitely assigned at the current
+	// point -- assigned on every path that reaches here.  Two things read it:
+	//
+	//   * EnsureNamed, to skip a NAME op that a dominating one already covers.
+	//     That only counts entries flagged in _namedIsReg, since only a NAME
+	//     actually binds the name to a register.
+	//   * The first-assignment check in Visit(AssignmentNode), which counts every
+	//     entry: `locals.x = 1` creates x just as surely as an assignment does,
+	//     it simply routes through the frame's variable map instead of a register.
+	//
+	// The stack discipline is what makes "definitely" true rather than "somewhere
+	// earlier": a conditional body's entries are popped on exit (see
+	// CompileConditionalBody), and an if/else keeps only what both arms assigned
+	// (see MergeBranchNames).
+
+	// Record that varName is definitely assigned from here on.  isReg says whether
+	// a NAME op bound it to its register, or it was only declared through `locals`.
+	private void PushName(String varName, Boolean isReg) {
+		_namedStack.Add(varName);
+		_namedIsReg.Add(isReg);
+	}
+
+	// Drop every entry above mark, undoing the assignments a non-dominating body made.
+	private void PopNamesTo(Int32 mark) {
+		while (_namedStack.Count > mark) {
+			_namedStack.RemoveAt(_namedStack.Count - 1);
+			_namedIsReg.RemoveAt(_namedIsReg.Count - 1);
+		}
+	}
+
+	// Is varName definitely assigned at this point, by any means?
+	private Boolean IsDefinitelyAssigned(String varName) {
+		for (Int32 i = 0; i < _namedStack.Count; i++) {
+			if (_namedStack[i] == varName) return true;
+		}
+		return false;
 	}
 
 	// Ensure a NAME op has been emitted for the given variable on a path that
@@ -243,11 +472,134 @@ public class CodeGenerator : IASTVisitor {
 	// assigns the variable (e.g. both branches of a single-line if).
 	private void EnsureNamed(String varName, Int32 varReg) {
 		for (Int32 i = 0; i < _namedStack.Count; i++) {
-			if (_namedStack[i] == varName) return;
+			if (_namedStack[i] == varName && _namedIsReg[i]) return;
 		}
 		Int32 nameIdx = _emitter.AddConstant(Value.make_string(varName));
 		_emitter.EmitAB(Opcode.NAME_rA_kBC, varReg, nameIdx, $"use r{varReg} for {varName}");
-		_namedStack.Add(varName);
+		PushName(varName, true);
+	}
+
+	// Record that `locals.x = ...` created x.  No register is bound, so this
+	// counts for definite assignment but not for EnsureNamed.
+	private void NoteLocalsDeclared(String varName) {
+		if (IsDefinitelyAssigned(varName)) return;
+		PushName(varName, false);
+	}
+
+	// ── Definite assignment across a loop ────────────────────────────────────
+	//
+	// A loop body normally contributes nothing, because it may run zero times.
+	// `while true` (or any constant-true condition) is the exception worth
+	// handling: the body always runs, and the only way to reach the code after the
+	// loop is a `break`, so whatever is assigned at every break is assigned after
+	// the loop.  This is not a nicety -- `while true` around an input prompt, with
+	// a `break` once the input validates, is how the idiom is written:
+	//
+	//     while true
+	//         power = input("how much? ").val
+	//         if power <= limit then break
+	//     end while
+	//     power = power * factor      // power is assigned here
+	//
+	// Each open loop accumulates the intersection over the breaks seen so far.
+
+	private void ClearLoopNames() {
+		_breakNames.Clear();
+		_breakIsReg.Clear();
+		_breakStarts.Clear();
+		_breakSeen.Clear();
+		_loopNameMarks.Clear();
+	}
+
+	private void BeginLoopNames() {
+		_breakStarts.Add(_breakNames.Count);
+		_breakSeen.Add(false);
+		_loopNameMarks.Add(_namedStack.Count);
+	}
+
+	// Fold the current definite-assignment state into the innermost loop's
+	// accumulator.  Only entries above the loop's own mark count: anything below it
+	// was already assigned before the loop and needs no help from us.
+	private void NoteBreak() {
+		if (_breakStarts.Count == 0) return;
+		Int32 loop = _breakStarts.Count - 1;
+		Int32 start = _breakStarts[loop];
+		Int32 mark = _loopNameMarks[loop];
+
+		if (!_breakSeen[loop]) {
+			for (Int32 i = mark; i < _namedStack.Count; i++) {
+				_breakNames.Add(_namedStack[i]);
+				_breakIsReg.Add(_namedIsReg[i]);
+			}
+			_breakSeen[loop] = true;
+			return;
+		}
+
+		// Later breaks narrow it: keep only what this path assigns too.
+		List<String> keep = new List<String>();
+		List<Boolean> keepIsReg = new List<Boolean>();
+		for (Int32 i = start; i < _breakNames.Count; i++) {
+			for (Int32 j = mark; j < _namedStack.Count; j++) {
+				if (_namedStack[j] != _breakNames[i]) continue;
+				keep.Add(_breakNames[i]);
+				keepIsReg.Add(_breakIsReg[i] && _namedIsReg[j]);
+				break;
+			}
+		}
+		while (_breakNames.Count > start) {
+			_breakNames.RemoveAt(_breakNames.Count - 1);
+			_breakIsReg.RemoveAt(_breakIsReg.Count - 1);
+		}
+		for (Int32 i = 0; i < keep.Count; i++) {
+			_breakNames.Add(keep[i]);
+			_breakIsReg.Add(keepIsReg[i]);
+		}
+	}
+
+	// Close the innermost loop, applying what its breaks established.  alwaysRuns
+	// says the body is guaranteed to execute (a constant-true condition); without
+	// that we cannot conclude anything, since the loop may run zero times.  A
+	// constant-true loop with no break never falls through to the code after it, so
+	// there is nothing to add there either.
+	private void EndLoopNames(Boolean alwaysRuns) {
+		Int32 loop = _breakStarts.Count - 1;
+		Int32 start = _breakStarts[loop];
+
+		if (alwaysRuns && _breakSeen[loop]) {
+			for (Int32 i = start; i < _breakNames.Count; i++) {
+				if (IsDefinitelyAssigned(_breakNames[i])) continue;
+				PushName(_breakNames[i], _breakIsReg[i]);
+			}
+		}
+
+		while (_breakNames.Count > start) {
+			_breakNames.RemoveAt(_breakNames.Count - 1);
+			_breakIsReg.RemoveAt(_breakIsReg.Count - 1);
+		}
+		_breakStarts.RemoveAt(loop);
+		_breakSeen.RemoveAt(loop);
+		_loopNameMarks.RemoveAt(loop);
+	}
+
+	// Does this loop condition always hold, so that the body is certain to run?
+	// Only literals, judged by the same rule Value.BoolValue applies at run time:
+	// a nonzero number, a nonempty string, a nonempty list or map, or the keyword
+	// `true`.  `while true` is the form that matters; the rest come along because
+	// the rule is "a literal we can evaluate here", not a special case for one
+	// spelling.  Anything with a variable in it we decline to reason about, even
+	// when it is obviously constant.
+	private Boolean IsAlwaysTrue(ASTNode condition) {
+		NumberNode num = condition as NumberNode;
+		if (num != null) return num.Value != 0;
+		StringNode str = condition as StringNode;
+		if (str != null) return str.Value != "";
+		ListNode list = condition as ListNode;
+		if (list != null) return list.Elements.Count != 0;
+		MapNode map = condition as MapNode;
+		if (map != null) return map.Keys.Count != 0;
+		IdentifierNode ident = condition as IdentifierNode;
+		if (ident != null) return ident.Name == "true";
+		return false;
 	}
 
 	// ── Global scope ─────────────────────────────────────────────────────────
@@ -306,6 +658,8 @@ public class CodeGenerator : IASTVisitor {
 		_maxRegUsed = -1;
 		_variableRegs.Clear();
 		_namedStack.Clear();
+		_namedIsReg.Clear();
+		ClearLoopNames();
 		_globalScope = false;
 
 		Int32 resultReg = ast.Accept(this);
@@ -328,6 +682,8 @@ public class CodeGenerator : IASTVisitor {
 		_maxRegUsed = -1;
 		_variableRegs.Clear();
 		_namedStack.Clear();
+		_namedIsReg.Clear();
+		ClearLoopNames();
 		// A module's top-level names are its LOCALS, not globals -- that is the
 		// whole point of returning them as a map -- so this is not global scope.
 		_globalScope = false;
@@ -358,6 +714,8 @@ public class CodeGenerator : IASTVisitor {
 		_maxRegUsed = -1;
 		_variableRegs.Clear();
 		_namedStack.Clear();
+		_namedIsReg.Clear();
+		ClearLoopNames();
 
 		// Reserve index 0 for @main
 		_functions.Clear();
@@ -419,6 +777,23 @@ public class CodeGenerator : IASTVisitor {
 		}
 		if (node.Name == "false") {
 			_emitter.EmitAB(Opcode.LOAD_rA_iBC, resultReg, 0, $"r{resultReg} = false");
+			return resultReg;
+		}
+
+		// Reading the variable that the assignment we are inside is creating.  The
+		// local does not exist yet, so this can only mean the enclosing scope's
+		// variable of the same name -- and on the next time through a loop it would
+		// mean the local instead, which is nobody's intent.  MiniScript 1 warned
+		// here and read the outer one; MS2 requires the intent to be written down.
+		if (_localOnlyName != "" && node.Name == _localOnlyName) {
+			if (Error.IsNull()) {
+				// The location is hard-coded into the message, matching what Lexer
+				// and Parser do.  It belongs in the error's stack trace instead, so
+				// DescribeError can render it with the file name -- see bugs.md #5.
+				Error = ErrorTypes.CompilerError(StringUtils.Format(
+					"illegal assignment to unqualified local '{0}' based on nonlocal [line {1}]",
+					node.Name, _emitter.CurrentLine));
+			}
 			return resultReg;
 		}
 
@@ -484,15 +859,25 @@ public class CodeGenerator : IASTVisitor {
 			// a new one for now, because I can't be sure the caller won't free
 			// the target register when done.  But we should probably return to
 			// this later and see if we can optimize it more.
-			varReg = AllocReg();
+			varReg = TakeVarReg(node.Variable);
 		}
 
-		// Creating a variable whose name the RHS also reads is the one case where the
-		// NAME op has to wait: NAME is what makes the register findable by name, and
-		// while it is pending, VisitIdentifier emits the r0 form of LOADC so the VM
-		// walks out to the enclosing scope.  That is what lets "n = n + 1" creating a
-		// local n read the global n.  The RHS then has to land in a temp so the copy
-		// can follow the NAME (see below).
+		// A first assignment whose RHS names the same variable is an error: see
+		// VisitIdentifier, which reports it.  The test is definite assignment, not
+		// isNew -- isNew asks whether the name has a register anywhere in this
+		// function, which stays true after a conditional body even though the
+		// assignment in it may never have run.  Arm _localOnlyName before compiling
+		// the RHS and disarm it after; nested function bodies compile with their own
+		// CodeGenerator, so it cannot leak into one.
+		Boolean localOnly = !IsDefinitelyAssigned(node.Variable);
+
+		// Creating a variable whose name the RHS may read through `locals`/`outer`/
+		// `globals` is the one case where the NAME op has to wait: NAME is not a
+		// passive binding, and letting it run first would show the RHS a half-created
+		// variable.  The RHS then has to land in a temp so the copy can follow the
+		// NAME (see below).  Bare reads of the variable do not get here -- they are
+		// the error above -- so what remains is the dynamic-scope route, which
+		// MayReadVar reports conservatively (ScopeNode always answers true).
 		//
 		// This is only about *creating* a variable.  Once it exists, the RHS should
 		// read its register, so NAME stays ahead of the RHS and no temp is needed --
@@ -511,9 +896,13 @@ public class CodeGenerator : IASTVisitor {
 		FunctionNode rhsFunc = node.Value as FunctionNode;
 		Int32 funcIndexBeforeRHS = _functions.Count;
 
+		String savedLocalOnly = _localOnlyName;
+		if (localOnly) _localOnlyName = node.Variable;
+
 		if (useTemp) {
 			Int32 tempReg = AllocReg();
 			Int32 rhsReg = CompileInto(node.Value, tempReg);
+			_localOnlyName = savedLocalOnly;
 			// NAME is not a passive binding: via MapToRegister it imports any existing
 			// value for this name out of the frame's live LocalVarMap into the
 			// register.  Copying the temp in afterwards overwrites that stale import
@@ -523,6 +912,7 @@ public class CodeGenerator : IASTVisitor {
 			FreeReg(tempReg);
 		} else {
 			CompileInto(node.Value, varReg);  // get RHS directly into the variable's register
+			_localOnlyName = savedLocalOnly;
 		}
 
 		// The variable exists from here on, so nested expressions in later statements
@@ -596,6 +986,20 @@ public class CodeGenerator : IASTVisitor {
 
 		_emitter.EmitABC(Opcode.IDXSET_rA_rB_rC, containerReg, indexReg, valueReg,
 			$"{node.Target.ToStr()}[{node.Index.ToStr()}] = {node.Value.ToStr()}");
+
+		// `locals.x = ...` creates local x as surely as `x = ...` does, so a later
+		// `x = x + 1` is reading a variable that exists.  Record it (no register is
+		// bound, hence the false flag; the read still goes through the frame's
+		// variable map).  Only for a constant name: `locals[expr]` names nothing we
+		// can know here.  At global scope `locals` is the globals table, which has
+		// no register-based naming at all.
+		if (!_globalScope) {
+			ScopeNode scopeTarget = node.Target as ScopeNode;
+			StringNode nameIndex = node.Index as StringNode;
+			if (scopeTarget != null && nameIndex != null && scopeTarget.Scope == ScopeType.Locals) {
+				NoteLocalsDeclared(nameIndex.Value);
+			}
+		}
 
 		FreeReg(valueReg);
 		FreeReg(indexReg);
@@ -1154,6 +1558,13 @@ public class CodeGenerator : IASTVisitor {
 		// Push labels for break and continue statements
 		_loopExitLabels.Add(afterLoop);
 		_loopContinueLabels.Add(loopStart);
+		BeginLoopNames();
+
+		// Give the body's new variables their registers before compiling the
+		// condition, so the condition allocates around them rather than on top of
+		// them; the back edge below re-runs the condition after the body.  See
+		// ReserveBodyVarRegs.
+		List<String> reserved = ReserveBodyVarRegs(node.Body);
 
 		// Place loopStart label
 		_emitter.PlaceLabel(loopStart);
@@ -1167,6 +1578,7 @@ public class CodeGenerator : IASTVisitor {
 
 		// Compile body statements
 		CompileConditionalBody(node.Body);
+		ReleaseBodyVarRegs(reserved);
 
 		// Jump back to loopStart
 		_emitter.EmitJump(Opcode.JUMP_iABC, loopStart, "loop back");
@@ -1177,6 +1589,7 @@ public class CodeGenerator : IASTVisitor {
 		// Pop labels
 		_loopExitLabels.RemoveAt(_loopExitLabels.Count - 1);
 		_loopContinueLabels.RemoveAt(_loopContinueLabels.Count - 1);
+		EndLoopNames(IsAlwaysTrue(node.Condition));
 
 		// While loops don't produce a value
 		return -1;
@@ -1202,18 +1615,35 @@ public class CodeGenerator : IASTVisitor {
 		_emitter.EmitBranch(Opcode.BRFALSE_rA_iBC, condReg, elseLabel, "if condition false, jump to else");
 		FreeReg(condReg);
 
-		// Compile "then" body
-		CompileConditionalBody(node.ThenBody);
+		// Compile "then" body.  With no else there is a path around it, so its
+		// assignments are forgotten; with an else, MergeBranchNames decides.
+		if (node.ElseBody.Count == 0) {
+			CompileConditionalBody(node.ThenBody);
+		} else {
+			Int32 mark = _namedStack.Count;
+			CompileBody(node.ThenBody);
 
-		// Jump over else body (if there is one)
-		if (node.ElseBody.Count > 0) {
+			// Take the then arm's names off the stack before compiling the else arm:
+			// the else arm is an alternative path, not a continuation, so nothing the
+			// then arm assigned is in scope for it.
+			List<String> thenNames = new List<String>();
+			List<Boolean> thenIsReg = new List<Boolean>();
+			for (Int32 i = mark; i < _namedStack.Count; i++) {
+				thenNames.Add(_namedStack[i]);
+				thenIsReg.Add(_namedIsReg[i]);
+			}
+			PopNamesTo(mark);
+
 			_emitter.EmitJump(Opcode.JUMP_iABC, afterIf, "jump past else");
 
 			// Place else label
 			_emitter.PlaceLabel(elseLabel);
 
 			// Compile "else" body
-			CompileConditionalBody(node.ElseBody);
+			CompileBody(node.ElseBody);
+
+			MergeBranchNames(mark, thenNames, thenIsReg,
+				EndsAbruptly(node.ThenBody), EndsAbruptly(node.ElseBody));
 		}
 
 		// Place afterIf label
@@ -1241,6 +1671,7 @@ public class CodeGenerator : IASTVisitor {
 		// Push labels for break and continue statements
 		_loopExitLabels.Add(afterLoop);
 		_loopContinueLabels.Add(loopStart);
+		BeginLoopNames();
 
 		// Evaluate iterable expression
 		Int32 listReg = node.Iterable.Accept(this);
@@ -1268,7 +1699,7 @@ public class CodeGenerator : IASTVisitor {
 		} else if (_variableRegs.TryGetValue(node.Variable, out varReg)) {
 			// Variable already exists
 		} else {
-			varReg = AllocReg();
+			varReg = TakeVarReg(node.Variable);
 			_variableRegs[node.Variable] = varReg;
 		}
 		// The loop variable is assigned each iteration; this NAME runs once before
@@ -1298,9 +1729,11 @@ public class CodeGenerator : IASTVisitor {
 		// Place afterLoop label
 		_emitter.PlaceLabel(afterLoop);
 
-		// Pop labels
+		// Pop labels.  A `for` may iterate zero times, so its breaks establish
+		// nothing about the code after it.
 		_loopExitLabels.RemoveAt(_loopExitLabels.Count - 1);
 		_loopContinueLabels.RemoveAt(_loopContinueLabels.Count - 1);
+		EndLoopNames(false);
 
 		// Remove internal variable names and free the registers
 		_variableRegs.Remove(idxName);
@@ -1324,6 +1757,7 @@ public class CodeGenerator : IASTVisitor {
 		} else {
 			Int32 exitLabel = _loopExitLabels[_loopExitLabels.Count - 1];
 			_emitter.EmitJump(Opcode.JUMP_iABC, exitLabel, "break");
+			NoteBreak();  // this path reaches the code after the loop; record what it assigns
 		}
 		return -1;
 	}
@@ -1426,7 +1860,7 @@ public class CodeGenerator : IASTVisitor {
 			innerEmitter.EmitAB(Opcode.NAME_rA_kBC, paramReg, nameIdx, $"param {name}");
 			// Params are named unconditionally at function entry, so reassigning
 			// one in the body needn't re-emit NAME.
-			innerGen._namedStack.Add(name);
+			innerGen.PushName(name, true);
 		}
 
 		// Check for a docstring: if the first body statement is a string literal,

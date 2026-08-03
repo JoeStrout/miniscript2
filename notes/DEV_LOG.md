@@ -1116,6 +1116,35 @@ Discord user @shellrider has pointed out that when MiniScript is run with a file
 
 So, today I'm buttoning all that up, matching existing standards wherever possible.  This will include a -h/--help option, as well as printing the help if you enter an invalid switch, so the interface is discoverable.
 
+## Aug 03, 2026
+
+I've spent the last several days doing a major refactoring of how global variables work.  This was triggered by some work on Mini Micro 2, which is now a MiniScript (specifically raylib-miniscript) program that also needs to run MiniScript (user) programs.  We can expose an Interpreter class to intrinsics, allowing the user to make one.  But this led to difficulties managing the shared global variables, and the realization that we already had workarounds on top of workarounds, all fundamentally caused by the fact that globals were just slots on the 0th stack frame, yet the user (particularly in a REPL environment) could add more globals willy-nilly.
+
+So ultimately, the solution was to treat globals differently, and *not* store them as registers.  They are now stored in a map, and so work much more like all variables did in MS1.  But performance-intensive code almost always involves a function, and local variables in a function can still be safely stored in registers.  As can temporaries used during expression evaluation, etc.  So now, after days of refactoring, we have it both ways: named global variables (only) are stored in a special map, but all other variables remain in a register stack.  Performance shows a slight degradation for global code, but less than Python and Lua show; and our pile of workarounds has been cleaned up.
+
+In the process, several bugs were also uncovered, and fixed today:
+
+1. intrinsic parameter defaults were not GC roots until
+the first VM existed — fixed 2026-08-03 by `Intrinsic.MarkRoots`, covered by
+`UnitTests.TestIntrinsicDefaults`
+2. `input` at end of file crashed the C#
+host and returned `""` on C++ — fixed 2026-08-03 by `IOHelper.TryInput`, covered
+by `tests/eof_input.ms` via `tools/build.sh test`
+3. A variable first assigned inside a `while` body could be
+clobbered by the loop condition (function scope only) — fixed 2026-08-03 by
+`CodeGenerator.ReserveBodyVarRegs`, covered by four tests at the end of section 9
+of `tests/testSuite.txt`.
+
+But oops, fixing that last one uncovered another case we were not properly handling.  MS1 (since December 2022) has issued a warning when you do something like `n = n + 1`, in a function where `n` is initially read from a global.  In other words, a case like this reads a global but uses it to create a local of the same name.  That's almost always a programmer error, so in MS1 we issued a warning like 
+
+Warning: assignment of unqualified local 'n' based on nonlocal is deprecated [line 1]
+
+Now that we're doing MS2, it's time for that to generate an actual error.  With the MS2 compiler architecture, we can generally detect this sort of thing at compile time, which is better for performance *and* better for the user than doing it at runtime.  But there are tricky edge cases revolving around how conservative we want to be.  `if foo then n = 0` should not count as defining `foo` locally, but `if foo then n = 0 else n = 1` should.  That's achievable.  But a loop like `for i in [1]; n = 0; end for` is much harder; i.e., it's hard to know if a `for` or `while` loop is going to execute at all.  So, for now, a declaration inside one of those will not count -- we'll see if that causes noticeable pain.
+
+...Well, yes, it did: our superstartrek example had a `while true` loop that assigned a variable (based on user input), did some validation, and then `break`.  And then modified that variable after the loop.  This failed under the new regime, even though it's a pretty common idiom.  So, let's try handling that case (a `while true` loop with `break` analysis) too.   ...OK, yes, that works.
+
+
+
 
 
 

@@ -1368,48 +1368,20 @@ print b
 ================================================================================
 ==== SECTION 8c: FIRST ASSIGNMENT AND SCOPE SHADOWING
 ================================================================================
-==== First assignment reads the enclosing variable, not the new local
+==== A first assignment whose RHS reads the same name is an error: the local
+==== does not exist yet, so the read can only mean the enclosing scope, and on
+==== the next pass through a loop it would mean the local instead.
 ================================
 globals.n = 5
-globals.s = "hi"
-globals.lst = [1, 2]
-globals.m = {"k": "v"}
 f = function
 	n = n + 1
 	return n
 end function
 print f
-g = function
-	s = s + "!"
-	return s
-end function
-print g
-h = function
-	lst = lst + [3]
-	return lst
-end function
-print h
-k = function
-	m = {"outer": m}
-	return m
-end function
-print k
-// the globals themselves are untouched
-print n
-print s
-print lst
-print m
 --------------------------------
-6
-hi!
-[1, 2, 3]
-{"outer": m}
-5
-hi
-[1, 2]
-{"k": "v"}
+Compiler Error: illegal assignment to unqualified local 'n' based on nonlocal [line 3]
 ================================
-==== First assignment with a recursive collection reads the enclosing variable
+==== Same, with the read inside a list literal
 ================================
 globals.y = 5
 f = function
@@ -1417,23 +1389,81 @@ f = function
 	return y
 end function
 print f
-g = function
-	y = {y: y}
-	return y
-end function
-print g
-print y
 --------------------------------
-[5]
-{5: 5}
-5
+Compiler Error: illegal assignment to unqualified local 'y' based on nonlocal [line 3]
 ================================
-==== Shadowing through outer function scope
+==== Same, with the read inside a map literal
+================================
+globals.m = {"k": "v"}
+f = function
+	m = {"outer": m}
+	return m
+end function
+print f
+--------------------------------
+Compiler Error: illegal assignment to unqualified local 'm' based on nonlocal [line 3]
+================================
+==== In a loop body, where the local does exist after the first iteration
+================================
+globals.n = 5
+f = function
+	for j in range(1,3)
+		n = n + 1
+	end for
+	return n
+end function
+print f
+--------------------------------
+Compiler Error: illegal assignment to unqualified local 'n' based on nonlocal [line 4]
+================================
+==== An assignment in an if with no else does not make the variable definite
+================================
+f = function(c)
+	if c then
+		n = 99
+	end if
+	n = n + 1
+	return n
+end function
+print f(0)
+--------------------------------
+Compiler Error: illegal assignment to unqualified local 'n' based on nonlocal [line 5]
+================================
+==== Nor does one in the then arm, as seen from the else arm
+================================
+globals.n = 5
+f = function(c)
+	if c then
+		n = 42
+	else
+		n = n + 1
+	end if
+	return n
+end function
+print f(0)
+--------------------------------
+Compiler Error: illegal assignment to unqualified local 'n' based on nonlocal [line 6]
+================================
+==== Reading an enclosing function's local this way is an error too
 ================================
 outerFn = function
 	v = 10
 	innerFn = function
 		v = v + 1
+		return v
+	end function
+	return innerFn
+end function
+print outerFn
+--------------------------------
+Compiler Error: illegal assignment to unqualified local 'v' based on nonlocal [line 4]
+================================
+==== 'outer' says which one you meant: shadowing through outer function scope
+================================
+outerFn = function
+	v = 10
+	innerFn = function
+		v = outer.v + 1
 		return v
 	end function
 	a = innerFn
@@ -1443,6 +1473,38 @@ end function
 print outerFn
 --------------------------------
 [11, 11, 10]
+================================
+==== 'globals' says which one you meant, and leaves the global alone
+================================
+globals.n = 5
+globals.s = "hi"
+globals.lst = [1, 2]
+f = function
+	n = globals.n + 1
+	return n
+end function
+print f
+g = function
+	s = globals.s + "!"
+	return s
+end function
+print g
+h = function
+	lst = globals.lst + [3]
+	return lst
+end function
+print h
+// the globals themselves are untouched
+print n
+print s
+print lst
+--------------------------------
+6
+hi!
+[1, 2, 3]
+5
+hi
+[1, 2]
 ================================
 ==== First assignment sees a value placed in locals earlier
 ================================
@@ -1460,6 +1522,347 @@ print g
 --------------------------------
 4
 7
+================================
+==== Assigning in both arms of an if/else does make the variable definite.
+==== MiniScript has no ternary operator, so this is how you write one.
+================================
+f = function(c)
+	if c then
+		n = 42
+	else
+		n = 0
+	end if
+	n = n + 1
+	return n
+end function
+print f(1)
+print f(0)
+--------------------------------
+43
+1
+================================
+==== Same, in the single-line if/else form
+================================
+f = function(c)
+	if c then n = 42 else n = 0
+	n = n + 1
+	return n
+end function
+print f(1)
+print f(0)
+--------------------------------
+43
+1
+================================
+==== An else-if chain counts, so long as it ends in an else
+================================
+f = function(a, b)
+	if a then
+		n = 1
+	else if b then
+		n = 2
+	else
+		n = 3
+	end if
+	n = n + 10
+	return n
+end function
+print f(1, 0)
+print f(0, 1)
+print f(0, 0)
+--------------------------------
+11
+12
+13
+================================
+==== An else-if chain with no final else does not
+================================
+f = function(a, b)
+	if a then
+		n = 1
+	else if b then
+		n = 2
+	end if
+	n = n + 10
+	return n
+end function
+print f(1, 0)
+--------------------------------
+Compiler Error: illegal assignment to unqualified local 'n' based on nonlocal [line 7]
+================================
+==== One arm may declare through locals instead of assigning
+================================
+f = function(c)
+	if c then
+		n = 1
+	else
+		locals.n = 2
+	end if
+	n = n + 1
+	return n
+end function
+print f(1)
+print f(0)
+--------------------------------
+2
+3
+================================
+==== An arm that returns cannot reach the code after the if, so the other
+==== arm's assignment holds there unconditionally
+================================
+f = function(c)
+	if c then
+		n = 1
+	else
+		return 0
+	end if
+	n = n + 1
+	return n
+end function
+print f(1)
+print f(0)
+--------------------------------
+2
+0
+================================
+==== Same with the arms the other way round
+================================
+f = function(c)
+	if c then
+		return 0
+	else
+		n = 1
+	end if
+	n = n + 1
+	return n
+end function
+print f(1)
+print f(0)
+--------------------------------
+0
+2
+================================
+==== 'break' ends an arm just as 'return' does
+================================
+f = function(c)
+	while 1
+		if c then
+			n = 1
+		else
+			break
+		end if
+		n = n + 1
+		return n
+	end while
+	return 0
+end function
+print f(1)
+print f(0)
+--------------------------------
+2
+0
+================================
+==== 'continue' likewise
+================================
+f = function(c)
+	total = 0
+	for i in range(1, 3)
+		if c then
+			n = i
+		else
+			continue
+		end if
+		n = n + 1
+		total = total + n
+	end for
+	return total
+end function
+print f(1)
+print f(0)
+--------------------------------
+9
+0
+================================
+==== A parameter is assigned at function entry, so reading it is fine
+================================
+f = function(n)
+	n = n + 1
+	return n
+end function
+print f(5)
+--------------------------------
+6
+================================
+==== At global scope there is no local to shadow, so this is ordinary
+================================
+n = 5
+n = n + 1
+print n
+--------------------------------
+6
+================================
+==== Any truthy literal condition counts, judged the same way the VM judges
+==== it at run time: a nonempty string, or a nonempty collection
+================================
+f = function
+	while "go"
+		n = 7
+		break
+	end while
+	while [1]
+		m = 8
+		break
+	end while
+	while {1: 2}
+		p = 9
+		break
+	end while
+	return n + m + p
+end function
+print f
+--------------------------------
+24
+================================
+==== ...but a falsy literal does not: the body may never run
+================================
+f = function
+	while ""
+		n = 7
+		break
+	end while
+	n = n + 1
+	return n
+end function
+print f
+--------------------------------
+Compiler Error: illegal assignment to unqualified local 'n' based on nonlocal [line 6]
+================================
+==== A 'while true' body always runs, and the only way past the loop is a
+==== break, so what is assigned at the break is assigned after the loop.
+==== This is the standard input-validation idiom.
+================================
+f = function(limit)
+	while true
+		power = limit - 1
+		if power <= limit then break
+	end while
+	power = power * 2
+	return power
+end function
+print f(5)
+--------------------------------
+8
+================================
+==== 'while 1' counts as always-true the same way
+================================
+f = function
+	while 1
+		n = 7
+		break
+	end while
+	n = n + 1
+	return n
+end function
+print f
+--------------------------------
+8
+================================
+==== With two breaks, only what both assign survives
+================================
+f = function(c)
+	while true
+		n = 1
+		if c then break
+		m = 2
+		break
+	end while
+	n = n + 1
+	return n
+end function
+print f(1)
+print f(0)
+--------------------------------
+2
+2
+================================
+==== ...and what only one of them assigns does not
+================================
+f = function(c)
+	while true
+		n = 1
+		if c then break
+		m = 2
+		break
+	end while
+	m = m + 1
+	return m
+end function
+print f(1)
+--------------------------------
+Compiler Error: illegal assignment to unqualified local 'm' based on nonlocal [line 8]
+================================
+==== A break before the assignment establishes nothing
+================================
+f = function(c)
+	while true
+		if c then break
+		n = 1
+		break
+	end while
+	n = n + 1
+	return n
+end function
+print f(1)
+--------------------------------
+Compiler Error: illegal assignment to unqualified local 'n' based on nonlocal [line 7]
+================================
+==== A loop whose condition is not literally true establishes nothing, even
+==== if it happens to always run
+================================
+f = function
+	go = 1
+	while go
+		n = 7
+		break
+	end while
+	n = n + 1
+	return n
+end function
+print f
+--------------------------------
+Compiler Error: illegal assignment to unqualified local 'n' based on nonlocal [line 7]
+================================
+==== A 'for' may iterate zero times, so its breaks establish nothing
+================================
+f = function(items)
+	for i in items
+		n = i
+		break
+	end for
+	n = n + 1
+	return n
+end function
+print f([7])
+--------------------------------
+Compiler Error: illegal assignment to unqualified local 'n' based on nonlocal [line 6]
+================================
+==== A break in a nested loop belongs to that loop, not the outer one
+================================
+f = function
+	while true
+		for i in [1, 2]
+			n = i
+			break
+		end for
+		m = 3
+		break
+	end while
+	m = m + 1
+	return m
+end function
+print f
+--------------------------------
+4
 ================================
 ==== Reassignment still reads the local register
 ================================
@@ -1665,6 +2068,86 @@ end while
 21
 22
 23
+================================
+==== Variable first assigned in a while body, read after the loop (in a function).
+==== The loop's back edge re-runs the condition, so the body's variables must not
+==== land anywhere the condition writes.  See notes/bugs.md entry 3.
+================================
+f = function()
+	i = 0
+	while i < 3
+		c = 100 + i
+		i = i + 1
+	end while
+	return c
+end function
+print f
+--------------------------------
+102
+================================
+==== Same, with the variable first assigned in a nested while body, and with a
+==== condition using several temporaries.
+================================
+g = function()
+	i = 0
+	while i + 1 < 2 * 2
+		j = 0
+		while j < 2
+			d = i * 10 + j
+			j = j + 1
+		end while
+		i = i + 1
+	end while
+	return [d, i, j]
+end function
+print g
+--------------------------------
+[21, 3, 2]
+================================
+==== Same, where the loop condition makes a call.  A call writes the whole callee
+==== frame, from its base register up, so the body's variables have to be below
+==== that too -- not merely clear of the condition's own temporaries.
+================================
+helper = function(x)
+	q = x * 2
+	r = q + 1
+	return r
+end function
+f = function()
+	i = 0
+	while helper(i) < 7
+		c = 100 + i
+		i = i + 1
+	end while
+	return c
+end function
+print f
+--------------------------------
+102
+================================
+==== A for loop, a nested function, and self, all first assigned in a while body.
+================================
+Thing = {}
+Thing.run = function()
+	i = 0
+	while i < 2
+		for k in [10, 20]
+			tot = k
+		end for
+		inner = function()
+			return 99
+		end function
+		got = inner
+		mine = self.tag
+		i = i + 1
+	end while
+	return [k, tot, got, mine]
+end function
+t = new Thing
+t.tag = "tagged"
+print t.run
+--------------------------------
+[20, 20, 99, "tagged"]
 ================================
 ================================================================================
 ==== SECTION 10: IF STATEMENTS

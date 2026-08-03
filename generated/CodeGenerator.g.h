@@ -22,7 +22,14 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 	private: Int32 _firstAvailable; // Lowest index that might be free
 	private: Int32 _maxRegUsed; // High water mark for register usage
 	private: Dictionary<String, Int32> _variableRegs; // variable name -> register
-	private: List<String> _namedStack; // variables whose NAME op dominates the current point (stack-disciplined by conditional nesting)
+	private: List<String> _namedStack; // variables definitely assigned at the current point (stack-disciplined by conditional nesting)
+	private: List<Boolean> _namedIsReg; // parallel to _namedStack: true if bound to a register by a NAME op, false if declared only via `locals.x =`
+	private: String _localOnlyName; // while compiling the RHS of a first assignment, the variable being created ("" when inactive)
+	private: List<String> _breakNames;
+	private: List<Boolean> _breakIsReg;
+	private: List<Int32> _breakStarts; // per open loop: where its accumulator starts
+	private: List<Boolean> _breakSeen; // per open loop: has any break contributed yet?
+	private: List<Int32> _loopNameMarks; // per open loop: _namedStack depth on entry
 	private: Int32 _targetReg; // Target register for next expression (-1 = allocate)
 	private: List<Int32> _loopExitLabels; // Stack of loop exit labels for break
 	private: List<Int32> _loopContinueLabels; // Stack of loop continue labels for continue
@@ -30,6 +37,11 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 	private: Boolean _globalScope;
 	public: String FileName = ""; // Source file name, copied to each compiled FuncDef
 	public: Value Error;
+	// Definite assignment at the `break`s of each open loop -- what survives past a
+	// loop that only ends by breaking out of it.  See NoteBreak/EndLoopNames.  The
+	// per-loop accumulators are stacked end to end in _breakNames/_breakIsReg, with
+	// _breakStarts giving each one's first index; the innermost loop's is always the
+	// tail, so a loop's entries can be dropped by truncating.
 
 	// True while compiling code whose named variables are GLOBALS rather than
 	// registers -- that is, @main and only @main.  A module compiled for `import`
@@ -97,18 +109,149 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 	// meaningful result register, and are skipped.
 	private: void EmitDiscardCheck(ASTNode stmt, Int32 resultReg);
 
-	// Compile a body of statements that executes conditionally (an if/else branch
-	// or a loop body).  A NAME op emitted inside this body does not dominate code
-	// after it, so any names recorded while compiling the body are forgotten on
-	// exit (the body's names sit at the tail of _namedStack, since any nested
-	// conditional bodies have already been entered and exited).
+	// Compile a body of statements that may not execute (a loop body, or an if
+	// with no else).  Nothing it assigns is definitely assigned afterward, so any
+	// names recorded while compiling it are forgotten on exit (the body's names
+	// sit at the tail of _namedStack, since any nested conditional bodies have
+	// already been entered and exited).
+	// Visit(IfNode) does not use this: with both arms present it has to compare
+	// them rather than discard both, so it does its own marking.
 	private: void CompileConditionalBody(List<ASTNode> body);
+
+	// Combine the two arms of an if/else into what is definitely assigned after it.
+	// The "then" arm's names come in as thenNames/thenIsReg (already popped off the
+	// stack, since the else arm must not see them -- it is an alternative path, not
+	// a continuation).  The "else" arm's names are what sits above `mark` now.
+	// Normally that is the intersection: `if c then n = 1 else n = 0` leaves n
+	// assigned, which matters because MiniScript has no ternary operator and this
+	// is how you write one.  Both arms give the variable the same register --
+	// _variableRegs is not unwound between them, so the else arm reuses what the
+	// then arm allocated -- so an entry surviving the merge describes one register,
+	// as EnsureNamed requires.  It survives as register-bound only if both arms
+	// bound it; a NAME in one arm and a `locals.x =` in the other leaves the name
+	// assigned but its register not established on every path.
+	// An arm that cannot complete normally (it returns, breaks, or continues) is
+	// the exception: if control reaches the code after the if, that arm did not
+	// fall through to it, so only the other arm's assignments matter and they hold
+	// unconditionally.
+	private: void MergeBranchNames(Int32 mark, List<String> thenNames, List<Boolean> thenIsReg, Boolean thenAbrupt, Boolean elseAbrupt);
+
+	// Can this body only be left by jumping somewhere else -- a return, or a break
+	// or continue out of the enclosing loop?  Used by MergeBranchNames; a body that
+	// ends this way never falls through to whatever follows it.
+	private: Boolean EndsAbruptly(List<ASTNode> body);
+
+	// ── Loop-body variable registers ─────────────────────────────────────────
+	// Register allocation assumes control flows straight through: a temp freed at
+	// the end of an expression is free for whatever comes next.  A loop breaks
+	// that assumption, because its back edge re-runs the condition after the body
+	// has been compiled -- so a variable first assigned in the body must not sit
+	// anywhere the condition writes.  Two things the condition writes are easy to
+	// miss: temps it frees before the body is compiled, and, for any call it makes,
+	// the entire callee frame from `calleeBase` up (see EmitCallSequence).
+	// Rather than try to enumerate those after the fact, we give the body's new
+	// variables their registers *before* compiling the condition.  Then they are
+	// simply part of the live set the condition allocates around, and the ordinary
+	// rules do the rest.
+	// The registers are parked under an internal key, not the variable's own name,
+	// so that the body compiles exactly as it did before: the variable is still
+	// "new" at its first assignment (which is what decides NAME ordering, and what
+	// lets `c = c + 1` in the body read an outer c), and a read before that
+	// assignment still misses and walks out to the enclosing scope.
+	private: static String PendingVarRegKey(String varName);
+
+	// Reserve a register for each variable the given loop body creates.  Returns
+	// the names reserved, for ReleaseBodyVarRegs.  Does nothing at global scope,
+	// where top-level names are slots rather than registers.
+	private: List<String> ReserveBodyVarRegs(List<ASTNode> body);
+
+	// Drop any reservation the body did not end up claiming.  A claimed one has
+	// already been renamed to the variable itself by TakeVarReg.
+	private: void ReleaseBodyVarRegs(List<String> reserved);
+
+	// Allocate the register for a variable being created.  If an enclosing loop
+	// reserved one for it, take that; the caller records it under the variable's
+	// own name, which is what retires the reservation.
+	private: Int32 TakeVarReg(String varName);
+
+	// Collect the names of variables that assignments in this statement list
+	// create.  Descends into nested loop and if bodies, since those assignments
+	// happen in this scope too, but not into nested function bodies, whose
+	// variables are locals of that function.
+	private: void CollectAssignedVars(List<ASTNode> body, List<String> result);
+
+	// ── Definite assignment ──────────────────────────────────────────────────
+	// _namedStack holds the variables that are definitely assigned at the current
+	// point -- assigned on every path that reaches here.  Two things read it:
+	//   * EnsureNamed, to skip a NAME op that a dominating one already covers.
+	//     That only counts entries flagged in _namedIsReg, since only a NAME
+	//     actually binds the name to a register.
+	//   * The first-assignment check in Visit(AssignmentNode), which counts every
+	//     entry: `locals.x = 1` creates x just as surely as an assignment does,
+	//     it simply routes through the frame's variable map instead of a register.
+	// The stack discipline is what makes "definitely" true rather than "somewhere
+	// earlier": a conditional body's entries are popped on exit (see
+	// CompileConditionalBody), and an if/else keeps only what both arms assigned
+	// (see MergeBranchNames).
+
+	// Record that varName is definitely assigned from here on.  isReg says whether
+	// a NAME op bound it to its register, or it was only declared through `locals`.
+	private: void PushName(String varName, Boolean isReg);
+
+	// Drop every entry above mark, undoing the assignments a non-dominating body made.
+	private: void PopNamesTo(Int32 mark);
+
+	// Is varName definitely assigned at this point, by any means?
+	private: Boolean IsDefinitelyAssigned(String varName);
 
 	// Ensure a NAME op has been emitted for the given variable on a path that
 	// dominates the current point.  If not, emit one now and record it.  This is
 	// what makes a variable "exist" at runtime; it must run on every path that
 	// assigns the variable (e.g. both branches of a single-line if).
 	private: void EnsureNamed(String varName, Int32 varReg);
+
+	// Record that `locals.x = ...` created x.  No register is bound, so this
+	// counts for definite assignment but not for EnsureNamed.
+	private: void NoteLocalsDeclared(String varName);
+
+	// ── Definite assignment across a loop ────────────────────────────────────
+	// A loop body normally contributes nothing, because it may run zero times.
+	// `while true` (or any constant-true condition) is the exception worth
+	// handling: the body always runs, and the only way to reach the code after the
+	// loop is a `break`, so whatever is assigned at every break is assigned after
+	// the loop.  This is not a nicety -- `while true` around an input prompt, with
+	// a `break` once the input validates, is how the idiom is written:
+	//     while true
+	//         power = input("how much? ").val
+	//         if power <= limit then break
+	//     end while
+	//     power = power * factor      // power is assigned here
+	// Each open loop accumulates the intersection over the breaks seen so far.
+
+	private: void ClearLoopNames();
+
+	private: void BeginLoopNames();
+
+	// Fold the current definite-assignment state into the innermost loop's
+	// accumulator.  Only entries above the loop's own mark count: anything below it
+	// was already assigned before the loop and needs no help from us.
+	private: void NoteBreak();
+
+	// Close the innermost loop, applying what its breaks established.  alwaysRuns
+	// says the body is guaranteed to execute (a constant-true condition); without
+	// that we cannot conclude anything, since the loop may run zero times.  A
+	// constant-true loop with no break never falls through to the code after it, so
+	// there is nothing to add there either.
+	private: void EndLoopNames(Boolean alwaysRuns);
+
+	// Does this loop condition always hold, so that the body is certain to run?
+	// Only literals, judged by the same rule Value.BoolValue applies at run time:
+	// a nonzero number, a nonempty string, a nonempty list or map, or the keyword
+	// `true`.  `while true` is the form that matters; the rest come along because
+	// the rule is "a literal we can evaluate here", not a special case for one
+	// spelling.  Anything with a variable in it we decline to reason about, even
+	// when it is obviously constant.
+	private: Boolean IsAlwaysTrue(ASTNode condition);
 
 	// ── Global scope ─────────────────────────────────────────────────────────
 
@@ -321,8 +464,22 @@ struct CodeGenerator : public IASTVisitor {
 	private: void set__maxRegUsed(Int32 _v); // High water mark for register usage
 	private: Dictionary<String, Int32> _variableRegs(); // variable name -> register
 	private: void set__variableRegs(Dictionary<String, Int32> _v); // variable name -> register
-	private: List<String> _namedStack(); // variables whose NAME op dominates the current point (stack-disciplined by conditional nesting)
-	private: void set__namedStack(List<String> _v); // variables whose NAME op dominates the current point (stack-disciplined by conditional nesting)
+	private: List<String> _namedStack(); // variables definitely assigned at the current point (stack-disciplined by conditional nesting)
+	private: void set__namedStack(List<String> _v); // variables definitely assigned at the current point (stack-disciplined by conditional nesting)
+	private: List<Boolean> _namedIsReg(); // parallel to _namedStack: true if bound to a register by a NAME op, false if declared only via `locals.x =`
+	private: void set__namedIsReg(List<Boolean> _v); // parallel to _namedStack: true if bound to a register by a NAME op, false if declared only via `locals.x =`
+	private: String _localOnlyName(); // while compiling the RHS of a first assignment, the variable being created ("" when inactive)
+	private: void set__localOnlyName(String _v); // while compiling the RHS of a first assignment, the variable being created ("" when inactive)
+	private: List<String> _breakNames();
+	private: void set__breakNames(List<String> _v);
+	private: List<Boolean> _breakIsReg();
+	private: void set__breakIsReg(List<Boolean> _v);
+	private: List<Int32> _breakStarts(); // per open loop: where its accumulator starts
+	private: void set__breakStarts(List<Int32> _v); // per open loop: where its accumulator starts
+	private: List<Boolean> _breakSeen(); // per open loop: has any break contributed yet?
+	private: void set__breakSeen(List<Boolean> _v); // per open loop: has any break contributed yet?
+	private: List<Int32> _loopNameMarks(); // per open loop: _namedStack depth on entry
+	private: void set__loopNameMarks(List<Int32> _v); // per open loop: _namedStack depth on entry
 	private: Int32 _targetReg(); // Target register for next expression (-1 = allocate)
 	private: void set__targetReg(Int32 _v); // Target register for next expression (-1 = allocate)
 	private: List<Int32> _loopExitLabels(); // Stack of loop exit labels for break
@@ -337,6 +494,11 @@ struct CodeGenerator : public IASTVisitor {
 	public: void set_FileName(String _v); // Source file name, copied to each compiled FuncDef
 	public: Value Error();
 	public: void set_Error(Value _v);
+	// Definite assignment at the `break`s of each open loop -- what survives past a
+	// loop that only ends by breaking out of it.  See NoteBreak/EndLoopNames.  The
+	// per-loop accumulators are stacked end to end in _breakNames/_breakIsReg, with
+	// _breakStarts giving each one's first index; the innermost loop's is always the
+	// tail, so a loop's entries can be dropped by truncating.
 
 	// True while compiling code whose named variables are GLOBALS rather than
 	// registers -- that is, @main and only @main.  A module compiled for `import`
@@ -406,18 +568,149 @@ struct CodeGenerator : public IASTVisitor {
 	// meaningful result register, and are skipped.
 	private: inline void EmitDiscardCheck(ASTNode stmt, Int32 resultReg);
 
-	// Compile a body of statements that executes conditionally (an if/else branch
-	// or a loop body).  A NAME op emitted inside this body does not dominate code
-	// after it, so any names recorded while compiling the body are forgotten on
-	// exit (the body's names sit at the tail of _namedStack, since any nested
-	// conditional bodies have already been entered and exited).
+	// Compile a body of statements that may not execute (a loop body, or an if
+	// with no else).  Nothing it assigns is definitely assigned afterward, so any
+	// names recorded while compiling it are forgotten on exit (the body's names
+	// sit at the tail of _namedStack, since any nested conditional bodies have
+	// already been entered and exited).
+	// Visit(IfNode) does not use this: with both arms present it has to compare
+	// them rather than discard both, so it does its own marking.
 	private: inline void CompileConditionalBody(List<ASTNode> body);
+
+	// Combine the two arms of an if/else into what is definitely assigned after it.
+	// The "then" arm's names come in as thenNames/thenIsReg (already popped off the
+	// stack, since the else arm must not see them -- it is an alternative path, not
+	// a continuation).  The "else" arm's names are what sits above `mark` now.
+	// Normally that is the intersection: `if c then n = 1 else n = 0` leaves n
+	// assigned, which matters because MiniScript has no ternary operator and this
+	// is how you write one.  Both arms give the variable the same register --
+	// _variableRegs is not unwound between them, so the else arm reuses what the
+	// then arm allocated -- so an entry surviving the merge describes one register,
+	// as EnsureNamed requires.  It survives as register-bound only if both arms
+	// bound it; a NAME in one arm and a `locals.x =` in the other leaves the name
+	// assigned but its register not established on every path.
+	// An arm that cannot complete normally (it returns, breaks, or continues) is
+	// the exception: if control reaches the code after the if, that arm did not
+	// fall through to it, so only the other arm's assignments matter and they hold
+	// unconditionally.
+	private: inline void MergeBranchNames(Int32 mark, List<String> thenNames, List<Boolean> thenIsReg, Boolean thenAbrupt, Boolean elseAbrupt);
+
+	// Can this body only be left by jumping somewhere else -- a return, or a break
+	// or continue out of the enclosing loop?  Used by MergeBranchNames; a body that
+	// ends this way never falls through to whatever follows it.
+	private: inline Boolean EndsAbruptly(List<ASTNode> body);
+
+	// ── Loop-body variable registers ─────────────────────────────────────────
+	// Register allocation assumes control flows straight through: a temp freed at
+	// the end of an expression is free for whatever comes next.  A loop breaks
+	// that assumption, because its back edge re-runs the condition after the body
+	// has been compiled -- so a variable first assigned in the body must not sit
+	// anywhere the condition writes.  Two things the condition writes are easy to
+	// miss: temps it frees before the body is compiled, and, for any call it makes,
+	// the entire callee frame from `calleeBase` up (see EmitCallSequence).
+	// Rather than try to enumerate those after the fact, we give the body's new
+	// variables their registers *before* compiling the condition.  Then they are
+	// simply part of the live set the condition allocates around, and the ordinary
+	// rules do the rest.
+	// The registers are parked under an internal key, not the variable's own name,
+	// so that the body compiles exactly as it did before: the variable is still
+	// "new" at its first assignment (which is what decides NAME ordering, and what
+	// lets `c = c + 1` in the body read an outer c), and a read before that
+	// assignment still misses and walks out to the enclosing scope.
+	private: static String PendingVarRegKey(String varName) { return CodeGeneratorStorage::PendingVarRegKey(varName); }
+
+	// Reserve a register for each variable the given loop body creates.  Returns
+	// the names reserved, for ReleaseBodyVarRegs.  Does nothing at global scope,
+	// where top-level names are slots rather than registers.
+	private: inline List<String> ReserveBodyVarRegs(List<ASTNode> body);
+
+	// Drop any reservation the body did not end up claiming.  A claimed one has
+	// already been renamed to the variable itself by TakeVarReg.
+	private: inline void ReleaseBodyVarRegs(List<String> reserved);
+
+	// Allocate the register for a variable being created.  If an enclosing loop
+	// reserved one for it, take that; the caller records it under the variable's
+	// own name, which is what retires the reservation.
+	private: inline Int32 TakeVarReg(String varName);
+
+	// Collect the names of variables that assignments in this statement list
+	// create.  Descends into nested loop and if bodies, since those assignments
+	// happen in this scope too, but not into nested function bodies, whose
+	// variables are locals of that function.
+	private: inline void CollectAssignedVars(List<ASTNode> body, List<String> result);
+
+	// ── Definite assignment ──────────────────────────────────────────────────
+	// _namedStack holds the variables that are definitely assigned at the current
+	// point -- assigned on every path that reaches here.  Two things read it:
+	//   * EnsureNamed, to skip a NAME op that a dominating one already covers.
+	//     That only counts entries flagged in _namedIsReg, since only a NAME
+	//     actually binds the name to a register.
+	//   * The first-assignment check in Visit(AssignmentNode), which counts every
+	//     entry: `locals.x = 1` creates x just as surely as an assignment does,
+	//     it simply routes through the frame's variable map instead of a register.
+	// The stack discipline is what makes "definitely" true rather than "somewhere
+	// earlier": a conditional body's entries are popped on exit (see
+	// CompileConditionalBody), and an if/else keeps only what both arms assigned
+	// (see MergeBranchNames).
+
+	// Record that varName is definitely assigned from here on.  isReg says whether
+	// a NAME op bound it to its register, or it was only declared through `locals`.
+	private: inline void PushName(String varName, Boolean isReg);
+
+	// Drop every entry above mark, undoing the assignments a non-dominating body made.
+	private: inline void PopNamesTo(Int32 mark);
+
+	// Is varName definitely assigned at this point, by any means?
+	private: inline Boolean IsDefinitelyAssigned(String varName);
 
 	// Ensure a NAME op has been emitted for the given variable on a path that
 	// dominates the current point.  If not, emit one now and record it.  This is
 	// what makes a variable "exist" at runtime; it must run on every path that
 	// assigns the variable (e.g. both branches of a single-line if).
 	private: inline void EnsureNamed(String varName, Int32 varReg);
+
+	// Record that `locals.x = ...` created x.  No register is bound, so this
+	// counts for definite assignment but not for EnsureNamed.
+	private: inline void NoteLocalsDeclared(String varName);
+
+	// ── Definite assignment across a loop ────────────────────────────────────
+	// A loop body normally contributes nothing, because it may run zero times.
+	// `while true` (or any constant-true condition) is the exception worth
+	// handling: the body always runs, and the only way to reach the code after the
+	// loop is a `break`, so whatever is assigned at every break is assigned after
+	// the loop.  This is not a nicety -- `while true` around an input prompt, with
+	// a `break` once the input validates, is how the idiom is written:
+	//     while true
+	//         power = input("how much? ").val
+	//         if power <= limit then break
+	//     end while
+	//     power = power * factor      // power is assigned here
+	// Each open loop accumulates the intersection over the breaks seen so far.
+
+	private: inline void ClearLoopNames();
+
+	private: inline void BeginLoopNames();
+
+	// Fold the current definite-assignment state into the innermost loop's
+	// accumulator.  Only entries above the loop's own mark count: anything below it
+	// was already assigned before the loop and needs no help from us.
+	private: inline void NoteBreak();
+
+	// Close the innermost loop, applying what its breaks established.  alwaysRuns
+	// says the body is guaranteed to execute (a constant-true condition); without
+	// that we cannot conclude anything, since the loop may run zero times.  A
+	// constant-true loop with no break never falls through to the code after it, so
+	// there is nothing to add there either.
+	private: inline void EndLoopNames(Boolean alwaysRuns);
+
+	// Does this loop condition always hold, so that the body is certain to run?
+	// Only literals, judged by the same rule Value.BoolValue applies at run time:
+	// a nonzero number, a nonempty string, a nonempty list or map, or the keyword
+	// `true`.  `while true` is the form that matters; the rest come along because
+	// the rule is "a literal we can evaluate here", not a special case for one
+	// spelling.  Anything with a variable in it we decline to reason about, even
+	// when it is obviously constant.
+	private: inline Boolean IsAlwaysTrue(ASTNode condition);
 
 	// ── Global scope ─────────────────────────────────────────────────────────
 
@@ -624,8 +917,22 @@ inline Int32 CodeGenerator::_maxRegUsed() { return get()->_maxRegUsed; } // High
 inline void CodeGenerator::set__maxRegUsed(Int32 _v) { get()->_maxRegUsed = _v; } // High water mark for register usage
 inline Dictionary<String, Int32> CodeGenerator::_variableRegs() { return get()->_variableRegs; } // variable name -> register
 inline void CodeGenerator::set__variableRegs(Dictionary<String, Int32> _v) { get()->_variableRegs = _v; } // variable name -> register
-inline List<String> CodeGenerator::_namedStack() { return get()->_namedStack; } // variables whose NAME op dominates the current point (stack-disciplined by conditional nesting)
-inline void CodeGenerator::set__namedStack(List<String> _v) { get()->_namedStack = _v; } // variables whose NAME op dominates the current point (stack-disciplined by conditional nesting)
+inline List<String> CodeGenerator::_namedStack() { return get()->_namedStack; } // variables definitely assigned at the current point (stack-disciplined by conditional nesting)
+inline void CodeGenerator::set__namedStack(List<String> _v) { get()->_namedStack = _v; } // variables definitely assigned at the current point (stack-disciplined by conditional nesting)
+inline List<Boolean> CodeGenerator::_namedIsReg() { return get()->_namedIsReg; } // parallel to _namedStack: true if bound to a register by a NAME op, false if declared only via `locals.x =`
+inline void CodeGenerator::set__namedIsReg(List<Boolean> _v) { get()->_namedIsReg = _v; } // parallel to _namedStack: true if bound to a register by a NAME op, false if declared only via `locals.x =`
+inline String CodeGenerator::_localOnlyName() { return get()->_localOnlyName; } // while compiling the RHS of a first assignment, the variable being created ("" when inactive)
+inline void CodeGenerator::set__localOnlyName(String _v) { get()->_localOnlyName = _v; } // while compiling the RHS of a first assignment, the variable being created ("" when inactive)
+inline List<String> CodeGenerator::_breakNames() { return get()->_breakNames; }
+inline void CodeGenerator::set__breakNames(List<String> _v) { get()->_breakNames = _v; }
+inline List<Boolean> CodeGenerator::_breakIsReg() { return get()->_breakIsReg; }
+inline void CodeGenerator::set__breakIsReg(List<Boolean> _v) { get()->_breakIsReg = _v; }
+inline List<Int32> CodeGenerator::_breakStarts() { return get()->_breakStarts; } // per open loop: where its accumulator starts
+inline void CodeGenerator::set__breakStarts(List<Int32> _v) { get()->_breakStarts = _v; } // per open loop: where its accumulator starts
+inline List<Boolean> CodeGenerator::_breakSeen() { return get()->_breakSeen; } // per open loop: has any break contributed yet?
+inline void CodeGenerator::set__breakSeen(List<Boolean> _v) { get()->_breakSeen = _v; } // per open loop: has any break contributed yet?
+inline List<Int32> CodeGenerator::_loopNameMarks() { return get()->_loopNameMarks; } // per open loop: _namedStack depth on entry
+inline void CodeGenerator::set__loopNameMarks(List<Int32> _v) { get()->_loopNameMarks = _v; } // per open loop: _namedStack depth on entry
 inline Int32 CodeGenerator::_targetReg() { return get()->_targetReg; } // Target register for next expression (-1 = allocate)
 inline void CodeGenerator::set__targetReg(Int32 _v) { get()->_targetReg = _v; } // Target register for next expression (-1 = allocate)
 inline List<Int32> CodeGenerator::_loopExitLabels() { return get()->_loopExitLabels; } // Stack of loop exit labels for break
@@ -652,7 +959,22 @@ inline void CodeGenerator::ResetTempRegisters() { return get()->ResetTempRegiste
 inline void CodeGenerator::CompileBody(List<ASTNode> body) { return get()->CompileBody(body); }
 inline void CodeGenerator::EmitDiscardCheck(ASTNode stmt,Int32 resultReg) { return get()->EmitDiscardCheck(stmt, resultReg); }
 inline void CodeGenerator::CompileConditionalBody(List<ASTNode> body) { return get()->CompileConditionalBody(body); }
+inline void CodeGenerator::MergeBranchNames(Int32 mark,List<String> thenNames,List<Boolean> thenIsReg,Boolean thenAbrupt,Boolean elseAbrupt) { return get()->MergeBranchNames(mark, thenNames, thenIsReg, thenAbrupt, elseAbrupt); }
+inline Boolean CodeGenerator::EndsAbruptly(List<ASTNode> body) { return get()->EndsAbruptly(body); }
+inline List<String> CodeGenerator::ReserveBodyVarRegs(List<ASTNode> body) { return get()->ReserveBodyVarRegs(body); }
+inline void CodeGenerator::ReleaseBodyVarRegs(List<String> reserved) { return get()->ReleaseBodyVarRegs(reserved); }
+inline Int32 CodeGenerator::TakeVarReg(String varName) { return get()->TakeVarReg(varName); }
+inline void CodeGenerator::CollectAssignedVars(List<ASTNode> body,List<String> result) { return get()->CollectAssignedVars(body, result); }
+inline void CodeGenerator::PushName(String varName,Boolean isReg) { return get()->PushName(varName, isReg); }
+inline void CodeGenerator::PopNamesTo(Int32 mark) { return get()->PopNamesTo(mark); }
+inline Boolean CodeGenerator::IsDefinitelyAssigned(String varName) { return get()->IsDefinitelyAssigned(varName); }
 inline void CodeGenerator::EnsureNamed(String varName,Int32 varReg) { return get()->EnsureNamed(varName, varReg); }
+inline void CodeGenerator::NoteLocalsDeclared(String varName) { return get()->NoteLocalsDeclared(varName); }
+inline void CodeGenerator::ClearLoopNames() { return get()->ClearLoopNames(); }
+inline void CodeGenerator::BeginLoopNames() { return get()->BeginLoopNames(); }
+inline void CodeGenerator::NoteBreak() { return get()->NoteBreak(); }
+inline void CodeGenerator::EndLoopNames(Boolean alwaysRuns) { return get()->EndLoopNames(alwaysRuns); }
+inline Boolean CodeGenerator::IsAlwaysTrue(ASTNode condition) { return get()->IsAlwaysTrue(condition); }
 inline Int32 CodeGenerator::AddGlobalRef(String varName) { return get()->AddGlobalRef(varName); }
 inline void CodeGenerator::BeginGlobalScope() { return get()->BeginGlobalScope(); }
 inline void CodeGenerator::EmitGlobalStore(String varName,Int32 valueReg) { return get()->EmitGlobalStore(varName, valueReg); }

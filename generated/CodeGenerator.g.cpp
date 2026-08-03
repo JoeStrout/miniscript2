@@ -14,6 +14,13 @@ CodeGeneratorStorage::CodeGeneratorStorage(CodeEmitterBase emitter) {
 	_maxRegUsed = -1;
 	_variableRegs =  Dictionary<String, Int32>::New();
 	_namedStack =  List<String>::New();
+	_namedIsReg =  List<Boolean>::New();
+	_localOnlyName = "";
+	_breakNames =  List<String>::New();
+	_breakIsReg =  List<Boolean>::New();
+	_breakStarts =  List<Int32>::New();
+	_breakSeen =  List<Boolean>::New();
+	_loopNameMarks =  List<Int32>::New();
 	_targetReg = -1;
 	_loopExitLabels =  List<Int32>::New();
 	_loopContinueLabels =  List<Int32>::New();
@@ -153,15 +160,221 @@ void CodeGeneratorStorage::EmitDiscardCheck(ASTNode stmt,Int32 resultReg) {
 void CodeGeneratorStorage::CompileConditionalBody(List<ASTNode> body) {
 	Int32 mark = _namedStack.Count();
 	CompileBody(body);
-	while (_namedStack.Count() > mark) _namedStack.RemoveAt(_namedStack.Count() - 1);
+	PopNamesTo(mark);
+}
+void CodeGeneratorStorage::MergeBranchNames(Int32 mark,List<String> thenNames,List<Boolean> thenIsReg,Boolean thenAbrupt,Boolean elseAbrupt) {
+	// Only one arm can reach past the if: keep exactly that arm's names.
+	if (thenAbrupt && !elseAbrupt) return;  // the else arm's names are already in place
+	if (elseAbrupt && !thenAbrupt) {
+		PopNamesTo(mark);
+		for (Int32 i = 0; i < thenNames.Count(); i++) PushName(thenNames[i], thenIsReg[i]);
+		return;
+	}
+
+	// Otherwise keep what both arms assigned.  (If both are abrupt nothing
+	// after the if is reachable, so the intersection is as good as anything.)
+	List<String> keep =  List<String>::New();
+	List<Boolean> keepIsReg =  List<Boolean>::New();
+	for (Int32 i = 0; i < thenNames.Count(); i++) {
+		for (Int32 j = mark; j < _namedStack.Count(); j++) {
+			if (_namedStack[j] != thenNames[i]) continue;
+			keep.Add(thenNames[i]);
+			keepIsReg.Add(thenIsReg[i] && _namedIsReg[j]);
+			break;
+		}
+	}
+	PopNamesTo(mark);
+	for (Int32 i = 0; i < keep.Count(); i++) PushName(keep[i], keepIsReg[i]);
+}
+Boolean CodeGeneratorStorage::EndsAbruptly(List<ASTNode> body) {
+	if (body.Count() == 0) return Boolean(false);
+	ASTNode last = body[body.Count() - 1];
+
+	ReturnNode returnN = As<ReturnNode, ReturnNodeStorage>(last);
+	if (!IsNull(returnN)) return Boolean(true);
+	BreakNode breakN = As<BreakNode, BreakNodeStorage>(last);
+	if (!IsNull(breakN)) return Boolean(true);
+	ContinueNode continueN = As<ContinueNode, ContinueNodeStorage>(last);
+	if (!IsNull(continueN)) return Boolean(true);
+
+	// A nested if leaves abruptly only if every way through it does.
+	IfNode ifN = As<IfNode, IfNodeStorage>(last);
+	if (!IsNull(ifN) && ifN.ElseBody().Count() > 0) {
+		return EndsAbruptly(ifN.ThenBody()) && EndsAbruptly(ifN.ElseBody());
+	}
+	return Boolean(false);
+}
+String CodeGeneratorStorage::PendingVarRegKey(String varName) {
+	return "@pending " + varName;
+}
+List<String> CodeGeneratorStorage::ReserveBodyVarRegs(List<ASTNode> body) {
+	List<String> reserved =  List<String>::New();
+	if (_globalScope) return reserved;
+
+	List<String> assigned =  List<String>::New();
+	CollectAssignedVars(body, assigned);
+	for (Int32 i = 0; i < assigned.Count(); i++) {
+		String name = assigned[i];
+		Int32 existing;
+		// Already has a register (a parameter, an earlier statement, or an
+		// enclosing loop that reserved it), or we just reserved it ourselves.
+		if (_variableRegs.TryGetValue(name, &existing)) continue;
+		String key = PendingVarRegKey(name);
+		if (_variableRegs.TryGetValue(key, &existing)) continue;
+		_variableRegs[key] = AllocReg();
+		reserved.Add(name);
+	}
+	return reserved;
+}
+void CodeGeneratorStorage::ReleaseBodyVarRegs(List<String> reserved) {
+	for (Int32 i = 0; i < reserved.Count(); i++) {
+		String key = PendingVarRegKey(reserved[i]);
+		Int32 reg;
+		if (!_variableRegs.TryGetValue(key, &reg)) continue;
+		_variableRegs.Remove(key);
+		FreeReg(reg);
+	}
+}
+Int32 CodeGeneratorStorage::TakeVarReg(String varName) {
+	Int32 reg;
+	String key = PendingVarRegKey(varName);
+	if (_variableRegs.TryGetValue(key, &reg)) {
+		_variableRegs.Remove(key);
+		return reg;
+	}
+	return AllocReg();
+}
+void CodeGeneratorStorage::CollectAssignedVars(List<ASTNode> body,List<String> result) {
+	for (Int32 i = 0; i < body.Count(); i++) {
+		ASTNode node = body[i];
+
+		AssignmentNode assignN = As<AssignmentNode, AssignmentNodeStorage>(node);
+		if (!IsNull(assignN)) { result.Add(assignN.Variable()); continue; }
+
+		WhileNode whileN = As<WhileNode, WhileNodeStorage>(node);
+		if (!IsNull(whileN)) { CollectAssignedVars(whileN.Body(), result); continue; }
+
+		IfNode ifN = As<IfNode, IfNodeStorage>(node);
+		if (!IsNull(ifN)) {
+			CollectAssignedVars(ifN.ThenBody(), result);
+			CollectAssignedVars(ifN.ElseBody(), result);
+			continue;
+		}
+
+		ForNode forN = As<ForNode, ForNodeStorage>(node);
+		if (!IsNull(forN)) {
+			result.Add(forN.Variable());
+			CollectAssignedVars(forN.Body(), result);
+			continue;
+		}
+	}
+}
+void CodeGeneratorStorage::PushName(String varName,Boolean isReg) {
+	_namedStack.Add(varName);
+	_namedIsReg.Add(isReg);
+}
+void CodeGeneratorStorage::PopNamesTo(Int32 mark) {
+	while (_namedStack.Count() > mark) {
+		_namedStack.RemoveAt(_namedStack.Count() - 1);
+		_namedIsReg.RemoveAt(_namedIsReg.Count() - 1);
+	}
+}
+Boolean CodeGeneratorStorage::IsDefinitelyAssigned(String varName) {
+	for (Int32 i = 0; i < _namedStack.Count(); i++) {
+		if (_namedStack[i] == varName) return Boolean(true);
+	}
+	return Boolean(false);
 }
 void CodeGeneratorStorage::EnsureNamed(String varName,Int32 varReg) {
 	for (Int32 i = 0; i < _namedStack.Count(); i++) {
-		if (_namedStack[i] == varName) return;
+		if (_namedStack[i] == varName && _namedIsReg[i]) return;
 	}
 	Int32 nameIdx = _emitter.AddConstant(Value::make_string(varName));
 	_emitter.EmitAB(Opcode::NAME_rA_kBC, varReg, nameIdx, Interp("use r{} for {}", varReg, varName));
-	_namedStack.Add(varName);
+	PushName(varName, Boolean(true));
+}
+void CodeGeneratorStorage::NoteLocalsDeclared(String varName) {
+	if (IsDefinitelyAssigned(varName)) return;
+	PushName(varName, Boolean(false));
+}
+void CodeGeneratorStorage::ClearLoopNames() {
+	_breakNames.Clear();
+	_breakIsReg.Clear();
+	_breakStarts.Clear();
+	_breakSeen.Clear();
+	_loopNameMarks.Clear();
+}
+void CodeGeneratorStorage::BeginLoopNames() {
+	_breakStarts.Add(_breakNames.Count());
+	_breakSeen.Add(Boolean(false));
+	_loopNameMarks.Add(_namedStack.Count());
+}
+void CodeGeneratorStorage::NoteBreak() {
+	if (_breakStarts.Count() == 0) return;
+	Int32 loop = _breakStarts.Count() - 1;
+	Int32 start = _breakStarts[loop];
+	Int32 mark = _loopNameMarks[loop];
+
+	if (!_breakSeen[loop]) {
+		for (Int32 i = mark; i < _namedStack.Count(); i++) {
+			_breakNames.Add(_namedStack[i]);
+			_breakIsReg.Add(_namedIsReg[i]);
+		}
+		_breakSeen[loop] = Boolean(true);
+		return;
+	}
+
+	// Later breaks narrow it: keep only what this path assigns too.
+	List<String> keep =  List<String>::New();
+	List<Boolean> keepIsReg =  List<Boolean>::New();
+	for (Int32 i = start; i < _breakNames.Count(); i++) {
+		for (Int32 j = mark; j < _namedStack.Count(); j++) {
+			if (_namedStack[j] != _breakNames[i]) continue;
+			keep.Add(_breakNames[i]);
+			keepIsReg.Add(_breakIsReg[i] && _namedIsReg[j]);
+			break;
+		}
+	}
+	while (_breakNames.Count() > start) {
+		_breakNames.RemoveAt(_breakNames.Count() - 1);
+		_breakIsReg.RemoveAt(_breakIsReg.Count() - 1);
+	}
+	for (Int32 i = 0; i < keep.Count(); i++) {
+		_breakNames.Add(keep[i]);
+		_breakIsReg.Add(keepIsReg[i]);
+	}
+}
+void CodeGeneratorStorage::EndLoopNames(Boolean alwaysRuns) {
+	Int32 loop = _breakStarts.Count() - 1;
+	Int32 start = _breakStarts[loop];
+
+	if (alwaysRuns && _breakSeen[loop]) {
+		for (Int32 i = start; i < _breakNames.Count(); i++) {
+			if (IsDefinitelyAssigned(_breakNames[i])) continue;
+			PushName(_breakNames[i], _breakIsReg[i]);
+		}
+	}
+
+	while (_breakNames.Count() > start) {
+		_breakNames.RemoveAt(_breakNames.Count() - 1);
+		_breakIsReg.RemoveAt(_breakIsReg.Count() - 1);
+	}
+	_breakStarts.RemoveAt(loop);
+	_breakSeen.RemoveAt(loop);
+	_loopNameMarks.RemoveAt(loop);
+}
+Boolean CodeGeneratorStorage::IsAlwaysTrue(ASTNode condition) {
+	NumberNode num = As<NumberNode, NumberNodeStorage>(condition);
+	if (!IsNull(num)) return num.Value() != 0;
+	StringNode str = As<StringNode, StringNodeStorage>(condition);
+	if (!IsNull(str)) return str.Value() != "";
+	ListNode list = As<ListNode, ListNodeStorage>(condition);
+	if (!IsNull(list)) return list.Elements().Count() != 0;
+	MapNode map = As<MapNode, MapNodeStorage>(condition);
+	if (!IsNull(map)) return map.Keys().Count() != 0;
+	IdentifierNode ident = As<IdentifierNode, IdentifierNodeStorage>(condition);
+	if (!IsNull(ident)) return ident.Name() == "true";
+	return Boolean(false);
 }
 String CodeGeneratorStorage::LoopVarRegKey(String varName) {
 	return "@loopvar " + varName;
@@ -191,6 +404,8 @@ FuncDef CodeGeneratorStorage::CompileFunction(ASTNode ast,String funcName) {
 	_maxRegUsed = -1;
 	_variableRegs.Clear();
 	_namedStack.Clear();
+	_namedIsReg.Clear();
+	ClearLoopNames();
 	_globalScope = Boolean(false);
 
 	Int32 resultReg = ast.Accept(_this);
@@ -209,6 +424,8 @@ List<FuncDef> CodeGeneratorStorage::CompileImport(List<ASTNode> statements,Strin
 	_maxRegUsed = -1;
 	_variableRegs.Clear();
 	_namedStack.Clear();
+	_namedIsReg.Clear();
+	ClearLoopNames();
 	// A module's top-level names are its LOCALS, not globals -- that is the
 	// whole point of returning them as a map -- so this is not global scope.
 	_globalScope = Boolean(false);
@@ -237,6 +454,8 @@ FuncDef CodeGeneratorStorage::CompileProgram(List<ASTNode> statements,String fun
 	_maxRegUsed = -1;
 	_variableRegs.Clear();
 	_namedStack.Clear();
+	_namedIsReg.Clear();
+	ClearLoopNames();
 
 	// Reserve index 0 for @main
 	_functions.Clear();
@@ -296,6 +515,23 @@ Int32 CodeGeneratorStorage::VisitIdentifier(IdentifierNode node,bool addressOf) 
 		return resultReg;
 	}
 
+	// Reading the variable that the assignment we are inside is creating.  The
+	// local does not exist yet, so this can only mean the enclosing scope's
+	// variable of the same name -- and on the next time through a loop it would
+	// mean the local instead, which is nobody's intent.  MiniScript 1 warned
+	// here and read the outer one; MS2 requires the intent to be written down.
+	if (_localOnlyName != "" && node.Name() == _localOnlyName) {
+		if (Error.IsNull()) {
+			// The location is hard-coded into the message, matching what Lexer
+			// and Parser do.  It belongs in the error's stack trace instead, so
+			// DescribeError can render it with the file name -- see bugs.md #5.
+			Error = ErrorTypes::CompilerError(StringUtils::Format(
+				"illegal assignment to unqualified local '{0}' based on nonlocal [line {1}]",
+				node.Name(), _emitter.CurrentLine()));
+		}
+		return resultReg;
+	}
+
 	Int32 varReg;
 	String at = addressOf ? "@" : "";
 	if (_variableRegs.TryGetValue(node.Name(), &varReg)) {
@@ -345,15 +581,25 @@ Int32 CodeGeneratorStorage::Visit(AssignmentNode node) {
 		// a new one for now, because I can't be sure the caller won't free
 		// the target register when done.  But we should probably return to
 		// this later and see if we can optimize it more.
-		varReg = AllocReg();
+		varReg = TakeVarReg(node.Variable());
 	}
 
-	// Creating a variable whose name the RHS also reads is the one case where the
-	// NAME op has to wait: NAME is what makes the register findable by name, and
-	// while it is pending, VisitIdentifier emits the r0 form of LOADC so the VM
-	// walks out to the enclosing scope.  That is what lets "n = n + 1" creating a
-	// local n read the global n.  The RHS then has to land in a temp so the copy
-	// can follow the NAME (see below).
+	// A first assignment whose RHS names the same variable is an error: see
+	// VisitIdentifier, which reports it.  The test is definite assignment, not
+	// isNew -- isNew asks whether the name has a register anywhere in this
+	// function, which stays true after a conditional body even though the
+	// assignment in it may never have run.  Arm _localOnlyName before compiling
+	// the RHS and disarm it after; nested function bodies compile with their own
+	// CodeGenerator, so it cannot leak into one.
+	Boolean localOnly = !IsDefinitelyAssigned(node.Variable());
+
+	// Creating a variable whose name the RHS may read through `locals`/`outer`/
+	// `globals` is the one case where the NAME op has to wait: NAME is not a
+	// passive binding, and letting it run first would show the RHS a half-created
+	// variable.  The RHS then has to land in a temp so the copy can follow the
+	// NAME (see below).  Bare reads of the variable do not get here -- they are
+	// the error above -- so what remains is the dynamic-scope route, which
+	// MayReadVar reports conservatively (ScopeNode always answers true).
 	//
 	// This is only about *creating* a variable.  Once it exists, the RHS should
 	// read its register, so NAME stays ahead of the RHS and no temp is needed --
@@ -372,9 +618,13 @@ Int32 CodeGeneratorStorage::Visit(AssignmentNode node) {
 	FunctionNode rhsFunc = As<FunctionNode, FunctionNodeStorage>(node.Value());
 	Int32 funcIndexBeforeRHS = _functions.Count();
 
+	String savedLocalOnly = _localOnlyName;
+	if (localOnly) _localOnlyName = node.Variable();
+
 	if (useTemp) {
 		Int32 tempReg = AllocReg();
 		Int32 rhsReg = CompileInto(node.Value(), tempReg);
+		_localOnlyName = savedLocalOnly;
 		// NAME is not a passive binding: via MapToRegister it imports any existing
 		// value for this name out of the frame's live LocalVarMap into the
 		// register.  Copying the temp in afterwards overwrites that stale import
@@ -384,6 +634,7 @@ Int32 CodeGeneratorStorage::Visit(AssignmentNode node) {
 		FreeReg(tempReg);
 	} else {
 		CompileInto(node.Value(), varReg);  // get RHS directly into the variable's register
+		_localOnlyName = savedLocalOnly;
 	}
 
 	// The variable exists from here on, so nested expressions in later statements
@@ -445,6 +696,20 @@ Int32 CodeGeneratorStorage::Visit(IndexedAssignmentNode node) {
 
 	_emitter.EmitABC(Opcode::IDXSET_rA_rB_rC, containerReg, indexReg, valueReg,
 		Interp("{}[{}] = {}", node.Target().ToStr(), node.Index().ToStr(), node.Value().ToStr()));
+
+	// `locals.x = ...` creates local x as surely as `x = ...` does, so a later
+	// `x = x + 1` is reading a variable that exists.  Record it (no register is
+	// bound, hence the false flag; the read still goes through the frame's
+	// variable map).  Only for a constant name: `locals[expr]` names nothing we
+	// can know here.  At global scope `locals` is the globals table, which has
+	// no register-based naming at all.
+	if (!_globalScope) {
+		ScopeNode scopeTarget = As<ScopeNode, ScopeNodeStorage>(node.Target());
+		StringNode nameIndex = As<StringNode, StringNodeStorage>(node.Index());
+		if (!IsNull(scopeTarget) && !IsNull(nameIndex) && scopeTarget.Scope() == ScopeType::Locals) {
+			NoteLocalsDeclared(nameIndex.Value());
+		}
+	}
 
 	FreeReg(valueReg);
 	FreeReg(indexReg);
@@ -981,6 +1246,13 @@ Int32 CodeGeneratorStorage::Visit(WhileNode node) {
 	// Push labels for break and continue statements
 	_loopExitLabels.Add(afterLoop);
 	_loopContinueLabels.Add(loopStart);
+	BeginLoopNames();
+
+	// Give the body's new variables their registers before compiling the
+	// condition, so the condition allocates around them rather than on top of
+	// them; the back edge below re-runs the condition after the body.  See
+	// ReserveBodyVarRegs.
+	List<String> reserved = ReserveBodyVarRegs(node.Body());
 
 	// Place loopStart label
 	_emitter.PlaceLabel(loopStart);
@@ -994,6 +1266,7 @@ Int32 CodeGeneratorStorage::Visit(WhileNode node) {
 
 	// Compile body statements
 	CompileConditionalBody(node.Body());
+	ReleaseBodyVarRegs(reserved);
 
 	// Jump back to loopStart
 	_emitter.EmitJump(Opcode::JUMP_iABC, loopStart, "loop back");
@@ -1004,6 +1277,7 @@ Int32 CodeGeneratorStorage::Visit(WhileNode node) {
 	// Pop labels
 	_loopExitLabels.RemoveAt(_loopExitLabels.Count() - 1);
 	_loopContinueLabels.RemoveAt(_loopContinueLabels.Count() - 1);
+	EndLoopNames(IsAlwaysTrue(node.Condition()));
 
 	// While loops don't produce a value
 	return -1;
@@ -1029,18 +1303,35 @@ Int32 CodeGeneratorStorage::Visit(IfNode node) {
 	_emitter.EmitBranch(Opcode::BRFALSE_rA_iBC, condReg, elseLabel, "if condition false, jump to else");
 	FreeReg(condReg);
 
-	// Compile "then" body
-	CompileConditionalBody(node.ThenBody());
+	// Compile "then" body.  With no else there is a path around it, so its
+	// assignments are forgotten; with an else, MergeBranchNames decides.
+	if (node.ElseBody().Count() == 0) {
+		CompileConditionalBody(node.ThenBody());
+	} else {
+		Int32 mark = _namedStack.Count();
+		CompileBody(node.ThenBody());
 
-	// Jump over else body (if there is one)
-	if (node.ElseBody().Count() > 0) {
+		// Take the then arm's names off the stack before compiling the else arm:
+		// the else arm is an alternative path, not a continuation, so nothing the
+		// then arm assigned is in scope for it.
+		List<String> thenNames =  List<String>::New();
+		List<Boolean> thenIsReg =  List<Boolean>::New();
+		for (Int32 i = mark; i < _namedStack.Count(); i++) {
+			thenNames.Add(_namedStack[i]);
+			thenIsReg.Add(_namedIsReg[i]);
+		}
+		PopNamesTo(mark);
+
 		_emitter.EmitJump(Opcode::JUMP_iABC, afterIf, "jump past else");
 
 		// Place else label
 		_emitter.PlaceLabel(elseLabel);
 
 		// Compile "else" body
-		CompileConditionalBody(node.ElseBody());
+		CompileBody(node.ElseBody());
+
+		MergeBranchNames(mark, thenNames, thenIsReg,
+			EndsAbruptly(node.ThenBody()), EndsAbruptly(node.ElseBody()));
 	}
 
 	// Place afterIf label
@@ -1068,6 +1359,7 @@ Int32 CodeGeneratorStorage::Visit(ForNode node) {
 	// Push labels for break and continue statements
 	_loopExitLabels.Add(afterLoop);
 	_loopContinueLabels.Add(loopStart);
+	BeginLoopNames();
 
 	// Evaluate iterable expression
 	Int32 listReg = node.Iterable().Accept(_this);
@@ -1095,7 +1387,7 @@ Int32 CodeGeneratorStorage::Visit(ForNode node) {
 	} else if (_variableRegs.TryGetValue(node.Variable(), &varReg)) {
 		// Variable already exists
 	} else {
-		varReg = AllocReg();
+		varReg = TakeVarReg(node.Variable());
 		_variableRegs[node.Variable()] = varReg;
 	}
 	// The loop variable is assigned each iteration; this NAME runs once before
@@ -1125,9 +1417,11 @@ Int32 CodeGeneratorStorage::Visit(ForNode node) {
 	// Place afterLoop label
 	_emitter.PlaceLabel(afterLoop);
 
-	// Pop labels
+	// Pop labels.  A `for` may iterate zero times, so its breaks establish
+	// nothing about the code after it.
 	_loopExitLabels.RemoveAt(_loopExitLabels.Count() - 1);
 	_loopContinueLabels.RemoveAt(_loopContinueLabels.Count() - 1);
+	EndLoopNames(Boolean(false));
 
 	// Remove internal variable names and free the registers
 	_variableRegs.Remove(idxName);
@@ -1150,6 +1444,7 @@ Int32 CodeGeneratorStorage::Visit(BreakNode node) {
 	} else {
 		Int32 exitLabel = _loopExitLabels[_loopExitLabels.Count() - 1];
 		_emitter.EmitJump(Opcode::JUMP_iABC, exitLabel, "break");
+		NoteBreak();  // this path reaches the code after the loop; record what it assigns
 	}
 	return -1;
 }
@@ -1245,7 +1540,7 @@ Int32 CodeGeneratorStorage::Visit(FunctionNode node) {
 		innerEmitter.EmitAB(Opcode::NAME_rA_kBC, paramReg, nameIdx, Interp("param {}", name));
 		// Params are named unconditionally at function entry, so reassigning
 		// one in the body needn't re-emit NAME.
-		innerGen._namedStack().Add(name);
+		innerGen.PushName(name, Boolean(true));
 	}
 
 	// Check for a docstring: if the first body statement is a string literal,

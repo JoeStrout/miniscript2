@@ -400,6 +400,24 @@ case "$TARGET" in
         echo "Testing C++ version:"
         cd build/cpp && echo "These are some words for testing" | ./miniscript2
         cd ../..
+
+        # Regression: `input` at end of file returns null on both ports, rather
+        # than crashing the host (C#) or returning "" (C++).  See notes/bugs.md
+        # entry 2; this needs a closed stdin, so it can't live in testSuite.txt.
+        echo "Testing input at end-of-file:"
+        eof_expected=$'isNull: 1\nisString: 0'
+        eof_status=0
+        for exe in build/cs/miniscript2 build/cpp/miniscript2; do
+            [ -x "$exe" ] || continue
+            eof_actual=$("$exe" tests/eof_input.ms < /dev/null 2>&1 | tail -2)
+            if [ "$eof_actual" = "$eof_expected" ]; then
+                echo "  $exe: OK"
+            else
+                echo "  $exe: FAILED (got: $eof_actual)"
+                eof_status=1
+            fi
+        done
+        [ $eof_status -eq 0 ] || exit 1
         ;;
 
     "test-all")

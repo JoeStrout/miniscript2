@@ -156,6 +156,9 @@ public readonly struct Value {
 		FromBits(GC_TAG | ((ulong)gcSet << 32) | (uint)itemIdx);
 
 	public static Value make_string(string str) {
+		// A null string makes the empty string, not a crash.  This matches the
+		// C++ side, where String::c_str() on a null String already yields "".
+		if (str == null) str = "";
 		if (str.Length <= 5) {
 			// str.Length <= 5 guarantees UTF-8 bytes <= 20, so a 20-byte buffer suffices.
 			Span<byte> buf = stackalloc byte[20];

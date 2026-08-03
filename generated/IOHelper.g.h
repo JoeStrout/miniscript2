@@ -38,6 +38,14 @@ class IOHelper {
 
 	public: static void PrintNoCR(String message, TextStyle style=TextStyle::Normal);
 	
+	// Read one line from standard input.  Returns true and sets `result` to the
+	// line (without its newline); returns false at end of file, leaving `result`
+	// null.  Callers must test the return value rather than the string: EOF and
+	// an empty line are different things, and on the C++ side an empty String is
+	// easy to confuse with a null one.
+	public: static Boolean TryInput(String prompt, String* result, TextStyle promptStyle=TextStyle::Normal, TextStyle inputStyle=TextStyle::Normal);
+
+	// Convenience form of TryInput: returns the line read, or null at end of file.
 	public: static String Input(String prompt, TextStyle promptStyle=TextStyle::Normal, TextStyle inputStyle=TextStyle::Normal);
 	
 	public: static List<String> ReadFile(String filePath);

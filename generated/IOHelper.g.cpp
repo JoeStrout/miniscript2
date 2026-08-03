@@ -107,7 +107,7 @@ void IOHelper::PrintNoCR(String message,TextStyle style) {
 	SetStyle(style);
 	std::cout << message.c_str() << std::flush;
 }
-String IOHelper::Input(String prompt,TextStyle promptStyle,TextStyle inputStyle) {
+Boolean IOHelper::TryInput(String prompt,String* result,TextStyle promptStyle,TextStyle inputStyle) {
 	SetStyle(promptStyle);
 
 	std::cout << prompt.c_str();
@@ -120,13 +120,20 @@ String IOHelper::Input(String prompt,TextStyle promptStyle,TextStyle inputStyle)
 	char *line = NULL;
 	size_t len = 0;
 
-	String result;
 	int bytes = getline(&line, &len, stdin);
-	if (bytes != -1) {
-		line[strcspn (line, "\n")] = 0;   // trim \n
-		result = line;
+	if (bytes == -1) {
 		free(line);
+		*result = String(nullptr);
+		return false;
 	}
+	line[strcspn (line, "\n")] = 0;   // trim \n
+	*result = String(line);
+	free(line);
+	return true;
+}
+String IOHelper::Input(String prompt,TextStyle promptStyle,TextStyle inputStyle) {
+	String result;
+	TryInput(prompt, &result, promptStyle, inputStyle);
 	return result;
 }
 List<String> IOHelper::ReadFile(String filePath) {

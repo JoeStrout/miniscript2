@@ -135,13 +135,19 @@ public static class IOHelper {
 		Console.Write(message);  // CPP: std::cout << message.c_str() << std::flush;
 	}
 	
-	public static String Input(String prompt, TextStyle promptStyle=TextStyle.Normal, TextStyle inputStyle=TextStyle.Normal) {
+	// Read one line from standard input.  Returns true and sets `result` to the
+	// line (without its newline); returns false at end of file, leaving `result`
+	// null.  Callers must test the return value rather than the string: EOF and
+	// an empty line are different things, and on the C++ side an empty String is
+	// easy to confuse with a null one.
+	public static Boolean TryInput(String prompt, out String result, TextStyle promptStyle=TextStyle.Normal, TextStyle inputStyle=TextStyle.Normal) {
 		SetStyle(promptStyle);
 
 		//*** BEGIN CS_ONLY ***
 		Console.Write(prompt);
 		SetStyle(inputStyle);
-		return Console.ReadLine();
+		result = Console.ReadLine();
+		return result != null;
 		//*** END CS_ONLY ***
 
 		/*** BEGIN CPP_ONLY ***
@@ -155,15 +161,24 @@ public static class IOHelper {
 		char *line = NULL;
 		size_t len = 0;
 
-		String result;
 		int bytes = getline(&line, &len, stdin);
-		if (bytes != -1) {
-			line[strcspn (line, "\n")] = 0;   // trim \n
-			result = line;
+		if (bytes == -1) {
 			free(line);
+			*result = String(nullptr);
+			return false;
 		}
-		return result;
+		line[strcspn (line, "\n")] = 0;   // trim \n
+		*result = String(line);
+		free(line);
+		return true;
 		*** END CPP_ONLY ***/
+	}
+
+	// Convenience form of TryInput: returns the line read, or null at end of file.
+	public static String Input(String prompt, TextStyle promptStyle=TextStyle.Normal, TextStyle inputStyle=TextStyle.Normal) {
+		String result;
+		TryInput(prompt, out result, promptStyle, inputStyle);
+		return result;
 	}
 	
 	public static List<String> ReadFile(String filePath) {

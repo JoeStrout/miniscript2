@@ -66,7 +66,9 @@ end function
 // Get the user's bet.  Make sure it's valid.
 getBet = function
 	while true
-		betStr = input("Enter bet (0 to skip, Q to quit): ").upper
+		betStr = input("Enter bet (0 to skip, Q to quit): ")
+		if betStr == null then return "Q"	// (end of input: same as quitting)
+		betStr = betStr.upper
 		if betStr == "Q" then return betStr
 		if val(betStr) < 0 then
 			print "A negative bet?  Nice try!"

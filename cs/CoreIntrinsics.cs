@@ -328,7 +328,11 @@ public static class CoreIntrinsics {
 			if (!ctx.GetArg(0).IsNull()) {
 				prompt = StringUtils.Format("{0}", ctx.GetArg(0));
 			}
-			String result = IOHelper.Input(prompt);
+			String result;
+			// At end of file we return null, which a script can test for; any
+			// string we could return instead would collide with a line the user
+			// might actually type, leaving no way to break out of an input loop.
+			if (!IOHelper.TryInput(prompt, out result)) return new IntrinsicResult(Value.Null);
 			return new IntrinsicResult(Value.make_string(result));
 		};
 

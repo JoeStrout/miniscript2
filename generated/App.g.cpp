@@ -462,7 +462,8 @@ void App::RunInterpreter(Interpreter interp) {
 		vis.ClearScreen();
 		while (vm.IsRunning()) {
 			vis.UpdateDisplay();
-			String cmd = IOHelper::Input("Command: ");
+			String cmd;
+			if (!IOHelper::TryInput("Command: ", &cmd)) return;  // EOF: nothing more to drive us
 			if (String::IsNullOrEmpty(cmd)) cmd = "step";
 			if (cmd[0] == 'q') return;
 			if (cmd[0] == 's') {

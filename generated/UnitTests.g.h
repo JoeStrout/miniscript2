@@ -105,6 +105,20 @@ class UnitTests {
 
 	public: static Boolean TestMayReadVar();
 
+	// Intrinsic parameter defaults must survive a full collection that runs
+	// before any VM exists.  They are created when an intrinsic is *defined*,
+	// and only become reachable through a funcref much later; nothing but
+	// Intrinsic.MarkRoots keeps them alive in between.  The defaults are short
+	// strings, hence interned, so only a FULL pass can sweep them -- which is
+	// why this went unnoticed for so long.
+	public: static Boolean TestIntrinsicDefaults();
+
+	// Every string-valued parameter default of every intrinsic, in a fixed
+	// order.  BuildFuncDef makes a throwaway FuncDef -- it is not a GC object
+	// and roots nothing -- so reading the defaults this way does not itself
+	// keep them alive.
+	private: static List<String> CollectIntrinsicStringDefaults();
+
 	// The global slot table (cs/Globals.cs), exercised on its own -- no VM, no
 	// compiled code.  See notes/GLOBALS.md; this is stage 1 of that plan, so
 	// nothing here goes through the VM yet.

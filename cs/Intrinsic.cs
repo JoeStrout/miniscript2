@@ -25,12 +25,33 @@ public class Intrinsic {
 	private static List<Intrinsic> _all = new List<Intrinsic>();
 	private static Dictionary<String, Intrinsic> _byName = new Dictionary<String, Intrinsic>();
 	private static Boolean _initialized = false;
+	private static Boolean _markCallbackRegistered = false;
 
 	// Short-name registry: maps known Values (e.g. type maps) to display names.
 	private static List<Value> _shortNameKeys = new List<Value>();
 	private static List<String> _shortNameVals = new List<String>();
 
+	// Mark the Values this class owns.  Parameter defaults are created when an
+	// intrinsic is *defined*, which is long before the first VM exists; without
+	// this they are unreachable until EnsureBuilt copies them into a FuncDef and
+	// roots the funcref, and any collection in that window frees them out from
+	// under us.  Registered on first use (see EnsureMarkCallback).
+	public static void MarkRoots(object user_data) {
+		for (Int32 i = 0; i < _all.Count; i++) {
+			List<Value> defaults = _all[i]._paramDefaults;
+			for (Int32 j = 0; j < defaults.Count; j++) GCManager.Mark(defaults[j]);
+		}
+		for (Int32 i = 0; i < _shortNameKeys.Count; i++) GCManager.Mark(_shortNameKeys[i]);
+	}
+
+	private static void EnsureMarkCallback() {
+		if (_markCallbackRegistered) return;
+		_markCallbackRegistered = true;
+		GCManager.RegisterMarkCallback(MarkRoots, null); // CPP: GCManager::RegisterMarkCallback(Intrinsic::MarkRoots, nullptr);
+	}
+
 	public static void AddShortName(Value v, String name) {
+		EnsureMarkCallback();
 		_shortNameKeys.Add(v);
 		_shortNameVals.Add(name);
 	}
@@ -59,6 +80,7 @@ public class Intrinsic {
 	}
 
 	public static Intrinsic Create(String name) {
+		EnsureMarkCallback();
 		Intrinsic result = new Intrinsic();
 		result.Name = name;
 		result._paramNames = new List<String>();

@@ -15,6 +15,7 @@ using System.Collections.Generic;
 // CPP: #include "CodeGenerator.g.h"
 // CPP: #include "Interpreter.g.h"
 // CPP: #include "Intrinsic.g.h"
+// CPP: #include "CoreIntrinsics.g.h"
 
 namespace MiniScript {
 
@@ -1286,6 +1287,49 @@ public static class UnitTests {
 	}
 
 	//
+	// Intrinsic parameter defaults must survive a full collection that runs
+	// before any VM exists.  They are created when an intrinsic is *defined*,
+	// and only become reachable through a funcref much later; nothing but
+	// Intrinsic.MarkRoots keeps them alive in between.  The defaults are short
+	// strings, hence interned, so only a FULL pass can sweep them -- which is
+	// why this went unnoticed for so long.
+	//
+	public static Boolean TestIntrinsicDefaults() {
+		List<String> before = CollectIntrinsicStringDefaults();
+		GCManager.FullCollectGarbage();
+		List<String> after = CollectIntrinsicStringDefaults();
+
+		Boolean ok = Assert(before.Count > 0, "expected some string-valued defaults")
+			&& AssertEqual(after.Count, before.Count);
+		if (!ok) return false;
+		for (Int32 i = 0; i < before.Count; i++) {
+			if (!AssertEqual(after[i], before[i])) return false;
+		}
+
+		// The short-name registry holds Values the same way (cs/Intrinsic.cs).
+		Value listType = CoreIntrinsics.ListType();
+		GCManager.FullCollectGarbage();
+		return AssertEqual(Intrinsic.GetShortName(listType), "list");
+	}
+
+	// Every string-valued parameter default of every intrinsic, in a fixed
+	// order.  BuildFuncDef makes a throwaway FuncDef -- it is not a GC object
+	// and roots nothing -- so reading the defaults this way does not itself
+	// keep them alive.
+	private static List<String> CollectIntrinsicStringDefaults() {
+		List<String> result = new List<String>();
+		Int32 count = Intrinsic.Count();
+		for (Int32 i = 0; i < count; i++) {
+			FuncDef def = Intrinsic.GetByIndex(i).BuildFuncDef();
+			for (Int32 j = 0; j < def.ParamDefaults.Count; j++) {
+				Value d = def.ParamDefaults[j];
+				if (d.IsString()) result.Add(d.AsCString());
+			}
+		}
+		return result;
+	}
+
+	//
 	// The global slot table (cs/Globals.cs), exercised on its own -- no VM, no
 	// compiled code.  See notes/GLOBALS.md; this is stage 1 of that plan, so
 	// nothing here goes through the VM yet.
@@ -1441,12 +1485,6 @@ public static class UnitTests {
 		// and therefore interned, and only a full pass sweeps the interned set.
 		Value survivor = Value.make_string("a string long enough to be heap-allocated, not tiny");
 		map.MapSet(nameX, survivor);
-		// Building the intrinsic funcrefs roots their parameter defaults.  Until
-		// that happens those defaults are unrooted and a full collection eats
-		// them -- an unrelated latent bug this test would otherwise trip over.
-		// See entry 1 in notes/bugs.md; remove these two lines once it is fixed.
-		Dictionary<String, Value> intrinsicsForRooting = new Dictionary<String, Value>();
-		Intrinsic.RegisterAll(intrinsicsForRooting);
 		GCManager.FullCollectGarbage();
 		Boolean gcOk = Assert(map.HasKey(nameX), "global should survive collection")
 			&& AssertEqual(map.MapGet(nameX).ToString(null),
@@ -1482,7 +1520,8 @@ public static class UnitTests {
 	}
 
 	public static Boolean RunAll() {
-		return TestStringUtils()
+		return TestIntrinsicDefaults()   // first: wants to run before any VM builds the funcrefs
+			&& TestStringUtils()
 			&& TestDisassembler()
 			&& TestAssembler()
 			&& TestValueMap()

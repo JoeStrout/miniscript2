@@ -14,6 +14,7 @@
 #include "CodeGenerator.g.h"
 #include "Interpreter.g.h"
 #include "Intrinsic.g.h"
+#include "CoreIntrinsics.g.h"
 
 namespace MiniScript {
 
@@ -1205,6 +1206,35 @@ Boolean UnitTests::TestMayReadVar() {
 	if (!ok) IOHelper::Print("TestMayReadVar FAILED");
 	return ok;
 }
+Boolean UnitTests::TestIntrinsicDefaults() {
+	List<String> before = CollectIntrinsicStringDefaults();
+	GCManager::FullCollectGarbage();
+	List<String> after = CollectIntrinsicStringDefaults();
+
+	Boolean ok = Assert(before.Count() > 0, "expected some string-valued defaults")
+		&& AssertEqual(after.Count(), before.Count());
+	if (!ok) return Boolean(false);
+	for (Int32 i = 0; i < before.Count(); i++) {
+		if (!AssertEqual(after[i], before[i])) return Boolean(false);
+	}
+
+	// The short-name registry holds Values the same way (cs/Intrinsic.cs).
+	Value listType = CoreIntrinsics::ListType();
+	GCManager::FullCollectGarbage();
+	return AssertEqual(Intrinsic::GetShortName(listType), "list");
+}
+List<String> UnitTests::CollectIntrinsicStringDefaults() {
+	List<String> result =  List<String>::New();
+	Int32 count = Intrinsic::Count();
+	for (Int32 i = 0; i < count; i++) {
+		FuncDef def = Intrinsic::GetByIndex(i).BuildFuncDef();
+		for (Int32 j = 0; j < def.ParamDefaults().Count(); j++) {
+			Value d = def.ParamDefaults()[j];
+			if (d.IsString()) result.Add(d.AsCString());
+		}
+	}
+	return result;
+}
 Boolean UnitTests::TestGlobals() {
 	Globals g = Globals::Create();
 	Value map = g.AsMap();
@@ -1354,12 +1384,6 @@ Boolean UnitTests::TestGlobals() {
 	// and therefore interned, and only a full pass sweeps the interned set.
 	Value survivor = Value::make_string("a string long enough to be heap-allocated, not tiny");
 	map.MapSet(nameX, survivor);
-	// Building the intrinsic funcrefs roots their parameter defaults.  Until
-	// that happens those defaults are unrooted and a full collection eats
-	// them -- an unrelated latent bug this test would otherwise trip over.
-	// See entry 1 in notes/bugs.md; remove these two lines once it is fixed.
-	Dictionary<String, Value> intrinsicsForRooting =  Dictionary<String, Value>::New();
-	Intrinsic::RegisterAll(intrinsicsForRooting);
 	GCManager::FullCollectGarbage();
 	Boolean gcOk = Assert(map.HasKey(nameX), "global should survive collection")
 		&& AssertEqual(map.MapGet(nameX).ToString(nullptr),
@@ -1394,7 +1418,8 @@ Boolean UnitTests::TestGlobals() {
 	return Boolean(true);
 }
 Boolean UnitTests::RunAll() {
-	return TestStringUtils()
+	return TestIntrinsicDefaults()   // first: wants to run before any VM builds the funcrefs
+		&& TestStringUtils()
 		&& TestDisassembler()
 		&& TestAssembler()
 		&& TestValueMap()

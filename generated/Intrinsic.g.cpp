@@ -9,9 +9,23 @@ namespace MiniScript {
 List<Intrinsic> IntrinsicStorage::_all =  List<Intrinsic>::New();
 Dictionary<String, Intrinsic> IntrinsicStorage::_byName =  Dictionary<String, Intrinsic>::New();
 Boolean IntrinsicStorage::_initialized = Boolean(false);
+Boolean IntrinsicStorage::_markCallbackRegistered = Boolean(false);
 List<Value> IntrinsicStorage::_shortNameKeys =  List<Value>::New();
 List<String> IntrinsicStorage::_shortNameVals =  List<String>::New();
+void IntrinsicStorage::MarkRoots(object user_data) {
+	for (Int32 i = 0; i < _all.Count(); i++) {
+		List<Value> defaults = _all[i]._paramDefaults();
+		for (Int32 j = 0; j < defaults.Count(); j++) GCManager::Mark(defaults[j]);
+	}
+	for (Int32 i = 0; i < _shortNameKeys.Count(); i++) GCManager::Mark(_shortNameKeys[i]);
+}
+void IntrinsicStorage::EnsureMarkCallback() {
+	if (_markCallbackRegistered) return;
+	_markCallbackRegistered = Boolean(true);
+	GCManager::RegisterMarkCallback(Intrinsic::MarkRoots, nullptr);
+}
 void IntrinsicStorage::AddShortName(Value v,String name) {
+	EnsureMarkCallback();
 	_shortNameKeys.Add(v);
 	_shortNameVals.Add(name);
 }
@@ -33,6 +47,7 @@ Int32 IntrinsicStorage::Count() {
 	return _all.Count();
 }
 Intrinsic IntrinsicStorage::Create(String name) {
+	EnsureMarkCallback();
 	Intrinsic result =  Intrinsic::New();
 	result.set_Name(name);
 	result.set__paramNames( List<String>::New());

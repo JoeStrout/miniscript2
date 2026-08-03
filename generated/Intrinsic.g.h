@@ -28,10 +28,20 @@ class IntrinsicStorage : public std::enable_shared_from_this<IntrinsicStorage> {
 	private: static List<Intrinsic> _all;
 	private: static Dictionary<String, Intrinsic> _byName;
 	private: static Boolean _initialized;
+	private: static Boolean _markCallbackRegistered;
 	private: static List<Value> _shortNameKeys;
 	private: static List<String> _shortNameVals;
 
 	// Short-name registry: maps known Values (e.g. type maps) to display names.
+
+	// Mark the Values this class owns.  Parameter defaults are created when an
+	// intrinsic is *defined*, which is long before the first VM exists; without
+	// this they are unreachable until EnsureBuilt copies them into a FuncDef and
+	// roots the funcref, and any collection in that window frees them out from
+	// under us.  Registered on first use (see EnsureMarkCallback).
+	public: static void MarkRoots(object user_data);
+
+	private: static void EnsureMarkCallback();
 
 	public: static void AddShortName(Value v, String name);
 
@@ -96,12 +106,23 @@ struct Intrinsic {
 	private: void set__byName(Dictionary<String, Intrinsic> _v);
 	private: Boolean _initialized();
 	private: void set__initialized(Boolean _v);
+	private: Boolean _markCallbackRegistered();
+	private: void set__markCallbackRegistered(Boolean _v);
 	private: List<Value> _shortNameKeys();
 	private: void set__shortNameKeys(List<Value> _v);
 	private: List<String> _shortNameVals();
 	private: void set__shortNameVals(List<String> _v);
 
 	// Short-name registry: maps known Values (e.g. type maps) to display names.
+
+	// Mark the Values this class owns.  Parameter defaults are created when an
+	// intrinsic is *defined*, which is long before the first VM exists; without
+	// this they are unreachable until EnsureBuilt copies them into a FuncDef and
+	// roots the funcref, and any collection in that window frees them out from
+	// under us.  Registered on first use (see EnsureMarkCallback).
+	public: static void MarkRoots(object user_data) { return IntrinsicStorage::MarkRoots(user_data); }
+
+	private: static void EnsureMarkCallback() { return IntrinsicStorage::EnsureMarkCallback(); }
 
 	public: static void AddShortName(Value v, String name) { return IntrinsicStorage::AddShortName(v, name); }
 
@@ -161,6 +182,8 @@ inline Dictionary<String, Intrinsic> Intrinsic::_byName() { return get()->_byNam
 inline void Intrinsic::set__byName(Dictionary<String, Intrinsic> _v) { get()->_byName = _v; }
 inline Boolean Intrinsic::_initialized() { return get()->_initialized; }
 inline void Intrinsic::set__initialized(Boolean _v) { get()->_initialized = _v; }
+inline Boolean Intrinsic::_markCallbackRegistered() { return get()->_markCallbackRegistered; }
+inline void Intrinsic::set__markCallbackRegistered(Boolean _v) { get()->_markCallbackRegistered = _v; }
 inline List<Value> Intrinsic::_shortNameKeys() { return get()->_shortNameKeys; }
 inline void Intrinsic::set__shortNameKeys(List<Value> _v) { get()->_shortNameKeys = _v; }
 inline List<String> Intrinsic::_shortNameVals() { return get()->_shortNameVals; }

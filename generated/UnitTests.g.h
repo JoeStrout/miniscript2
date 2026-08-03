@@ -70,6 +70,28 @@ class UnitTests {
 	// along with the two timing cases that used to need the REPL("") bootstrap:
 	// seeding before any compile, and reading after the program has ended.
 	public: static Boolean TestHostGlobals();
+
+	// ── Running one program against two global namespaces ────────────────────────
+
+	// Compiled code caches its (name -> slot) resolutions in the FuncDef, guarded
+	// by the namespace's Id (notes/GLOBALS.md section 4.3).  The guard exists for
+	// hosting: a function compiled alongside one Globals may be run against
+	// another, and must resolve in whichever one the VM is pointed at.
+	// Nothing else in this tree ever points a VM at a second namespace -- VM.SetGlobals
+	// has no other caller -- so without this test the re-resolution branch never
+	// executes at all, and a stale cache would go unnoticed until an embedding host
+	// hit it.
+	// The two namespaces are deliberately built so that every shared name lands on
+	// a *different* slot in each.  That is what makes this a test: if the cache
+	// were not invalidated, the second run would index the second table with the
+	// first table's slot numbers and read some other variable's value, rather than
+	// happening to come out right.
+	public: static Boolean TestGlobalsSwitch();
+
+	// Check the three lines one run of the TestGlobalsSwitch program should emit,
+	// starting at output[first].  `tag` is "A" or "B" -- the namespace whose values
+	// we expect to see.
+	private: static Boolean CheckGlobalsSwitchRun(List<String> output, Int32 first, String tag, String what);
 	private: static Int32 _handleFinalizerCallCount;
 
 	// ── GCHandle test ────────────────────────────────────────────────────────────

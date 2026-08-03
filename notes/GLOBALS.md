@@ -372,6 +372,15 @@ parent-compiled function called from the child resolves in the child's table via
 the id-guarded cache.  Nesting works for the same reason.  Sharing one `Globals`
 between parent and child is available if a host wants it.
 
+*Covered by `UnitTests.TestGlobalsSwitch`.*  There is no `Interp` intrinsic in
+this tree, so nothing here hosts an interpreter and `VM.SetGlobals` has no other
+caller — which means the re-resolution branch would otherwise never execute at
+all.  The test runs one compiled program against two namespaces and back again,
+with the two built so that every shared name lands on a *different* slot in
+each.  That last part is what makes it a test rather than a smoke check: with
+the guard disabled it does not crash, it reads the neighbouring variable's
+value.
+
 **GC** — one root: the globals map Value on the VM.  `Globals.MarkChildren`
 marks names and values.  This replaces marking `ReplGlobals`, marking
 `callStack[0].LocalVarMap`, and the comment at `cs/VM.cs:363` explaining that

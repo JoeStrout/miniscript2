@@ -1085,6 +1085,112 @@ public static class UnitTests {
 		return ok;
 	}
 
+	// ── Running one program against two global namespaces ────────────────────────
+
+	// Compiled code caches its (name -> slot) resolutions in the FuncDef, guarded
+	// by the namespace's Id (notes/GLOBALS.md section 4.3).  The guard exists for
+	// hosting: a function compiled alongside one Globals may be run against
+	// another, and must resolve in whichever one the VM is pointed at.
+	//
+	// Nothing else in this tree ever points a VM at a second namespace -- VM.SetGlobals
+	// has no other caller -- so without this test the re-resolution branch never
+	// executes at all, and a stale cache would go unnoticed until an embedding host
+	// hit it.
+	//
+	// The two namespaces are deliberately built so that every shared name lands on
+	// a *different* slot in each.  That is what makes this a test: if the cache
+	// were not invalidated, the second run would index the second table with the
+	// first table's slot numbers and read some other variable's value, rather than
+	// happening to come out right.
+	public static Boolean TestGlobalsSwitch() {
+		Boolean ok = true;
+
+		List<String> output = new List<String>();
+		// CPP: gTestOutput = output;
+		Interpreter interp;
+		// Reads three globals it never assigns; gamma is read from inside a
+		// function, so it exercises an inner FuncDef's reference table too (each
+		// FuncDef carries its own cache and its own guard).
+		interp = new Interpreter("print alpha\nprint beta\nshow = function; return gamma; end function\nprint show");
+		interp.standardOutput = (String s, bool eol) => { output.Add(s); }; // CPP:
+		// CPP: interp.set_standardOutput([](String s, Boolean) { gTestOutput.Add(s); });
+		interp.errorOutput = (String s, bool eol) => { output.Add(s); }; // CPP:
+		// CPP: interp.set_errorOutput([](String s, Boolean) { gTestOutput.Add(s); });
+
+		// Namespace A: the interpreter's own.  Seeding order fixes the slots.
+		interp.SetGlobalValue("alpha", Value.make_string("A-alpha"));
+		interp.SetGlobalValue("beta",  Value.make_string("A-beta"));
+		interp.SetGlobalValue("gamma", Value.make_string("A-gamma"));
+		Globals gA = interp.GetGlobals();
+
+		// Namespace B: same three names, seeded in a rotated order so no name
+		// keeps its slot number.  Globals.Create roots the map, so B survives
+		// collection while we hold it.
+		Globals gB = Globals.Create();
+		gB.SetSlot(gB.Resolve(Value.make_string("gamma")), Value.make_string("B-gamma"));
+		gB.SetSlot(gB.Resolve(Value.make_string("alpha")), Value.make_string("B-alpha"));
+		gB.SetSlot(gB.Resolve(Value.make_string("beta")),  Value.make_string("B-beta"));
+
+		ok = ok && Assert(gA.Id() != gB.Id(), "two namespaces must have distinct Ids");
+		// If these ever coincide the test still passes, but stops proving anything.
+		ok = ok && Assert(gA.Find(Value.make_string("alpha")) != gB.Find(Value.make_string("alpha"))
+		              && gA.Find(Value.make_string("beta"))  != gB.Find(Value.make_string("beta"))
+		              && gA.Find(Value.make_string("gamma")) != gB.Find(Value.make_string("gamma")),
+			"test setup: every shared name must sit at a different slot in A and B");
+
+		// Run 1: namespace A.
+		interp.RunUntilDone(10, false);
+		ok = ok && CheckGlobalsSwitchRun(output, 0, "A", "first run, in namespace A");
+
+		// Run 2: point the VM at B and run the very same FuncDefs.  Their caches
+		// now name slots in A, and every one of them is wrong for B.
+		VM theVM = interp.vm;
+		theVM.SetGlobals(gB);
+		interp.Restart();
+		interp.RunUntilDone(10, false);
+		ok = ok && CheckGlobalsSwitchRun(output, 3, "B", "second run, after switching to namespace B");
+
+		// Run 3: back to A.  The caches now name B's slots, so this catches a
+		// guard that only invalidates once.
+		theVM.SetGlobals(gA);
+		interp.Restart();
+		interp.RunUntilDone(10, false);
+		ok = ok && CheckGlobalsSwitchRun(output, 6, "A", "third run, after switching back to namespace A");
+
+		// Neither namespace should have been disturbed by running against the other.
+		ok = ok && Assert(gB.ValueAtSlot(gB.Find(Value.make_string("alpha"))) == Value.make_string("B-alpha"),
+			"namespace B unchanged after running in A again");
+		ok = ok && Assert(interp.GetGlobalValue("alpha") == Value.make_string("A-alpha"),
+			"namespace A unchanged after running in B");
+
+		// Point the VM back at something the interpreter owns before dropping our
+		// root on B, so nothing is left holding a released namespace.
+		gB.Release();
+
+		if (!ok) IOHelper.Print("TestGlobalsSwitch FAILED");
+		return ok;
+	}
+
+	// Check the three lines one run of the TestGlobalsSwitch program should emit,
+	// starting at output[first].  `tag` is "A" or "B" -- the namespace whose values
+	// we expect to see.
+	private static Boolean CheckGlobalsSwitchRun(List<String> output, Int32 first, String tag, String what) {
+		if (output.Count < first + 3) {
+			return Assert(false, StringUtils.Format("{0}: expected 3 more lines, have {1} in total",
+				what, output.Count));
+		}
+		Boolean ok = true;
+		ok = ok && Assert(output[first] == tag + "-alpha",
+			StringUtils.Format("{0}: expected '{1}-alpha', got '{2}'", what, tag, output[first]));
+		ok = ok && Assert(output[first + 1] == tag + "-beta",
+			StringUtils.Format("{0}: expected '{1}-beta', got '{2}'", what, tag, output[first + 1]));
+		// Read from inside a function: the stage-5 path, with its own FuncDef cache.
+		ok = ok && Assert(output[first + 2] == tag + "-gamma",
+			StringUtils.Format("{0}: expected '{1}-gamma' (read inside a function), got '{2}'",
+				what, tag, output[first + 2]));
+		return ok;
+	}
+
 	// ── GCHandle test ────────────────────────────────────────────────────────────
 
 	private static Int32 _handleFinalizerCallCount = 0;
@@ -1390,6 +1496,7 @@ public static class UnitTests {
 			&& TestREPL()
 			&& TestResetPreservingGlobals()
 		&& TestHostGlobals()
+		&& TestGlobalsSwitch()
 			&& TestGCHandle();
 	}
 }

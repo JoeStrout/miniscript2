@@ -5447,6 +5447,149 @@ print m.hasIndex("k10")
 0,50,90
 0
 ================================
+================================================================================
+==== SECTION: FREE NAMES INSIDE FUNCTIONS
+================================================================================
+==== A free name inside a function -- one with no register of its own -- compiles
+==== to a global-slot read (GLOADC/GLOADV).  Globals do not outrank locals, so the
+==== VM has to fall back to the full search whenever anything could shadow the
+==== name.  These tests pin down the cases where something does.  See
+==== notes/GLOBALS.md section 8, stage 5.
+==== --- a local created at run time outranks a global of the same name
+dyn = "GLOBAL"
+f = function()
+	locals["dyn"] = "LOCAL"
+	return dyn
+end function
+print f
+--------------------------------
+LOCAL
+================================
+==== A name injected into our locals by *another* function is still a local.
+adder = function(m)
+	m["injected"] = "INJECTED"
+end function
+injected = "GLOBAL"
+f = function()
+	adder locals
+	return injected
+end function
+print f
+--------------------------------
+INJECTED
+================================
+==== Removing a local uncovers the global it was shadowing.
+shadow = "GLOBAL"
+f = function()
+	shadow = "LOCAL"
+	print shadow
+	locals.remove "shadow"
+	return shadow
+end function
+print f
+--------------------------------
+LOCAL
+GLOBAL
+================================
+==== An enclosing local outranks a global, and removing it uncovers the global.
+lex = "GLOBAL"
+f = function()
+	lex = "ENCLOSING"
+	inner = function()
+		return lex
+	end function
+	print inner
+	locals.remove "lex"
+	return inner
+end function
+print f
+--------------------------------
+ENCLOSING
+GLOBAL
+================================
+==== A user-defined global shadows an intrinsic of the same name, seen from
+==== inside a function -- and the shadowing takes effect for a function that was
+==== already compiled.
+f = function()
+	return str(7)
+end function
+print f
+str = function(x)
+	return "SHADOWED"
+end function
+print f
+--------------------------------
+7
+SHADOWED
+================================
+==== A parameter shadows a global; so does an ordinary local.
+p = "GLOBAL"
+g = "GLOBAL"
+byParam = function(p)
+	return p
+end function
+byLocal = function()
+	g = "LOCAL"
+	return g
+end function
+print byParam("PARAM")
+print byLocal
+print g
+--------------------------------
+PARAM
+LOCAL
+GLOBAL
+================================
+==== A function may reference a global that does not exist yet at definition
+==== time, including itself (recursion) and each other (mutual recursion).
+fib = function(n)
+	if n < 2 then return n
+	return fib(n-1) + fib(n-2)
+end function
+isEven = function(n)
+	if n == 0 then return true
+	return isOdd(n-1)
+end function
+isOdd = function(n)
+	if n == 0 then return false
+	return isEven(n-1)
+end function
+later = function()
+	return notYet
+end function
+notYet = "ARRIVED"
+print fib(10)
+print isEven(10)
+print isOdd(10)
+print later
+--------------------------------
+55
+1
+0
+ARRIVED
+================================
+==== A global created from inside one function is visible as a free name in
+==== another.
+maker = function()
+	globals.made = "MADE"
+end function
+reader = function()
+	return made
+end function
+maker
+print reader
+--------------------------------
+MADE
+================================
+==== A free name that is neither a local, a global, nor an intrinsic is still an
+==== undefined identifier when read from inside a function.
+f = function()
+	return noSuchThing
+end function
+print f
+--------------------------------
+Runtime Error: Undefined Identifier: 'noSuchThing' is unknown in this context [line 2]
+================================
 ==== END OF TESTS
 ================================================================================
 

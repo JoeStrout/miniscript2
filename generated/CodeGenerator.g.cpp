@@ -181,12 +181,8 @@ void CodeGeneratorStorage::EmitGlobalStore(String varName,Int32 valueReg) {
 		Interp("{} = r{}", varName, valueReg));
 }
 void CodeGeneratorStorage::EmitFreeLoad(Boolean addressOf,Int32 resultReg,String varName,String comment) {
-	if (_globalScope) {
-		Opcode op = addressOf ? Opcode::GLOADV_rA_iBC : Opcode::GLOADC_rA_iBC;
-		_emitter.EmitAB(op, resultReg, AddGlobalRef(varName), comment);
-		return;
-	}
-	EmitNamedLoad(addressOf, resultReg, 0, Value::make_string(varName), comment);
+	Opcode op = addressOf ? Opcode::GLOADV_rA_iBC : Opcode::GLOADC_rA_iBC;
+	_emitter.EmitAB(op, resultReg, AddGlobalRef(varName), comment);
 }
 FuncDef CodeGeneratorStorage::CompileFunction(ASTNode ast,String funcName) {
 	CodeGenerator _this(std::static_pointer_cast<CodeGeneratorStorage>(shared_from_this()));

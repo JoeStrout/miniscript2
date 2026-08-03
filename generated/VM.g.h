@@ -381,6 +381,19 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	// different Globals object altogether.
 	private: Int32 ResolveGlobalRef(FuncDef func, Int32 refIdx);
 
+	// Can this frame reach a free name's global slot directly, or does something
+	// in front of globals have to be searched first?
+	// LookupVariable's order is locals map, then outer map, then globals.  A frame
+	// skips straight to globals when it has no dynamically-created locals map, and
+	// no enclosing scope other than the global namespace itself.  Both are the
+	// common case: the locals map is built only if something asks for `locals`,
+	// captures a closure, or binds a name through SetVar (which `import` does),
+	// and a function defined at top level captures the globals map as its outer
+	// scope, which is the very thing we are about to look in.
+	// A false here is not a wrong answer, just a slower one -- the caller falls
+	// back to LookupVariable, which handles every case.
+	private: Boolean GlobalFastPath();
+
 	// A global reference whose slot is unassigned: either the name has never been
 	// bound, or it was removed.  Intrinsics deliberately do not occupy slots (so
 	// `globals.indexes` does not list 150 built-ins), so this is where they are
@@ -768,6 +781,19 @@ struct VM {
 	// different Globals object altogether.
 	private: inline Int32 ResolveGlobalRef(FuncDef func, Int32 refIdx);
 
+	// Can this frame reach a free name's global slot directly, or does something
+	// in front of globals have to be searched first?
+	// LookupVariable's order is locals map, then outer map, then globals.  A frame
+	// skips straight to globals when it has no dynamically-created locals map, and
+	// no enclosing scope other than the global namespace itself.  Both are the
+	// common case: the locals map is built only if something asks for `locals`,
+	// captures a closure, or binds a name through SetVar (which `import` does),
+	// and a function defined at top level captures the globals map as its outer
+	// scope, which is the very thing we are about to look in.
+	// A false here is not a wrong answer, just a slower one -- the caller falls
+	// back to LookupVariable, which handles every case.
+	private: inline Boolean GlobalFastPath();
+
 	// A global reference whose slot is unassigned: either the name has never been
 	// bound, or it was removed.  Intrinsics deliberately do not occupy slots (so
 	// `globals.indexes` does not list 150 built-ins), so this is where they are
@@ -912,6 +938,13 @@ inline bool VMStorage::EnsureFrame(Int32 baseIndex,UInt16 neededRegs) {
 	return Boolean(true);
 }
 inline Int32 VM::ResolveGlobalRef(FuncDef func,Int32 refIdx) { return get()->ResolveGlobalRef(func, refIdx); }
+inline Boolean VM::GlobalFastPath() { return get()->GlobalFastPath(); }
+inline Boolean VMStorage::GlobalFastPath() {
+	CallInfo frame = callStack[callStackTop - 1];
+	if (!frame.LocalVarMap.IsNull()) return Boolean(false);
+	if (frame.OuterVarMap.IsNull()) return Boolean(true);
+	return frame.OuterVarMap.RefEquals(_globals.AsMap());
+}
 inline Value VM::GlobalMiss(FuncDef func,Int32 refIdx) { return get()->GlobalMiss(func, refIdx); }
 inline Value VM::GetGlobalsVarMap() { return get()->GetGlobalsVarMap(); }
 inline Value VM::GetCurrentLocalVarMap(Int32 baseIndex,UInt16 maxRegs) { return get()->GetCurrentLocalVarMap(baseIndex, maxRegs); }

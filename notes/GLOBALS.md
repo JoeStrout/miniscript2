@@ -290,12 +290,12 @@ Notes on this path:
   intrinsics table — one predictable, never-taken branch on the hot path, and
   the same lookup cost as today's `LookupVariable` for intrinsic calls.  User
   shadowing of `print` keeps working, which `HOSTING_MS.md` relies on.
-- Only **global scope** compiles to these opcodes.  Inside a function a free
-  name might be an enclosing local, so those keep emitting `LOADC`/`LOADV` and
-  resolving through `LookupVariable`, whose globals step is now a table lookup.
-  Teaching the code generator to prove a name is free through the whole lexical
-  chain, and emit `GLOADC` for it, is worthwhile follow-on work — it would
-  make `print` inside a function fast too — but it is not part of this change.
+- ~~Only **global scope** compiles to these opcodes.~~  *Superseded in stage 5:
+  function bodies emit them too.*  A free name inside a function might be an
+  enclosing local or one created at run time, and neither can be ruled out by
+  looking at the source, so the opcode carries a run-time guard and falls back
+  to `LOADC`/`LOADV`'s old path when the frame could shadow the name.  See §8
+  stage 5.
 - Compiler-internal temporaries at top level (loop list/index registers, and so
   on — `cs/CodeGenerator.cs:1154`) stay registers.  Only user-named variables
   become slots.
@@ -412,10 +412,11 @@ changes the one test expectation noted in §8.
 
 **Top-level performance.**  *Settled; see [GLOBALS_BASELINE.md](GLOBALS_BASELINE.md).*
 The model-only step regressed `Global Loop` to 3.98x the cost of the same loop
-in a function, worse than the 2.5x this section expected; the slot opcodes
-brought that to 1.50x, better than Python and Lua but short of the 1.3x §4.3
-named.  `Global Churn` improved 2.7x and stayed there.  The answer to "are the
-slot opcodes needed?" was yes.  `.msa` benchmarks are unaffected throughout, as
+in a function on C# (7.11x on C++), worse than the 2.5x this section expected.
+The slot opcodes brought that to 1.50x on C# and 1.84x on C++ — better than
+Python and Lua, short of the 1.3x §4.3 named.  `Global Churn` improved 2.7x on
+C# and 7x on C++, and stayed there.  The answer to "are the slot opcodes
+needed?" was emphatically yes.  `.msa` benchmarks are unaffected throughout, as
 predicted — they address registers directly and never touch the globals
 namespace.
 
@@ -437,6 +438,16 @@ it must be re-fetched after anything that can add a slot (a `GSTORE` miss, or
 any call).  Simplest is not to cache a base pointer at all — one extra
 indirection.  Worth confirming against how `stackPtr`/`localStack` are handled
 in the generated dispatch loop.
+
+*Stage 4 took the simple option, and it is the main cost left on the table.*
+Not caching turns out to be three pointer chases per access on C++
+(`GlobalSlots`, the `Globals` wrapper, `_values` — each a `shared_ptr`), against
+a register read that is a raw `Value*` plus an index.  That is why C++ ends up
+paying **more** for a global than C# does (1.84x vs 1.50x), which is the reverse
+of what was expected.  Doing it properly means holding `Int32* globalSlots` and
+`Value* globalValues` in the dispatch loop the way `localStack` is held, with
+re-fetch discipline at every point the table can grow.  See
+[GLOBALS_BASELINE.md](GLOBALS_BASELINE.md).
 
 **The `Unassigned` sentinel must not leak.**  Every read path has to check it.
 The audit is bounded — slot reads happen in exactly three places: the opcode,
@@ -518,12 +529,67 @@ embedding hosts keep compiling.
    string would otherwise be swept from under a function that has not run yet.
 
    Result: top-level access goes from 3.98x the cost of the same loop in a
-   function to **1.50x**, against the "under ~1.3x" §4.3 asked for.  The residue
-   is the four `GSTORE`s per loop iteration that the register form did not need
-   at all; see [GLOBALS_BASELINE.md](GLOBALS_BASELINE.md) for the full numbers
-   and for two control-group results that want explaining.
-5. Follow-on (optional): resolve free names inside functions to `GLOADC` when
-   the code generator can prove they are not enclosing locals.
+   function to **1.50x** on C# and **1.84x** on C++, against the "under ~1.3x"
+   §4.3 asked for.  Two things account for the shortfall: the four `GSTORE`s per
+   loop iteration that the register form did not need at all, and (on C++) the
+   three `shared_ptr` chases per slot access described in §7.  The second is
+   fixable and is the obvious next optimization; the first is not, short of
+   keeping top-level variables in registers between uses.
+
+   See [GLOBALS_BASELINE.md](GLOBALS_BASELINE.md) for the numbers.  One finding
+   there is worth repeating: `Iterative Fibonacci` appears to run 2.5x faster
+   than the pre-globals baseline, and that is **not** a win from this work.  It
+   is a pre-existing cost around variables first assigned inside a loop body,
+   which global scope no longer has because it no longer puts named variables in
+   registers.  The same pattern also miscompiles — [bugs.md](bugs.md) #3 — and
+   that bug is still live for function locals.
+5. **Done.**  Free names inside functions now compile to `GLOADC`/`GLOADV` too,
+   so `print` in a function body, a call to a top-level function, and a recursive
+   call by name all reach a slot instead of walking out through
+   `LookupVariable`.  710/710 integration tests (nine new ones, listed below).
+
+   **The proof is at run time, not at compile time**, which is a deliberate
+   departure from what this item proposed.  Static analysis of the lexical chain
+   cannot be sound here: names enter a scope dynamically, via `locals["x"] = 1`,
+   via a `locals` map handed to another function that adds a key, or via
+   `import`'s `SetVar`.  No amount of looking at the source proves a name is not
+   a local.  So the code generator emits the opcode for *every* free name, and
+   the VM decides:
+
+   ```
+   if (callStackTop > 1 && !GlobalFastPath()) -> LookupVariable, as before
+   ```
+
+   `GlobalFastPath` is true when the frame has no locals map (one is built only
+   if something asks for `locals`, captures a closure, or binds through
+   `SetVar`) and its outer scope is either absent or *is* the globals map, which
+   is what a function defined at top level captures.  Anything else falls back to
+   the full search, so shadowing keeps working in every case; the fast path is
+   just the common one.  @main satisfies neither condition by construction, and
+   `callStackTop > 1` short-circuits there, so top-level access is unchanged.
+
+   This also turns out to catch more than the static version would have: a
+   function whose free name *could* be an enclosing local still gets the fast
+   path whenever the enclosing frame turns out not to have one.
+
+   Measured interleaved, min of three.  On C#: `global_from_fn` — a new
+   benchmark, added for this — 4.71s to 3.29s (**1.43x**); `Global Churn` 1.83s
+   to 1.46s (**1.25x**); `Recursive Fibonacci` 11.54s to 9.30s (**1.24x**, from
+   resolving `fib` by name in the recursive call).  `Global Loop` and `Global
+   Loop (locals)` do not move.  On C++ the same three win, but ranked
+   differently — `Global Churn` 1.44x, `global_from_fn` 1.23x, `Recursive
+   Fibonacci` 1.11x — for the same reason stage 4 landed worse on C++ than on
+   C#: a slot access is dearer there relative to what it replaces.  See
+   [GLOBALS_BASELINE.md](GLOBALS_BASELINE.md), including a note on two
+   sub-10% moves in that table that are code layout rather than semantics.
+
+   The nine new tests in `tests/testSuite.txt` ("FREE NAMES INSIDE FUNCTIONS")
+   pin the shadowing cases: a run-time local, one injected by another function
+   through `locals`, `locals.remove` uncovering a global, an enclosing local and
+   its removal, a user global shadowing an intrinsic for an already-compiled
+   function, parameters and ordinary locals, recursion and mutual recursion,
+   a global created in one function and read in another, and undefined
+   identifiers.  All nine fail if `GlobalFastPath` is stubbed to `true`.
 
 ## 9. Rejected alternatives
 

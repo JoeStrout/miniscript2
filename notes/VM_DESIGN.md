@@ -42,8 +42,18 @@ disassembler writes those operands as `gN` rather than `kN`.  The reference is
 resolved to a slot number the first time the function runs against a given
 namespace, and re-resolved if it is ever run against another one.
 
-Only top-level code (`@main`) emits these.  Inside a function a free name might
-still be an enclosing local, so those keep using `LOADC`/`LOADV`.
+`GLOADC` and `GLOADV` are emitted for any *free* name — one with no register in
+the function being compiled — at top level and inside functions alike.  Inside a
+function such a name may still be shadowed by an enclosing local or by one
+created at run time (`locals["x"] = 1`, a `locals` map passed to another
+function, `import`), so both opcodes check the frame first and fall back to the
+same run-time search `LOADC`/`LOADV` use whenever anything could shadow the
+name.  The check costs one integer compare in `@main`, which can never be
+shadowed.
+
+`GSTORE` is emitted only by top-level code, since an assignment inside a
+function creates a local, not a global.  A hand-written `.msa` may still use it
+anywhere; it always writes the global.
 
 | Mnemonic | Description |
 | --- | --- |

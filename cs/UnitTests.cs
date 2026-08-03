@@ -623,7 +623,7 @@ public static class UnitTests {
 
 		// Test index access (resultReg r0 allocated first)
 		ok = ok && CheckCodeGen(parser, "x[0]", new List<String> {
-			"  LOADC_rA_rB_kC r1, r0, r0",   // x (outer lookup)
+			"  GLOADC_rA_iBC r1, 0",   // x: free name, so a global reference
 			"  LOAD_rA_iBC r2, 0",   // index 0
 			"  IDXGET_rA_rB_rC r0, r1, r2",
 			"  RETURN"

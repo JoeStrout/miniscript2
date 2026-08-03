@@ -245,10 +245,9 @@ opcodes.
 
 **`Iterative Fibonacci` is 1.35x faster than the pre-globals baseline** (15.85s
 vs 11.72s), not merely recovered.  It was the worst-hit of the three controls in
-stage 2+3 and is now the best.  This is reproducible across runs and I do not
-have an explanation for it; @main's `MaxRegs` drops from 15 to 10, which is real
-but far too small to account for 25%.  Worth understanding before anyone quotes
-it as a win.
+stage 2+3 and is now the best.  **This is not a win from slot indexing** — see
+the C++ section below, where the same thing happens more dramatically and is run
+down to its cause.
 
 **`Iterative Factorial` is 1.28x slower than baseline** (6.95s vs 8.91s).  That
 one is unsurprising: its hot loop is entirely top-level global arithmetic, so it
@@ -259,9 +258,169 @@ even with min-of-three, and its hot path is all function-local — worth a secon
 look when the C++ numbers land, but not evidence of a leak into the local path
 on its own.
 
-### Still to do
+---
 
-Re-run `tools/benchmark.sh -lang=cpp-goto` after transpiling and fill in the C++
-column.  The C++ side is where the design should look best: `GlobalSlots` and
-`_values` are contiguous vectors there, so the two list indexes on the hot path
-become genuine array indexes.
+# Stage 4 on C++
+
+Taken 2026-08-02 after transpiling, computed-goto build (`tools/build.sh cpp on`),
+same machine and same method as the C# section above: minimum of three runs, all
+three commits built from worktrees and measured in one sitting.
+
+| Benchmark | baseline `7e1d828` | stage 2+3 `08e9781` | stage 4 |
+|---|---|---|---|
+| Global Loop | 1.03s | 7.18s | **2.15s** |
+| Global Loop (locals) | 1.09s | 1.01s | **1.17s** |
+| Global Churn | 1.89s | 0.26s | **0.27s** |
+| Iterative Factorial (src) | 1.50s | 5.15s | **1.34s** |
+| Iterative Fibonacci (src) | 6.91s | 6.46s | **2.76s** |
+| Recursive Fibonacci (src) | 4.13s | 3.93s | **4.08s** |
+
+### 1. C++ pays *more* for a global than C# does, not less
+
+| | baseline | stage 2+3 | stage 4 |
+|---|---|---|---|
+| globals ÷ locals, C++ | 0.94x | 7.11x | **1.84x** |
+| globals ÷ locals, C# | 1.02x | 3.98x | **1.50x** |
+
+This is the opposite of what the stage-4 handoff predicted.  The reasoning there
+was that `GlobalSlots` and `_values` are contiguous vectors in C++, so the hot
+path becomes real array indexing — true as far as it goes, but it compares
+against the wrong thing.  The C++ *register* path is faster still: `localStack`
+is a raw `Value*` that `SwitchFrame` sets once per frame, so a register read is
+a pointer plus an index.  A slot read is three pointer chases before the index —
+`curFuncRaw->GlobalSlots` (a `shared_ptr<vector>`), the `Globals` wrapper's own
+`shared_ptr`, and then `_values` (another `shared_ptr<vector>`).  C# pays that
+indirection on both paths, so it notices the difference less.
+
+That is a concrete thing to fix, and §7 of GLOBALS.md already names it: hold
+`Int32* globalSlots` and `Value* globalValues` in the dispatch loop the way
+`localStack` is held, re-fetched in `SwitchFrame` and after anything that can
+grow the table.  The reason it was not done here is exactly the hazard that note
+raises — the slot array grows, so a stale base pointer is a live-memory bug, not
+a wrong answer.  Worth doing deliberately, not as a footnote to this stage.
+
+### 2. `Global Churn` is 7x faster than baseline on C++
+
+1.89s to 0.27s, all of it won in stage 2+3 and none of it lost in stage 4.  The
+C++ side had more to gain here than C# did, because `VarMapBacking`'s two linear
+scans per access were over a `List` with the same indirection described above.
+
+### 3. `Iterative Fibonacci`'s 2.5x speedup is not a win from this work
+
+6.91s to 2.76s is far too large to be slot indexing, and stage 2+3 did not move
+it (6.46s), so whatever it is arrived with the opcodes.  What is established:
+
+- It is **not** GC or allocation.  Rewriting the inner `for j in range(2, n)` as
+  a `while` loop — removing 500,000 list allocations — leaves the gap intact
+  (baseline 5.68s, stage 4 2.48s).  A loop that does *only* the allocation shows
+  almost no gap at all (0.59s vs 0.41s).
+- It is tied to **variables first assigned inside a loop body**, which is a
+  pattern the register path compiles badly and global scope no longer has at
+  all.  On the baseline build, declaring every variable ahead of the loops takes
+  it from 5.68s to **1.09s**, at which point the baseline beats stage 4 (2.41s)
+  by the same ~2x as `Global Loop`.  Pre-declaring only `c` — the one variable
+  whose first assignment is in the inner loop — recovers most of it on its own
+  (16.76s to 9.76s, C#).
+
+An earlier revision of this section blamed the `NAME` op emitted inside the loop
+body.  **That attribution was wrong.**  Measured directly at function scope,
+where the pattern still occurs, `NAME` costs about what one ordinary instruction
+costs: a loop body of 12 instructions with the `NAME` runs 0.35s against 11
+instructions without it at 0.32s (C++; C# is 2.80s vs 2.57s, the same 9%).  One
+extra instruction in thirteen cannot produce 1.7x, so something else in the
+pre-declared rewrite is doing the work, and it is not identified.  The affected
+code path — top-level named variables in registers — no longer exists, so this
+is left unexplained rather than chased.
+
+What did come out of the investigation is a **correctness** bug in the same
+pattern, still live for function locals: see [bugs.md](bugs.md) #3.  Stage 4
+fixed it at global scope by accident.
+
+### 4. The local-path control is clean (stage 4)
+
+`Recursive Fibonacci` is 4.13s → 4.08s and `Global Loop (locals)` is 1.09s →
+1.17s.  Both are within noise, which answers the question the C# numbers left
+open: the 1.10x on `Recursive Fibonacci` there was noise, and nothing has leaked
+into the function-local path.
+
+---
+
+# Stage 5: free names inside functions
+
+Taken 2026-08-03, **C# only** — the C++ side has not been transpiled; re-run
+`tools/benchmark.sh -lang=cpp-goto` and add a column once it has.
+
+Method changed here, and the earlier sections should be read with that in mind:
+these runs **interleave** the two builds (s5, s4, s5, s4, …) rather than
+measuring one build to completion and then the other.  The machine drifts by
+10-15% over a session, enough that a non-interleaved pair can invent a
+difference that is not there — an earlier draft of this section reported `Global
+Loop` as 14% slower on that basis, and interleaving shows it unchanged.  Figures
+are the minimum of three interleaved pairs.
+
+| Benchmark | stage 4 | stage 5 | |
+|---|---|---|---|
+| **Globals From Function** | 4.71s | **3.29s** | 1.43x faster |
+| **Global Churn** | 1.83s | **1.46s** | 1.25x faster |
+| **Recursive Fibonacci** (src) | 11.54s | **9.30s** | 1.24x faster |
+| Global Loop | 11.15s | 11.30s | unchanged (control) |
+| Global Loop (locals) | 7.48s | 7.42s | unchanged (control) |
+
+`global_from_fn.ms` is new, added for this stage: a loop inside a function whose
+body reads two globals and one intrinsic per iteration, with its accumulator and
+counter in locals.  It differs from `global_loop_fn.ms` only in the free-name
+path, which is exactly what stage 5 changes.  (Like the other `global_*` files
+it needs `git add -f`; see the Caveats at the top of this page.)
+
+`Recursive Fibonacci` moving 1.24x is the result worth noticing.  It is not a
+globals benchmark and it was flat through stages 2, 3 and 4 — but every
+recursive call resolves `fib` as a free name, and that read used to be a walk
+out through `LookupVariable` ending in a hash lookup.  The two controls confirm
+nothing else moved: `Global Loop` is top-level code, which stage 5 does not
+touch, and `Global Loop (locals)` has no free names at all.
+
+## Stage 5 on C++
+
+Taken 2026-08-03 after transpiling, computed-goto build, same interleaved
+min-of-three method as the C# table above.
+
+| Benchmark | stage 4 | stage 5 | |
+|---|---|---|---|
+| **Global Churn** | 0.26s | **0.18s** | 1.44x faster |
+| **Globals From Function** | 1.96s | **1.59s** | 1.23x faster |
+| **Recursive Fibonacci** (src) | 4.53s | **4.09s** | 1.11x faster |
+| Global Loop | 2.04s | 2.03s | unchanged |
+| Iterative Fibonacci (src) | 2.98s | 2.97s | unchanged |
+| Global Loop (locals) | 1.22s | 1.12s | see below |
+| Iterative Factorial (src) | 1.44s | 1.51s | see below |
+
+The three wins are the same three as on C#, but they are ranked differently:
+`Global Churn` gains more on C++ (1.44x vs 1.25x) while `Globals From Function`
+and `Recursive Fibonacci` gain less (1.23x vs 1.43x, 1.11x vs 1.24x).  That is
+the stage-4 finding again — a slot access costs relatively more on C++, because
+the register and map paths it is being compared against are already cheaper
+there — so replacing a hash lookup with a slot index buys less than it does in
+C#.  `Global Churn` is the exception because it never had a register path to
+lose to.
+
+globals ÷ locals is 2.03 / 1.12 = **1.81x**, against 1.67x for stage 4 measured
+the same day.  Stage 5 does not touch top-level code; the difference is in the
+denominator, which is the next paragraph's problem.
+
+### Two small moves that are code layout, not semantics
+
+`Global Loop (locals)` is 8% *faster* and `Iterative Factorial` 5% slower, both
+consistently across all three interleaved pairs.  Neither can be a real effect
+of this change: disassembling `global_loop_fn.ms` shows its `run` function
+executes **zero** `GLOADC`/`GLOADV` instructions, and the only VM change in
+stage 5 is inside those two handlers.
+
+What stage 5 does do is add a branch to two arms of a computed-goto dispatch
+loop, which moves every label after them.  Shifts of this size from code layout
+alone are ordinary, and unlike run-to-run noise they are perfectly repeatable,
+so re-running does not distinguish them from real effects.  **Treat differences
+under about 10% on this build as unattributable** unless the benchmark actually
+executes the changed opcodes.  `Iterative Factorial` and `Global Loop` do
+execute them (as top-level code, which now pays one extra integer compare per
+global access) and land on opposite sides of zero, which is consistent with that
+compare being free and layout dominating.

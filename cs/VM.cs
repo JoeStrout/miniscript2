@@ -1608,16 +1608,28 @@ public class VM {
 					// R[A] = the global named by reference BC, invoking it with no
 					// arguments if it turns out to be a function.  The globals
 					// counterpart of LOADC: one guarded array index instead of a walk
-					// out through LookupVariable.  Only @main emits this, because only
-					// there is a free name certainly not an enclosing local.
+					// out through LookupVariable.
+					//
+					// Emitted for any free name -- one with no register in the current
+					// function -- at top level or inside a function.  Inside a function
+					// such a name can still turn out to be an enclosing local or a
+					// dynamically-created one, both of which outrank a global, so the
+					// slot path is taken only when this frame has neither (see
+					// GlobalFastPath).  @main has neither by construction, and the
+					// `callStackTop > 1` test short-circuits there, so top level pays
+					// one integer compare for this.
 					Byte a = BytecodeUtil.Au(instruction);
 					Int32 refIdx = BytecodeUtil.BCu(instruction);
-					Int32 slot = (curFunc.GlobalCacheId == _globalsId) ? curFunc.GlobalSlots[refIdx] : ResolveGlobalRef(currentFunc, refIdx); // CPP: Int32 slot = (curFuncRaw->GlobalCacheId == _globalsId) ? curFuncRaw->GlobalSlots[refIdx] : ResolveGlobalRef(currentFunc, refIdx);
-					valB = _globals.ValueAtSlot(slot);
-					if (valB.IsUnassigned()) {
-						// No such global (or it was removed): it may still be an
-						// intrinsic, which is the one branch that leaves this path.
-						valB = GlobalMiss(currentFunc, refIdx);
+					if (callStackTop > 1 && !GlobalFastPath()) {
+						valB = LookupVariable(currentFunc.GlobalNames[refIdx]);
+					} else {
+						Int32 slot = (curFunc.GlobalCacheId == _globalsId) ? curFunc.GlobalSlots[refIdx] : ResolveGlobalRef(currentFunc, refIdx); // CPP: Int32 slot = (curFuncRaw->GlobalCacheId == _globalsId) ? curFuncRaw->GlobalSlots[refIdx] : ResolveGlobalRef(currentFunc, refIdx);
+						valB = _globals.ValueAtSlot(slot);
+						if (valB.IsUnassigned()) {
+							// No such global (or it was removed): it may still be an
+							// intrinsic, which is the one branch that leaves this path.
+							valB = GlobalMiss(currentFunc, refIdx);
+						}
 					}
 
 					if (!valB.IsFuncRef()) {
@@ -1643,9 +1655,14 @@ public class VM {
 				case Opcode.GLOADV_rA_iBC: {
 					// R[A] = the global named by reference BC, as stored -- no
 					// auto-invoke.  This is the `@name` form, and also how a call
-					// site fetches the funcref it is about to call.
+					// site fetches the funcref it is about to call.  Same frame guard
+					// as GLOADC above.
 					Byte a = BytecodeUtil.Au(instruction);
 					Int32 refIdx = BytecodeUtil.BCu(instruction);
+					if (callStackTop > 1 && !GlobalFastPath()) {
+						localStack[a] = LookupVariable(currentFunc.GlobalNames[refIdx]);
+						break;
+					}
 					Int32 slot = (curFunc.GlobalCacheId == _globalsId) ? curFunc.GlobalSlots[refIdx] : ResolveGlobalRef(currentFunc, refIdx); // CPP: Int32 slot = (curFuncRaw->GlobalCacheId == _globalsId) ? curFuncRaw->GlobalSlots[refIdx] : ResolveGlobalRef(currentFunc, refIdx);
 					val = _globals.ValueAtSlot(slot);
 					if (val.IsUnassigned()) val = GlobalMiss(currentFunc, refIdx);
@@ -2700,6 +2717,27 @@ public class VM {
 	private Int32 ResolveGlobalRef(FuncDef func, Int32 refIdx) {
 		_globals.ResolveRefs(func);
 		return func.GlobalSlots[refIdx];
+	}
+
+	// Can this frame reach a free name's global slot directly, or does something
+	// in front of globals have to be searched first?
+	//
+	// LookupVariable's order is locals map, then outer map, then globals.  A frame
+	// skips straight to globals when it has no dynamically-created locals map, and
+	// no enclosing scope other than the global namespace itself.  Both are the
+	// common case: the locals map is built only if something asks for `locals`,
+	// captures a closure, or binds a name through SetVar (which `import` does),
+	// and a function defined at top level captures the globals map as its outer
+	// scope, which is the very thing we are about to look in.
+	//
+	// A false here is not a wrong answer, just a slower one -- the caller falls
+	// back to LookupVariable, which handles every case.
+	[MethodImpl(AggressiveInlining)]
+	private Boolean GlobalFastPath() {
+		CallInfo frame = callStack[callStackTop - 1];
+		if (!frame.LocalVarMap.IsNull()) return false;
+		if (frame.OuterVarMap.IsNull()) return true;
+		return frame.OuterVarMap.RefEquals(_globals.AsMap());
 	}
 
 	// A global reference whose slot is unassigned: either the name has never been

@@ -132,10 +132,15 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 	// this is the only way a name comes into existence at top level.
 	private: void EmitGlobalStore(String varName, Int32 valueReg);
 
-	// Read a free variable -- one with no register of its own -- into resultReg.
-	// At global scope that is a slot access; anywhere else the name might still
-	// turn out to be an enclosing local, so it has to go through the run-time
-	// search (see EmitNamedLoad's r0 form).
+	// Read a free variable -- one with no register in the function being compiled
+	// -- into resultReg.  At global scope that is certainly a global.  Inside a
+	// function it is usually a global too (an intrinsic, or a top-level name), but
+	// it may be an enclosing local, so GLOADC/GLOADV check the frame before
+	// reaching for the slot and fall back to the full run-time search if anything
+	// could shadow it.  That check is at run time rather than here on purpose:
+	// names can enter a scope dynamically -- `locals["x"] = 1`, a map handed to
+	// another function, `import` -- so no amount of looking at the lexical chain
+	// would be sound.  See notes/GLOBALS.md section 8, stage 5.
 	private: void EmitFreeLoad(Boolean addressOf, Int32 resultReg, String varName, String comment);
 
 	// Compile a complete function from a single expression/statement
@@ -436,10 +441,15 @@ struct CodeGenerator : public IASTVisitor {
 	// this is the only way a name comes into existence at top level.
 	private: inline void EmitGlobalStore(String varName, Int32 valueReg);
 
-	// Read a free variable -- one with no register of its own -- into resultReg.
-	// At global scope that is a slot access; anywhere else the name might still
-	// turn out to be an enclosing local, so it has to go through the run-time
-	// search (see EmitNamedLoad's r0 form).
+	// Read a free variable -- one with no register in the function being compiled
+	// -- into resultReg.  At global scope that is certainly a global.  Inside a
+	// function it is usually a global too (an intrinsic, or a top-level name), but
+	// it may be an enclosing local, so GLOADC/GLOADV check the frame before
+	// reaching for the slot and fall back to the full run-time search if anything
+	// could shadow it.  That check is at run time rather than here on purpose:
+	// names can enter a scope dynamically -- `locals["x"] = 1`, a map handed to
+	// another function, `import` -- so no amount of looking at the lexical chain
+	// would be sound.  See notes/GLOBALS.md section 8, stage 5.
 	private: inline void EmitFreeLoad(Boolean addressOf, Int32 resultReg, String varName, String comment);
 
 	// Compile a complete function from a single expression/statement

@@ -30,6 +30,7 @@ A survey of the C# (`cs/`) and C/C++ (`cpp/core/`) source for bad smells, incons
 - **`CodeGenerator.cs` ~87**: `AllocConsecutiveRegs()` scans with an O(n) loop; a bitmap or free-list would scale better for large register windows.
 - **`Intrinsic.cs` ~80–85**: `GetByName()` does a linear search every call despite the table being static after startup — should be a `Dictionary`. ✔️
 - **`VM.cs` ~260–285**: `MarkRoots()` iterates full stack/names arrays even when mostly empty; tracking a high-water mark would avoid unnecessary work. ✔️
+- **`CodeGenerator.cs` ~1555–1587**: `while` loops are not rotated, so every iteration pays an unconditional `JUMP` on top of the conditional branch. See [Rotate the `while` loop](#rotate-the-while-loop) below. ✔️
 
 ---
 
@@ -91,6 +92,53 @@ A survey of the C# (`cs/`) and C/C++ (`cpp/core/`) source for bad smells, incons
 - **`Disassembler.cs` ~101**: Pads mnemonic to 7 chars, but opcodes like `METHFIND` (8 chars) overflow the padding silently.
 - **`Assembler.cs` ~889–906**: Floating-point parsing in `NeedsConstant()` is unvalidated; malformed literals like `"1.2.3"` may pass silently.
 - **`VM.cs`**: No visible guard against infinite recursion / stack overflow; deep MiniScript recursion will crash the host rather than raise a runtime error.
+
+---
+
+## Larger Design Items
+
+Items too involved for a one-line entry, written up in full.
+
+### Rotate the `while` loop — DONE 2026-08-04
+
+*Raised out of entry 4 of [bugs.md](bugs.md); implemented in
+`CodeGenerator.Visit(WhileNode)`.*
+
+The condition is now tested once on the way in and again at the bottom of the
+body, so the steady state costs one branch per iteration instead of a branch plus
+an unconditional jump. A constant-true condition (`while true`) emits no test at
+all — just the back edge — where it used to pay a `LOAD`, a `BRFALSE` and a
+`JUMP`. On the 12-instruction benchmark body from entry 4, the loop went from 12
+instructions per iteration to 10; a two-million-iteration version of it runs in
+1.27s against 1.43s before — medians of six interleaved A/B runs on C#, with the
+new build faster in every pair. (Interleave these: consecutive runs on this
+machine drift by more than the effect being measured.) The C++ side should gain
+at least as much, but has not been measured — it needs a transpile first.
+
+Three things came with it:
+
+- **The redundant `NAME` is hoisted.** Rotation creates a preheader — code that
+  runs once, and only when the body will run at least once — which is where a
+  `NAME` for a variable the body creates belongs. `HoistableBodyNames` decides
+  what may move: a plain `x = ...` at the body's top level, unread by everything
+  up to and including it, and out of reach of any earlier `break` or `continue`.
+  The read test is `MayReadVar`, the same test `Visit(AssignmentNode)` already
+  uses to decide whether a `NAME` may precede its own RHS, so the hoist inherits
+  that boundary rather than drawing a new one.
+- **The condition is compiled at both points, which is more accurate than
+  compiling it once.** The back-edge copy sees the body's variables, so a
+  condition naming one reads the local it now is, while the entry copy still
+  reaches the enclosing scope. `while i < 1 or c == 100` around a body that
+  assigns a local `c` used to loop forever, reading the unchanging global on
+  every test; it now terminates, matching MS1.
+- **`for` loops got the same preheader treatment** for correctness rather than
+  speed, closing entry 6 of `bugs.md`. Peeling the first `NEXT`/`ITERGET` gives
+  the loop variable's `NAME` a home reached only when there is a first element,
+  so `for j in []` leaves `j` undefined. Per-iteration cost is unchanged; code
+  size grows by four instructions per loop.
+
+Costs, for the record: the condition appears twice in the generated code, and
+`continue` targets the back-edge test rather than the top of the body.
 
 ---
 

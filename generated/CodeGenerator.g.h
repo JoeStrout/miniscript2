@@ -154,10 +154,13 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 	// simply part of the live set the condition allocates around, and the ordinary
 	// rules do the rest.
 	// The registers are parked under an internal key, not the variable's own name,
-	// so that the body compiles exactly as it did before: the variable is still
-	// "new" at its first assignment (which is what decides NAME ordering, and what
-	// lets `c = c + 1` in the body read an outer c), and a read before that
-	// assignment still misses and walks out to the enclosing scope.
+	// so that the variable is still "new" at its first assignment -- which is what
+	// decides NAME ordering, and what makes `c = c + 1` in the body the error it
+	// should be rather than a read of an unwritten register.
+	// A read that comes *before* the assignment does consult the reservation, since
+	// it is the only way to compile one instruction that is right on every
+	// iteration: see VisitIdentifier.  The reservation is what lets it name the
+	// register the local is going to occupy.
 	private: static String PendingVarRegKey(String varName);
 
 	// Reserve a register for each variable the given loop body creates.  Returns
@@ -180,6 +183,50 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 	// variables are locals of that function.
 	private: void CollectAssignedVars(List<ASTNode> body, List<String> result);
 
+	// ── Hoisting a loop body's NAME ops ──────────────────────────────────────
+	// A variable first assigned inside a loop body has its NAME op emitted inside
+	// the loop, where it re-runs every iteration even though the binding it
+	// establishes never changes after the first.  The rotated loop (see
+	// Visit(WhileNode)) has a preheader -- code that runs once, and only when the
+	// body is going to run at least once -- which is the right home for it.
+	// Hoisting is sound only for a name the body assigns before anything could
+	// observe it, because NAME is not bookkeeping: it sets names[base+reg], the
+	// guard LOADC checks before trusting the register, so running it early turns a
+	// read that should have raised Undefined Identifier (or reached an enclosing
+	// scope) into a read of an unwritten register.  A candidate must therefore be
+	//   * assigned by a plain `x = ...` at the body's top level -- not inside a
+	//     nested if or loop, where the assignment might not run at all;
+	//   * unread by every statement up to and including that one;
+	//   * out of reach of any `break` or `continue` ahead of it, which would carry
+	//     control to code that can see the variable before it was assigned;
+	//   * new here: no register yet, and not already definitely assigned.
+	// MayReadVar answers the read test, and the dynamic-scope case with it, since
+	// ScopeNode always answers true.  It is the same test Visit(AssignmentNode) uses
+	// to decide whether a NAME may precede its own RHS, and it draws the boundary in
+	// the same place: a closure over this frame, called in between, could still
+	// observe the variable, because defining a function reads nothing.  Hoisting
+	// therefore inherits exactly the imprecision straight-line assignment already
+	// has, and adds none of its own.
+	private: List<String> HoistableBodyNames(List<ASTNode> body);
+
+	// Can this statement transfer control out of the enclosing loop body -- to the
+	// code after the loop, or to the next iteration -- without running what follows
+	// it?  A nested loop's own break and continue do not count: they bind to that
+	// loop, so control still resumes here.  A `return` does not count either; it
+	// leaves the function, so no later read can observe anything.
+	private: Boolean MayLeaveLoop(ASTNode node);
+
+	private: Boolean AnyLeavesLoop(List<ASTNode> nodes);
+
+	private: static Boolean ContainsName(List<String> names, String name);
+
+	// Emit the hoisted NAME ops into a loop preheader, and record the names as
+	// definitely assigned so EnsureNamed skips them inside the body.  The caller
+	// must pop back to the returned mark once the loop is closed: the preheader
+	// runs only when the body does, so a zero-iteration loop leaves these names
+	// undefined for the code that follows.
+	private: Int32 EmitHoistedNames(List<String> names);
+
 	// ── Definite assignment ──────────────────────────────────────────────────
 	// _namedStack holds the variables that are definitely assigned at the current
 	// point -- assigned on every path that reaches here.  Two things read it:
@@ -200,6 +247,11 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 
 	// Drop every entry above mark, undoing the assignments a non-dominating body made.
 	private: void PopNamesTo(Int32 mark);
+
+	// Does a NAME op binding varName to its register already dominate this point?
+	// Only such an entry counts: `locals.x = 1` makes x assigned without binding a
+	// register, so it cannot stand in for the NAME.
+	private: Boolean IsRegisterNamed(String varName);
 
 	// Is varName definitely assigned at this point, by any means?
 	private: Boolean IsDefinitelyAssigned(String varName);
@@ -613,10 +665,13 @@ struct CodeGenerator : public IASTVisitor {
 	// simply part of the live set the condition allocates around, and the ordinary
 	// rules do the rest.
 	// The registers are parked under an internal key, not the variable's own name,
-	// so that the body compiles exactly as it did before: the variable is still
-	// "new" at its first assignment (which is what decides NAME ordering, and what
-	// lets `c = c + 1` in the body read an outer c), and a read before that
-	// assignment still misses and walks out to the enclosing scope.
+	// so that the variable is still "new" at its first assignment -- which is what
+	// decides NAME ordering, and what makes `c = c + 1` in the body the error it
+	// should be rather than a read of an unwritten register.
+	// A read that comes *before* the assignment does consult the reservation, since
+	// it is the only way to compile one instruction that is right on every
+	// iteration: see VisitIdentifier.  The reservation is what lets it name the
+	// register the local is going to occupy.
 	private: static String PendingVarRegKey(String varName) { return CodeGeneratorStorage::PendingVarRegKey(varName); }
 
 	// Reserve a register for each variable the given loop body creates.  Returns
@@ -639,6 +694,50 @@ struct CodeGenerator : public IASTVisitor {
 	// variables are locals of that function.
 	private: inline void CollectAssignedVars(List<ASTNode> body, List<String> result);
 
+	// ── Hoisting a loop body's NAME ops ──────────────────────────────────────
+	// A variable first assigned inside a loop body has its NAME op emitted inside
+	// the loop, where it re-runs every iteration even though the binding it
+	// establishes never changes after the first.  The rotated loop (see
+	// Visit(WhileNode)) has a preheader -- code that runs once, and only when the
+	// body is going to run at least once -- which is the right home for it.
+	// Hoisting is sound only for a name the body assigns before anything could
+	// observe it, because NAME is not bookkeeping: it sets names[base+reg], the
+	// guard LOADC checks before trusting the register, so running it early turns a
+	// read that should have raised Undefined Identifier (or reached an enclosing
+	// scope) into a read of an unwritten register.  A candidate must therefore be
+	//   * assigned by a plain `x = ...` at the body's top level -- not inside a
+	//     nested if or loop, where the assignment might not run at all;
+	//   * unread by every statement up to and including that one;
+	//   * out of reach of any `break` or `continue` ahead of it, which would carry
+	//     control to code that can see the variable before it was assigned;
+	//   * new here: no register yet, and not already definitely assigned.
+	// MayReadVar answers the read test, and the dynamic-scope case with it, since
+	// ScopeNode always answers true.  It is the same test Visit(AssignmentNode) uses
+	// to decide whether a NAME may precede its own RHS, and it draws the boundary in
+	// the same place: a closure over this frame, called in between, could still
+	// observe the variable, because defining a function reads nothing.  Hoisting
+	// therefore inherits exactly the imprecision straight-line assignment already
+	// has, and adds none of its own.
+	private: inline List<String> HoistableBodyNames(List<ASTNode> body);
+
+	// Can this statement transfer control out of the enclosing loop body -- to the
+	// code after the loop, or to the next iteration -- without running what follows
+	// it?  A nested loop's own break and continue do not count: they bind to that
+	// loop, so control still resumes here.  A `return` does not count either; it
+	// leaves the function, so no later read can observe anything.
+	private: inline Boolean MayLeaveLoop(ASTNode node);
+
+	private: inline Boolean AnyLeavesLoop(List<ASTNode> nodes);
+
+	private: static Boolean ContainsName(List<String> names, String name) { return CodeGeneratorStorage::ContainsName(names, name); }
+
+	// Emit the hoisted NAME ops into a loop preheader, and record the names as
+	// definitely assigned so EnsureNamed skips them inside the body.  The caller
+	// must pop back to the returned mark once the loop is closed: the preheader
+	// runs only when the body does, so a zero-iteration loop leaves these names
+	// undefined for the code that follows.
+	private: inline Int32 EmitHoistedNames(List<String> names);
+
 	// ── Definite assignment ──────────────────────────────────────────────────
 	// _namedStack holds the variables that are definitely assigned at the current
 	// point -- assigned on every path that reaches here.  Two things read it:
@@ -659,6 +758,11 @@ struct CodeGenerator : public IASTVisitor {
 
 	// Drop every entry above mark, undoing the assignments a non-dominating body made.
 	private: inline void PopNamesTo(Int32 mark);
+
+	// Does a NAME op binding varName to its register already dominate this point?
+	// Only such an entry counts: `locals.x = 1` makes x assigned without binding a
+	// register, so it cannot stand in for the NAME.
+	private: inline Boolean IsRegisterNamed(String varName);
 
 	// Is varName definitely assigned at this point, by any means?
 	private: inline Boolean IsDefinitelyAssigned(String varName);
@@ -965,8 +1069,13 @@ inline List<String> CodeGenerator::ReserveBodyVarRegs(List<ASTNode> body) { retu
 inline void CodeGenerator::ReleaseBodyVarRegs(List<String> reserved) { return get()->ReleaseBodyVarRegs(reserved); }
 inline Int32 CodeGenerator::TakeVarReg(String varName) { return get()->TakeVarReg(varName); }
 inline void CodeGenerator::CollectAssignedVars(List<ASTNode> body,List<String> result) { return get()->CollectAssignedVars(body, result); }
+inline List<String> CodeGenerator::HoistableBodyNames(List<ASTNode> body) { return get()->HoistableBodyNames(body); }
+inline Boolean CodeGenerator::MayLeaveLoop(ASTNode node) { return get()->MayLeaveLoop(node); }
+inline Boolean CodeGenerator::AnyLeavesLoop(List<ASTNode> nodes) { return get()->AnyLeavesLoop(nodes); }
+inline Int32 CodeGenerator::EmitHoistedNames(List<String> names) { return get()->EmitHoistedNames(names); }
 inline void CodeGenerator::PushName(String varName,Boolean isReg) { return get()->PushName(varName, isReg); }
 inline void CodeGenerator::PopNamesTo(Int32 mark) { return get()->PopNamesTo(mark); }
+inline Boolean CodeGenerator::IsRegisterNamed(String varName) { return get()->IsRegisterNamed(varName); }
 inline Boolean CodeGenerator::IsDefinitelyAssigned(String varName) { return get()->IsDefinitelyAssigned(varName); }
 inline void CodeGenerator::EnsureNamed(String varName,Int32 varReg) { return get()->EnsureNamed(varName, varReg); }
 inline void CodeGenerator::NoteLocalsDeclared(String varName) { return get()->NoteLocalsDeclared(varName); }

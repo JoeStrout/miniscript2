@@ -2149,6 +2149,204 @@ print t.run
 --------------------------------
 [20, 20, 99, "tagged"]
 ================================
+==== The loop is rotated and the body's NAME op hoisted into the preheader, so a
+==== zero-iteration loop must still leave the variable undefined.
+f = function()
+	while false
+		c = 1
+	end while
+	print c
+end function
+f
+--------------------------------
+Runtime Error: Undefined Identifier: 'c' is unknown in this context [line 5]
+================================
+==== A hoisted NAME must not make the variable readable ahead of its assignment,
+==== so a `break` before it disqualifies the hoist.
+f = function(c)
+	while true
+		if c then break
+		m = 2
+		break
+	end while
+	print m
+end function
+f(1)
+--------------------------------
+Runtime Error: Undefined Identifier: 'm' is unknown in this context [line 7]
+================================
+==== A read ahead of the assignment sees the enclosing scope until the local
+==== exists, and the local from then on.  One instruction serves both: it names
+==== the register the local will occupy, and the guard fails until the NAME op in
+==== the assignment has run once.
+c = "global c"
+f = function()
+	i = 0
+	while i < 3
+		print c
+		c = "local c"
+		i = i + 1
+	end while
+end function
+f
+--------------------------------
+global c
+local c
+local c
+================================
+==== The local has to actually come into being: an assignment that never runs
+==== leaves every iteration reading the enclosing scope.
+c = "global c"
+f = function()
+	i = 0
+	while i < 3
+		print c
+		if false then c = "local c"
+		i = i + 1
+	end while
+end function
+f
+--------------------------------
+global c
+global c
+global c
+================================
+==== And one that runs partway through switches over from that point.
+c = "global c"
+f = function()
+	i = 0
+	while i < 3
+		print c
+		if i == 1 then c = "local c"
+		i = i + 1
+	end while
+end function
+f
+--------------------------------
+global c
+global c
+local c
+================================
+==== With nothing in the enclosing scope to find, the read before the first
+==== assignment is still an undefined identifier.
+f = function()
+	i = 0
+	while i < 2
+		print c
+		c = "local c"
+		i = i + 1
+	end while
+end function
+f
+--------------------------------
+Runtime Error: Undefined Identifier: 'c' is unknown in this context [line 4]
+================================
+==== The enclosing scope may be another function's local, which the new local
+==== shadows without disturbing.
+outerFn = function()
+	v = "outer local"
+	inner = function()
+		i = 0
+		while i < 3
+			print v
+			v = "inner local"
+			i = i + 1
+		end while
+	end function
+	inner
+	print "after: " + v
+end function
+outerFn
+--------------------------------
+outer local
+inner local
+inner local
+after: outer local
+================================
+==== Implicit invocation still happens through the guarded read.
+c = function; return "global fn"; end function
+f = function()
+	i = 0
+	while i < 3
+		print c
+		c = function; return "local fn"; end function
+		i = i + 1
+	end while
+end function
+f
+--------------------------------
+global fn
+local fn
+local fn
+================================
+==== A local created by a `for` loop shadows the outer name the same way.
+j = "global j"
+f = function()
+	i = 0
+	while i < 2
+		print j
+		for j in [1, 2]
+		end for
+		i = i + 1
+	end while
+end function
+f
+--------------------------------
+global j
+2
+================================
+==== `continue` goes to the back-edge test, so the condition is re-evaluated.
+f = function()
+	n = 0
+	total = 0
+	while n < 5
+		n = n + 1
+		if n == 3 then continue
+		total = total + n
+	end while
+	return total
+end function
+print f
+--------------------------------
+12
+================================
+==== A condition that mentions a variable the body creates reads the enclosing
+==== scope on the way in and the local thereafter, because the entry test and the
+==== back-edge test are compiled at their own points.  Before the loop was
+==== rotated the single test read the global every time, and this looped forever.
+c = 100
+f = function()
+	i = 0
+	while i < 1 or c == 100
+		c = i
+		i = i + 1
+	end while
+	return [i, c]
+end function
+print f
+print c
+--------------------------------
+[1, 0]
+100
+================================
+==== Nested rotated loops.
+f = function()
+	s = 0
+	a = 0
+	while a < 3
+		b = 0
+		while b < 3
+			s = s + 1
+			b = b + 1
+		end while
+		a = a + 1
+	end while
+	return s
+end function
+print f
+--------------------------------
+9
+================================
 ================================================================================
 ==== SECTION 10: IF STATEMENTS
 ================================================================================
@@ -2541,6 +2739,46 @@ end for
 print x + y  // 7 + 8 == 15
 --------------------------------
 15
+================================
+==== A for loop that never iterates leaves its loop variable undefined, at
+==== function scope as well as at top level: the NAME op sits in a preheader
+==== reached only when there is a first element.
+f = function()
+	for j in []
+	end for
+	print j
+end function
+f
+--------------------------------
+Runtime Error: Undefined Identifier: 'j' is unknown in this context [line 4]
+================================
+==== Same at global scope.
+for j in []
+end for
+print j
+--------------------------------
+Runtime Error: Undefined Identifier: 'j' is unknown in this context [line 3]
+================================
+==== But one that does iterate keeps the variable, at function scope too.
+f = function()
+	for j in [10, 20, 30]
+	end for
+	return j
+end function
+print f
+--------------------------------
+30
+================================
+==== A loop variable that already exists is not undefined by an empty loop.
+f = function()
+	j = "before"
+	for j in []
+	end for
+	return j
+end function
+print f
+--------------------------------
+before
 ================================================================================
 ==== SECTION 13: CONTINUE STATEMENT
 ================================================================================

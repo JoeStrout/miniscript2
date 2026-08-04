@@ -340,10 +340,14 @@ public class CodeGenerator : IASTVisitor {
 	// rules do the rest.
 	//
 	// The registers are parked under an internal key, not the variable's own name,
-	// so that the body compiles exactly as it did before: the variable is still
-	// "new" at its first assignment (which is what decides NAME ordering, and what
-	// lets `c = c + 1` in the body read an outer c), and a read before that
-	// assignment still misses and walks out to the enclosing scope.
+	// so that the variable is still "new" at its first assignment -- which is what
+	// decides NAME ordering, and what makes `c = c + 1` in the body the error it
+	// should be rather than a read of an unwritten register.
+	//
+	// A read that comes *before* the assignment does consult the reservation, since
+	// it is the only way to compile one instruction that is right on every
+	// iteration: see VisitIdentifier.  The reservation is what lets it name the
+	// register the local is going to occupy.
 	private static String PendingVarRegKey(String varName) {
 		return "@pending " + varName;
 	}
@@ -426,6 +430,123 @@ public class CodeGenerator : IASTVisitor {
 		}
 	}
 
+	// ── Hoisting a loop body's NAME ops ──────────────────────────────────────
+	//
+	// A variable first assigned inside a loop body has its NAME op emitted inside
+	// the loop, where it re-runs every iteration even though the binding it
+	// establishes never changes after the first.  The rotated loop (see
+	// Visit(WhileNode)) has a preheader -- code that runs once, and only when the
+	// body is going to run at least once -- which is the right home for it.
+	//
+	// Hoisting is sound only for a name the body assigns before anything could
+	// observe it, because NAME is not bookkeeping: it sets names[base+reg], the
+	// guard LOADC checks before trusting the register, so running it early turns a
+	// read that should have raised Undefined Identifier (or reached an enclosing
+	// scope) into a read of an unwritten register.  A candidate must therefore be
+	//
+	//   * assigned by a plain `x = ...` at the body's top level -- not inside a
+	//     nested if or loop, where the assignment might not run at all;
+	//   * unread by every statement up to and including that one;
+	//   * out of reach of any `break` or `continue` ahead of it, which would carry
+	//     control to code that can see the variable before it was assigned;
+	//   * new here: no register yet, and not already definitely assigned.
+	//
+	// MayReadVar answers the read test, and the dynamic-scope case with it, since
+	// ScopeNode always answers true.  It is the same test Visit(AssignmentNode) uses
+	// to decide whether a NAME may precede its own RHS, and it draws the boundary in
+	// the same place: a closure over this frame, called in between, could still
+	// observe the variable, because defining a function reads nothing.  Hoisting
+	// therefore inherits exactly the imprecision straight-line assignment already
+	// has, and adds none of its own.
+	private List<String> HoistableBodyNames(List<ASTNode> body) {
+		List<String> result = new List<String>();
+		// Top-level names are slots in the Globals table, not registers, and no NAME
+		// is emitted for them.  See notes/GLOBALS.md.
+		if (_globalScope) return result;
+
+		for (Int32 i = 0; i < body.Count; i++) {
+			// Past a break or continue nothing later qualifies: the code it jumps to
+			// can read a variable whose assignment it skipped.
+			if (i > 0 && MayLeaveLoop(body[i - 1])) return result;
+
+			AssignmentNode assignN = body[i] as AssignmentNode;
+			if (assignN == null) continue;
+			String name = assignN.Variable;
+
+			if (IsDefinitelyAssigned(name)) continue;
+			Int32 existing;
+			if (_variableRegs.TryGetValue(name, out existing)) continue;
+			// Needs a register to name, which ReserveBodyVarRegs parked for it.
+			if (!_variableRegs.TryGetValue(PendingVarRegKey(name), out existing)) continue;
+			if (ContainsName(result, name)) continue;
+
+			// Any read at or before the assignment disqualifies it.  Including the
+			// statement itself covers a RHS that reads the name; that is a compile
+			// error in its own right (see VisitIdentifier), but the test here does
+			// not depend on that check catching it first.
+			Boolean readEarlier = false;
+			for (Int32 j = 0; j <= i; j++) {
+				if (!body[j].MayReadVar(name)) continue;
+				readEarlier = true;
+				break;
+			}
+			if (readEarlier) continue;
+
+			result.Add(name);
+		}
+		return result;
+	}
+
+	// Can this statement transfer control out of the enclosing loop body -- to the
+	// code after the loop, or to the next iteration -- without running what follows
+	// it?  A nested loop's own break and continue do not count: they bind to that
+	// loop, so control still resumes here.  A `return` does not count either; it
+	// leaves the function, so no later read can observe anything.
+	private Boolean MayLeaveLoop(ASTNode node) {
+		BreakNode breakN = node as BreakNode;
+		if (breakN != null) return true;
+		ContinueNode continueN = node as ContinueNode;
+		if (continueN != null) return true;
+
+		IfNode ifN = node as IfNode;
+		if (ifN != null) return AnyLeavesLoop(ifN.ThenBody) || AnyLeavesLoop(ifN.ElseBody);
+
+		return false;
+	}
+
+	private Boolean AnyLeavesLoop(List<ASTNode> nodes) {
+		if (nodes == null) return false;
+		for (Int32 i = 0; i < nodes.Count; i++) {
+			if (MayLeaveLoop(nodes[i])) return true;
+		}
+		return false;
+	}
+
+	private static Boolean ContainsName(List<String> names, String name) {
+		for (Int32 i = 0; i < names.Count; i++) {
+			if (names[i] == name) return true;
+		}
+		return false;
+	}
+
+	// Emit the hoisted NAME ops into a loop preheader, and record the names as
+	// definitely assigned so EnsureNamed skips them inside the body.  The caller
+	// must pop back to the returned mark once the loop is closed: the preheader
+	// runs only when the body does, so a zero-iteration loop leaves these names
+	// undefined for the code that follows.
+	private Int32 EmitHoistedNames(List<String> names) {
+		Int32 mark = _namedStack.Count;
+		for (Int32 i = 0; i < names.Count; i++) {
+			Int32 reg;
+			if (!_variableRegs.TryGetValue(PendingVarRegKey(names[i]), out reg)) continue;
+			Int32 nameIdx = _emitter.AddConstant(Value.make_string(names[i]));
+			_emitter.EmitAB(Opcode.NAME_rA_kBC, reg, nameIdx,
+				$"use r{reg} for {names[i]} (hoisted)");
+			PushName(names[i], true);
+		}
+		return mark;
+	}
+
 	// ── Definite assignment ──────────────────────────────────────────────────
 	//
 	// _namedStack holds the variables that are definitely assigned at the current
@@ -458,6 +579,16 @@ public class CodeGenerator : IASTVisitor {
 		}
 	}
 
+	// Does a NAME op binding varName to its register already dominate this point?
+	// Only such an entry counts: `locals.x = 1` makes x assigned without binding a
+	// register, so it cannot stand in for the NAME.
+	private Boolean IsRegisterNamed(String varName) {
+		for (Int32 i = 0; i < _namedStack.Count; i++) {
+			if (_namedStack[i] == varName && _namedIsReg[i]) return true;
+		}
+		return false;
+	}
+
 	// Is varName definitely assigned at this point, by any means?
 	private Boolean IsDefinitelyAssigned(String varName) {
 		for (Int32 i = 0; i < _namedStack.Count; i++) {
@@ -471,9 +602,7 @@ public class CodeGenerator : IASTVisitor {
 	// what makes a variable "exist" at runtime; it must run on every path that
 	// assigns the variable (e.g. both branches of a single-line if).
 	private void EnsureNamed(String varName, Int32 varReg) {
-		for (Int32 i = 0; i < _namedStack.Count; i++) {
-			if (_namedStack[i] == varName && _namedIsReg[i]) return;
-		}
+		if (IsRegisterNamed(varName)) return;
 		Int32 nameIdx = _emitter.AddConstant(Value.make_string(varName));
 		_emitter.EmitAB(Opcode.NAME_rA_kBC, varReg, nameIdx, $"use r{varReg} for {varName}");
 		PushName(varName, true);
@@ -803,6 +932,17 @@ public class CodeGenerator : IASTVisitor {
 			// Variable found - emit LOADC (load-and-call for implicit function invocation)
 			EmitNamedLoad(addressOf, resultReg, varReg, Value.make_string(node.Name),
 				$"r{resultReg} = {at}{node.Name}");
+		} else if (_variableRegs.TryGetValue(PendingVarRegKey(node.Name), out varReg)) {
+			// The local does not exist yet, but an enclosing loop has reserved the
+			// register it will live in (see ReserveBodyVarRegs), and this read sits
+			// ahead of the assignment that creates it.  One instruction has to serve
+			// both the iteration where the local does not exist and the ones after it
+			// does, so read the reserved register the guarded way: the NAME op is what
+			// makes the guard match, so until the assignment has run once this falls
+			// back to the run-time search and finds the enclosing scope, and from then
+			// on it finds the local that now shadows it.
+			EmitNamedLoad(addressOf, resultReg, varReg, Value.make_string(node.Name),
+				$"r{resultReg} = {at}{node.Name} (outer until assigned)");
 		} else {
 			// Variable has no register here: at global scope it is a slot, and
 			// otherwise it may be an enclosing local, so the search happens at
@@ -1544,20 +1684,40 @@ public class CodeGenerator : IASTVisitor {
 	}
 
 	public Int32 Visit(WhileNode node) {
-		// While loop generates:
-		//   loopStart:
-		//       [evaluate condition]
+		// The loop is rotated: the condition is tested once on the way in, and again
+		// at the bottom of the body, so the steady state costs one branch per
+		// iteration instead of a branch plus an unconditional jump.
+		//
+		//       [evaluate condition]     <-- preheader copy
 		//       BRFALSE condReg, afterLoop
+		//       [hoisted NAME ops]
+		//   top:
 		//       [body statements]
-		//       JUMP loopStart
+		//   continueTarget:
+		//       [evaluate condition]     <-- back-edge copy
+		//       BRTRUE condReg, top
 		//   afterLoop:
+		//
+		// The condition runs the same number of times as in the straight-line
+		// layout, just relocated, so side effects in it are unaffected.  What the
+		// rotation buys beyond the branch is the preheader: code that runs once, and
+		// only when the body is going to run at least once.  That is where a NAME op
+		// for a variable the body creates belongs -- see HoistableBodyNames.
+		//
+		// Compiling the condition twice is also more accurate than compiling it
+		// once.  The back-edge copy sees the body's variables, so a condition
+		// mentioning one reads the local it now is, while the preheader copy still
+		// reaches the enclosing scope -- which is what each point actually means.
+		Boolean alwaysRuns = IsAlwaysTrue(node.Condition);
 
-		Int32 loopStart = _emitter.CreateLabel();
+		Int32 top = _emitter.CreateLabel();
+		Int32 continueTarget = _emitter.CreateLabel();
 		Int32 afterLoop = _emitter.CreateLabel();
 
-		// Push labels for break and continue statements
+		// `continue` goes to the back-edge test, not to the top of the body: it means
+		// "next iteration", and the test decides whether there is one.
 		_loopExitLabels.Add(afterLoop);
-		_loopContinueLabels.Add(loopStart);
+		_loopContinueLabels.Add(continueTarget);
 		BeginLoopNames();
 
 		// Give the body's new variables their registers before compiling the
@@ -1566,30 +1726,45 @@ public class CodeGenerator : IASTVisitor {
 		// ReserveBodyVarRegs.
 		List<String> reserved = ReserveBodyVarRegs(node.Body);
 
-		// Place loopStart label
-		_emitter.PlaceLabel(loopStart);
+		// Preheader: the entry test.  A constant-true condition needs none -- the
+		// body always runs -- and emitting one would only add dead code.
+		if (!alwaysRuns) {
+			Int32 condReg = node.Condition.Accept(this);
+			_emitter.EmitBranch(Opcode.BRFALSE_rA_iBC, condReg, afterLoop, "skip loop if false");
+			FreeReg(condReg);
+		}
 
-		// Evaluate condition
-		Int32 condReg = node.Condition.Accept(this);
+		// Still in the preheader, and past the entry test: the body runs from here.
+		Int32 nameMark = EmitHoistedNames(HoistableBodyNames(node.Body));
 
-		// Branch to afterLoop if condition is false
-		_emitter.EmitBranch(Opcode.BRFALSE_rA_iBC, condReg, afterLoop, "exit loop if false");
-		FreeReg(condReg);
-
-		// Compile body statements
+		_emitter.PlaceLabel(top);
 		CompileConditionalBody(node.Body);
+
+		// Back edge.  The body's registers are still reserved, so the test allocates
+		// around them the way the preheader copy did.
+		_emitter.PlaceLabel(continueTarget);
+		ResetTempRegisters();
+		if (node.Condition.Line != 0) _emitter.CurrentLine = node.Condition.Line;
+		if (alwaysRuns) {
+			_emitter.EmitJump(Opcode.JUMP_iABC, top, "loop back");
+		} else {
+			Int32 backReg = node.Condition.Accept(this);
+			_emitter.EmitBranch(Opcode.BRTRUE_rA_iBC, backReg, top, "loop back if true");
+			FreeReg(backReg);
+		}
+
 		ReleaseBodyVarRegs(reserved);
-
-		// Jump back to loopStart
-		_emitter.EmitJump(Opcode.JUMP_iABC, loopStart, "loop back");
-
-		// Place afterLoop label
 		_emitter.PlaceLabel(afterLoop);
 
-		// Pop labels
+		// The hoisted names live only for the duration of the loop: reaching here by
+		// way of the entry test means the preheader's NAME ops never ran.  Dropping
+		// them before EndLoopNames leaves it free to restore any that every `break`
+		// agreed on, which is sound because a break implies the body ran.
+		PopNamesTo(nameMark);
+
 		_loopExitLabels.RemoveAt(_loopExitLabels.Count - 1);
 		_loopContinueLabels.RemoveAt(_loopContinueLabels.Count - 1);
-		EndLoopNames(IsAlwaysTrue(node.Condition));
+		EndLoopNames(alwaysRuns);
 
 		// While loops don't produce a value
 		return -1;
@@ -1664,8 +1839,34 @@ public class CodeGenerator : IASTVisitor {
 		//   [body statements]
 		//   JUMP loopStart
 		// afterLoop:
+		//
+		// At function scope the first NEXT/ITERGET is peeled off into a preheader, so
+		// that the loop variable's NAME has somewhere to sit that runs once and only
+		// when there is a first element:
+		//
+		//   NEXT indexReg, listReg
+		//   JUMP afterLoop          (zero iterations: the variable never comes to be)
+		//   varReg = listReg[indexReg]
+		//   NAME varReg, "v"
+		//   JUMP bodyStart
+		// loopStart:
+		//   ... as above ...
+		// bodyStart:
+		//   [body statements]
+		//
+		// The NAME has to dominate the body, because the body is the only place the
+		// loop variable is assigned; but it must not run when the loop iterates zero
+		// times, because NAME is what makes a variable exist -- emitting it ahead of
+		// the loop outright left `for j in []` with a defined `j` where MiniScript 1
+		// raises Undefined Identifier (bugs.md entry 6).  Peeling satisfies both, at
+		// four instructions of code size and nothing per iteration.
+		//
+		// Global scope keeps the plain layout: top-level names are slots in the
+		// Globals table, no NAME is emitted for them, and the zero-iteration case is
+		// already right.
 
 		Int32 loopStart = _emitter.CreateLabel();
+		Int32 bodyStart = _emitter.CreateLabel();
 		Int32 afterLoop = _emitter.CreateLabel();
 
 		// Push labels for break and continue statements
@@ -1702,9 +1903,19 @@ public class CodeGenerator : IASTVisitor {
 			varReg = TakeVarReg(node.Variable);
 			_variableRegs[node.Variable] = varReg;
 		}
-		// The loop variable is assigned each iteration; this NAME runs once before
-		// the loop, so it dominates the body but not code after a zero-iteration loop.
-		if (!_globalScope) EnsureNamed(node.Variable, varReg);
+		// Peel the first iteration's NEXT/ITERGET when the loop variable still needs
+		// a NAME, so the NAME lands on a path taken only when the body will run.  If
+		// a NAME already dominates -- the variable existed before the loop -- there
+		// is nothing to place and the plain layout is smaller.
+		Boolean peelFirst = !_globalScope && !IsRegisterNamed(node.Variable);
+		if (peelFirst) {
+			_emitter.EmitABC(Opcode.NEXT_rA_rB, indexReg, listReg, 0, "index++; skip next if done");
+			_emitter.EmitJump(Opcode.JUMP_iABC, afterLoop, "no iterations: leave the loop variable undefined");
+			_emitter.EmitABC(Opcode.ITERGET_rA_rB_rC, varReg, listReg, indexReg,
+				$"{node.Variable} = iterget(container, index)");
+			EnsureNamed(node.Variable, varReg);
+			_emitter.EmitJump(Opcode.JUMP_iABC, bodyStart, "enter the body");
+		}
 
 		// Place loopStart label
 		_emitter.PlaceLabel(loopStart);
@@ -1721,6 +1932,7 @@ public class CodeGenerator : IASTVisitor {
 		if (_globalScope) EmitGlobalStore(node.Variable, varReg);
 
 		// Compile body statements
+		_emitter.PlaceLabel(bodyStart);
 		CompileConditionalBody(node.Body);
 
 		// Jump back to loopStart

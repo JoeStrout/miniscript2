@@ -132,6 +132,20 @@ public class Parser : IParser {
 		return _needMoreInput && !HadError();
 	}
 
+	//
+	// Turn a "needs more input" state into an error, for callers that have no
+	// more input coming.  A script file (or a -c chunk) ends where it ends, so
+	// an unfinished construct there is a syntax error; only the REPL, which can
+	// ask for the next line, should treat incompleteness as normal.  Note the
+	// parser deliberately suppresses the usual error in this state (see
+	// `_needMoreInput` in ParsePrefix), so without this the tail of the source
+	// is silently dropped.  No-op unless the parser is actually incomplete.
+	//
+	public void RequireComplete() {
+		if (!NeedMoreInput()) return;
+		Error = ErrorTypes.CompilerError("unexpected end of file", FileName, _current.Line);
+	}
+
 	// Advance to the next token, skipping comments and line continuations.
 	// A line continuation is an EOL that follows a token which naturally
 	// expects more input (comma, open bracket/paren/brace, binary operator).
@@ -596,11 +610,17 @@ public class Parser : IParser {
 		if (_current.Type == TokenType.EOL || _current.Type == TokenType.END_OF_INPUT) {
 			// Block form
 			List<ASTNode> thenBody = ParseBlock(TokenType.ELSE, TokenType.END);
-			List<ASTNode> elseBody = ParseElseClause();
-			if (_current.Type == TokenType.END) {
-				RequireEndKeyword(TokenType.IF, "if");
-			} else if (_current.Type == TokenType.END_OF_INPUT) {
-				_needMoreInput = true;
+			Boolean elseIfAteEnd;
+			List<ASTNode> elseBody = ParseElseClause(out elseIfAteEnd);
+			// An `else if` is parsed as a nested if, and that nested if consumes
+			// the single `end if` closing the whole chain -- so there is nothing
+			// left here for us to require (or to call incomplete).
+			if (!elseIfAteEnd) {
+				if (_current.Type == TokenType.END) {
+					RequireEndKeyword(TokenType.IF, "if");
+				} else if (_current.Type == TokenType.END_OF_INPUT) {
+					_needMoreInput = true;
+				}
 			}
 			return new IfNode(condition, thenBody, elseBody);
 		} else {
@@ -610,8 +630,11 @@ public class Parser : IParser {
 	}
 
 	// Parse else/else-if clause for block if statements
-	// Returns the else body (which may contain a nested IfNode for else-if)
-	private List<ASTNode> ParseElseClause() {
+	// Returns the else body (which may contain a nested IfNode for else-if).
+	// Sets `ateEnd` when the clause was an `else if`, whose nested if has
+	// already consumed the `end if` that closes this if as well.
+	private List<ASTNode> ParseElseClause(out Boolean ateEnd) {
+		ateEnd = false;
 		List<ASTNode> elseBody = new List<ASTNode>();
 
 		if (_current.Type != TokenType.ELSE) {
@@ -621,6 +644,7 @@ public class Parser : IParser {
 
 		if (_current.Type == TokenType.IF) {
 			// else if - parse as nested if (which handles its own "end if")
+			ateEnd = true;
 			Advance();  // consume IF
 			elseBody.Add(ParseIfStatement());
 		} else {

@@ -2863,6 +2863,46 @@ Compiler Error: 'break' without open loop block [line 1]
 continue
 --------------------------------
 Compiler Error: 'continue' without open loop block [line 1]
+================================
+==== Compiler error: source ends after a binary operator
+================================
+b = *
+--------------------------------
+Compiler Error: unexpected end of file [line 1]
+================================
+==== Compiler error: source ends after a trailing operator
+================================
+print 1
+print 3 +
+--------------------------------
+Compiler Error: unexpected end of file [line 2]
+================================
+==== Compiler error: source ends inside an if block
+================================
+if true then
+	print "hi"
+--------------------------------
+Compiler Error: unexpected end of file [line 2]
+================================
+==== Compiler error: source ends inside a function
+================================
+f = function(a)
+	print a
+--------------------------------
+Compiler Error: unexpected end of file [line 2]
+================================
+==== Closed if/else-if chain at end of source is complete
+================================
+x = 0
+if x < 0 then
+	print "negative"
+else if x == 0 then
+	print "zero"
+else
+	print "positive"
+end if
+--------------------------------
+zero
 ================================================================================
 ==== SECTION 15: FUNCTIONS
 ================================================================================

@@ -89,6 +89,10 @@ void ParserStorage::Init(String source,String fileName) {
 Boolean ParserStorage::NeedMoreInput() {
 	return _needMoreInput && !HadError();
 }
+void ParserStorage::RequireComplete() {
+	if (!NeedMoreInput()) return;
+	Error = ErrorTypes::CompilerError("unexpected end of file", FileName, _current.Line);
+}
 void ParserStorage::Advance() {
 	_previousType = _current.Type;
 	do {
@@ -493,11 +497,17 @@ ASTNode ParserStorage::ParseIfStatement() {
 	if (_current.Type == TokenType::EOL || _current.Type == TokenType::END_OF_INPUT) {
 		// Block form
 		List<ASTNode> thenBody = ParseBlock(TokenType::ELSE, TokenType::END);
-		List<ASTNode> elseBody = ParseElseClause();
-		if (_current.Type == TokenType::END) {
-			RequireEndKeyword(TokenType::IF, "if");
-		} else if (_current.Type == TokenType::END_OF_INPUT) {
-			_needMoreInput = Boolean(true);
+		Boolean elseIfAteEnd;
+		List<ASTNode> elseBody = ParseElseClause(&elseIfAteEnd);
+		// An `else if` is parsed as a nested if, and that nested if consumes
+		// the single `end if` closing the whole chain -- so there is nothing
+		// left here for us to require (or to call incomplete).
+		if (!elseIfAteEnd) {
+			if (_current.Type == TokenType::END) {
+				RequireEndKeyword(TokenType::IF, "if");
+			} else if (_current.Type == TokenType::END_OF_INPUT) {
+				_needMoreInput = Boolean(true);
+			}
 		}
 		return  IfNode::New(condition, thenBody, elseBody);
 	} else {
@@ -505,7 +515,8 @@ ASTNode ParserStorage::ParseIfStatement() {
 		return ParseSingleLineIfBody(condition);
 	}
 }
-List<ASTNode> ParserStorage::ParseElseClause() {
+List<ASTNode> ParserStorage::ParseElseClause(Boolean* ateEnd) {
+	*ateEnd = Boolean(false);
 	List<ASTNode> elseBody =  List<ASTNode>::New();
 
 	if (_current.Type != TokenType::ELSE) {
@@ -515,6 +526,7 @@ List<ASTNode> ParserStorage::ParseElseClause() {
 
 	if (_current.Type == TokenType::IF) {
 		// else if - parse as nested if (which handles its own "end if")
+		*ateEnd = Boolean(true);
 		Advance();  // consume IF
 		elseBody.Add(ParseIfStatement());
 	} else {

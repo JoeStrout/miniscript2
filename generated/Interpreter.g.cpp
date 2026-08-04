@@ -86,6 +86,7 @@ void InterpreterStorage::Compile() {
 	if (IsNull(parser)) parser =  Parser::New();
 	parser.Init(source, SourceFile);
 	List<ASTNode> statements = parser.ParseProgram();
+	parser.RequireComplete();   // no more input is coming; this is not a REPL
 
 	if (parser.HadError()) {
 		Error = parser.Error();
@@ -126,6 +127,7 @@ FuncDef InterpreterStorage::CompileToFunc(String source,String fileName,Value* e
 	Parser parser =  Parser::New();
 	parser.Init(source, fileName);
 	List<ASTNode> statements = parser.ParseProgram();
+	parser.RequireComplete();   // a module file ends where it ends
 	if (parser.HadError()) {
 		*error = parser.Error();
 		return nullptr;

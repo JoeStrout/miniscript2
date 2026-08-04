@@ -59,6 +59,15 @@ class ParserStorage : public std::enable_shared_from_this<ParserStorage>, public
 	// 
 	public: Boolean NeedMoreInput();
 
+	// Turn a "needs more input" state into an error, for callers that have no
+	// more input coming.  A script file (or a -c chunk) ends where it ends, so
+	// an unfinished construct there is a syntax error; only the REPL, which can
+	// ask for the next line, should treat incompleteness as normal.  Note the
+	// parser deliberately suppresses the usual error in this state (see
+	// `_needMoreInput` in ParsePrefix), so without this the tail of the source
+	// is silently dropped.  No-op unless the parser is actually incomplete.
+	public: void RequireComplete();
+
 	// Advance to the next token, skipping comments and line continuations.
 	// A line continuation is an EOL that follows a token which naturally
 	// expects more input (comma, open bracket/paren/brace, binary operator).
@@ -142,8 +151,10 @@ class ParserStorage : public std::enable_shared_from_this<ParserStorage>, public
 	private: ASTNode ParseIfStatement();
 
 	// Parse else/else-if clause for block if statements
-	// Returns the else body (which may contain a nested IfNode for else-if)
-	private: List<ASTNode> ParseElseClause();
+	// Returns the else body (which may contain a nested IfNode for else-if).
+	// Sets `ateEnd` when the clause was an `else if`, whose nested if has
+	// already consumed the `end if` that closes this if as well.
+	private: List<ASTNode> ParseElseClause(Boolean* ateEnd);
 
 	// Parse a statement that can appear in single-line if context
 	// This includes simple statements, nested if statements, and return
@@ -247,6 +258,15 @@ struct Parser : public IParser {
 	// 
 	public: inline Boolean NeedMoreInput();
 
+	// Turn a "needs more input" state into an error, for callers that have no
+	// more input coming.  A script file (or a -c chunk) ends where it ends, so
+	// an unfinished construct there is a syntax error; only the REPL, which can
+	// ask for the next line, should treat incompleteness as normal.  Note the
+	// parser deliberately suppresses the usual error in this state (see
+	// `_needMoreInput` in ParsePrefix), so without this the tail of the source
+	// is silently dropped.  No-op unless the parser is actually incomplete.
+	public: inline void RequireComplete();
+
 	// Advance to the next token, skipping comments and line continuations.
 	// A line continuation is an EOL that follows a token which naturally
 	// expects more input (comma, open bracket/paren/brace, binary operator).
@@ -330,8 +350,10 @@ struct Parser : public IParser {
 	private: inline ASTNode ParseIfStatement();
 
 	// Parse else/else-if clause for block if statements
-	// Returns the else body (which may contain a nested IfNode for else-if)
-	private: inline List<ASTNode> ParseElseClause();
+	// Returns the else body (which may contain a nested IfNode for else-if).
+	// Sets `ateEnd` when the clause was an `else if`, whose nested if has
+	// already consumed the `end if` that closes this if as well.
+	private: inline List<ASTNode> ParseElseClause(Boolean* ateEnd);
 
 	// Parse a statement that can appear in single-line if context
 	// This includes simple statements, nested if statements, and return
@@ -403,6 +425,7 @@ inline void Parser::RegisterInfix(TokenType type,InfixParselet parselet) { retur
 inline void Parser::Init(String source) { return get()->Init(source); }
 inline void Parser::Init(String source,String fileName) { return get()->Init(source, fileName); }
 inline Boolean Parser::NeedMoreInput() { return get()->NeedMoreInput(); }
+inline void Parser::RequireComplete() { return get()->RequireComplete(); }
 inline void Parser::Advance() { return get()->Advance(); }
 inline Boolean Parser::IsAssignOp(TokenType type) { return get()->IsAssignOp(type); }
 inline String Parser::CompoundAssignOp(TokenType type) { return get()->CompoundAssignOp(type); }
@@ -422,7 +445,7 @@ inline Boolean Parser::IsBlockTerminator(TokenType t1,TokenType t2) { return get
 inline List<ASTNode> Parser::ParseBlock(TokenType terminator1,TokenType terminator2) { return get()->ParseBlock(terminator1, terminator2); }
 inline void Parser::RequireEndKeyword(TokenType keyword,String keywordName) { return get()->RequireEndKeyword(keyword, keywordName); }
 inline ASTNode Parser::ParseIfStatement() { return get()->ParseIfStatement(); }
-inline List<ASTNode> Parser::ParseElseClause() { return get()->ParseElseClause(); }
+inline List<ASTNode> Parser::ParseElseClause(Boolean* ateEnd) { return get()->ParseElseClause(ateEnd); }
 inline ASTNode Parser::ParseSingleLineStatement() { return get()->ParseSingleLineStatement(); }
 inline ASTNode Parser::ParseSingleLineIfBody(ASTNode condition) { return get()->ParseSingleLineIfBody(condition); }
 inline ASTNode Parser::ParseWhileStatement() { return get()->ParseWhileStatement(); }

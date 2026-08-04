@@ -257,6 +257,7 @@ public class Interpreter {
 		if (parser == null) parser = new Parser();
 		parser.Init(source, SourceFile);
 		List<ASTNode> statements = parser.ParseProgram();
+		parser.RequireComplete();   // no more input is coming; this is not a REPL
 
 		if (parser.HadError()) {
 			Error = parser.Error;
@@ -308,6 +309,7 @@ public class Interpreter {
 		Parser parser = new Parser();
 		parser.Init(source, fileName);
 		List<ASTNode> statements = parser.ParseProgram();
+		parser.RequireComplete();   // a module file ends where it ends
 		if (parser.HadError()) {
 			error = parser.Error;
 			return null;

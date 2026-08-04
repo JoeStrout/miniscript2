@@ -22,6 +22,7 @@ Lexer::Lexer(String source) {
 	_line = 1;
 	_column = 1;
 	Error = Value::Null;
+	FileName = "";
 }
 Char Lexer::Peek() {
 	if (_position >= _input.Length()) return '\0';
@@ -287,7 +288,7 @@ Token Lexer::NextToken() {
 	return singleTok;
 }
 void Lexer::ReportError(String message) {
-	if (Error.IsNull()) Error = ErrorTypes::CompilerError(StringUtils::Format("{0} [line {1}]", message, _line));
+	if (Error.IsNull()) Error = ErrorTypes::CompilerError(message, FileName, _line);
 }
 Boolean Lexer::HadError() {
 	return !Error.IsNull();

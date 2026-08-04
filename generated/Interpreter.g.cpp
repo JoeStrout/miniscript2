@@ -84,7 +84,7 @@ void InterpreterStorage::Compile() {
 	Error = Value::Null;
 
 	if (IsNull(parser)) parser =  Parser::New();
-	parser.Init(source);
+	parser.Init(source, SourceFile);
 	List<ASTNode> statements = parser.ParseProgram();
 
 	if (parser.HadError()) {
@@ -124,7 +124,7 @@ void InterpreterStorage::Compile() {
 FuncDef InterpreterStorage::CompileToFunc(String source,String fileName,Value* error) {
 	*error = Value::Null;
 	Parser parser =  Parser::New();
-	parser.Init(source);
+	parser.Init(source, fileName);
 	List<ASTNode> statements = parser.ParseProgram();
 	if (parser.HadError()) {
 		*error = parser.Error();

@@ -33,6 +33,7 @@ struct Lexer {
 	private: Int32 _line;
 	private: Int32 _column;
 	public: Value Error;
+	public: String FileName; // source file name, for error locations ("" if unnamed)
 	public: Lexer() {}
 
 	public: Lexer(String source);

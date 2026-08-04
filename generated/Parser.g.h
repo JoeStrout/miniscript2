@@ -29,6 +29,7 @@ class ParserStorage : public std::enable_shared_from_this<ParserStorage>, public
 	private: TokenType _previousType;
 	private: Boolean _needMoreInput;
 	public: Value Error;
+	public: String FileName; // source file name, for error locations ("" if unnamed)
 	private: Dictionary<TokenType, PrefixParselet> _prefixParselets;
 	private: Dictionary<TokenType, InfixParselet> _infixParselets;
 
@@ -43,8 +44,13 @@ class ParserStorage : public std::enable_shared_from_this<ParserStorage>, public
 
 	private: void RegisterInfix(TokenType type, InfixParselet parselet);
 
-	// Initialize the parser with source code
+	// Initialize the parser with source code from an unnamed source (a REPL
+	// line, or a top-level script whose file name we don't track).
 	public: void Init(String source);
+
+	// Initialize the parser with source code and the name of the file it came
+	// from, so parse errors can report their location as "{file} line {N}".
+	public: void Init(String source, String fileName);
 
 	// 
 	// Return whether the parser ran out of input in the middle of an open
@@ -206,6 +212,8 @@ struct Parser : public IParser {
 	private: void set__needMoreInput(Boolean _v);
 	public: Value Error();
 	public: void set_Error(Value _v);
+	public: String FileName(); // source file name, for error locations ("" if unnamed)
+	public: void set_FileName(String _v); // source file name, for error locations ("" if unnamed)
 	private: Dictionary<TokenType, PrefixParselet> _prefixParselets();
 	private: void set__prefixParselets(Dictionary<TokenType, PrefixParselet> _v);
 	private: Dictionary<TokenType, InfixParselet> _infixParselets();
@@ -224,8 +232,13 @@ struct Parser : public IParser {
 
 	private: inline void RegisterInfix(TokenType type, InfixParselet parselet);
 
-	// Initialize the parser with source code
+	// Initialize the parser with source code from an unnamed source (a REPL
+	// line, or a top-level script whose file name we don't track).
 	public: inline void Init(String source);
+
+	// Initialize the parser with source code and the name of the file it came
+	// from, so parse errors can report their location as "{file} line {N}".
+	public: inline void Init(String source, String fileName);
 
 	// 
 	// Return whether the parser ran out of input in the middle of an open
@@ -378,6 +391,8 @@ inline Boolean Parser::_needMoreInput() { return get()->_needMoreInput; }
 inline void Parser::set__needMoreInput(Boolean _v) { get()->_needMoreInput = _v; }
 inline Value Parser::Error() { return get()->Error; }
 inline void Parser::set_Error(Value _v) { get()->Error = _v; }
+inline String Parser::FileName() { return get()->FileName; } // source file name, for error locations ("" if unnamed)
+inline void Parser::set_FileName(String _v) { get()->FileName = _v; } // source file name, for error locations ("" if unnamed)
 inline Dictionary<TokenType, PrefixParselet> Parser::_prefixParselets() { return get()->_prefixParselets; }
 inline void Parser::set__prefixParselets(Dictionary<TokenType, PrefixParselet> _v) { get()->_prefixParselets = _v; }
 inline Dictionary<TokenType, InfixParselet> Parser::_infixParselets() { return get()->_infixParselets; }
@@ -386,6 +401,7 @@ inline void Parser::RegisterParselets() { return get()->RegisterParselets(); }
 inline void Parser::RegisterPrefix(TokenType type,PrefixParselet parselet) { return get()->RegisterPrefix(type, parselet); }
 inline void Parser::RegisterInfix(TokenType type,InfixParselet parselet) { return get()->RegisterInfix(type, parselet); }
 inline void Parser::Init(String source) { return get()->Init(source); }
+inline void Parser::Init(String source,String fileName) { return get()->Init(source, fileName); }
 inline Boolean Parser::NeedMoreInput() { return get()->NeedMoreInput(); }
 inline void Parser::Advance() { return get()->Advance(); }
 inline Boolean Parser::IsAssignOp(TokenType type) { return get()->IsAssignOp(type); }

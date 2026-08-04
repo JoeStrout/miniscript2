@@ -10,6 +10,7 @@ namespace MiniScript {
 
 ParserStorage::ParserStorage() {
 	Error = Value::Null;
+	FileName = "";
 	_prefixParselets =  Dictionary<TokenType, PrefixParselet>::New();
 	_infixParselets =  Dictionary<TokenType, InfixParselet>::New();
 
@@ -75,7 +76,12 @@ void ParserStorage::RegisterInfix(TokenType type,InfixParselet parselet) {
 	_infixParselets[type] = parselet;
 }
 void ParserStorage::Init(String source) {
+	Init(source, "");
+}
+void ParserStorage::Init(String source,String fileName) {
 	_lexer = Lexer(source);
+	_lexer.FileName = fileName;
+	FileName = fileName;
 	Error = Value::Null;
 	_needMoreInput = Boolean(false);
 	Advance();  // Prime the pump with the first token
@@ -727,7 +733,7 @@ String ParserStorage::GotExpected(String expected) {
 	return StringUtils::Format("got {0} where {1} is required", TokenDescription(_current), expected);
 }
 void ParserStorage::ReportError(String message) {
-	if (Error.IsNull()) Error = ErrorTypes::CompilerError(StringUtils::Format("{0} [line {1}]", message, _current.Line));
+	if (Error.IsNull()) Error = ErrorTypes::CompilerError(message, FileName, _current.Line);
 }
 Boolean ParserStorage::HadError() {
 	return !Error.IsNull();

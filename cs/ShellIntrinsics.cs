@@ -2396,10 +2396,13 @@ public static class ShellIntrinsics {
 				// Return the error as our result: as a bare statement (the usual
 				// form) the discarded value halts the program via ERRCHK, while
 				// `x = import("foo")` lets the caller inspect it instead.  The
-				// parser's message carries only a line number, so name the module.
+				// inner error knows where in the module it happened; our own
+				// location (added by DescribeError) is the import site.
 				if (!compileErr.IsNull()) {
+					String where = ErrorTypes.ErrorLocation(compileErr);
+					if (where == "") where = libname + ".ms";
 					return new IntrinsicResult(ErrorTypes.CompilerError(StringUtils.Format(
-						"in {0}.ms: {1}", libname, compileErr.Message()), compileErr));
+						"in {0}: {1}", where, compileErr.Message()), compileErr));
 				}
 				return new IntrinsicResult(Value.Null);   // empty module
 			}

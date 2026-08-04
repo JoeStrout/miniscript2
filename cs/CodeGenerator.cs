@@ -747,7 +747,7 @@ public class CodeGenerator : IASTVisitor {
 	private Int32 AddGlobalRef(String varName) {
 		Int32 refIdx = _emitter.AddGlobalRef(Value.make_string(varName));
 		if (refIdx > 65535 && Error.IsNull()) {
-			Error = ErrorTypes.CompilerError("too many distinct global variables in one function");
+			Error = ErrorTypes.CompilerError("too many distinct global variables in one function", FileName, _emitter.CurrentLine);
 		}
 		return refIdx;
 	}
@@ -916,12 +916,9 @@ public class CodeGenerator : IASTVisitor {
 		// here and read the outer one; MS2 requires the intent to be written down.
 		if (_localOnlyName != "" && node.Name == _localOnlyName) {
 			if (Error.IsNull()) {
-				// The location is hard-coded into the message, matching what Lexer
-				// and Parser do.  It belongs in the error's stack trace instead, so
-				// DescribeError can render it with the file name -- see bugs.md #5.
 				Error = ErrorTypes.CompilerError(StringUtils.Format(
-					"illegal assignment to unqualified local '{0}' based on nonlocal [line {1}]",
-					node.Name, _emitter.CurrentLine));
+					"illegal assignment to unqualified local '{0}' based on nonlocal", node.Name),
+					FileName, _emitter.CurrentLine);
 			}
 			return resultReg;
 		}
@@ -985,7 +982,7 @@ public class CodeGenerator : IASTVisitor {
 
 	public Int32 Visit(AssignmentNode node) {
 		if (_targetReg > 0) {
-			if (Error.IsNull()) Error = ErrorTypes.CompilerError(StringUtils.Format("unexpected target register {0} in assignment", _targetReg));
+			if (Error.IsNull()) Error = ErrorTypes.CompilerError(StringUtils.Format("unexpected target register {0} in assignment", _targetReg), FileName, _emitter.CurrentLine);
 		}
 
 		if (_globalScope) return VisitGlobalAssignment(node);
@@ -1184,7 +1181,7 @@ public class CodeGenerator : IASTVisitor {
 		}
 
 		// Unknown unary operator - move operand to result if needed
-		if (Error.IsNull()) Error = ErrorTypes.CompilerError("unknown unary operator");
+		if (Error.IsNull()) Error = ErrorTypes.CompilerError("unknown unary operator", FileName, _emitter.CurrentLine);
 		if (operandReg != resultReg) {
 			_emitter.EmitABC(Opcode.LOAD_rA_rB, resultReg, operandReg, 0, "move to target");
 			FreeReg(operandReg);
@@ -1964,7 +1961,7 @@ public class CodeGenerator : IASTVisitor {
 	public Int32 Visit(BreakNode node) {
 		// Break jumps to the innermost loop's exit label
 		if (_loopExitLabels.Count == 0) {
-			if (Error.IsNull()) Error = ErrorTypes.CompilerError("'break' without open loop block");
+			if (Error.IsNull()) Error = ErrorTypes.CompilerError("'break' without open loop block", FileName, _emitter.CurrentLine);
 			_emitter.Emit(Opcode.NOOP, "break outside loop (error)");
 		} else {
 			Int32 exitLabel = _loopExitLabels[_loopExitLabels.Count - 1];
@@ -1977,7 +1974,7 @@ public class CodeGenerator : IASTVisitor {
 	public Int32 Visit(ContinueNode node) {
 		// Continue jumps to the innermost loop's continue label (loop start)
 		if (_loopContinueLabels.Count == 0) {
-			if (Error.IsNull()) Error = ErrorTypes.CompilerError("'continue' without open loop block");
+			if (Error.IsNull()) Error = ErrorTypes.CompilerError("'continue' without open loop block", FileName, _emitter.CurrentLine);
 			_emitter.Emit(Opcode.NOOP, "continue outside loop (error)");
 		} else {
 			Int32 continueLabel = _loopContinueLabels[_loopContinueLabels.Count - 1];
@@ -2115,7 +2112,7 @@ public class CodeGenerator : IASTVisitor {
 				if (TryEvaluateConstant(defaultNode, out defaultVal)) {
 					funcDef.ParamDefaults.Add(defaultVal);
 				} else {
-					if (Error.IsNull()) Error = ErrorTypes.CompilerError(StringUtils.Format("Default value for parameter '{0}' must be a constant", node.ParamNames[i]));
+					if (Error.IsNull()) Error = ErrorTypes.CompilerError(StringUtils.Format("Default value for parameter '{0}' must be a constant", node.ParamNames[i]), FileName, _emitter.CurrentLine);
 					funcDef.ParamDefaults.Add(Value.Null);
 				}
 			} else {

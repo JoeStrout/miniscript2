@@ -28,6 +28,7 @@ public class Parser : IParser {
 	private TokenType _previousType;
 	private Boolean _needMoreInput;
 	public Value Error;
+	public String FileName;    // source file name, for error locations ("" if unnamed)
 
 	// Parselet tables - indexed by TokenType
 	private Dictionary<TokenType, PrefixParselet> _prefixParselets;
@@ -35,6 +36,7 @@ public class Parser : IParser {
 
 	public Parser() {
 		Error = Value.Null;
+		FileName = "";
 		_prefixParselets = new Dictionary<TokenType, PrefixParselet>();
 		_infixParselets = new Dictionary<TokenType, InfixParselet>();
 
@@ -104,9 +106,18 @@ public class Parser : IParser {
 		_infixParselets[type] = parselet;
 	}
 
-	// Initialize the parser with source code
+	// Initialize the parser with source code from an unnamed source (a REPL
+	// line, or a top-level script whose file name we don't track).
 	public void Init(String source) {
+		Init(source, "");
+	}
+
+	// Initialize the parser with source code and the name of the file it came
+	// from, so parse errors can report their location as "{file} line {N}".
+	public void Init(String source, String fileName) {
 		_lexer = new Lexer(source);
+		_lexer.FileName = fileName;
+		FileName = fileName;
 		Error = Value.Null;
 		_needMoreInput = false;
 		Advance();  // Prime the pump with the first token
@@ -858,7 +869,7 @@ public class Parser : IParser {
 
 	// Report an error.  Only the first error is kept.
 	public void ReportError(String message) {
-		if (Error.IsNull()) Error = ErrorTypes.CompilerError(StringUtils.Format("{0} [line {1}]", message, _current.Line));
+		if (Error.IsNull()) Error = ErrorTypes.CompilerError(message, FileName, _current.Line);
 	}
 
 	// Check if any errors occurred

@@ -38,6 +38,7 @@ public struct Lexer {
 	private Int32 _line;
 	private Int32 _column;
 	public Value Error;
+	public String FileName;   // source file name, for error locations ("" if unnamed)
 
 	// H: public: Lexer() {}
 	public Lexer(String source) {
@@ -46,6 +47,7 @@ public struct Lexer {
 		_line = 1;
 		_column = 1;
 		Error = Value.Null;
+		FileName = "";
 	}
 
 	// Peek at current character without advancing
@@ -355,7 +357,7 @@ public struct Lexer {
 
 	// Record a compiler error.  Only the first error is kept.
 	public void ReportError(String message) {
-		if (Error.IsNull()) Error = ErrorTypes.CompilerError(StringUtils.Format("{0} [line {1}]", message, _line));
+		if (Error.IsNull()) Error = ErrorTypes.CompilerError(message, FileName, _line);
 	}
 
 	public Boolean HadError() {

@@ -2856,13 +2856,13 @@ Runtime Error: Can't index into 42 [line 2]
 ================================
 break
 --------------------------------
-Compiler Error: 'break' without open loop block
+Compiler Error: 'break' without open loop block [line 1]
 ================================
 ==== Compiler error: continue outside loop
 ================================
 continue
 --------------------------------
-Compiler Error: 'continue' without open loop block
+Compiler Error: 'continue' without open loop block [line 1]
 ================================================================================
 ==== SECTION 15: FUNCTIONS
 ================================================================================

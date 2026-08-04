@@ -255,7 +255,7 @@ public class Interpreter {
 		Error = Value.Null;
 
 		if (parser == null) parser = new Parser();
-		parser.Init(source);
+		parser.Init(source, SourceFile);
 		List<ASTNode> statements = parser.ParseProgram();
 
 		if (parser.HadError()) {
@@ -306,7 +306,7 @@ public class Interpreter {
 	public static FuncDef CompileToFunc(String source, String fileName, out Value error) {
 		error = Value.Null;
 		Parser parser = new Parser();
-		parser.Init(source);
+		parser.Init(source, fileName);
 		List<ASTNode> statements = parser.ParseProgram();
 		if (parser.HadError()) {
 			error = parser.Error;

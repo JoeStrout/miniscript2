@@ -44,6 +44,23 @@ public static class ErrorTypes {
 		return Value.make_error(Value.make_string(msg), Value.Null, Value.Null, compiler);
 	}
 
+	// Create a compiler error value with the given message and source location.
+	// Compilation has no call stack, but it does have a place in the source, so
+	// we give the error a one-frame stack trace in exactly the form
+	// VM.BuildStackTrace produces ("{file} line {N}", with "(current program)"
+	// standing in for an unnamed top-level script).  That way ErrorLocation and
+	// DescribeError compose the location for compile-time errors the same way
+	// they do for runtime ones, and no caller has to bake it into the message.
+	public static Value CompilerError(String msg, String fileName, Int32 lineNum) {
+		if (compiler.IsNull()) Init();
+		String file = fileName;
+		if (file == "") file = "(current program)";
+		Value stack = Value.make_list(1);
+		stack.Push(Value.make_string(StringUtils.Format("{0} line {1}", file, lineNum)));
+		stack.Freeze();
+		return Value.make_error(Value.make_string(msg), Value.Null, stack, compiler);
+	}
+
 	// Create a compiler error value that wraps `inner` and carries the active
 	// VM's stack trace.  For compilation that happens *during* execution -- the
 	// `import` intrinsic -- where there is a meaningful location to report (the

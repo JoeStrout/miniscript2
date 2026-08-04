@@ -28,6 +28,15 @@ Value ErrorTypes::CompilerError(String msg) {
 	if (compiler.IsNull()) Init();
 	return Value::make_error(Value::make_string(msg), Value::Null, Value::Null, compiler);
 }
+Value ErrorTypes::CompilerError(String msg,String fileName,Int32 lineNum) {
+	if (compiler.IsNull()) Init();
+	String file = fileName;
+	if (file == "") file = "(current program)";
+	Value stack = Value::make_list(1);
+	stack.Push(Value::make_string(StringUtils::Format("{0} line {1}", file, lineNum)));
+	stack.Freeze();
+	return Value::make_error(Value::make_string(msg), Value::Null, stack, compiler);
+}
 Value ErrorTypes::CompilerError(String msg,Value inner) {
 	if (compiler.IsNull()) Init();
 	return Value::make_error(Value::make_string(msg), inner, Value::value_current_stack_trace(), compiler);

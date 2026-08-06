@@ -58,6 +58,9 @@ fi
 # So: refuse to push any artifact older than the newest source file, or older
 # than the last commit that touched the source directories.
 # ---------------------------------------------------------------------------
+# obj/ and bin/ are pruned: dotnet publish writes generated .cs files there
+# (e.g. cs/obj/Release/net6.0/MiniScript2.AssemblyInfo.cs) as the last step of
+# 'dist all', so they always look newer than the binaries.
 SRC_DIRS="cs cpp generated"
 
 # Epoch mtime of a file, portable between BSD (mac) and GNU (linux) stat.
@@ -75,8 +78,10 @@ while IFS= read -r f; do
         NEWEST_SRC="$f"
     fi
 done <<EOF
-$(find $SRC_DIRS -type f \
-    \( -name '*.cs' -o -name '*.c' -o -name '*.h' -o -name '*.cpp' \) 2>/dev/null)
+$(find $SRC_DIRS \
+    \( -type d \( -name obj -o -name bin \) -prune \) -o \
+    -type f \( -name '*.cs' -o -name '*.c' -o -name '*.h' -o -name '*.cpp' \) \
+    -print 2>/dev/null)
 EOF
 
 # Also consider the last commit touching those directories, which covers a

@@ -1,13 +1,27 @@
 #!/bin/bash
 # Push a numbered preview release to GitHub.
-# Usage: tools/push_preview [number]
+# Usage: tools/push_preview [number] [--force]
 # With no argument, finds the highest existing v2.0-preview-N release and
 # increments it. Pass a number to override.
 # Example: tools/push_preview 3  →  tag v2.0-preview-3
+#
+# This script does NOT build anything; it uploads whatever is in build/dist.
+# --force skips the staleness check below (use only if you know the binaries
+# are current).
 
 set -e
 
-NUM="$1"
+cd "$(dirname "$0")/.."
+
+NUM=""
+FORCE=0
+for arg in "$@"; do
+    case "$arg" in
+        --force) FORCE=1 ;;
+        *)       NUM="$arg" ;;
+    esac
+done
+
 if [ -z "$NUM" ]; then
     # Find the highest existing preview number and add one.
     LAST=$(gh release list --limit 100 \
@@ -33,6 +47,62 @@ done
 if [ "$MISSING" = "1" ]; then
     echo "Run 'tools/build.sh dist all' first."
     exit 1
+fi
+
+# ---------------------------------------------------------------------------
+# Staleness check
+#
+# Since this script only uploads what it finds, a forgotten 'build.sh dist all'
+# silently re-releases the previous release's binaries.  (That is exactly what
+# happened with preview-7: all four assets were byte-identical to preview-6.)
+# So: refuse to push any artifact older than the newest source file, or older
+# than the last commit that touched the source directories.
+# ---------------------------------------------------------------------------
+SRC_DIRS="cs cpp generated"
+
+# Epoch mtime of a file, portable between BSD (mac) and GNU (linux) stat.
+mtime() {
+    stat -f %m "$1" 2>/dev/null || stat -c %Y "$1"
+}
+
+NEWEST_SRC=""
+NEWEST_TIME=0
+while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    T=$(mtime "$f")
+    if [ "$T" -gt "$NEWEST_TIME" ]; then
+        NEWEST_TIME="$T"
+        NEWEST_SRC="$f"
+    fi
+done <<EOF
+$(find $SRC_DIRS -type f \
+    \( -name '*.cs' -o -name '*.c' -o -name '*.h' -o -name '*.cpp' \) 2>/dev/null)
+EOF
+
+# Also consider the last commit touching those directories, which covers a
+# fresh checkout or a rebase that left mtimes untouched.
+COMMIT_TIME=$(git log -1 --format=%ct -- $SRC_DIRS 2>/dev/null || echo 0)
+if [ "${COMMIT_TIME:-0}" -gt "$NEWEST_TIME" ]; then
+    NEWEST_TIME="$COMMIT_TIME"
+    NEWEST_SRC="last commit touching $SRC_DIRS"
+fi
+
+STALE=0
+for f in "$DIST/miniscript2-mac" "$DIST/miniscript2-linux" \
+         "$DIST/miniscript2-win.exe" "$DIST/miniscript2-csharp.zip"; do
+    if [ "$(mtime "$f")" -lt "$NEWEST_TIME" ]; then
+        echo "Stale: $f  ($(date -r "$(mtime "$f")" '+%Y-%m-%d %H:%M'))"
+        STALE=1
+    fi
+done
+if [ "$STALE" = "1" ]; then
+    echo
+    echo "Newer source: $NEWEST_SRC ($(date -r "$NEWEST_TIME" '+%Y-%m-%d %H:%M'))"
+    echo "These binaries predate the current sources.  Run:"
+    echo "    tools/build.sh dist all"
+    echo "Then push again (or re-run with --force to upload them anyway)."
+    [ "$FORCE" = "1" ] || exit 1
+    echo "--force given; uploading stale binaries anyway."
 fi
 
 echo "Creating GitHub release $TAG ..."

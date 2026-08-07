@@ -38,7 +38,13 @@ So, [click here to sponsor](https://github.com/sponsors/JoeStrout) -- contributi
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=JoeStrout/miniscript2&type=date&legend=top-left)](https://www.star-history.com/#JoeStrout/miniscript2&type=date&legend=top-left)
+<a href="https://www.star-history.com/?type=date&legend=top-left&repos=JoeStrout%2Fminiscript2">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=JoeStrout/miniscript2&type=date&theme=dark&legend=top-left&sealed_token=Qf9Yut51tdnKEeaWDrdLjjUh5LPz7HORg9BDLCinGXsHWXIDn5aw_fWq8mdhMTcNwe8iXY6Lajd8OyiTLsHcka_ihGTlqXlqJFEbD1qmKM9JRH7AK8eiug" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=JoeStrout/miniscript2&type=date&legend=top-left&sealed_token=Qf9Yut51tdnKEeaWDrdLjjUh5LPz7HORg9BDLCinGXsHWXIDn5aw_fWq8mdhMTcNwe8iXY6Lajd8OyiTLsHcka_ihGTlqXlqJFEbD1qmKM9JRH7AK8eiug" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=JoeStrout/miniscript2&type=date&legend=top-left&sealed_token=Qf9Yut51tdnKEeaWDrdLjjUh5LPz7HORg9BDLCinGXsHWXIDn5aw_fWq8mdhMTcNwe8iXY6Lajd8OyiTLsHcka_ihGTlqXlqJFEbD1qmKM9JRH7AK8eiug" />
+ </picture>
+</a>
 
 Click the ⭐️ at the top to help push this graph up!  Every like helps more people discover MiniScript, and keeps me motivated to push it forward every day!
 

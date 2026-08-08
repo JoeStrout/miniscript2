@@ -34,6 +34,7 @@ enum class Opcode : Byte {
 	FUNCREF_iA_iBC,
 	ASSIGN_rA_rB_kC,
 	NAME_rA_kBC,
+	CHKNAME_rA_kBC,
 	ADD_rA_rB_rC,
 	SUB_rA_rB_rC,
 	MUL_rA_rB_rC,

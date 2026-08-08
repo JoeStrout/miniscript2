@@ -45,6 +45,7 @@
 	X(FUNCREF_iA_iBC) \
 	X(ASSIGN_rA_rB_kC) \
 	X(NAME_rA_kBC) \
+	X(CHKNAME_rA_kBC) \
 	X(ADD_rA_rB_rC) \
 	X(SUB_rA_rB_rC) \
 	X(MUL_rA_rB_rC) \

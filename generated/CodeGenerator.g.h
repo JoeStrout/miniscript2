@@ -25,11 +25,14 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 	private: List<String> _namedStack; // variables definitely assigned at the current point (stack-disciplined by conditional nesting)
 	private: List<Boolean> _namedIsReg; // parallel to _namedStack: true if bound to a register by a NAME op, false if declared only via `locals.x =`
 	private: String _localOnlyName; // while compiling the RHS of a first assignment, the variable being created ("" when inactive)
+	private: Boolean _localOnlyDeferred; // ...and the local may already exist, from an earlier pass through a loop, so the check is CHKNAME at run time rather than an error here
 	private: List<String> _breakNames;
 	private: List<Boolean> _breakIsReg;
 	private: List<Int32> _breakStarts; // per open loop: where its accumulator starts
 	private: List<Boolean> _breakSeen; // per open loop: has any break contributed yet?
 	private: List<Int32> _loopNameMarks; // per open loop: _namedStack depth on entry
+	private: List<String> _loopReserved;
+	private: List<Int32> _loopReservedStarts;
 	private: Int32 _targetReg; // Target register for next expression (-1 = allocate)
 	private: List<Int32> _loopExitLabels; // Stack of loop exit labels for break
 	private: List<Int32> _loopContinueLabels; // Stack of loop continue labels for continue
@@ -42,6 +45,9 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 	// per-loop accumulators are stacked end to end in _breakNames/_breakIsReg, with
 	// _breakStarts giving each one's first index; the innermost loop's is always the
 	// tail, so a loop's entries can be dropped by truncating.
+	// Names an open loop's body creates -- what ReserveBodyVarRegs parked a register
+	// for.  Stacked end to end, innermost last, with _loopReservedStarts giving each
+	// reservation's first index.  See MayBeAssignedByEarlierIteration.
 
 	// True while compiling code whose named variables are GLOBALS rather than
 	// registers -- that is, @main and only @main.  A module compiled for `import`
@@ -169,8 +175,19 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 	private: List<String> ReserveBodyVarRegs(List<ASTNode> body);
 
 	// Drop any reservation the body did not end up claiming.  A claimed one has
-	// already been renamed to the variable itself by TakeVarReg.
+	// already been renamed to the variable itself by TakeVarReg.  Must be called
+	// exactly once per ReserveBodyVarRegs, and after the body is compiled, since it
+	// also closes that reservation's span of _loopReserved.
 	private: void ReleaseBodyVarRegs(List<String> reserved);
+
+	// Could an earlier pass through an enclosing loop's body have created this local
+	// already?  True of any name that loop reserved a register for: some path through
+	// the body assigns it, and the back edge can bring control around to here with
+	// that path already taken.  This is what separates the two sibling-branch shapes
+	// in bugs.md entries 10 and 11 -- a read there means the local a previous
+	// iteration made, not the nonlocal -- from the same shape outside a loop, where
+	// the sibling branch demonstrably did not run and the nonlocal is all it can mean.
+	private: Boolean MayBeAssignedByEarlierIteration(String varName);
 
 	// Allocate the register for a variable being created.  If an enclosing loop
 	// reserved one for it, take that; the caller records it under the variable's
@@ -522,6 +539,8 @@ struct CodeGenerator : public IASTVisitor {
 	private: void set__namedIsReg(List<Boolean> _v); // parallel to _namedStack: true if bound to a register by a NAME op, false if declared only via `locals.x =`
 	private: String _localOnlyName(); // while compiling the RHS of a first assignment, the variable being created ("" when inactive)
 	private: void set__localOnlyName(String _v); // while compiling the RHS of a first assignment, the variable being created ("" when inactive)
+	private: Boolean _localOnlyDeferred(); // ...and the local may already exist, from an earlier pass through a loop, so the check is CHKNAME at run time rather than an error here
+	private: void set__localOnlyDeferred(Boolean _v); // ...and the local may already exist, from an earlier pass through a loop, so the check is CHKNAME at run time rather than an error here
 	private: List<String> _breakNames();
 	private: void set__breakNames(List<String> _v);
 	private: List<Boolean> _breakIsReg();
@@ -532,6 +551,10 @@ struct CodeGenerator : public IASTVisitor {
 	private: void set__breakSeen(List<Boolean> _v); // per open loop: has any break contributed yet?
 	private: List<Int32> _loopNameMarks(); // per open loop: _namedStack depth on entry
 	private: void set__loopNameMarks(List<Int32> _v); // per open loop: _namedStack depth on entry
+	private: List<String> _loopReserved();
+	private: void set__loopReserved(List<String> _v);
+	private: List<Int32> _loopReservedStarts();
+	private: void set__loopReservedStarts(List<Int32> _v);
 	private: Int32 _targetReg(); // Target register for next expression (-1 = allocate)
 	private: void set__targetReg(Int32 _v); // Target register for next expression (-1 = allocate)
 	private: List<Int32> _loopExitLabels(); // Stack of loop exit labels for break
@@ -551,6 +574,9 @@ struct CodeGenerator : public IASTVisitor {
 	// per-loop accumulators are stacked end to end in _breakNames/_breakIsReg, with
 	// _breakStarts giving each one's first index; the innermost loop's is always the
 	// tail, so a loop's entries can be dropped by truncating.
+	// Names an open loop's body creates -- what ReserveBodyVarRegs parked a register
+	// for.  Stacked end to end, innermost last, with _loopReservedStarts giving each
+	// reservation's first index.  See MayBeAssignedByEarlierIteration.
 
 	// True while compiling code whose named variables are GLOBALS rather than
 	// registers -- that is, @main and only @main.  A module compiled for `import`
@@ -680,8 +706,19 @@ struct CodeGenerator : public IASTVisitor {
 	private: inline List<String> ReserveBodyVarRegs(List<ASTNode> body);
 
 	// Drop any reservation the body did not end up claiming.  A claimed one has
-	// already been renamed to the variable itself by TakeVarReg.
+	// already been renamed to the variable itself by TakeVarReg.  Must be called
+	// exactly once per ReserveBodyVarRegs, and after the body is compiled, since it
+	// also closes that reservation's span of _loopReserved.
 	private: inline void ReleaseBodyVarRegs(List<String> reserved);
+
+	// Could an earlier pass through an enclosing loop's body have created this local
+	// already?  True of any name that loop reserved a register for: some path through
+	// the body assigns it, and the back edge can bring control around to here with
+	// that path already taken.  This is what separates the two sibling-branch shapes
+	// in bugs.md entries 10 and 11 -- a read there means the local a previous
+	// iteration made, not the nonlocal -- from the same shape outside a loop, where
+	// the sibling branch demonstrably did not run and the nonlocal is all it can mean.
+	private: inline Boolean MayBeAssignedByEarlierIteration(String varName);
 
 	// Allocate the register for a variable being created.  If an enclosing loop
 	// reserved one for it, take that; the caller records it under the variable's
@@ -1027,6 +1064,8 @@ inline List<Boolean> CodeGenerator::_namedIsReg() { return get()->_namedIsReg; }
 inline void CodeGenerator::set__namedIsReg(List<Boolean> _v) { get()->_namedIsReg = _v; } // parallel to _namedStack: true if bound to a register by a NAME op, false if declared only via `locals.x =`
 inline String CodeGenerator::_localOnlyName() { return get()->_localOnlyName; } // while compiling the RHS of a first assignment, the variable being created ("" when inactive)
 inline void CodeGenerator::set__localOnlyName(String _v) { get()->_localOnlyName = _v; } // while compiling the RHS of a first assignment, the variable being created ("" when inactive)
+inline Boolean CodeGenerator::_localOnlyDeferred() { return get()->_localOnlyDeferred; } // ...and the local may already exist, from an earlier pass through a loop, so the check is CHKNAME at run time rather than an error here
+inline void CodeGenerator::set__localOnlyDeferred(Boolean _v) { get()->_localOnlyDeferred = _v; } // ...and the local may already exist, from an earlier pass through a loop, so the check is CHKNAME at run time rather than an error here
 inline List<String> CodeGenerator::_breakNames() { return get()->_breakNames; }
 inline void CodeGenerator::set__breakNames(List<String> _v) { get()->_breakNames = _v; }
 inline List<Boolean> CodeGenerator::_breakIsReg() { return get()->_breakIsReg; }
@@ -1037,6 +1076,10 @@ inline List<Boolean> CodeGenerator::_breakSeen() { return get()->_breakSeen; } /
 inline void CodeGenerator::set__breakSeen(List<Boolean> _v) { get()->_breakSeen = _v; } // per open loop: has any break contributed yet?
 inline List<Int32> CodeGenerator::_loopNameMarks() { return get()->_loopNameMarks; } // per open loop: _namedStack depth on entry
 inline void CodeGenerator::set__loopNameMarks(List<Int32> _v) { get()->_loopNameMarks = _v; } // per open loop: _namedStack depth on entry
+inline List<String> CodeGenerator::_loopReserved() { return get()->_loopReserved; }
+inline void CodeGenerator::set__loopReserved(List<String> _v) { get()->_loopReserved = _v; }
+inline List<Int32> CodeGenerator::_loopReservedStarts() { return get()->_loopReservedStarts; }
+inline void CodeGenerator::set__loopReservedStarts(List<Int32> _v) { get()->_loopReservedStarts = _v; }
 inline Int32 CodeGenerator::_targetReg() { return get()->_targetReg; } // Target register for next expression (-1 = allocate)
 inline void CodeGenerator::set__targetReg(Int32 _v) { get()->_targetReg = _v; } // Target register for next expression (-1 = allocate)
 inline List<Int32> CodeGenerator::_loopExitLabels() { return get()->_loopExitLabels; } // Stack of loop exit labels for break
@@ -1067,6 +1110,7 @@ inline void CodeGenerator::MergeBranchNames(Int32 mark,List<String> thenNames,Li
 inline Boolean CodeGenerator::EndsAbruptly(List<ASTNode> body) { return get()->EndsAbruptly(body); }
 inline List<String> CodeGenerator::ReserveBodyVarRegs(List<ASTNode> body) { return get()->ReserveBodyVarRegs(body); }
 inline void CodeGenerator::ReleaseBodyVarRegs(List<String> reserved) { return get()->ReleaseBodyVarRegs(reserved); }
+inline Boolean CodeGenerator::MayBeAssignedByEarlierIteration(String varName) { return get()->MayBeAssignedByEarlierIteration(varName); }
 inline Int32 CodeGenerator::TakeVarReg(String varName) { return get()->TakeVarReg(varName); }
 inline void CodeGenerator::CollectAssignedVars(List<ASTNode> body,List<String> result) { return get()->CollectAssignedVars(body, result); }
 inline List<String> CodeGenerator::HoistableBodyNames(List<ASTNode> body) { return get()->HoistableBodyNames(body); }

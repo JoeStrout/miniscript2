@@ -1143,8 +1143,45 @@ Now that we're doing MS2, it's time for that to generate an actual error.  With 
 
 ...Well, yes, it did: our superstartrek example had a `while true` loop that assigned a variable (based on user input), did some validation, and then `break`.  And then modified that variable after the loop.  This failed under the new regime, even though it's a pretty common idiom.  So, let's try handling that case (a `while true` loop with `break` analysis) too.   ...OK, yes, that works.
 
+## Aug 06, 2026
 
+Bringing up the Mini Micro 2 console turned up three regressions from that work,
+all recorded (and now closed) as entries 9, 10 and 11 in `notes/bugs.md`.  Two
+were plain oversights: `Visit(ForNode)` never popped the peeled preheader's
+`NAME`, and it never called `ReserveBodyVarRegs` at all, so an `if` inside a
+`for` body handed its freed condition temp to a variable one of the arms
+created, and the next iteration's condition overwrote it.
 
+The third was the interesting one.  The accumulator idiom that `list.min`,
+`list.max` and `list.product` are all written in --
 
+```
+first = true
+for item in self
+	if first then
+		result = item
+		first = false
+	else
+		result = result * item
+	end if
+end for
+```
 
+-- was rejected outright by the unqualified-local rule above, since `result` is
+not *definitely* assigned when the else arm compiles.  But it is not definitely
+unassigned either: an earlier pass through the loop may well have created it.
+That is the case the compile-time check cannot decide, and refusing to compile
+is the wrong answer to a question you have not actually answered.
 
+So the rule now has two halves.  Where the compiler can see that no path has
+assigned the local, it is still a compile error, exactly as before.  Where an
+open loop reserved a register for the name and some path has since claimed it,
+the read compiles -- and a new `CHKNAME` opcode ahead of it requires, at run
+time, that the register really is holding that variable.  If the seeding branch
+has not run, you get `Undefined Local Identifier` rather than a quiet read of
+whatever global happens to share the name.  The rule did not weaken; it just
+moved to the point where the answer is known.
+
+## Aug 08, 2026
+
+Fixed an issue today with handling of null bytes (i.e. `char(0)`) in string operations.  It was actually several related issues, and affected only the C++ side.  Added integration tests to catch any regressions there in the future.

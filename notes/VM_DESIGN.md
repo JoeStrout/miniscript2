@@ -24,6 +24,7 @@ Our internal opcode names include a verb/mnemonic, and a description of how the 
 | FUNCREF_iA_iBC | R[A] := make_funcref(BC) (create function reference to function BC) |
 | ASSIGN_rA_rB_kC | R[A] := R[B] and name[A] := constants[C] (copy value and assign variable name) |
 | NAME_rA_kBC | name[A] := constants[BC] (assign variable name without changing value) |
+| CHKNAME_rA_kBC | error unless name[A] == constants[BC] (require the register to be holding that variable) |
 | LIST_rA_iBC | R[A] := new list with capacity BC |
 | MAP_rA_iBC | R[A] := new map with initial capacity BC |
 | PUSH_rA_rB | push R[B] onto list R[A] |
@@ -173,6 +174,7 @@ While an official assembly language (or assembler) will probably not be part of 
 | LOAD r12, "foo" | LOAD_rA_kBC 12, 7 (if k[7] == "foo") |
 | ASSIGN r1, r2, "x" | ASSIGN_rA_rB_kC 1, 2, 3 (if k[3] == "x") |
 | NAME r0, "result" | NAME_rA_kBC 0, 5 (if k[5] == "result") |
+| CHKNAME r0, "result" | CHKNAME_rA_kBC 0, 5 (if k[5] == "result") |
 | ADD r5, r3, r4 | ADD_rA_rB_rC 5, 3, 4 |
 | ADD r5, r3, 42 | *error* (unless we add an ADD_rA_rB_iC opcode!) |
 

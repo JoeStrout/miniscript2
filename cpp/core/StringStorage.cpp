@@ -520,101 +520,97 @@ StringStorage* ss_removeLen(const StringStorage* storage, int startIndex, int co
     return NULL;
 }
 
-StringStorage* ss_replace(const StringStorage* storage, const StringStorage* oldValue, const StringStorage* newValue, StringStorageAllocator allocator) {
-    if (!storage || !oldValue || !newValue) return NULL;
+// Copy a whole StringStorage.  Unlike ss_create, this goes by lenB, so a
+// string that contains an embedded '\0' survives intact.
+static StringStorage* ss_copyOf(const StringStorage* storage, StringStorageAllocator allocator) {
+    StringStorage* result = ss_createWithLength(storage->lenB, allocator);
+    if (!result) return NULL;  // (empty, or out of memory)
 
+    memcpy(result->data, storage->data, storage->lenB);
+    result->lenC = storage->lenC;  // same bytes, so same character count
+    return result;
+}
+
+// Find needle within hay[from..hayLen), comparing by length so that a '\0' in
+// either one is ordinary data.  Returns a byte offset, or -1 if not found.
+static int ss_findBytes(const char* hay, int hayLen, const char* needle, int needleLen, int from) {
+    for (int i = from; i + needleLen <= hayLen; i++) {
+        if (memcmp(hay + i, needle, needleLen) == 0) return i;
+    }
+    return -1;
+}
+
+StringStorage* ss_replace(const StringStorage* storage, const StringStorage* oldValue, const StringStorage* newValue, StringStorageAllocator allocator) {
+    if (!storage) return NULL;
+
+    // An empty string is represented as NULL, so oldValue/newValue may be NULL;
+    // that means empty, not an error.  (A NULL newValue -- deleting every
+    // occurrence -- is a perfectly ordinary call.)
     const char* str = storage->data;
-    const char* old_str = oldValue->data;
-    const char* new_str = newValue->data;
+    const char* old_str = oldValue ? oldValue->data : "";
+    const char* new_str = newValue ? newValue->data : "";
 
     int str_len = storage->lenB;
-    int old_len = oldValue->lenB;
-    int new_len = newValue->lenB;
+    int old_len = oldValue ? oldValue->lenB : 0;
+    int new_len = newValue ? newValue->lenB : 0;
 
-    // If old string is empty, return copy of original
-    if (old_len == 0) {
-        return ss_create(storage->data, allocator);
+    // If the old string is empty, or too long to occur, return a copy of the original
+    if (old_len == 0 || old_len > str_len) {
+        return ss_copyOf(storage, allocator);
     }
 
     // Count occurrences of old_str in str
     int count = 0;
-    const char* pos = str;
-    while ((pos = strstr(pos, old_str)) != NULL) {
+    for (int pos = ss_findBytes(str, str_len, old_str, old_len, 0); pos >= 0;
+             pos = ss_findBytes(str, str_len, old_str, old_len, pos + old_len)) {
         count++;
-        pos += old_len;
     }
 
     // If no occurrences, return copy of original
     if (count == 0) {
-        return ss_create(storage->data, allocator);
+        return ss_copyOf(storage, allocator);
     }
 
-    // Calculate new length
+    // Allocate new StringStorage (NULL if the result is empty, which is how an
+    // empty string is represented, or if the allocation failed)
     int new_total_len = str_len + count * (new_len - old_len);
-
-    // Allocate new StringStorage
-    StringStorage* result = (StringStorage*)allocator(sizeof(StringStorage) + new_total_len + 1);
+    StringStorage* result = ss_createWithLength(new_total_len, allocator);
     if (!result) return NULL;
-
-    result->lenB = new_total_len;
-    result->lenC = -1; // Will be computed on demand
-    result->hash = 0;  // Will be computed on demand
-    result->cursorCharIdx = 0;
-    result->cursorByteIdx = 0;
 
     // Build the result string
     char* dest = result->data;
-    const char* src = str;
-
-    while (*src) {
-        const char* found = strstr(src, old_str);
-        if (found == src) {
-            // Found occurrence at current position
-            memcpy(dest, new_str, new_len);
-            dest += new_len;
-            src += old_len;
-        } else {
-            // Copy characters until next occurrence or end
-            const char* next = found ? found : str + str_len;
-            int copy_len = next - src;
-            memcpy(dest, src, copy_len);
-            dest += copy_len;
-            src += copy_len;
+    int src = 0;
+    while (src < str_len) {
+        int found = ss_findBytes(str, str_len, old_str, old_len, src);
+        if (found < 0) break;
+        if (found > src) {
+            memcpy(dest, str + src, found - src);
+            dest += found - src;
         }
+        memcpy(dest, new_str, new_len);
+        dest += new_len;
+        src = found + old_len;
     }
+    if (src < str_len) memcpy(dest, str + src, str_len - src);
 
-    *dest = '\0';
     return result;
 }
 
 StringStorage* ss_replaceByte(const StringStorage* storage, char oldChar, char newChar, StringStorageAllocator allocator) {
     if (!storage) return NULL;
 
-    // No sense in trying to replace '\0'. Return a copy of original.
-    if (oldChar == '\0') {
-        return ss_create(storage->data, allocator);
-    }
-
-    // Allocate new StringStorage
-    StringStorage* result = (StringStorage*)allocator(sizeof(StringStorage) + storage->lenB + 1);
+    StringStorage* result = ss_createWithLength(storage->lenB, allocator);
     if (!result) return NULL;
 
-    result->lenB = storage->lenB;
-    result->lenC = -1; // Will be computed on demand
-    result->hash = 0;  // Will be computed on demand
-    result->cursorCharIdx = 0;
-    result->cursorByteIdx = 0;
-
-    // Build the result string
-    char* dest = result->data;
+    // Build the result string.  Note that we go by lenB rather than stopping at
+    // a '\0', so either character may be '\0' like any other byte.  lenC is left
+    // unknown: swapping one byte for another can change the character count.
     const char* src = storage->data;
-
-    while (*src) {
-        *dest++ = *src == oldChar ? newChar : *src;
-        src++;
+    char* dest = result->data;
+    for (int i = 0; i < storage->lenB; i++) {
+        dest[i] = (src[i] == oldChar ? newChar : src[i]);
     }
 
-    *dest = '\0';
     return result;
 }
 

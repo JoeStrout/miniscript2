@@ -37,13 +37,25 @@ public static class DateTimeUtils {
 	#endif
 
 	// Returns true (and advances *posB) if the substring of s at *posB equals match.
+	// Works in bytes throughout: the patterns we match are ASCII, and byte access
+	// is O(1) where character access has to walk the string from the start.
 	static bool Match(const String& s, int *posB, const String& match) {
-		int matchLen = match.Length();
-		if (*posB + matchLen <= s.Length() && s.Substring(*posB, matchLen) == match) {
-			*posB += matchLen;
+		int matchLenB = match.LengthB();
+		if (*posB + matchLenB <= s.LengthB() && s.SubstringB(*posB, matchLenB) == match) {
+			*posB += matchLenB;
 			return true;
 		}
 		return false;
+	}
+
+	// Byte length of the UTF-8 sequence beginning at byte offset posB of s.
+	static int Utf8SeqLenB(const String& s, int posB) {
+		unsigned char b = (unsigned char)s.AtB(posB);
+		if (b < 0x80) return 1;
+		if ((b & 0xE0) == 0xC0) return 2;
+		if ((b & 0xF0) == 0xE0) return 3;
+		if ((b & 0xF8) == 0xF0) return 4;
+		return 1;	// (invalid lead byte; just step over it)
 	}
 	*** END CPP_ONLY ***/
 
@@ -131,7 +143,7 @@ public static class DateTimeUtils {
 
 		// Otherwise, parse individual parts.
 		List<String> result;
-		int lenB = formatSpec.Length();
+		int lenB = formatSpec.LengthB();
 		while (posB < lenB) {
 			if (Match(formatSpec, &posB, "yyyy")) {			// year
 				snprintf(buffer, BUFSIZE, "%04d", dt.tm_year + 1900);
@@ -274,34 +286,36 @@ public static class DateTimeUtils {
 			} else if (Match(formatSpec, &posB, "/")) {
 				// See comment above.
 				result.Add(String("/"));
-			} else if (formatSpec[posB] == '"') {
+			} else if (formatSpec.AtB(posB) == '"') {
 				// Find the closing quote, and output the contained string literal
 				int endPosB = posB + 1;
 				while (endPosB < lenB) {
-					Char c = formatSpec[endPosB];
+					char c = formatSpec.AtB(endPosB);
 					if (c == '\\') endPosB++;
 					else if (c == '"') break;
 					else endPosB++;
 				}
-				result.Add(formatSpec.Substring(posB + 1, endPosB - posB - 1));
+				result.Add(formatSpec.SubstringB(posB + 1, endPosB - posB - 1));
 				posB = endPosB + 1;
-			} else if (formatSpec[posB] == '\'') {
+			} else if (formatSpec.AtB(posB) == '\'') {
 				// Find the closing quote, and output the contained string literal
 				int endPosB = posB + 1;
 				while (endPosB < lenB) {
-					Char c = formatSpec[endPosB];
+					char c = formatSpec.AtB(endPosB);
 					if (c == '\\') endPosB++;
 					else if (c == '\'') break;
 					else endPosB++;
 				}
-				result.Add(formatSpec.Substring(posB + 1, endPosB - posB - 1));
+				result.Add(formatSpec.SubstringB(posB + 1, endPosB - posB - 1));
 				posB = endPosB + 1;
 			} else if (Match(formatSpec, &posB, "\\") && posB < lenB) {
-				result.Add(formatSpec.Substring(posB, 1));
-				posB++;
+				int seqLenB = Utf8SeqLenB(formatSpec, posB);	// (pass one whole character through)
+				result.Add(formatSpec.SubstringB(posB, seqLenB));
+				posB += seqLenB;
 			} else {
-				result.Add(formatSpec.Substring(posB, 1));
-				posB++;
+				int seqLenB = Utf8SeqLenB(formatSpec, posB);
+				result.Add(formatSpec.SubstringB(posB, seqLenB));
+				posB += seqLenB;
 			}
 		}
 

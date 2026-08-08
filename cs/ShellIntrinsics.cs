@@ -809,7 +809,7 @@ public static class ShellIntrinsics {
 		/*** BEGIN CPP_ONLY ***
 		CppRawBuf* b = (CppRawBuf*)GCManager::GetHandle(h).UserData;
 		if (!b || !b->bytes || off < 0) return 0;
-		Int32 copyLen = (Int32)val.Length();
+		Int32 copyLen = (Int32)val.LengthB();	// byte count, to match C# UTF-8 encoding
 		if (off + copyLen > b->length) copyLen = b->length - off;
 		if (copyLen < 0) copyLen = 0;
 		if (copyLen > 0) memcpy(b->bytes + off, val.c_str(), copyLen);
@@ -898,7 +898,7 @@ public static class ShellIntrinsics {
 		/*** BEGIN CPP_ONLY ***
 		CppFileHandle* h = (CppFileHandle*)GCManager::GetHandle(handleVal).UserData;
 		if (!h || !h->f) return 0;
-		return (Int32)fwrite(data.c_str(), 1, data.Length(), h->f);
+		return (Int32)fwrite(data.c_str(), 1, data.LengthB(), h->f);	// byte count, to match C# UTF-8 encoding
 		*** END CPP_ONLY ***/
 	}
 
@@ -1027,7 +1027,7 @@ public static class ShellIntrinsics {
 	}
 
 	private static Value FsChildren(String path) {
-		if (path.Length == 0) path = FsCurrentDir(); // CPP: if (path.Length() == 0) path = FsCurrentDir();
+		if (path.Length == 0) path = FsCurrentDir(); // CPP: if (path.LengthB() == 0) path = FsCurrentDir();
 		//*** BEGIN CS_ONLY ***
 		try {
 			String[] entries = System.IO.Directory.GetFileSystemEntries(path);
@@ -1130,7 +1130,7 @@ public static class ShellIntrinsics {
 
 	// Returns a map {path, isDirectory, size, date} or Value.Null if path not found.
 	private static Value FsInfo(String path) {
-		if (path.Length == 0) path = FsCurrentDir(); // CPP: if (path.Length() == 0) path = FsCurrentDir();
+		if (path.Length == 0) path = FsCurrentDir(); // CPP: if (path.LengthB() == 0) path = FsCurrentDir();
 		//*** BEGIN CS_ONLY ***
 		try {
 			bool isDir = System.IO.Directory.Exists(path);
@@ -1276,7 +1276,7 @@ public static class ShellIntrinsics {
 			for (int i = 0; i < (int)n; i++) {
 				if (buf[i] == '\n' || buf[i] == '\r') {
 					String line(buf + start, i - start);
-					if (partial.Length() > 0) { line = partial + line; partial = String(""); }
+					if (partial.LengthB() > 0) { line = partial + line; partial = String(""); }
 					result.Push(Value::make_string(line));
 					if (buf[i] == '\r' && i+1 < (int)n && buf[i+1] == '\n') i++;
 					start = i + 1;
@@ -1284,7 +1284,7 @@ public static class ShellIntrinsics {
 			}
 			if (start < (int)n) partial += String(buf + start, n - start);
 		}
-		if (partial.Length() > 0) result.Push(Value::make_string(partial));
+		if (partial.LengthB() > 0) result.Push(Value::make_string(partial));
 		fclose(f);
 		return result;
 		*** END CPP_ONLY ***/
@@ -2381,7 +2381,7 @@ public static class ShellIntrinsics {
 				else if (!dir.EndsWith("/") && !dir.EndsWith("\\")) dir += "/";
 				String path = ExpandVariables(dir) + libname + ".ms";
 				String src = TryReadSource(path);
-				if (src == null) continue; // CPP: if (src.Length() == 0) continue;
+				if (src == null) continue; // CPP: if (src.LengthB() == 0) continue;
 				source = src;
 				found = true;
 				break;

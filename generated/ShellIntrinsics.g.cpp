@@ -463,7 +463,7 @@ Int32 ShellIntrinsics::RawSetUTF8(Value h,Int32 off,String val) {
 	if (!h.IsHandle()) return 0;
 	CppRawBuf* b = (CppRawBuf*)GCManager::GetHandle(h).UserData;
 	if (!b || !b->bytes || off < 0) return 0;
-	Int32 copyLen = (Int32)val.Length();
+	Int32 copyLen = (Int32)val.LengthB();	// byte count, to match C# UTF-8 encoding
 	if (off + copyLen > b->length) copyLen = b->length - off;
 	if (copyLen < 0) copyLen = 0;
 	if (copyLen > 0) memcpy(b->bytes + off, val.c_str(), copyLen);
@@ -500,7 +500,7 @@ Int32 ShellIntrinsics::WriteToFile(Value handleVal,String data) {
 	if (!handleVal.IsHandle()) return 0;
 	CppFileHandle* h = (CppFileHandle*)GCManager::GetHandle(handleVal).UserData;
 	if (!h || !h->f) return 0;
-	return (Int32)fwrite(data.c_str(), 1, data.Length(), h->f);
+	return (Int32)fwrite(data.c_str(), 1, data.LengthB(), h->f);	// byte count, to match C# UTF-8 encoding
 }
 String ShellIntrinsics::ReadFromFile(Value handleVal,Int32 byteCount) {
 	if (!handleVal.IsHandle()) return "";
@@ -553,7 +553,7 @@ Boolean ShellIntrinsics::FsSetDir(String path) {
 	return chdir(path.c_str()) == 0;
 }
 Value ShellIntrinsics::FsChildren(String path) {
-	if (path.Length() == 0) path = FsCurrentDir();
+	if (path.LengthB() == 0) path = FsCurrentDir();
 	Value result = Value::make_list(16);
 	#ifdef _WIN32
 		String searchPath = path + "\\*";
@@ -618,7 +618,7 @@ Boolean ShellIntrinsics::FsExists(String path) {
 	#endif
 }
 Value ShellIntrinsics::FsInfo(String path) {
-	if (path.Length() == 0) path = FsCurrentDir();
+	if (path.LengthB() == 0) path = FsCurrentDir();
 	#ifdef _WIN32
 		struct _stati64 stats;
 		if (_stati64(path.c_str(), &stats) != 0) return Value::null;
@@ -699,7 +699,7 @@ Value ShellIntrinsics::FsReadLines(String path) {
 		for (int i = 0; i < (int)n; i++) {
 			if (buf[i] == '\n' || buf[i] == '\r') {
 				String line(buf + start, i - start);
-				if (partial.Length() > 0) { line = partial + line; partial = String(""); }
+				if (partial.LengthB() > 0) { line = partial + line; partial = String(""); }
 				result.Push(Value::make_string(line));
 				if (buf[i] == '\r' && i+1 < (int)n && buf[i+1] == '\n') i++;
 				start = i + 1;
@@ -707,7 +707,7 @@ Value ShellIntrinsics::FsReadLines(String path) {
 		}
 		if (start < (int)n) partial += String(buf + start, n - start);
 	}
-	if (partial.Length() > 0) result.Push(Value::make_string(partial));
+	if (partial.LengthB() > 0) result.Push(Value::make_string(partial));
 	fclose(f);
 	return result;
 }
@@ -1663,7 +1663,7 @@ void ShellIntrinsics::Init() {
 			else if (!dir.EndsWith("/") && !dir.EndsWith("\\")) dir += "/";
 			String path = ExpandVariables(dir) + libname + ".ms";
 			String src = TryReadSource(path);
-			if (src.Length() == 0) continue;
+			if (src.LengthB() == 0) continue;
 			source = src;
 			found = Boolean(true);
 			break;

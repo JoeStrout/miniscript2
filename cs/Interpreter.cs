@@ -415,13 +415,6 @@ public class Interpreter {
 	// <param name="sourceLine">line of source code to parse and run</param>
 	// <param name="timeLimit">time limit in seconds</param>
 	public void REPL(String sourceLine, double timeLimit=60) {
-		// An empty line is not nothing: with no VM yet it is how a host asks for
-		// one, so that globals can be seeded before any user code runs (see the
-		// empty-statements case below).  Null is treated the same, and must be:
-		// the C++ port represents an empty string AS null (CS_String.cpp), so
-		// there a caller passing "" arrives here indistinguishable from null,
-		// and bailing out would make that bootstrap impossible on that side.
-		// Parsing empty source is a path Compile() already relies on.
 		if (sourceLine == null) sourceLine = "";
 
 		// Accumulate source lines

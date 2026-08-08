@@ -21,6 +21,7 @@ String Disassembler::AssemOp(Opcode opcode) {
 		case Opcode::FUNCREF_iA_iBC: return "FUNCREF";
 		case Opcode::ASSIGN_rA_rB_kC: return "ASSIGN";
 		case Opcode::NAME_rA_kBC:   return "NAME";
+		case Opcode::CHKNAME_rA_kBC: return "CHKNAME";
 		case Opcode::ADD_rA_rB_rC:  return "ADD";
 		case Opcode::MUL_rA_rB_rC:  return "MUL";
 		case Opcode::DIV_rA_rB_rC:  return "DIV";
@@ -145,6 +146,7 @@ String Disassembler::ToString(UInt32 instruction) {
 		// rA, kBC
 		case Opcode::LOAD_rA_kBC:
 		case Opcode::NAME_rA_kBC:
+		case Opcode::CHKNAME_rA_kBC:
 			return StringUtils::Format("{0} r{1}, k{2}",
 				mnemonic,
 				(Int32)BytecodeUtil::Au(instruction),

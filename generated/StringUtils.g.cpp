@@ -66,26 +66,30 @@ String StringUtils::Str(List<String> list) {
 	return  String::New("[\"") + String::Join("\", \"", list) + "\"]";
 }
 String StringUtils::FormatList(const String& fmt, const List<String>& values) {
-	const int n = fmt.Length();
+	// Scanned by byte rather than by character: everything we look for
+	// (braces, digits) is ASCII, and UTF-8 never puts an ASCII byte inside a
+	// multi-byte sequence, so the two are equivalent here -- but byte access
+	// is O(1), where character access has to walk the string.
+	const int n = fmt.LengthB();
 
 	List<String> parts; // collect chunks, then Join
 	int i = 0;
 
 	while (i < n) {
-		const Char c = fmt[i];
+		const char c = fmt.AtB(i);
 
 		if (c == '{') {
-			if (i + 1 < n && fmt[i + 1] == '{') {
+			if (i + 1 < n && fmt.AtB(i + 1) == '{') {
 				parts.Add(String("{")); i += 2; continue;
 			}
 			int j = i + 1;
-			if (j >= n || !std::isdigit(static_cast<unsigned char>(fmt[j])))
+			if (j >= n || !std::isdigit(static_cast<unsigned char>(fmt.AtB(j))))
 				throw std::runtime_error("Invalid placeholder; expected {n}.");
 			int num = 0;
-			while (j < n && std::isdigit(static_cast<unsigned char>(fmt[j]))) {
-				num = num * 10 + (fmt[j] - '0'); ++j;
+			while (j < n && std::isdigit(static_cast<unsigned char>(fmt.AtB(j)))) {
+				num = num * 10 + (fmt.AtB(j) - '0'); ++j;
 			}
-			if (j >= n || fmt[j] != '}')
+			if (j >= n || fmt.AtB(j) != '}')
 				throw std::runtime_error("Invalid placeholder; expected closing '}'.");
 			// bounds check
 			if (num < 0 || num >= values.Count())
@@ -94,20 +98,20 @@ String StringUtils::FormatList(const String& fmt, const List<String>& values) {
 			i = j + 1;
 		}
 		else if (c == '}') {
-			if (i + 1 < n && fmt[i + 1] == '}') {
+			if (i + 1 < n && fmt.AtB(i + 1) == '}') {
 				parts.Add(String("}")); i += 2; continue;
 			}
 			throw std::runtime_error("Single '}' in format string.");
 		}
 		else {
-			// consume a run of non-brace chars as one chunk
+			// consume a run of non-brace bytes as one chunk
 			int start = i;
 			while (i < n) {
-				Char ch = fmt[i];
+				char ch = fmt.AtB(i);
 				if (ch == '{' || ch == '}') break;
 				++i;
 			}
-			parts.Add(fmt.Substring(start, i - start));
+			parts.Add(fmt.SubstringB(start, i - start));
 		}
 	}
 

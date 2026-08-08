@@ -1056,6 +1056,37 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				VM_NEXT();
 			}
 
+			VM_CASE(CHKNAME_rA_kBC) {
+				// Require that register A currently holds the variable named by
+				// constants[BC], and raise Undefined Local Identifier if it does
+				// not.  Emitted ahead of a read whose only legitimate meaning is
+				// the local this function assigns unqualified -- see the
+				// sibling-branch case in CodeGenerator.VisitIdentifier.  The point
+				// is to *not* fall back the way LOADC does: reaching past the
+				// unassigned local to a nonlocal of the same name is exactly what
+				// the compile-time check forbids where it can see the answer.
+				Byte a = BytecodeUtil::Au(instruction);
+				UInt16 constIdx = BytecodeUtil::BCu(instruction);
+				valC = curConstants[constIdx];
+				if (!valC.RefEquals(names[baseIndex + a])) {
+					// The register is not it, but `locals.x = ...` makes a local
+					// without binding one, so the frame's map is the other place a
+					// local can be.  The load that follows reaches it the same way
+					// LOADC's fallback does; all we ask here is that it exists.
+					Boolean chkFound = Boolean(false);
+					CallInfo chkFrame = callStack[callStackTop - 1];
+					if (!chkFrame.LocalVarMap.IsNull()) {
+						Value chkValue;
+						chkFound = chkFrame.LocalVarMap.TryGet(valC, &chkValue);
+					}
+					if (!chkFound) {
+						RaiseRuntimeError(StringUtils::Format(
+							"Undefined Local Identifier: '{0}' is not yet assigned in this scope", valC));
+					}
+				}
+				VM_NEXT();
+			}
+
 			VM_CASE(ADD_rA_rB_rC) {
 				// R[A] = R[B] + R[C]
 				Byte a = BytecodeUtil::Au(instruction);

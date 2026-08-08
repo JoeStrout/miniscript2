@@ -329,11 +329,13 @@ public class Assembler {
 			instruction = BytecodeUtil.INS_ABC(Opcode.ASSIGN_rA_rB_kC, dest, src, (Byte)constIdx);
 			Current.ReserveRegister(dest);
 
-		} else if (mnemonic == "NAME") {
-			// NAME r1, "varname"  -->  NAME_rA_kBC
+		} else if (mnemonic == "NAME" || mnemonic == "CHKNAME") {
+			// NAME r1, "varname"     -->  NAME_rA_kBC
 			// Set variable name for r1 without changing its value
+			// CHKNAME r1, "varname"  -->  CHKNAME_rA_kBC
+			// Require that r1 already holds that variable; error if it does not
 			if (parts.Count != 3) {
-				Error("Syntax error: NAME requires exactly 2 operands");
+				Error(StringUtils.Format("Syntax error: {0} requires exactly 2 operands", mnemonic));
 				return 0;
 			}
 			Byte dest = ParseRegister(parts[1]);
@@ -342,9 +344,10 @@ public class Assembler {
 			constantValue = ParseAsConstant(parts[2]);
 			if (!constantValue.IsString()) Error("Variable name must be a string");
 			Int32 constIdx = AddConstant(constantValue);
-			if (constIdx > 65535) Error("Constant index out of range for NAME opcode");
+			if (constIdx > 65535) Error(StringUtils.Format("Constant index out of range for {0} opcode", mnemonic));
 			if (HasError) return 0;
-			instruction = BytecodeUtil.INS_AB(Opcode.NAME_rA_kBC, dest, (Int16)constIdx);
+			Opcode nameOp = (mnemonic == "NAME") ? Opcode.NAME_rA_kBC : Opcode.CHKNAME_rA_kBC;
+			instruction = BytecodeUtil.INS_AB(nameOp, dest, (Int16)constIdx);
 			Current.ReserveRegister(dest);
 
 		} else if (mnemonic == "ADD" || mnemonic == "SUB" || mnemonic == "MUL"

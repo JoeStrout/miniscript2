@@ -22,6 +22,7 @@ public class CodeGenerator : IASTVisitor {
 	private List<String> _namedStack;   // variables definitely assigned at the current point (stack-disciplined by conditional nesting)
 	private List<Boolean> _namedIsReg;  // parallel to _namedStack: true if bound to a register by a NAME op, false if declared only via `locals.x =`
 	private String _localOnlyName;      // while compiling the RHS of a first assignment, the variable being created ("" when inactive)
+	private Boolean _localOnlyDeferred; // ...and the local may already exist, from an earlier pass through a loop, so the check is CHKNAME at run time rather than an error here
 	// Definite assignment at the `break`s of each open loop -- what survives past a
 	// loop that only ends by breaking out of it.  See NoteBreak/EndLoopNames.  The
 	// per-loop accumulators are stacked end to end in _breakNames/_breakIsReg, with
@@ -32,6 +33,11 @@ public class CodeGenerator : IASTVisitor {
 	private List<Int32> _breakStarts;      // per open loop: where its accumulator starts
 	private List<Boolean> _breakSeen;      // per open loop: has any break contributed yet?
 	private List<Int32> _loopNameMarks;    // per open loop: _namedStack depth on entry
+	// Names an open loop's body creates -- what ReserveBodyVarRegs parked a register
+	// for.  Stacked end to end, innermost last, with _loopReservedStarts giving each
+	// reservation's first index.  See MayBeAssignedByEarlierIteration.
+	private List<String> _loopReserved;
+	private List<Int32> _loopReservedStarts;
 	private Int32 _targetReg;           // Target register for next expression (-1 = allocate)
 	private List<Int32> _loopExitLabels;      // Stack of loop exit labels for break
 	private List<Int32> _loopContinueLabels;  // Stack of loop continue labels for continue
@@ -60,11 +66,14 @@ public class CodeGenerator : IASTVisitor {
 		_namedStack = new List<String>();
 		_namedIsReg = new List<Boolean>();
 		_localOnlyName = "";
+		_localOnlyDeferred = false;
 		_breakNames = new List<String>();
 		_breakIsReg = new List<Boolean>();
 		_breakStarts = new List<Int32>();
 		_breakSeen = new List<Boolean>();
 		_loopNameMarks = new List<Int32>();
+		_loopReserved = new List<String>();
+		_loopReservedStarts = new List<Int32>();
 		_targetReg = -1;
 		_loopExitLabels = new List<Int32>();
 		_loopContinueLabels = new List<Int32>();
@@ -357,6 +366,7 @@ public class CodeGenerator : IASTVisitor {
 	// where top-level names are slots rather than registers.
 	private List<String> ReserveBodyVarRegs(List<ASTNode> body) {
 		List<String> reserved = new List<String>();
+		_loopReservedStarts.Add(_loopReserved.Count);
 		if (_globalScope) return reserved;
 
 		List<String> assigned = new List<String>();
@@ -371,12 +381,15 @@ public class CodeGenerator : IASTVisitor {
 			if (_variableRegs.TryGetValue(key, out existing)) continue;
 			_variableRegs[key] = AllocReg();
 			reserved.Add(name);
+			_loopReserved.Add(name);
 		}
 		return reserved;
 	}
 
 	// Drop any reservation the body did not end up claiming.  A claimed one has
-	// already been renamed to the variable itself by TakeVarReg.
+	// already been renamed to the variable itself by TakeVarReg.  Must be called
+	// exactly once per ReserveBodyVarRegs, and after the body is compiled, since it
+	// also closes that reservation's span of _loopReserved.
 	private void ReleaseBodyVarRegs(List<String> reserved) {
 		for (Int32 i = 0; i < reserved.Count; i++) {
 			String key = PendingVarRegKey(reserved[i]);
@@ -385,6 +398,23 @@ public class CodeGenerator : IASTVisitor {
 			_variableRegs.Remove(key);
 			FreeReg(reg);
 		}
+		Int32 start = _loopReservedStarts[_loopReservedStarts.Count - 1];
+		_loopReservedStarts.RemoveAt(_loopReservedStarts.Count - 1);
+		while (_loopReserved.Count > start) _loopReserved.RemoveAt(_loopReserved.Count - 1);
+	}
+
+	// Could an earlier pass through an enclosing loop's body have created this local
+	// already?  True of any name that loop reserved a register for: some path through
+	// the body assigns it, and the back edge can bring control around to here with
+	// that path already taken.  This is what separates the two sibling-branch shapes
+	// in bugs.md entries 10 and 11 -- a read there means the local a previous
+	// iteration made, not the nonlocal -- from the same shape outside a loop, where
+	// the sibling branch demonstrably did not run and the nonlocal is all it can mean.
+	private Boolean MayBeAssignedByEarlierIteration(String varName) {
+		for (Int32 i = 0; i < _loopReserved.Count; i++) {
+			if (_loopReserved[i] == varName) return true;
+		}
+		return false;
 	}
 
 	// Allocate the register for a variable being created.  If an enclosing loop
@@ -638,6 +668,8 @@ public class CodeGenerator : IASTVisitor {
 		_breakStarts.Clear();
 		_breakSeen.Clear();
 		_loopNameMarks.Clear();
+		_loopReserved.Clear();
+		_loopReservedStarts.Clear();
 	}
 
 	private void BeginLoopNames() {
@@ -914,13 +946,28 @@ public class CodeGenerator : IASTVisitor {
 		// variable of the same name -- and on the next time through a loop it would
 		// mean the local instead, which is nobody's intent.  MiniScript 1 warned
 		// here and read the outer one; MS2 requires the intent to be written down.
+		//
+		// Unless an earlier pass through an enclosing loop may have created the local
+		// already (see MayBeAssignedByEarlierIteration), in which case the read is
+		// legitimate and means that local.  We cannot tell from here whether the
+		// branch that creates it has run, so the same rule is enforced at run time
+		// instead: CHKNAME requires the register to be holding this variable, and
+		// errors rather than reaching past it to a nonlocal.
 		if (_localOnlyName != "" && node.Name == _localOnlyName) {
-			if (Error.IsNull()) {
-				Error = ErrorTypes.CompilerError(StringUtils.Format(
-					"illegal assignment to unqualified local '{0}' based on nonlocal", node.Name),
-					FileName, _emitter.CurrentLine);
+			if (!_localOnlyDeferred) {
+				if (Error.IsNull()) {
+					Error = ErrorTypes.CompilerError(StringUtils.Format(
+						"illegal assignment to unqualified local '{0}' based on nonlocal", node.Name),
+						FileName, _emitter.CurrentLine);
+				}
+				return resultReg;
 			}
-			return resultReg;
+			Int32 checkReg;
+			if (_variableRegs.TryGetValue(node.Name, out checkReg)) {
+				Int32 checkIdx = _emitter.AddConstant(Value.make_string(node.Name));
+				_emitter.EmitAB(Opcode.CHKNAME_rA_kBC, checkReg, checkIdx,
+					$"require r{checkReg} to be holding {node.Name}");
+			}
 		}
 
 		Int32 varReg;
@@ -1006,22 +1053,44 @@ public class CodeGenerator : IASTVisitor {
 		// assignment in it may never have run.  Arm _localOnlyName before compiling
 		// the RHS and disarm it after; nested function bodies compile with their own
 		// CodeGenerator, so it cannot leak into one.
+		//
+		// Inside a loop there is a third state between "certainly assigned" and "not
+		// assigned yet": a sibling branch of an `if` may have created the local on an
+		// earlier iteration.  `result = result * item` in the else arm of the usual
+		// accumulator idiom means that local, not some nonlocal the author never
+		// mentioned, so it compiles rather than erroring.  It takes a register already
+		// claimed to reach this state: while the name is only reserved, no path has
+		// assigned it, and `n = n + 1` in a loop body stays the error it should be.
+		//
+		// The rule itself does not weaken -- reading a nonlocal to seed an unqualified
+		// local is still forbidden -- it just moves to run time, where the answer is
+		// known.  VisitIdentifier emits a CHKNAME ahead of the read, so a path that
+		// reaches it with the local still unassigned raises Undefined Local Identifier
+		// instead of quietly picking up whatever nonlocal shares the name.
 		Boolean localOnly = !IsDefinitelyAssigned(node.Variable);
+		Boolean deferred = localOnly && !isNew && MayBeAssignedByEarlierIteration(node.Variable);
 
 		// Creating a variable whose name the RHS may read through `locals`/`outer`/
 		// `globals` is the one case where the NAME op has to wait: NAME is not a
 		// passive binding, and letting it run first would show the RHS a half-created
 		// variable.  The RHS then has to land in a temp so the copy can follow the
-		// NAME (see below).  Bare reads of the variable do not get here -- they are
-		// the error above -- so what remains is the dynamic-scope route, which
-		// MayReadVar reports conservatively (ScopeNode always answers true).
+		// NAME (see below).  The routes that get here are the dynamic-scope one, which
+		// MayReadVar reports conservatively (ScopeNode always answers true), and the
+		// deferred sibling-branch read; a bare read anywhere else is the error above.
 		//
 		// This is only about *creating* a variable.  Once it exists, the RHS should
 		// read its register, so NAME stays ahead of the RHS and no temp is needed --
 		// "x = x + 1" compiles straight into x's register.  Guarding the destination
 		// against a RHS that overwrites it before reading its operands is a separate
 		// concern, handled by IsLiveVariableReg in Visit(ListNode)/Visit(MapNode).
-		Boolean useTemp = isNew && node.Value.MayReadVar(node.Variable);
+		//
+		// The test is whether a NAME already dominates, which is exactly when
+		// EnsureNamed below has nothing to emit and so nothing to order against.  A
+		// brand-new variable is one case; the other is the sibling-branch read above,
+		// where the register exists but the name is not established on this path, and
+		// running its NAME first would show the read an unwritten register instead of
+		// letting it fall back to the enclosing scope.
+		Boolean useTemp = !IsRegisterNamed(node.Variable) && node.Value.MayReadVar(node.Variable);
 
 		// Emit a NAME op unless one already dominates this point.  This must run
 		// on every path that assigns the variable, including conditional branches
@@ -1034,12 +1103,17 @@ public class CodeGenerator : IASTVisitor {
 		Int32 funcIndexBeforeRHS = _functions.Count;
 
 		String savedLocalOnly = _localOnlyName;
-		if (localOnly) _localOnlyName = node.Variable;
+		Boolean savedDeferred = _localOnlyDeferred;
+		if (localOnly) {
+			_localOnlyName = node.Variable;
+			_localOnlyDeferred = deferred;
+		}
 
 		if (useTemp) {
 			Int32 tempReg = AllocReg();
 			Int32 rhsReg = CompileInto(node.Value, tempReg);
 			_localOnlyName = savedLocalOnly;
+			_localOnlyDeferred = savedDeferred;
 			// NAME is not a passive binding: via MapToRegister it imports any existing
 			// value for this name out of the frame's live LocalVarMap into the
 			// register.  Copying the temp in afterwards overwrites that stale import
@@ -1050,6 +1124,7 @@ public class CodeGenerator : IASTVisitor {
 		} else {
 			CompileInto(node.Value, varReg);  // get RHS directly into the variable's register
 			_localOnlyName = savedLocalOnly;
+			_localOnlyDeferred = savedDeferred;
 		}
 
 		// The variable exists from here on, so nested expressions in later statements
@@ -1900,10 +1975,21 @@ public class CodeGenerator : IASTVisitor {
 			varReg = TakeVarReg(node.Variable);
 			_variableRegs[node.Variable] = varReg;
 		}
+
+		// Give the body's new variables their registers before compiling the body,
+		// so that nothing the body frees and re-allocates can land on one of them.
+		// A `for` has no condition to re-run, but its body still has a back edge:
+		// an `if` inside it frees its condition temp before the arms are compiled,
+		// and a variable created in an arm would otherwise be handed that same
+		// register -- whereupon the next iteration's condition test overwrites the
+		// value the previous iteration stored.  See ReserveBodyVarRegs.
+		List<String> reserved = ReserveBodyVarRegs(node.Body);
+
 		// Peel the first iteration's NEXT/ITERGET when the loop variable still needs
 		// a NAME, so the NAME lands on a path taken only when the body will run.  If
 		// a NAME already dominates -- the variable existed before the loop -- there
 		// is nothing to place and the plain layout is smaller.
+		Int32 nameMark = _namedStack.Count;
 		Boolean peelFirst = !_globalScope && !IsRegisterNamed(node.Variable);
 		if (peelFirst) {
 			_emitter.EmitABC(Opcode.NEXT_rA_rB, indexReg, listReg, 0, "index++; skip next if done");
@@ -1935,8 +2021,18 @@ public class CodeGenerator : IASTVisitor {
 		// Jump back to loopStart
 		_emitter.EmitJump(Opcode.JUMP_iABC, loopStart, "loop back");
 
+		ReleaseBodyVarRegs(reserved);
+
 		// Place afterLoop label
 		_emitter.PlaceLabel(afterLoop);
+
+		// The loop variable's NAME sits in the peeled first iteration, which a
+		// zero-iteration loop jumps straight past, so it is not definitely assigned
+		// out here -- exactly as for the names a `while` preheader binds.  Forgetting
+		// it is what makes a later `d = 99` emit its own NAME instead of assuming the
+		// peel's; without that, the store lands in a register no name points at and
+		// the next read fails as undefined (bugs.md entry 9).
+		PopNamesTo(nameMark);
 
 		// Pop labels.  A `for` may iterate zero times, so its breaks establish
 		// nothing about the code after it.

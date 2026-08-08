@@ -87,6 +87,7 @@ String BytecodeUtil::ToMnemonic(Opcode opcode) {
 		case Opcode::FUNCREF_iA_iBC: return "FUNCREF_iA_iBC";
 		case Opcode::ASSIGN_rA_rB_kC:return "ASSIGN_rA_rB_kC";
 		case Opcode::NAME_rA_kBC:    return "NAME_rA_kBC";
+		case Opcode::CHKNAME_rA_kBC: return "CHKNAME_rA_kBC";
 		case Opcode::ADD_rA_rB_rC:   return "ADD_rA_rB_rC";
 		case Opcode::SUB_rA_rB_rC:   return "SUB_rA_rB_rC";
 		case Opcode::MUL_rA_rB_rC:   return "MUL_rA_rB_rC";
@@ -174,6 +175,7 @@ Opcode BytecodeUtil::FromMnemonic(String s) {
 	if (s == "FUNCREF_iA_iBC")  return Opcode::FUNCREF_iA_iBC;
 	if (s == "ASSIGN_rA_rB_kC") return Opcode::ASSIGN_rA_rB_kC;
 	if (s == "NAME_rA_kBC")     return Opcode::NAME_rA_kBC;
+	if (s == "CHKNAME_rA_kBC")  return Opcode::CHKNAME_rA_kBC;
 	if (s == "ADD_rA_rB_rC")    return Opcode::ADD_rA_rB_rC;
 	if (s == "SUB_rA_rB_rC")    return Opcode::SUB_rA_rB_rC;
 	if (s == "MUL_rA_rB_rC")    return Opcode::MUL_rA_rB_rC;

@@ -1986,6 +1986,117 @@ print [a, b, c, d, e, f, g]
 --------------------------------
 [42, 7, -5, "abcd", 1, 1, 1024]
 ================================
+==== A sibling branch of an `if` inside a loop may have created the local on an
+==== earlier iteration, so a read there means that local, not a nonlocal.  This
+==== is the accumulator idiom lib/listUtil.ms uses (bugs.md entry 11).
+================================
+globals.result = 1000
+f = function(seq)
+	first = true
+	for item in seq
+		if first then
+			result = item
+			first = false
+		else
+			result = result * item
+		end if
+	end for
+	return result
+end function
+print f([2, 3, 4])
+print result
+--------------------------------
+24
+1000
+================================
+==== Same in a while loop
+================================
+f = function(seq)
+	first = true
+	i = 0
+	while i < seq.len
+		if first then
+			r = seq[i]
+			first = false
+		else
+			r = r * seq[i]
+		end if
+		i = i + 1
+	end while
+	return r
+end function
+print f([2, 3, 4])
+--------------------------------
+24
+================================
+==== The rule itself does not weaken, it just moves to run time: reaching that
+==== read with the local still unassigned is an error, not a read of the global
+==== that happens to share the name.
+================================
+globals.result = 1000
+f = function(seq)
+	first = false
+	for item in seq
+		if first then
+			result = item
+			first = false
+		else
+			result = result * item
+		end if
+	end for
+	return result
+end function
+print f([2, 3, 4])
+--------------------------------
+Runtime Error: Undefined Local Identifier: 'result' is not yet assigned in this scope [line 9]
+================================
+==== It takes a register a sibling branch has already claimed to reach that
+==== state.  With no other assignment to the name, a loop body's `n = n + 1` is
+==== still the compile error it was.
+================================
+globals.n = 5
+f = function
+	for i in [1, 2]
+		n = n + 1
+	end for
+	return n
+end function
+print f
+--------------------------------
+Compiler Error: illegal assignment to unqualified local 'n' based on nonlocal [line 4]
+================================
+==== And outside a loop, where no earlier iteration can have run, the sibling
+==== branch is still a compile error.
+================================
+globals.n = 5
+f = function(c)
+	if c then
+		n = 42
+	else
+		n = n * 2
+	end if
+	return n
+end function
+print f(0)
+--------------------------------
+Compiler Error: illegal assignment to unqualified local 'n' based on nonlocal [line 6]
+================================
+==== An assignment elsewhere in the loop body counts as the sibling branch too
+================================
+globals.n = 100
+f = function(c)
+	for i in [1, 2]
+		if c then
+			n = 1
+		end if
+		n = n + 1
+	end for
+	return n
+end function
+print f(1)
+--------------------------------
+2
+================================
 ==== Self-reference with no enclosing variable is an error
 ================================
 x = x
@@ -2779,6 +2890,58 @@ end function
 print f
 --------------------------------
 before
+================================
+==== Leaving the loop variable undefined does not stop a later assignment from
+==== defining it: the peeled preheader's NAME may not have run, so the
+==== assignment has to emit its own (bugs.md entry 9).
+f = function(lst)
+	for d in lst
+	end for
+	d = 99
+	return d
+end function
+print f([1])
+print f([])
+--------------------------------
+99
+99
+================================
+==== Same where the body reads the loop variable, so the peel is certainly there
+f = function(lst)
+	for d in lst
+		print "saw " + d
+	end for
+	d = 99
+	return d
+end function
+print f([])
+print f([7])
+--------------------------------
+99
+saw 7
+99
+================================
+==== A variable first assigned in a branch of an `if` inside a `for` body keeps
+==== its value across iterations: the loop's register reservation keeps the
+==== branch's condition temp off it (bugs.md entry 10).
+f = function
+	first = true
+	for item in [3, 1, 2]
+		if first then
+			r = item
+			first = false
+		else
+			print "have " + r
+			if item < r then r = item
+		end if
+	end for
+	return r
+end function
+print f
+--------------------------------
+have 3
+have 1
+1
 ================================================================================
 ==== SECTION 13: CONTINUE STATEMENT
 ================================================================================
@@ -4495,6 +4658,46 @@ hell0 w0rld
 print replace("aaa", "a", "b", 2)
 --------------------------------
 bba
+================================
+==== replace: with an empty replacement
+================================
+print "abc".replace("b", "")
+print "aaa".replace("a", "")
+--------------------------------
+ac
+
+================================
+==== replace: search string is char(0), not found
+================================
+print "abc".replace(char(0), "X")
+--------------------------------
+abc
+================================
+==== replace: search string is char(0), found
+================================
+print ("a" + char(0) + "b").replace(char(0), "-")
+--------------------------------
+a-b
+================================
+==== replace: char(0) in the string being searched
+================================
+t = ("a" + char(0) + "b").replace("b", "X")
+print t.len
+print code(t[1])
+print t[2]
+--------------------------------
+3
+0
+X
+================================
+==== replace: no match, in a string containing char(0)
+================================
+t = ("a" + char(0) + "b").replace("zz", "!")
+print t.len
+print code(t[1])
+--------------------------------
+3
+0
 ================================
 ==== replace: in map (replaces values)
 ================================

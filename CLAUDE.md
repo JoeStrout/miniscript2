@@ -76,6 +76,7 @@ tools/build.sh cpp off  # Force switch-based
 ## Development Notes
 
 - **Always edit C# files** in `cs/` directory, never generated C++ directly, unless trying to pin down some C++-only crash; then you may hack the generated C++ code to gain understanding.
+- **Never edit `notes/DEV_LOG.md`.**  That file is strictly the user's, and is written in the user's own voice; do not add, reword, or remove entries there, even when asked to "update the notes" after a change.  Other files in `notes/` (such as `bugs.md`) are fair game.
 - **Memory management:** Use GC_PROTECT for runtime Values, shared_ptr for host app data.
 - **Coding standards:** See [CS_CODING_STANDARDS.md](notes/CS_CODING_STANDARDS.md).
 

@@ -279,9 +279,10 @@ public:
     
     // C# String API - Properties
     int Length() const { return lengthC(); }
-    bool Empty() const { return Length() == 0; }
+    // (Emptiness checks use the byte length, which never has to scan the string.)
+    bool Empty() const { return lengthB() == 0; }
     // MS1-compatible lowercase alias (SimpleString had empty()).
-    bool empty() const { return Length() == 0; }
+    bool empty() const { return lengthB() == 0; }
 
     // C# String API - Character access (by character index, returns Unicode code point)
     uint32_t operator[](int index) const {
@@ -602,7 +603,7 @@ public:
     }
     
     // C# String API - Static methods (as regular methods)
-    static bool IsNullOrEmpty(const String& s) { return s.Length() == 0; }
+    static bool IsNullOrEmpty(const String& s) { return s.LengthB() == 0; }
     
     bool IsNullOrWhiteSpace() const {
         const StringStorage* s = getStorageRaw();

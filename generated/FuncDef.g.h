@@ -5,11 +5,12 @@
 #include "core_includes.h"
 #include "forward_decs.g.h"
 #include "value.h"
+#include <functional>
 
 namespace MiniScript {
 struct Context;  // forward declaration; defined in VM.g.h
 struct IntrinsicResult;  // forward declaration
-typedef IntrinsicResult (*NativeCallbackDelegate)(Context, IntrinsicResult);
+typedef std::function<IntrinsicResult(Context, IntrinsicResult)> NativeCallbackDelegate;
 inline bool IsNull(NativeCallbackDelegate f) { return f == nullptr; }
 
 // DECLARATIONS

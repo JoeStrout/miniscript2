@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using static System.Runtime.CompilerServices.MethodImplOptions;
 // H: #include "value.h"
+// H: #include <functional>
 // CPP: #include "VM.g.h"
 // CPP: #include "Interpreter.g.h"
 // CPP: #include <unordered_map>
@@ -14,7 +15,7 @@ using VMRef = VM; // H: typedef VMStorage& VMRef;
 
 // Delegate method for text output.  This is used for `print` output,
 // and also for errors and REPL implicit results.
-// H: typedef void (*TextOutputMethod)(String, Boolean);
+// H: typedef std::function<void(String, Boolean)> TextOutputMethod;
 // H: inline bool IsNull(TextOutputMethod f) { return f == nullptr; }
 public delegate void TextOutputMethod(String output, Boolean addLineBreak); // CPP:
 

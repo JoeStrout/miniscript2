@@ -5,11 +5,12 @@
 #include "core_includes.h"
 #include "forward_decs.g.h"
 #include "value.h"
+#include <functional>
 
 namespace MiniScript {
 class VMStorage;
 typedef VMStorage& VMRef;
-typedef void (*TextOutputMethod)(String, Boolean);
+typedef std::function<void(String, Boolean)> TextOutputMethod;
 inline bool IsNull(TextOutputMethod f) { return f == nullptr; }
 
 // DECLARATIONS

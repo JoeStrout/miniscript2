@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using static System.Runtime.CompilerServices.MethodImplOptions;
 // H: #include "value.h"
+// H: #include <functional>
 // CPP: #include "StringUtils.g.h"
 // CPP: #include "IntrinsicAPI.g.h"
 
@@ -11,7 +12,7 @@ namespace MiniScript {
 // Native callback for intrinsic functions.
 // H: struct Context;  // forward declaration; defined in VM.g.h
 // H: struct IntrinsicResult;  // forward declaration
-// H: typedef IntrinsicResult (*NativeCallbackDelegate)(Context, IntrinsicResult);
+// H: typedef std::function<IntrinsicResult(Context, IntrinsicResult)> NativeCallbackDelegate;
 // H: inline bool IsNull(NativeCallbackDelegate f) { return f == nullptr; }
 public delegate IntrinsicResult NativeCallbackDelegate(Context context, IntrinsicResult partialResult); // CPP:
 

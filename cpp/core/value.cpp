@@ -225,8 +225,12 @@ Value value_mult_nonnumeric(Value a, Value b) {
 // identity.  Lists and maps are NOT handled here -- RecursiveEqual walks them
 // iteratively so that reference cycles cannot recurse forever.
 static bool value_equal_scalar(Value a, Value b) {
+    // Numbers compare by IEEE value, which must be checked BEFORE the bitwise-
+    // identity fast path below: NaN is not equal to itself, yet two NaNs may
+    // well have identical NaN-boxed payloads.
+    if (a.IsNumber() || b.IsNumber())
+        return a.IsNumber() && b.IsNumber() && a.AsDouble() == b.AsDouble();
     if (a.RefEquals(b)) return true;
-    if (a.IsNumber() && b.IsNumber()) return a.AsDouble() == b.AsDouble();
     if (a.IsString() && b.IsString()) return string_equals(a, b);
     if (a.IsNull()   && b.IsNull())   return true;
     // Same-type non-container reference values compare by identity; since
@@ -259,6 +263,9 @@ namespace {
 // instead of overflowing the stack.
 bool Value::RecursiveEqual(Value rhs) const {
     Value a = *this, b = rhs;
+    // Numbers first: NaN != NaN, so identical bits do not imply equality
+    // (see value_equal_scalar).
+    if (a.IsNumber() || b.IsNumber()) return value_equal_scalar(a, b);
     if (a.RefEquals(b)) return true;
     // Hot path: if neither side is a collection, no work-list is needed.
     if (!(a.IsList() || a.IsMap()) && !(b.IsList() || b.IsMap()))

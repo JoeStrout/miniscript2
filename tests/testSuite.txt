@@ -3933,6 +3933,24 @@ print (1/0) isa number
 1
 1
 ================================
+==== NaN is not equal to itself
+================================
+nan = 0/0
+print nan
+print nan == nan
+print nan != nan
+print nan == 0
+x = nan
+print x == nan
+print [nan] == [nan]
+--------------------------------
+NaN
+0
+1
+0
+0
+0
+================================
 ==== atan
 ================================
 print atan(0)

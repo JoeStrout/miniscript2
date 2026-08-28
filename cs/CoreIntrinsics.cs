@@ -1558,10 +1558,10 @@ public static class CoreIntrinsics {
 		_gcMap = Value.Null;
 		_versionMap = Value.Null;
 		_intrinsicsMap = Value.Null;
+		Intrinsic.ClearShortNames();
 		if (_invalidateCallbacks != null) {
 			for (Int32 i = 0; i < _invalidateCallbacks.Count; i++) _invalidateCallbacks[i]();
 		}
-		Intrinsic.ClearShortNames();
 	}
 
 

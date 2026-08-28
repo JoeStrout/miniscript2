@@ -19,6 +19,13 @@ public abstract class GCSetBase {
 	protected List<Byte> _retainCounts = new List<Byte>();
 	protected List<Int32> _free = new List<Int32>();
 
+	// Slots currently in use.  Maintained incrementally rather than counted on
+	// demand: LiveCount() is called on every MaybeCollect tick, and scanning
+	// _inUse there would be O(slots ever allocated) once per frame.  _inUse is
+	// written in exactly three places, all in this class (both AllocItem
+	// branches, and Sweep), so the tally cannot drift.
+	protected Int32 _liveCount = 0;
+
 	// Subclass calls item[idx].MarkChildren().
 	protected abstract void CallMarkChildren(Int32 idx);
 
@@ -32,6 +39,7 @@ public abstract class GCSetBase {
 
 	public Int32 AllocItem() {
 		Int32 idx;
+		_liveCount++;
 		if (_free.Count > 0) {
 			idx = _free[_free.Count - 1];
 			_free.RemoveAt(_free.Count - 1);
@@ -85,6 +93,7 @@ public abstract class GCSetBase {
 				_inUse[i]        = false;
 				_retainCounts[i] = 0;
 				_free.Add(i);
+				_liveCount--;
 			}
 		}
 	}
@@ -96,11 +105,12 @@ public abstract class GCSetBase {
 	}
 
 	public Int32 LiveCount() {
-		Int32 n = 0;
-		for (Int32 i = 0; i < _inUse.Count; i++) {
-			if (_inUse[i]) n++;
-		}
-		return n;
+		return _liveCount;
+	}
+
+	// Slots allocated so far, live or free -- the high-water mark of this set.
+	public Int32 SlotCount() {
+		return _inUse.Count;
 	}
 }
 

@@ -39,9 +39,17 @@ struct GCSetBase {
 	protected: void set__retainCounts(List<Byte> _v);
 	protected: List<Int32> _free();
 	protected: void set__free(List<Int32> _v);
+	protected: Int32 _liveCount();
+	protected: void set__liveCount(Int32 _v);
 	protected: void CallMarkChildren(Int32 idx);
 	protected: void CallOnSweep(Int32 idx);
 	protected: void AppendItem();
+
+	// Slots currently in use.  Maintained incrementally rather than counted on
+	// demand: LiveCount() is called on every MaybeCollect tick, and scanning
+	// _inUse there would be O(slots ever allocated) once per frame.  _inUse is
+	// written in exactly three places, all in this class (both AllocItem
+	// branches, and Sweep), so the tally cannot drift.
 
 	// Subclass calls item[idx].MarkChildren().
 
@@ -74,6 +82,9 @@ struct GCSetBase {
 	public: inline Boolean IsLiveSlot(Int32 idx);
 
 	public: inline Int32 LiveCount();
+
+	// Slots allocated so far, live or free -- the high-water mark of this set.
+	public: inline Int32 SlotCount();
 }; // end of struct GCSetBase
 
 template<typename WrapperType, typename StorageType> WrapperType As(GCSetBase inst);
@@ -85,9 +96,16 @@ class GCSetBaseStorage : public std::enable_shared_from_this<GCSetBaseStorage> {
 	protected: List<Boolean> _marked = List<Boolean>::New();
 	protected: List<Byte> _retainCounts = List<Byte>::New();
 	protected: List<Int32> _free = List<Int32>::New();
+	protected: Int32 _liveCount = 0;
 	protected: virtual void CallMarkChildren(Int32 idx) = 0;
 	protected: virtual void CallOnSweep(Int32 idx) = 0;
 	protected: virtual void AppendItem() = 0;
+
+	// Slots currently in use.  Maintained incrementally rather than counted on
+	// demand: LiveCount() is called on every MaybeCollect tick, and scanning
+	// _inUse there would be O(slots ever allocated) once per frame.  _inUse is
+	// written in exactly three places, all in this class (both AllocItem
+	// branches, and Sweep), so the tally cannot drift.
 
 	// Subclass calls item[idx].MarkChildren().
 
@@ -120,6 +138,9 @@ class GCSetBaseStorage : public std::enable_shared_from_this<GCSetBaseStorage> {
 	public: Boolean IsLiveSlot(Int32 idx);
 
 	public: Int32 LiveCount();
+
+	// Slots allocated so far, live or free -- the high-water mark of this set.
+	public: Int32 SlotCount();
 }; // end of class GCSetBaseStorage
 
 class GCStringSetStorage : public GCSetBaseStorage {
@@ -413,6 +434,8 @@ inline List<Byte> GCSetBase::_retainCounts() { return get()->_retainCounts; }
 inline void GCSetBase::set__retainCounts(List<Byte> _v) { get()->_retainCounts = _v; }
 inline List<Int32> GCSetBase::_free() { return get()->_free; }
 inline void GCSetBase::set__free(List<Int32> _v) { get()->_free = _v; }
+inline Int32 GCSetBase::_liveCount() { return get()->_liveCount; }
+inline void GCSetBase::set__liveCount(Int32 _v) { get()->_liveCount = _v; }
 inline void GCSetBase::CallMarkChildren(Int32 idx) { return get()->CallMarkChildren(idx); }
 inline void GCSetBase::CallOnSweep(Int32 idx) { return get()->CallOnSweep(idx); }
 inline void GCSetBase::AppendItem() { return get()->AppendItem(); }
@@ -425,6 +448,7 @@ inline void GCSetBase::MarkRetained() { return get()->MarkRetained(); }
 inline void GCSetBase::Sweep() { return get()->Sweep(); }
 inline Boolean GCSetBase::IsLiveSlot(Int32 idx) { return get()->IsLiveSlot(idx); }
 inline Int32 GCSetBase::LiveCount() { return get()->LiveCount(); }
+inline Int32 GCSetBase::SlotCount() { return get()->SlotCount(); }
 
 inline GCStringSet::GCStringSet(std::shared_ptr<GCStringSetStorage> stor) : GCSetBase(stor) {}
 inline GCStringSetStorage* GCStringSet::get() const { return static_cast<GCStringSetStorage*>(storage.get()); }

@@ -23,6 +23,12 @@ GCFuncRefSet GCManager::Functions = nullptr;
 GCHandleSet GCManager::Handles = nullptr;
 Dictionary<String, Int32> GCManager::_internTable = nullptr;
 Boolean GCManager::_fullCollection = Boolean(false);
+Int32 GCManager::GCIntervalTicks = 60;
+Int32 GCManager::GCMinIntervalTicks = 30;
+Int32 GCManager::GCEncouragedIntervalTicks = 20;
+Int32 GCManager::GCEncouragedMinIntervalTicks = 5;
+Int32 GCManager::GCHandlesForMinInterval = 64;
+Int32 GCManager::_ticksSinceCollect = 0;
 List<Value> GCManager::_roots = nullptr;
 List<MarkCallback> GCManager::_markCallbackFns = nullptr;
 List<object> GCManager::_markCallbackData = nullptr;
@@ -155,11 +161,36 @@ void GCManager::DispatchMark(Int32 setIdx,Int32 itemIdx) {
 void GCManager::FullCollectGarbage() {
 	CollectGarbageInternal(Boolean(true));
 }
+void GCManager::MaybeCollect(Boolean encouraged ) {
+	if (!encouraged) _ticksSinceCollect++;
+
+	Int32 interval    = encouraged ? GCEncouragedIntervalTicks : GCIntervalTicks;
+	Int32 minInterval = encouraged ? GCEncouragedMinIntervalTicks : GCMinIntervalTicks;
+
+	// Live handles scale the interval down from `interval` to `minInterval`,
+	// reaching the floor at GCHandlesForMinInterval.  LiveCount() is an O(1)
+	// running tally (see GCSetBase), so this costs nothing per tick.
+	Int32 handles = Handles.LiveCount();
+	if (handles > 0 && interval > minInterval) {
+		if (handles >= GCHandlesForMinInterval) {
+			interval = minInterval;
+		} else {
+			interval = interval - ((interval - minInterval) * handles) / GCHandlesForMinInterval;
+		}
+	}
+
+	if (_ticksSinceCollect < interval) return;
+	CollectGarbage();		// resets _ticksSinceCollect
+}
 void GCManager::CollectGarbage() {
 	CollectGarbageInternal(Boolean(false));
 }
 void GCManager::CollectGarbageInternal(Boolean includeInterned) {
 	_fullCollection = includeInterned;
+
+	// Any collection restarts MaybeCollect's clock, so an explicit
+	// gc.collect is not immediately followed by an automatic one.
+	_ticksSinceCollect = 0;
 
 	// 1. Clear all mark bits.
 	BigStrings.PrepareForGC();

@@ -1280,6 +1280,11 @@ public static class CoreIntrinsics {
 				vSeconds = ctx.GetArg(0);
 				if (vSeconds.IsError()) return ctx.vm.RaiseUncaughtError(vSeconds);
 				double interval = vSeconds.NumericVal();
+				// We are about to be idle for a while, so this is a cheap moment
+				// to collect -- the pause hides inside the wait.  Only on the
+				// fresh call: the continuation below runs on every VM step until
+				// the wait expires, and collecting there would fire repeatedly.
+				GCManager.MaybeCollect(true);
 				return new IntrinsicResult(new Value(now + interval), false);
 			} else {
 				// Continuation: check if we've waited long enough
@@ -1296,6 +1301,8 @@ public static class CoreIntrinsics {
 		f = Intrinsic.Create("yield");
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			ctx.vm.yielding = true;
+			// Control is going back to the host anyway; take the opportunity.
+			GCManager.MaybeCollect(true);
 			return IntrinsicResult.Null;
 		};
 
@@ -1476,13 +1483,15 @@ public static class CoreIntrinsics {
 			int maps           = GCManager.Maps.LiveCount();
 			int errors         = GCManager.Errors.LiveCount();
 			int functions      = GCManager.Functions.LiveCount();
-			int total = bigStrings + internedStrings + lists + maps + errors + functions;
+			int handles        = GCManager.Handles.LiveCount();
+			int total = bigStrings + internedStrings + lists + maps + errors + functions + handles;
 			result.MapSet("bigStrings",      new Value(bigStrings));
 			result.MapSet("internedStrings", new Value(internedStrings));
 			result.MapSet("lists",           new Value(lists));
 			result.MapSet("maps",            new Value(maps));
 			result.MapSet("errors",          new Value(errors));
 			result.MapSet("functions",       new Value(functions));
+			result.MapSet("handles",         new Value(handles));
 			result.MapSet("total",           new Value(total));
 			result.Freeze();
 			return new IntrinsicResult(result);

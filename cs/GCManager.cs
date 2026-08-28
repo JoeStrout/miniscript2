@@ -49,6 +49,38 @@ public static class GCManager {
 	// and sweeps the InternedStrings set.  Normal cycles leave it untouched.
 	private static Boolean _fullCollection = false;
 
+	// ── MaybeCollect tuning ──────────────────────────────────────────────────
+	// All intervals are counted in ticks, where a tick is one MaybeCollect(false)
+	// call.  GCManager has no notion of a frame; the caller defines the tick by
+	// how often it calls, and a host game loop calling once per frame makes the
+	// defaults below read as "60 frames" etc.  Public so a host (or a future
+	// intrinsic) can retune them without a rebuild.
+
+	// No live handles, ordinary tick: collect about once per second at 60fps.
+	public static Int32 GCIntervalTicks = 60;
+
+	// Floor for an ordinary tick.  However many handles are live, we never
+	// collect more often than this -- a busy handle churn must not turn into a
+	// mark-sweep every other frame.
+	public static Int32 GCMinIntervalTicks = 30;
+
+	// The same two numbers for an "encouraged" call -- a moment the caller knows
+	// is a good one (an explicit yield, the start of a wait), where a collection
+	// is cheap in wall-clock terms because we were about to be idle anyway.
+	public static Int32 GCEncouragedIntervalTicks = 20;
+	public static Int32 GCEncouragedMinIntervalTicks = 5;
+
+	// Live-handle count at which the interval reaches its floor.  Handles are
+	// the objects with finalizers -- file descriptors, GPU resources, host
+	// buffers -- and their cost is not their memory footprint, so their number
+	// (not bytes allocated) is what pulls collection earlier.
+	public static Int32 GCHandlesForMinInterval = 64;
+
+	// Ticks since the last collection.  Only an ordinary (non-encouraged) call
+	// advances this, so it stays an honest frame count even when a script yields
+	// several times per frame.
+	private static Int32 _ticksSinceCollect = 0;
+
 	private static List<Value> _roots = null;
 
 	// ── Mark callbacks ───────────────────────────────────────────────────────
@@ -237,6 +269,50 @@ public static class GCManager {
 		CollectGarbageInternal(true);
 	}
 
+	// Collect, but only if enough has happened since the last time to be worth
+	// it.  Safe to call often; the host is expected to call it once per frame.
+	//
+	// Mark-sweep costs O(live set) rather than O(garbage), so an unconditional
+	// collection every frame is a tax proportional to heap size, paid whether or
+	// not there is anything to reclaim.  Hence the interval.
+	//
+	// `encouraged` says the caller is at a known-good moment -- an explicit
+	// yield, or the start of a wait -- where the pause is hidden by idleness
+	// that was going to happen anyway.  Such calls use the lower thresholds and
+	// so get first crack at collecting; the ordinary per-frame call is the
+	// fallback that guarantees collection happens even in a script that never
+	// yields.
+	//
+	// Every caller must be at a VM safe point.  VM.MarkRoots scans the register
+	// stack (including the current frame), every call frame, globals, and
+	// pending-call results, so being inside an intrinsic is fine on its own --
+	// `yield` and `wait` both call here.  What is NOT safe is holding a GC Value
+	// in a host/C++ local that is not also reachable from those roots, since
+	// nothing will mark it.  A resumable intrinsic should also call only on its
+	// fresh-call branch; a continuation runs on every VM step, and collecting
+	// from there would fire far more often than the interval implies.
+	public static void MaybeCollect(Boolean encouraged = false) {
+		if (!encouraged) _ticksSinceCollect++;
+
+		Int32 interval    = encouraged ? GCEncouragedIntervalTicks : GCIntervalTicks;
+		Int32 minInterval = encouraged ? GCEncouragedMinIntervalTicks : GCMinIntervalTicks;
+
+		// Live handles scale the interval down from `interval` to `minInterval`,
+		// reaching the floor at GCHandlesForMinInterval.  LiveCount() is an O(1)
+		// running tally (see GCSetBase), so this costs nothing per tick.
+		Int32 handles = Handles.LiveCount();
+		if (handles > 0 && interval > minInterval) {
+			if (handles >= GCHandlesForMinInterval) {
+				interval = minInterval;
+			} else {
+				interval = interval - ((interval - minInterval) * handles) / GCHandlesForMinInterval;
+			}
+		}
+
+		if (_ticksSinceCollect < interval) return;
+		CollectGarbage();		// resets _ticksSinceCollect
+	}
+
 	// Run a full mark-sweep cycle.
 	public static void CollectGarbage() {
 		CollectGarbageInternal(false);
@@ -244,6 +320,10 @@ public static class GCManager {
 
 	private static void CollectGarbageInternal(Boolean includeInterned) {
 		_fullCollection = includeInterned;
+
+		// Any collection restarts MaybeCollect's clock, so an explicit
+		// gc.collect is not immediately followed by an automatic one.
+		_ticksSinceCollect = 0;
 
 		// 1. Clear all mark bits.
 		BigStrings.PrepareForGC();

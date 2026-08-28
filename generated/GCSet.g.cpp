@@ -7,6 +7,7 @@ namespace MiniScript {
 
 Int32 GCSetBaseStorage::AllocItem() {
 	Int32 idx;
+	_liveCount++;
 	if (_free.Count() > 0) {
 		idx = _free[_free.Count() - 1];
 		_free.RemoveAt(_free.Count() - 1);
@@ -48,6 +49,7 @@ void GCSetBaseStorage::Sweep() {
 			_inUse[i]        = Boolean(false);
 			_retainCounts[i] = 0;
 			_free.Add(i);
+			_liveCount--;
 		}
 	}
 }
@@ -55,11 +57,10 @@ Boolean GCSetBaseStorage::IsLiveSlot(Int32 idx) {
 	return _inUse[idx] && (_marked[idx] || _retainCounts[idx] > 0);
 }
 Int32 GCSetBaseStorage::LiveCount() {
-	Int32 n = 0;
-	for (Int32 i = 0; i < _inUse.Count(); i++) {
-		if (_inUse[i]) n++;
-	}
-	return n;
+	return _liveCount;
+}
+Int32 GCSetBaseStorage::SlotCount() {
+	return _inUse.Count();
 }
 
 GCStringSetStorage::GCStringSetStorage(Int32 initialCapacity ) {

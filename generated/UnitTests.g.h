@@ -124,6 +124,15 @@ class UnitTests {
 	// nothing here goes through the VM yet.
 	public: static Boolean TestGlobals();
 
+	// ── Calling a function value from native code (RunFunction) ──────────────────
+
+	// A host that accepts a callback -- a fill or map function, a sort key, a
+	// raylib hook -- cannot tell whether the script handed it `@myFunc` or
+	// `@abs`; both are funcrefs.  Intrinsic ones used to come back null, because
+	// RunFunction only knew how to push a frame and drive RunInner, and an
+	// intrinsic has no bytecode for RunInner to run.
+	public: static Boolean TestRunFunction();
+
 	public: static Boolean RunAll();
 }; // end of struct UnitTests
 

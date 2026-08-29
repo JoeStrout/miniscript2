@@ -243,6 +243,11 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	// extra args raise an error, missing args take the callee's parameter
 	// defaults.  Returns the callee's result, or Value.Null on error (with the
 	// error surfaced on the outer run so RunUntilDone reports it).
+	// An *intrinsic* funcref (@rnd, @abs, @str) is a function reference like any
+	// other, and a host that takes a callback -- list.apply, Matrix.ofSize's
+	// function form -- has no way to know it was handed one.  Such a callee has
+	// no bytecode, so it takes the short path below: bind the arguments, invoke
+	// the native callback, return what it gives back.
 	public: Value RunFunction(Value funcRef, List<Value> args);
 
 	public: void Reset(List<FuncDef> allFunctions);
@@ -652,6 +657,11 @@ struct VM {
 	// extra args raise an error, missing args take the callee's parameter
 	// defaults.  Returns the callee's result, or Value.Null on error (with the
 	// error surfaced on the outer run so RunUntilDone reports it).
+	// An *intrinsic* funcref (@rnd, @abs, @str) is a function reference like any
+	// other, and a host that takes a callback -- list.apply, Matrix.ofSize's
+	// function form -- has no way to know it was handed one.  Such a callee has
+	// no bytecode, so it takes the short path below: bind the arguments, invoke
+	// the native callback, return what it gives back.
 	public: inline Value RunFunction(Value funcRef, List<Value> args);
 
 	public: inline void Reset(List<FuncDef> allFunctions);

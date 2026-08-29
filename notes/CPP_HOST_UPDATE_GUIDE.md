@@ -408,9 +408,18 @@ Value Interpreter::RunFunction(Value funcRef, ValueList args);   // or vm.RunFun
 It pushes a frame for `funcRef` and runs the VM *re-entrantly to completion* of
 that one call, then restores the interrupted execution state and returns the
 result.  It is safe to call from inside an intrinsic or a C callback (i.e. while
-already nested in `vm.Run()`).  Arguments bind positionally (missing → parameter
+already nested in `vm.Run()`), and equally from outside one — between runs, or
+after the program has ended.  Arguments bind positionally (missing → parameter
 defaults, extra → runtime error); a runtime error raised by the callee is
 surfaced on the outer run (which then stops and reports it).
+
+`funcRef` may name a **script function or an intrinsic** (`@rnd`, `@abs`, `@str`).
+That matters because a host taking a callback — a fill or map function, a sort
+key, a trace hook — has no way to tell which kind it was handed, and no reason to
+care: an intrinsic callee simply skips the re-entrant run and invokes its native
+callback directly.  The one thing an intrinsic callee cannot do here is *defer*
+(return a not-done `IntrinsicResult`, as `import` and `wait` do); there is no
+outer loop to resume it, so that raises a runtime error rather than hanging.
 
 Typical bridge shape (holding the `Interpreter` you captured via
 `context.vm.GetInterpreter()` at registration time):

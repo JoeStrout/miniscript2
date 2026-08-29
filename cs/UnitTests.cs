@@ -1519,6 +1519,64 @@ public static class UnitTests {
 		return true;
 	}
 
+	// ── Calling a function value from native code (RunFunction) ──────────────────
+
+	// A host that accepts a callback -- a fill or map function, a sort key, a
+	// raylib hook -- cannot tell whether the script handed it `@myFunc` or
+	// `@abs`; both are funcrefs.  Intrinsic ones used to come back null, because
+	// RunFunction only knew how to push a frame and drive RunInner, and an
+	// intrinsic has no bytecode for RunInner to run.
+	public static Boolean TestRunFunction() {
+		Boolean ok = true;
+
+		Interpreter interp;
+		interp = new Interpreter(
+			"triple = function(x)\n\treturn x * 3\nend function\n" +
+			"scriptRef = @triple\nabsRef = @abs\nrndRef = @rnd\nroundRef = @round\n");
+		interp.RunUntilDone(10, false);
+
+		List<Value> args = new List<Value>();
+
+		// No arguments, intrinsic callee.
+		Value r = interp.RunFunction(interp.GetGlobalValue("rndRef"), args);
+		ok = ok && Assert(r.IsNumber() && r.DoubleValue() >= 0 && r.DoubleValue() < 1,
+			StringUtils.Format("RunFunction(@rnd) should give a number in [0,1), got {0}",
+				r.ToString(null)));
+
+		// One argument, intrinsic callee.
+		args.Add(new Value(-4));
+		r = interp.RunFunction(interp.GetGlobalValue("absRef"), args);
+		ok = ok && Assert(r == new Value(4),
+			StringUtils.Format("RunFunction(@abs, [-4]) should give 4, got {0}", r.ToString(null)));
+
+		// An argument the caller omits takes the intrinsic's declared default:
+		// round(x) with no decimalPlaces rounds to a whole number.
+		args.Clear();
+		args.Add(new Value(3.7));
+		r = interp.RunFunction(interp.GetGlobalValue("roundRef"), args);
+		ok = ok && Assert(r == new Value(4),
+			StringUtils.Format("RunFunction(@round, [3.7]) should give 4, got {0}", r.ToString(null)));
+
+		// Script functions still go the long way round, unchanged.
+		args.Clear();
+		args.Add(new Value(5));
+		r = interp.RunFunction(interp.GetGlobalValue("scriptRef"), args);
+		ok = ok && Assert(r == new Value(15),
+			StringUtils.Format("RunFunction(@triple, [5]) should give 15, got {0}", r.ToString(null)));
+
+		// ...and an intrinsic call straight after one, since the short path skips
+		// the save/restore of outer execution state that the long path does.
+		args.Clear();
+		args.Add(new Value(-7));
+		r = interp.RunFunction(interp.GetGlobalValue("absRef"), args);
+		ok = ok && Assert(r == new Value(7),
+			StringUtils.Format("RunFunction(@abs, [-7]) after a script call should give 7, got {0}",
+				r.ToString(null)));
+
+		if (!ok) IOHelper.Print("TestRunFunction FAILED");
+		return ok;
+	}
+
 	public static Boolean RunAll() {
 		return TestIntrinsicDefaults()   // first: wants to run before any VM builds the funcrefs
 			&& TestStringUtils()
@@ -1536,6 +1594,7 @@ public static class UnitTests {
 			&& TestResetPreservingGlobals()
 		&& TestHostGlobals()
 		&& TestGlobalsSwitch()
+			&& TestRunFunction()
 			&& TestGCHandle();
 	}
 }

@@ -1481,10 +1481,10 @@ void CoreIntrinsics::InvalidateTypeMaps() {
 	_gcMap = Value::Null;
 	_versionMap = Value::Null;
 	_intrinsicsMap = Value::Null;
+	Intrinsic::ClearShortNames();
 	if (!IsNull(_invalidateCallbacks)) {
 		for (Int32 i = 0; i < _invalidateCallbacks.Count(); i++) _invalidateCallbacks[i]();
 	}
-	Intrinsic::ClearShortNames();
 }
 
 } // end of namespace MiniScript

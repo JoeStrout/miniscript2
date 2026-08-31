@@ -286,6 +286,7 @@ public static class CoreIntrinsics {
 		GCManager.Mark(_errorType);
 		GCManager.Mark(_gcMap);
 		GCManager.Mark(_versionMap);
+		GCManager.Mark(_intrinsicsMap);
 		GCManager.Mark(replInList);
 		GCManager.Mark(replOutList);
 	}

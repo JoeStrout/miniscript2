@@ -1531,8 +1531,7 @@ public static class UnitTests {
 
 		Interpreter interp;
 		interp = new Interpreter(
-			"triple = function(x)\n\treturn x * 3\nend function\n" +
-			"scriptRef = @triple\nabsRef = @abs\nrndRef = @rnd\nroundRef = @round\n");
+			"triple = function(x)\n\treturn x * 3\nend function\nscriptRef = @triple\nabsRef = @abs\nrndRef = @rnd\nroundRef = @round\n");
 		interp.RunUntilDone(10, false);
 
 		List<Value> args = new List<Value>();

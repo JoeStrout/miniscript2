@@ -1422,8 +1422,7 @@ Boolean UnitTests::TestRunFunction() {
 
 	Interpreter interp;
 	interp =  Interpreter::New(
-		"triple = function(x)\n\treturn x * 3\nend function\n" +
-		"scriptRef = @triple\nabsRef = @abs\nrndRef = @rnd\nroundRef = @round\n");
+		"triple = function(x)\n\treturn x * 3\nend function\nscriptRef = @triple\nabsRef = @abs\nrndRef = @rnd\nroundRef = @round\n");
 	interp.RunUntilDone(10, Boolean(false));
 
 	List<Value> args =  List<Value>::New();

@@ -1,204 +1,71 @@
 # MiniScript 2.0 Test Suite
 
-This directory contains all tests for the MiniScript 2.0 project, organized separately from production code.
+## Where the tests actually are
 
-## Directory Structure
+**Most of the coverage lives in the interpreter binary, not in this directory:**
+
+```bash
+build/cpp/miniscript2 --test     # or build/cs/miniscript2 --test
+```
+
+That runs `UnitTests.RunAll` (`cs/UnitTests.cs`) followed by the integration
+suite in `tests/testSuite.txt` -- ~800 cases of MiniScript source paired with
+its expected output.  Adding a case there is usually the right way to cover a
+language- or VM-level change.
+
+This directory additionally holds a small layered C# unit-test tree
+(`cs/transpilable/`), written so it can be transpiled to C++ the same way the
+interpreter is.  Only layer 0 remains: layers 1-4, and the parallel C++ tree
+under `tests/cpp/`, were retired in 2026 after bit-rotting past the point of
+repair -- they were written against a `Value` API of free functions
+(`make_int`, `value_add`, `list_get`) that the C# side never had, against a
+hand-written `cpp/compiler/` that no longer exists, and against core sources
+(`cpp/core/value.c`, `gc.c`) that have since moved or gone.  Look for them in
+git history rather than trusting anything that references them.
 
 ```
 tests/
-├── cpp/                    # C++ tests
-│   ├── unit/              # Unit tests for core/compiler components
-│   ├── parser/            # Parser and lexer tests
-│   ├── vm/                # Virtual machine tests
-│   └── integration/       # End-to-end integration tests
-├── cs/                    # C# tests
-├── fixtures/              # Shared test data
-│   ├── expressions/       # Expression test cases
-│   ├── scripts/           # Full script test cases
-│   └── expected_outputs/  # Expected output files
-└── README.md             # This file
+├── testSuite.txt          # the integration suite, run by --test
+├── eof_input.ms           # fixture: `input` at end of file (build.sh test)
+└── cs/
+    └── transpilable/      # layered C# unit tests
+        ├── TestFramework.cs
+        └── layer0/        # IOHelper, Bytecode
 ```
 
 ## Running Tests
 
-### Quick Commands
-
 From the project root:
 
 ```bash
-# Run all tests
-./tools/build.sh test-all
-
-# Run C++ tests only
-./tools/build.sh test-cpp
-
-# Run C# tests only
-./tools/build.sh test-cs
-
-# Run specific test categories
-./tools/build.sh test-parser
-./tools/build.sh test-vm
+./tools/build.sh test        # quick smoke test of the built executables
+./tools/build.sh test-all    # the C# unit tests under tests/
+./tools/build.sh test-cs     # same thing; tests/ holds only C# tests now
 ```
 
-### Using Make Directly
-
-From the `tests/` directory:
+Or with make, from `tests/`:
 
 ```bash
-# Run all tests
-make all
-
-# Run specific categories
-make parser
-make vm
-make unit
-make integration
-
-# Clean test builds
-make clean
-
-# Show help
+make all      # run everything here
+make clean    # clean test build artifacts
 make help
 ```
 
-### Running Individual Tests
+Layer 0 on its own:
 
 ```bash
-# C++ Parser tests
-cd tests/cpp/parser
-make test
-
-# C# Parser tests
-cd tests/cs/parser
-make test
-
-# VM tests (when implemented)
-cd tests/cpp/vm
-make test
+cd tests/cs/transpilable/layer0 && make test
 ```
 
-## Test Organization
+## Adding a Test
 
-### C++ Tests (`tests/cpp/`)
+**A language, VM, or intrinsic behavior:** add a case to `testSuite.txt`.  The
+format is a block of MiniScript source, then `=====`, then the exact expected
+output.
 
-- **unit/** - Unit tests for individual components
-  - Memory pool tests
-  - String class tests
-  - Dictionary tests
-  - etc.
-
-- **parser/** - Parser and lexer tests
-  - Lexer tokenization tests
-  - Parser grammar tests
-  - AST generation tests
-
-- **vm/** - Virtual machine tests
-  - Opcode execution tests
-  - Function call tests
-  - Expression evaluation tests
-
-- **integration/** - End-to-end tests
-  - Full compilation pipeline
-  - Cross-language consistency tests
-
-### C# Tests (`tests/cs/`)
-
-- **parser/** - Parser and lexer tests
-  - Tests GPPG-generated parser with hand-written lexer
-  - Same test cases as C++ parser tests
-  - Ensures C# and C++ parsers produce identical results
-
-### Test Fixtures (`tests/fixtures/`)
-
-- Shared test input files
-- Expected output files
-- Test scripts and expressions
-
-## Adding New Tests
-
-### C++ Test Template
-
-1. Create test file in appropriate directory:
-```cpp
-// tests/cpp/unit/test_my_feature.cpp
-#include "path/to/my_feature.h"
-#include <iostream>
-
-int main() {
-    // Test code here
-    std::cout << "Test: my_feature" << std::endl;
-
-    // Add assertions
-
-    return 0;  // 0 = success
-}
-```
-
-2. Add to Makefile in that directory
-
-3. Run with `make test`
-
-### C# Test Template
-
-(To be added when C# test infrastructure is set up)
-
-## Test Build Outputs
-
-All test executables are built to:
-```
-build/tests/cpp/[category]/test_name
-build/tests/cs/[category]/test_name
-```
-
-This keeps test builds separate from production builds.
-
-## Prerequisites
-
-Before running tests:
-
-1. Build the core library:
-```bash
-cd cpp
-make
-```
-
-2. Build the compiler library (for parser tests):
-```bash
-cd cpp/compiler
-make
-```
-
-3. Then run tests:
-```bash
-./tools/build.sh test-all
-```
-
-## CI/CD Integration
-
-(To be added: instructions for running tests in CI/CD pipelines)
-
-## Debugging Tests
-
-To debug a specific test:
-
-```bash
-# Build the test with debug symbols
-cd tests/cpp/parser
-make clean
-CXXFLAGS="-g -O0" make
-
-# Run with debugger
-lldb build/tests/cpp/parser/test_parser
-```
-
-## Test Coverage
-
-(To be added: instructions for generating coverage reports)
-
-## Contributing
-
-When adding new features:
-
-1. Add tests in the appropriate `tests/` subdirectory
-2. Ensure tests pass for both C# and C++ implementations
-3. Update this README if adding new test categories
+**A C# unit test of a low-level module:** add it under
+`cs/transpilable/layer0/`, register it in that layer's `TestRunner.cs`, and add
+the file to the layer `Makefile`'s `SOURCES`.  Keep the layering honest -- a
+layer 0 test may only depend on modules with no dependencies of their own.
+Assert on behavior, not on incidental numbering: the old layer 0 test pinned
+`RETURN` to opcode 61 and simply broke when an opcode was inserted ahead of it.

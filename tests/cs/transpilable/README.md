@@ -14,32 +14,15 @@ Tests are organized by dependency layers:
 ```
 transpilable/
 ├── TestFramework.cs       # Transpilable assertion framework
-├── layer0/                # Foundation (no dependencies)
-│   ├── IOHelperTest.cs
-│   ├── BytecodeTest.cs
-│   ├── TestRunner.cs
-│   └── Makefile
-├── layer1/                # Basic Infrastructure
-│   ├── ValueTest.cs       # CRITICAL - run first
-│   ├── StringUtilsTest.cs # TODO
-│   ├── MemPoolShimTest.cs # TODO
-│   ├── TestRunner.cs
-│   └── Makefile
-├── layer2/                # Core Data Structures
-│   ├── VarMapTest.cs      # TODO
-│   ├── FuncDefTest.cs
-│   └── Makefile
-├── layer3/                # Processing Layer
-│   ├── DisassemblerTest.cs # TODO
-│   ├── AssemblerTest.cs    # TODO
-│   └── Makefile
-├── layer4/                # Execution Engine
-│   ├── VMTest.cs          # TODO
-│   └── Makefile
-└── layer5/                # Top-level Components
-    ├── VMVisTest.cs       # TODO
+└── layer0/                # Foundation (no dependencies)
+    ├── IOHelperTest.cs
+    ├── BytecodeTest.cs
+    ├── TestRunner.cs
     └── Makefile
 ```
+
+Layers 1-4 existed once and were retired in 2026; see "History" at the bottom
+before recreating them.
 
 ## Running Tests
 
@@ -53,8 +36,6 @@ make all
 
 # Run specific layer
 make layer0
-make layer1
-make layer2
 
 # Clean all test builds
 make clean
@@ -70,15 +51,11 @@ make all
 
 ### Test Execution Order
 
-Tests run in strict dependency order:
-1. **Layer 0** (Foundation) - IOHelper, Bytecode
-2. **Layer 1** (Basic Infrastructure) - Value, StringUtils, etc.
-3. **Layer 2** (Core Data Structures) - VarMap, FuncDef
-4. **Layer 3** (Processing) - Disassembler, Assembler
-5. **Layer 4** (Execution) - VM
-6. **Layer 5** (Top-level) - VMVis
-
-**The test suite stops at the first layer that fails**, preventing cascading errors.
+Tests run in strict dependency order, and **the suite stops at the first layer
+that fails**, preventing cascading errors.  Only layer 0 (IOHelper, Bytecode)
+is populated today.  A new layer N may depend only on modules in layers below
+it -- a rule worth checking against reality before adding one, since `Value`,
+the obvious layer 1 candidate, now reaches into `FuncDef`, `VM` and the GC.
 
 ## Writing Tests
 
@@ -91,7 +68,6 @@ Each test file should follow this pattern:
 // Tests for ModuleName module (Layer N)
 
 using System;
-using static MiniScript.ValueHelpers;
 // CPP: #include "ModuleName.g.h"
 // CPP: #include "IOHelper.g.h"
 // CPP: #include "TestFramework.g.h"
@@ -175,33 +151,10 @@ make layer0
 
 ### Transpiling and Running C++ Tests
 
-After C# tests pass, transpile and run the C++ versions:
-
-```bash
-# Navigate to the C++ transpiled test directory
-cd ../../cpp/transpiled/layer0
-
-# Transpile C# test code to C++
-make transpile
-
-# Build and run C++ tests
-make test
-
-# Or combine build and test (default)
-make all
-```
-
-Repeat for each layer as needed:
-
-```bash
-cd ../layer1
-make transpile && make test
-
-cd ../layer2
-make transpile && make test
-```
-
-The C# and C++ test output should be identical, validating both the transpiler and the C++ runtime.
+There is no C++ side any more.  `tests/cpp/` held transpiled copies of these
+tests plus stub `vm`/`unit`/`integration` targets; it was retired in 2026 (see
+"History").  Recreating it means writing a layer Makefile against the current
+`cpp/core` layout -- the old ones still named `value.c` and `gc.c`.
 
 ## Adding New Tests
 
@@ -230,16 +183,20 @@ Each module should have tests for:
 
 - ✓ TestFramework.cs - Core assertion infrastructure
 - ✓ Layer 0: IOHelperTest, BytecodeTest
-- ✓ Layer 1: ValueTest (comprehensive)
-- ✓ Layer 2: FuncDefTest (basic)
 
-### TODO
+### History
 
-- Layer 1: StringUtilsTest, MemPoolShimTest, ValueFuncRefTest
-- Layer 2: VarMapTest
-- Layer 3: DisassemblerTest, AssemblerTest
-- Layer 4: VMTest
-- Layer 5: VMVisTest
+Layers 1-4 (ValueTest, StringUtilsTest, FuncDefTest, Assembler/Disassembler
+tests, VMTest) and the whole `tests/cpp/` tree were removed in 2026.  They had
+stopped building long before: `ValueTest.cs` was written against a free-function
+`Value` API (`make_int`, `value_add`, `list_get`, `map_set`) that exists only in
+the C++ core and never in C#; the layer Makefiles still listed `cs/MemPoolShim.cs`,
+deleted in January 2026; and the C++ Makefiles referenced `cpp/compiler/` and
+`cpp/core/value.c`, both since gone.  They are in git history if you want them.
+
+The coverage they were meant to provide is now carried by `miniscript2 --test`
+(unit tests plus ~800 integration cases in `tests/testSuite.txt`).  Bring a
+layer back only if there is something that suite genuinely cannot reach.
 
 ## Notes
 

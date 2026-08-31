@@ -1,17 +1,15 @@
 # Master Test Makefile
 # Run all tests for the MiniScript 2.0 project
+#
+# Note: the bulk of the real coverage is NOT here -- it is in the interpreter
+# binary itself, as `miniscript2 --test`: UnitTests.RunAll plus the ~800-case
+# integration suite in testSuite.txt.  What lives under tests/ is the layered
+# C# unit tests, which only layer 0 still has.
 
-.PHONY: all cpp cs vm unit integration clean help
+.PHONY: all cs clean help
 
 # Default: run all tests
-all: cpp cs
-
-# Run all C++ tests
-cpp:
-	@echo "========================================="
-	@echo "  Running C++ Tests"
-	@echo "========================================="
-	$(MAKE) -C cpp
+all: cs
 
 # Run all C# tests
 cs:
@@ -20,23 +18,9 @@ cs:
 	@echo "========================================="
 	$(MAKE) -C cs
 
-# Run specific test categories
-vm:
-	@echo "=== VM Tests Only ==="
-	$(MAKE) -C cpp vm
-
-unit:
-	@echo "=== Unit Tests Only ==="
-	$(MAKE) -C cpp unit
-
-integration:
-	@echo "=== Integration Tests Only ==="
-	$(MAKE) -C cpp integration
-
 # Clean all test build artifacts
 clean:
 	@echo "Cleaning all test artifacts..."
-	$(MAKE) -C cpp clean
 	$(MAKE) -C cs clean
 	rm -rf ../build/tests
 
@@ -47,11 +31,7 @@ help:
 	@echo "Usage: make [target]"
 	@echo ""
 	@echo "Targets:"
-	@echo "  all         - Run all tests (C++ and C#)"
-	@echo "  cpp         - Run all C++ tests"
+	@echo "  all         - Run all tests"
 	@echo "  cs          - Run all C# tests"
-	@echo "  vm          - Run VM tests only"
-	@echo "  unit        - Run unit tests only"
-	@echo "  integration - Run integration tests only"
 	@echo "  clean       - Clean all test build artifacts"
 	@echo "  help        - Show this help message"

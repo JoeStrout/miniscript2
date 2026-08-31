@@ -425,19 +425,9 @@ case "$TARGET" in
         make -C tests all
         ;;
 
-    "test-cpp")
-        echo "Running C++ test suites..."
-        make -C tests cpp
-        ;;
-
     "test-cs")
         echo "Running C# test suites..."
         make -C tests cs
-        ;;
-
-    "test-vm")
-        echo "Running VM tests..."
-        make -C tests vm
         ;;
 
     "xcode")
@@ -476,10 +466,12 @@ case "$TARGET" in
         echo ""
         echo "Test Commands:"
         echo "  test        - Quick smoke test of built executables"
-        echo "  test-all    - Run all test suites (C++ and C#)"
-        echo "  test-cpp    - Run all C++ test suites"
-        echo "  test-cs     - Run all C# test suites"
-        echo "  test-vm     - Run VM tests only"
+        echo "  test-all    - Run the C# unit tests under tests/"
+        echo "  test-cs     - Same thing (tests/ holds only C# tests now)"
+        echo ""
+        echo "  The main suite is in the interpreter itself: run"
+        echo "    build/cpp/miniscript2 --test"
+        echo "  for the unit tests plus the testSuite.txt integration cases."
         echo ""
         echo "IDE:"
         echo "  xcode       - Generate Xcode project in cpp/xcode/"

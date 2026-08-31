@@ -14,10 +14,8 @@ _build_sh() {
         'all:Build everything (cs + transpile + cpp)'
         'clean:Clean all build artifacts'
         'test:Quick smoke test of built executables'
-        'test-all:Run all test suites (C++ and C#)'
-        'test-cpp:Run all C++ test suites'
-        'test-cs:Run all C# test suites'
-        'test-vm:Run VM tests only'
+        'test-all:Run the C# unit tests under tests/'
+        'test-cs:Run the C# unit tests under tests/'
         'xcode:Generate Xcode project in cpp/xcode/'
     )
 

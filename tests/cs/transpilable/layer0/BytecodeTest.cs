@@ -11,12 +11,10 @@ namespace MiniScript {
 public static class BytecodeTest {
 
 	public static Boolean TestOpcodeEnumValues() {
-		// Test that opcode enum values are sequential starting at 0
-		Boolean ok = true;
-		ok = TestFramework.AssertEqual((Int32)Opcode.NOOP, 0, "NOOP opcode") && ok;
-		ok = TestFramework.AssertEqual((Int32)Opcode.LOAD_rA_rB, 1, "LOAD_rA_rB opcode") && ok;
-		ok = TestFramework.AssertEqual((Int32)Opcode.RETURN, 61, "RETURN opcode") && ok;
-		return ok;
+		// NOOP is the one value the enum pins explicitly (`NOOP = 0`); every
+		// other opcode takes whatever number its position gives it, and those
+		// shift whenever an opcode is added.  Don't assert them.
+		return TestFramework.AssertEqual((Int32)Opcode.NOOP, 0, "NOOP opcode");
 	}
 
 	public static Boolean TestInstructionEncoding() {

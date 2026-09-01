@@ -155,6 +155,7 @@ typedef struct Value {
     inline bool         IsTinyString()const noexcept;
     inline bool         IsGCObject()  const noexcept;
     inline bool         IsHeapString()const noexcept;
+    inline bool         IsInternedString() const noexcept;
     inline bool         IsInt()       const noexcept;
     inline int          AsInt()       const noexcept;
     inline double       AsDouble()    const noexcept;
@@ -368,7 +369,7 @@ static_assert(std::is_standard_layout<Value>::value,
 #define MAP_SET      2
 #define ERROR_SET    3
 #define FUNCREF_SET  4
-// InternedStringSet = 5 (semi-immortal; referenced via GCManager::InternedStringSet)
+#define INTERNED_STRING_SET 5   // semi-immortal; swept only by a full collection
 #define HANDLE_SET   6
 
 // Composite tag patterns (top-16 + 3-bit set). Useful for legacy code.
@@ -378,6 +379,7 @@ static_assert(std::is_standard_layout<Value>::value,
 #define ERROR_TAG_PATTERN   (GC_TAG | ((uint64_t)ERROR_SET   << 32))
 #define FUNCREF_TAG_PATTERN (GC_TAG | ((uint64_t)FUNCREF_SET << 32))
 #define HANDLE_TAG_PATTERN  (GC_TAG | ((uint64_t)HANDLE_SET  << 32))
+#define INTERNED_STRING_TAG_PATTERN (GC_TAG | ((uint64_t)INTERNED_STRING_SET << 32))
 
 // ── Common constant values ──────────────────────────────────────────────
 // All constants are static members of Value (see struct declaration above).
@@ -404,8 +406,18 @@ inline bool Value::IsGCObject() const noexcept {
     return (bits & NANISH_MASK) == GC_TAG;
 }
 
+// A heap string lives in one of two GC sets: BigStrings (ordinary, swept every
+// cycle) or InternedStrings (deduplicated and semi-immortal, swept only by a
+// full collection).  Which set a string landed in is an allocation detail --
+// every string operation must accept both -- so reach the storage through
+// GCManager::GetString(v), never through GCManager::BigStrings directly.
 inline bool Value::IsHeapString() const noexcept {
-    return (bits & GC_TYPE_MASK) == STRING_TAG_PATTERN;
+    uint64_t tag = bits & GC_TYPE_MASK;
+    return tag == STRING_TAG_PATTERN || tag == INTERNED_STRING_TAG_PATTERN;
+}
+
+inline bool Value::IsInternedString() const noexcept {
+    return (bits & GC_TYPE_MASK) == INTERNED_STRING_TAG_PATTERN;
 }
 
 // ── Forward declarations for runtime functions ──────────────────────────

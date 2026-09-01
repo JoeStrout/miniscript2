@@ -1,7 +1,8 @@
 // value_string.cpp — string operations on NaN-boxed Values, layered over
 // the shared StringStorage / ss_* primitives so behaviour matches CS_String.
 //
-// Heap Value strings are GCManager.BigStrings slots, each owning a String
+// Heap Value strings are GCManager.BigStrings or GCManager.InternedStrings
+// slots, each owning a String
 // (which wraps a shared_ptr<StringStorage>). We reach the underlying
 // StringStorage via String::getStorageRaw() so existing ss_* call sites
 // continue to work; the shared_ptr layer is a temporary cost while we
@@ -30,8 +31,10 @@ using MiniScript::GCString;
 namespace {
 
 // Get the raw StringStorage* for a heap-string Value (borrowed; do not free).
+// Goes through GCManager::GetString so it reads from the right set: a heap
+// string may be a BigStrings slot or an InternedStrings slot (see adopt_ss).
 const StringStorage* heap_string_storage(Value v) {
-    GCString s = GCManager::BigStrings.Get(v.ItemIndex());
+    GCString s = GCManager::GetString(v);
     return s.Data.getStorageRaw();
 }
 
@@ -54,7 +57,23 @@ Value adopt_ss(StringStorage* ss) {
         std::free(ss);
         return tiny;
     }
-    return GCManager::NewString(String::fromMallocStorage(ss));
+    // Short-but-not-tiny strings are interned, matching Value.make_string in
+    // cs/Value.cs: identical bytes become the identical Value, so equality and
+    // hashing are bit comparisons and map keys built at run time collide with
+    // their literal counterparts.  Interned slots are also semi-immortal (only
+    // a full collection sweeps them), which is what makes a string safe to hold
+    // as a long-lived key.  If the content is already interned, InternString
+    // returns the existing slot and the String we just adopted drops the fresh
+    // storage on the way out.
+    //
+    // C# tests str.Length (UTF-16 chars); we test bytes, which is the length we
+    // have without a scan.  The two agree for ASCII and differ only in which GC
+    // set a long non-ASCII string lands in -- a collection-timing difference,
+    // not a semantic one.
+    int lenB = ss->lenB;
+    String s = String::fromMallocStorage(ss);
+    if (lenB < GCManager::InternThreshold) return GCManager::InternString(s);
+    return GCManager::NewString(s);
 }
 
 // Build a Value from raw bytes.  Named for its usual outcome: the callers below

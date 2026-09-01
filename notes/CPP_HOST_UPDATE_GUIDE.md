@@ -243,6 +243,60 @@ static IntrinsicResult intrinsic_Foo(Context context, IntrinsicResult partialRes
 
 The easy way has _slightly_ worse performance, in that it does a hashtable lookup (among all your static maps) on each call.  In most cases that overhead is trivial, but if you're really worried about it, you can use the harder way above.
 
+#### Root the dictionary when you *fill* it, not when you first *return* it
+
+Both patterns above root the map on the first call to the accessor intrinsic —
+i.e. the first time a *script* names `foo`.  But the dictionary is usually
+filled much earlier, in your `AddFooIntrinsics()` setup function.  Between those
+two moments the dictionary is not reachable from any GC root, and **a collection
+in that window frees its keys and values.**  The map still looks fine to C++
+(`ValueDict` is an ordinary `shared_ptr` container, so the entries are all still
+there), but the `Value`s in it now name freed — and soon reused — GC slots.
+
+So call `StaticMap` at the end of whatever function fills the dictionary:
+
+```cpp
+void AddFooIntrinsics() {
+	fooModule.SetValue("bar", …);
+	fooModule.SetValue("baz", …);
+	…
+	StaticMap(fooModule);   // root it now; the accessor may not run for seconds
+	Intrinsic f = Intrinsic::Create("foo");
+	f.set_Code(&intrinsic_Foo);
+}
+```
+
+`StaticMap` caches on `&d`, so this is idempotent: the later call from
+`intrinsic_Foo` returns the very same Value and roots nothing twice.
+`GCManager::Init()` runs at the top of `main` (see *Initialize the runtime at
+startup*), so rooting here is safe even for dictionaries you build before
+`Interpreter::New()`.
+
+**This applies to any `ValueDict` the host holds across VM steps, not just
+module maps.**  A plain data cache counts too — a map of environment variables
+filled once from `environ` at startup has exactly the same requirement as a
+module or a class prototype.  The question is never "is this a module?", it is
+"can the GC reach this?"
+
+**What the failure looks like.**  Keys and values come back as empty strings or
+as fragments of unrelated strings, and a key you know you set raises
+`Key Not Found`.  The damage is uneven, which makes it look arbitrary: strings
+of 5 bytes or fewer are stored inline in the `Value` and always survive, strings
+under 128 bytes are interned and survive everything but a *full* collection, and
+only longer strings are lost to an ordinary cycle (see *Don't construct string
+`Value`s at static-init time* for the table).  So an unrooted map can look
+almost intact — every short key fine, every long value blanked — until a
+`gc.collect(true)` or a `reset` takes the rest.
+
+**It is timing-dependent**, so it will not show up in a short test script: the
+window only matters if a collection happens inside it.  To test, force a
+`gc.collect` (or run a few hundred frames) *between* host setup and the first
+script access to the map.
+
+See also *Fill containers by reference, not by value* below, which is a
+different bug with a deceptively similar symptom (a map that is mysteriously
+empty).
+
 ### Returning a *fresh* map or list: `DynamicMap` / `DynamicList`
 
 `StaticMap` is only for maps you build **once** and hand back on every call (a
@@ -321,6 +375,9 @@ AddMethods(m);             // fills a throwaway copy; `m` is still empty
 already has an entry — copies share it, so by-value fills would "work"; that is
 exactly what makes this an intermittent trap.  MS1's refcounted dict shared even
 when empty, so by-value fill happened to work there.)  Prefer `&`.
+
+If a map you filled correctly *still* comes back empty or scrambled at runtime,
+this is not your bug — see *Root the dictionary when you fill it* above.
 
 ## Reading Maps and Lists Back Out
 
@@ -481,10 +538,43 @@ Fix: build such constants **lazily on first use**, when the GC is up:
 static const Value& handleKey() { static Value k("_handle"); return k; }
 // ...use handleKey() instead of _handle
 ```
-Strings under `GCManager::InternThreshold` (128 bytes) are **interned and
-immortal**, so once created they are safe to hold as long-lived map keys without
-rooting.  (You could instead assign the statics inside your `Add…Intrinsics()`
-setup function, which also runs after GC init.)
+(You could instead assign the statics inside your `Add…Intrinsics()` setup
+function, which also runs after GC init.)
+
+**How long a string `Value` lives without rooting** depends on its length:
+
+| Byte length                | Where it lives                        | Lifetime |
+|----------------------------|---------------------------------------|----------|
+| ≤ 5 (`TINY_STRING_MAX_LEN`)| inline in the `Value` bits            | immortal — allocates nothing |
+| 6 … 127 (`InternThreshold`)| `GCManager::InternedStrings`, deduplicated | **semi-immortal**: swept only by a *full* collection |
+| ≥ 128                      | `GCManager::BigStrings`               | collected like any other GC object |
+
+So a lazily built key constant such as `static Value k("_handle")` is interned
+and survives ordinary collection cycles.  That is what makes the pattern
+workable — but "semi-immortal" is not "immortal": `FullCollectGarbage()` does
+sweep the interned set, and script reaches it through `gc.collect(true)` and
+through `reset`.  A key constant that is reachable from nothing else will be
+freed by either.
+
+In practice these constants are usually also reachable, because the same
+`Value` gets stored into a map that *is* rooted — e.g. a class prototype built
+with `classMap.SetValue(kHandle(), Value::Null)`, where `StaticMap(classMap)`
+marks the key too.  Prefer to arrange that deliberately (you usually want the
+field on the prototype anyway, so `isa` reports it).  If a constant only ever
+reaches per-instance maps, root it explicitly:
+
+```cpp
+static const Value& handleKey() {
+	static Value k = [] { Value v("_handle"); GCManager::AddRoot(v); return v; }();
+	return k;
+}
+```
+
+Interning also makes equal strings **canonical**: identical bytes under 128
+produce the identical `Value`, so equality and hashing are bit comparisons, and
+a map key built at run time (`"dyn" + "amic"`) is the same key as the literal
+`"dynamic"`.  Do not rely on the reverse — two `Value`s with different bits can
+still be equal strings, once either side is 128 bytes or longer.
 
 ## Value Types and Small Gotchas
 

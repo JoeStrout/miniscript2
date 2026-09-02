@@ -218,59 +218,90 @@ static IntrinsicResult intrinsic_Foo(Context *context, IntrinsicResult partialRe
 }
 ```
 
-In MS2, that exact pattern does not work; wrapping a ValueDict in a Value is a bit more expensive, and (more importantly), it needs to be added as a root value for the GC system, or else its contents will get garbage collected.  So the correct pattern is: convert the ValueDict to a Value, and call `GCManager::AddRoot` on it, only once.  Then cache that result and return it every time it is needed.
+In MS2, that exact pattern does not work.  Wrapping a `ValueDict` in a `Value`
+is a bit more expensive, and — more importantly — **a host `ValueDict` is not
+reachable by the GC on its own.**  The wrapping Value has to be created once and
+added to the GC root set, or the dictionary's keys and values are collected out
+from under you.
 
-**MiniScript 2 (the harder way):**
-```
-static Value fooModule = Value::Null;
-static IntrinsicResult intrinsic_Foo(Context context, IntrinsicResult partialResult) {
-	if (fooModule.IsNull()) {
-		fooModule = Value(FooModule());  // where KeyModule() returns a ValueDict
-		GCManager::AddRoot(fooModule);
-	}
-	return IntrinsicResult(fooModule);
-}
-```
+So the pattern is: where you **fill** the dictionary, wrap it and root it, and
+keep the resulting `Value`.  The accessor then just returns that Value.
 
-However, there is an easier route; a new `StaticMap()` function will do that Value-wrapping, AddRoot-calling, and caching for you.  So you can just do this:
-
-**MiniScript 2 (the easy way):**
-```
-static IntrinsicResult intrinsic_Foo(Context context, IntrinsicResult partialResult) {
-	return IntrinsicResult(StaticMap(FooModule()));
-}
-```
-
-The easy way has _slightly_ worse performance, in that it does a hashtable lookup (among all your static maps) on each call.  In most cases that overhead is trivial, but if you're really worried about it, you can use the harder way above.
-
-#### Root the dictionary when you *fill* it, not when you first *return* it
-
-Both patterns above root the map on the first call to the accessor intrinsic —
-i.e. the first time a *script* names `foo`.  But the dictionary is usually
-filled much earlier, in your `AddFooIntrinsics()` setup function.  Between those
-two moments the dictionary is not reachable from any GC root, and **a collection
-in that window frees its keys and values.**  The map still looks fine to C++
-(`ValueDict` is an ordinary `shared_ptr` container, so the entries are all still
-there), but the `Value`s in it now name freed — and soon reused — GC slots.
-
-So call `StaticMap` at the end of whatever function fills the dictionary:
-
+**MiniScript 2:**
 ```cpp
+static ValueDict fooModule;        // filled at startup
+static Value fooModuleValue;       // the wrapper: rooted once, in the setup fn
+
+static IntrinsicResult intrinsic_Foo(Context context, IntrinsicResult partialResult) {
+	return IntrinsicResult(fooModuleValue);
+}
+
 void AddFooIntrinsics() {
 	fooModule.SetValue("bar", …);
 	fooModule.SetValue("baz", …);
 	…
-	StaticMap(fooModule);   // root it now; the accessor may not run for seconds
+	// Wrap and root, now that the dictionary exists.  NewMapFromDict shares the
+	// dictionary's storage, so later writes to fooModule show through the Value.
+	fooModuleValue = GCManager::NewMapFromDict(fooModule);
+	GCManager::AddRoot(fooModuleValue);
+
 	Intrinsic f = Intrinsic::Create("foo");
 	f.set_Code(&intrinsic_Foo);
 }
 ```
 
-`StaticMap` caches on `&d`, so this is idempotent: the later call from
-`intrinsic_Foo` returns the very same Value and roots nothing twice.
-`GCManager::Init()` runs at the top of `main` (see *Initialize the runtime at
-startup*), so rooting here is safe even for dictionaries you build before
-`Interpreter::New()`.
+A namespace-scope `static Value` is safe to declare this way: a default-
+constructed `Value` is null and allocates nothing, so unlike a string constant
+it does not need the GC to exist yet (see *Don't construct string `Value`s at
+static-init time*).  Only the assignment inside `AddFooIntrinsics` touches the
+GC, and by then `GCManager::Init()` has run.
+
+The accessor is now a plain read — no allocation, no lookup, and one stable
+identity for the life of the process, which is what `isa` needs (it compares
+maps by reference, not by content).
+
+**The `StaticMap` shortcut.**  `StaticMap(d)` does the wrapping, the `AddRoot`,
+and the caching in one call, keyed on the address of `d`:
+
+```cpp
+static IntrinsicResult intrinsic_Foo(Context context, IntrinsicResult partialResult) {
+	return IntrinsicResult(StaticMap(fooModule));   // shorter, but see below
+}
+```
+
+It is convenient, and it is the right tool when you only have the dictionary in
+hand — e.g. setting `__isa` from a shared class prototype inside an
+instance-creation helper.  But prefer the explicit Value above for modules and
+prototypes you control, for two reasons:
+
+* **It costs a hashtable lookup on every call**, among all the host's static
+  maps.  That is trivial for a module accessor and less trivial for an
+  instance-creation helper that runs per object created.
+* **It hides *when* the rooting happens.**  Written only in the accessor, the
+  map is not rooted until a *script* first names `foo` — see below.
+
+#### Root the dictionary when you *fill* it, not when you first *return* it
+
+This is the trap the explicit-Value pattern above is written to avoid.  If the
+only `StaticMap` call is in the accessor, the map is not rooted until a *script*
+first names `foo` — but the dictionary was filled much earlier, in
+`AddFooIntrinsics()`.  Between those two moments it is reachable from no GC
+root, and **a collection in that window frees its keys and values.**  The map
+still looks fine to C++ (`ValueDict` is an ordinary `shared_ptr` container, so
+the entries are all still there), but the `Value`s in it now name freed — and
+soon reused — GC slots.
+
+If you do use the `StaticMap` shortcut, call it once at the end of whatever
+function fills the dictionary, so the rooting happens at build time:
+
+```cpp
+StaticMap(fooModule);   // root it now; the accessor may not run for seconds
+```
+
+It caches on `&d`, so this is idempotent — the later call from `intrinsic_Foo`
+returns the very same Value and roots nothing twice.  `GCManager::Init()` runs
+at the top of `main` (see *Initialize the runtime at startup*), so rooting here
+is safe even for dictionaries you build before `Interpreter::New()`.
 
 **This applies to any `ValueDict` the host holds across VM steps, not just
 module maps.**  A plain data cache counts too — a map of environment variables

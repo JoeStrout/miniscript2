@@ -8,13 +8,18 @@
 #include <string>
 #include <algorithm>
 #include "keyboard.h"
-#ifdef _WIN32 // define POSIX getline if on Windows
+#ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#endif
 #include <cstdio>
 #include <cstdlib>
 
-int getline(char** lineptr, size_t* n, FILE* stream) {
+// Read one line from the given stream, with the same contract as POSIX getline:
+// fills a malloc'd buffer (growing it as needed), keeps the newline, and returns
+// the byte count, or -1 at EOF with no data.  We use our own rather than POSIX
+// getline because that's missing on Windows and some embedded platforms.
+static int ReadLineFromStream(char** lineptr, size_t* n, FILE* stream) {
     if (!lineptr || !n || !stream) return -1;
 
     size_t pos = 0;
@@ -49,7 +54,6 @@ int getline(char** lineptr, size_t* n, FILE* stream) {
     (*lineptr)[pos] = '\0';
     return (int)pos;
 }
-#endif // defined(_WIN32)
 
 namespace MiniScript {
 
@@ -120,7 +124,7 @@ Boolean IOHelper::TryInput(String prompt,String* result,TextStyle promptStyle,Te
 	char *line = NULL;
 	size_t len = 0;
 
-	int bytes = getline(&line, &len, stdin);
+	int bytes = ReadLineFromStream(&line, &len, stdin);
 	if (bytes == -1) {
 		free(line);
 		*result = String(nullptr);

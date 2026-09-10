@@ -11,7 +11,7 @@ using static System.Runtime.CompilerServices.MethodImplOptions;
 // H: #include "value_map.h"
 // H: #include <sstream>
 // CPP: #include <cctype>
-// CPP: #include <cmath>
+// H: #include <cmath>
 // CPP: #include <cstdlib>
 // CPP: #include "IOHelper.g.h"
 

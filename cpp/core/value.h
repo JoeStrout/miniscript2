@@ -83,6 +83,12 @@ typedef struct Value {
     Value(double number) noexcept;    // a number
     Value(int i) noexcept;            // integer (delegates to double; prevents 0→null-ptr ambiguity)
     Value(unsigned int u) noexcept;   // unsigned integer (delegates to double)
+    // Long overloads: needed because int32_t (our Int32) is `long` on some
+    // toolchains (e.g. newlib/ARM), which would otherwise be ambiguous.
+    Value(long i) noexcept;
+    Value(unsigned long u) noexcept;
+    Value(long long i) noexcept;
+    Value(unsigned long long u) noexcept;
     // String constructors, mirroring MiniScript 1.x: a bare literal or a host
     // String both convert implicitly to a Value.  This is deliberately NOT
     // explicit -- 1.x host code relies heavily on `Value("literal")` and passing
@@ -652,6 +658,10 @@ inline Value::Value() noexcept : bits(NULL_VALUE) {}
 inline Value::Value(double number) noexcept { memcpy(&bits, &number, sizeof bits); }
 inline Value::Value(int i) noexcept { double d = (double)i; memcpy(&bits, &d, sizeof bits); }
 inline Value::Value(unsigned int u) noexcept { double d = (double)u; memcpy(&bits, &d, sizeof bits); }
+inline Value::Value(long i) noexcept { double d = (double)i; memcpy(&bits, &d, sizeof bits); }
+inline Value::Value(unsigned long u) noexcept { double d = (double)u; memcpy(&bits, &d, sizeof bits); }
+inline Value::Value(long long i) noexcept { double d = (double)i; memcpy(&bits, &d, sizeof bits); }
+inline Value::Value(unsigned long long u) noexcept { double d = (double)u; memcpy(&bits, &d, sizeof bits); }
 inline Value::Value(const char* cString) { *this = Value::make_string(cString); }
 inline Value::Value(const String& s) { *this = Value::make_string(s); }
 

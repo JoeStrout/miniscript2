@@ -12,6 +12,7 @@
 #include "value_list.h"
 #include "value_map.h"
 #include <sstream>
+#include <cmath>
 
 namespace MiniScript {
 

@@ -745,11 +745,41 @@ inline String ToString(int i) {
 	return String(str);
 }
 
+// Long overloads: int32_t (our Int32) is `long` on some toolchains (e.g.
+// newlib/ARM), which would otherwise be ambiguous between int and double.
+inline String ToString(long i) {
+	char str[32];
+	snprintf(str, 32, "%ld", i);
+	return String(str);
+}
+
+inline String ToString(unsigned long i) {
+	char str[32];
+	snprintf(str, 32, "%lu", i);
+	return String(str);
+}
+
+inline String ToString(long long i) {
+	char str[32];
+	snprintf(str, 32, "%lld", i);
+	return String(str);
+}
+
+inline String ToString(unsigned long long i) {
+	char str[32];
+	snprintf(str, 32, "%llu", i);
+	return String(str);
+}
+
 // String interpolation function - full implementation (inline/template)
 namespace InterpImpl {
 	// Helper to convert any argument to String
 	inline String ArgToString(int val) { return ToString(val); }
 	inline String ArgToString(unsigned int val) { return ToString((int)val); }
+	inline String ArgToString(long val) { return ToString(val); }
+	inline String ArgToString(unsigned long val) { return ToString(val); }
+	inline String ArgToString(long long val) { return ToString(val); }
+	inline String ArgToString(unsigned long long val) { return ToString(val); }
 	inline String ArgToString(double val) { return ToString(val); }
 	inline String ArgToString(const char* val) { return String(val ? val : ""); }
 	inline String ArgToString(const String& val) { return val; }

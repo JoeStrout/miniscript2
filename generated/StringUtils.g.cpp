@@ -3,7 +3,6 @@
 
 #include "StringUtils.g.h"
 #include <cctype>
-#include <cmath>
 #include <cstdlib>
 #include "IOHelper.g.h"
 

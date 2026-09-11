@@ -268,6 +268,14 @@ public class Parser : IParser {
 		if (_current.Type == TokenType.STRONG_NEGATE && callStatementAllowed) {
 			return Precedence.NONE;
 		}
+		// Likewise, a '(' preceded by whitespace where a call statement is
+		// allowed begins the argument list rather than a parenthesized call:
+		// `m.f (2 + 1) * 2, 4` passes (2+1)*2 and 4, just as `f (2 + 1) * 2, 4`
+		// does.  (A bare identifier never gets here; ParseSimpleStatement
+		// checks AtCallArgument for it directly.)
+		if (_current.Type == TokenType.LPAREN && _current.AfterSpace && callStatementAllowed) {
+			return Precedence.NONE;
+		}
 		InfixParselet parselet = null;
 		if (_infixParselets.TryGetValue(_current.Type, out parselet)) {
 			return parselet.Prec;

@@ -6241,6 +6241,25 @@ m.f(-5, -5)
 m.f(-5, 99)
 m.f(-5, 99)
 ================================
+==== Call statement with a dotted or indexed target and a parenthesized first argument
+m = {}
+m.f = function(a, b=99)
+	print "m.f(" + a + ", " + b + ")"
+end function
+m.f (2 + 1) * 2, 4
+m.f (7)
+m.f(3, 5)
+n = {"inner": m}
+n.inner.f (1 + 1) * 3
+funcs = [@m.f]
+funcs[0] (2 + 3) * 2, 1
+--------------------------------
+m.f(6, 4)
+m.f(7, 99)
+m.f(3, 5)
+m.f(6, 99)
+m.f(10, 1)
+================================
 ==== Call statement with an indexed target
 show = function(x)
 	print "show " + x

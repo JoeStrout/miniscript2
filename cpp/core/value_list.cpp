@@ -263,10 +263,15 @@ void Value::SortByKey(Value byKey, bool ascending) const {
 
 // ── Hash & display ──────────────────────────────────────────────────────
 
-uint32_t list_hash(Value list_val) {
+uint32_t list_hash(Value list_val, int depth) {
     if (!list_val.IsList()) return 0;
-    // Identity hash — content hashing risks O(n²) recursion on cycles.
-    return uint64_hash(list_val.bits);
+    // Hashes by content, to agree with RecursiveEqual (see value_hash in
+    // value.h).  Past the depth limit, only the count contributes.
+    int count = list_val.ListCount();
+    uint32_t h = 0x4C495354u ^ (uint32_t)count;
+    if (depth <= 0) return h;
+    for (int i = 0; i < count; i++) h = h * 31 + value_hash(list_val.ListGet(i), depth - 1);
+    return h;
 }
 
 Value list_to_string(Value list_val, void* vm) {

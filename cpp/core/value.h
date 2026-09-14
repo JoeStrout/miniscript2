@@ -637,7 +637,13 @@ Value value_shr(Value v, int shift);
 Value value_shl(Value v, int shift);
 
 // ── Hashing & frozen ────────────────────────────────────────────────────
-uint32_t value_hash(Value v);
+// Hashing must agree with == (RecursiveEqual): values that compare equal must
+// hash equal, or they can't be used as map keys.  Lists and maps compare by
+// content, so they hash by content too -- but only down to VALUE_HASH_DEPTH
+// levels of nesting; a collection below that contributes just its type and
+// count.  The limit bounds the cost, and guarantees termination on cycles.
+const int VALUE_HASH_DEPTH = 2;
+uint32_t value_hash(Value v, int depth = VALUE_HASH_DEPTH);
 
 // Content-aware Hash and equality overloads for Value, used by
 // Dictionary<Value, Value>. Without these, Dictionary would fall back to

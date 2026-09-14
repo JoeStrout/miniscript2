@@ -6454,6 +6454,195 @@ print m.hasIndex("k10")
 0,50,90
 0
 ================================
+==== Lists compare by content, so they must also hash by content: a distinct
+==== but equal list must find the same map entry.  (Previously lists hashed by
+==== identity, so this lookup failed even though a == b.)
+a = [1, 2, 3]
+b = [1, 2]
+b.push 3
+print a == b
+print hash(a) == hash(b)
+m = {}
+m[a] = "found"
+print m.hasIndex(b)
+print m[b]
+print m.hasIndex([1, 2, 3])
+print m.hasIndex([3, 2, 1])
+--------------------------------
+1
+1
+1
+found
+1
+0
+================================
+==== Nested lists and run-time strings inside a list key work too; a key that
+==== differs only deep inside stays distinct; and hashing a list that contains
+==== itself must terminate.
+k = [["x", 1], "dyn" + 0, [2, [3]]]
+m = {}
+m[k] = "nested"
+print m[[["x", 1], "dyn0", [2, [3]]]]
+print m.hasIndex([["x", 1], "dyn0", [2, [4]]])
+c = [1]
+c.push c
+print hash(c) isa number
+--------------------------------
+nested
+0
+1
+================================
+==== Hashing looks two levels deep, so every cell of a 2D list contributes:
+==== equal grids hash equal (and work as keys), while a grid differing in a
+==== single cell gets a different hash rather than colliding.
+g1 = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+g2 = []
+for r in range(0, 2)
+	row = []
+	for c in range(1, 3)
+		row.push r * 3 + c
+	end for
+	g2.push row
+end for
+g3 = [[1, 2, 3], [4, 5, 6], [7, 8, 0]]
+print g1 == g2
+print hash(g1) == hash(g2)
+print hash(g1) == hash(g3)
+m = {}
+m[g1] = "grid"
+print m[g2]
+print m.hasIndex(g3)
+--------------------------------
+1
+1
+0
+grid
+0
+================================
+==== Maps compare by content, so they hash by content too, regardless of the
+==== order entries were added in; maps with the same keys and values paired
+==== differently stay distinct; and a map that refers to itself still hashes.
+a = {"x": 1, "y": 2}
+b = {}
+b.y = 2
+b.x = 1
+print a == b
+print hash(a) == hash(b)
+m = {}
+m[a] = "found"
+print m[b]
+print m.hasIndex({"x": 2, "y": 1})
+print hash({"x": 2, "y": 1}) == hash(a)
+n = {}
+n[{"pos": [1, 2], "tag": "p" + 1}] = "nested"
+print n[{"tag": "p1", "pos": [1, 2]}]
+s = {"name": "self"}
+s.me = s
+print hash(s) isa number
+--------------------------------
+1
+1
+found
+0
+0
+nested
+1
+================================
+==== 0 and -0 are equal, so they must hash equal: each finds the other as a
+==== map key, whether directly or inside a list.
+z = 0 * -1
+print z == 0
+print hash(z) == hash(0)
+m = {}
+m[0] = "zero"
+print m[z]
+n = {}
+n[[z, 1]] = "list"
+print n[[0, 1]]
+--------------------------------
+1
+1
+zero
+list
+================================
+==== A list or map used as a map key is stored as a frozen copy, so changing
+==== the original afterwards can't disturb the map (notes/FROZEN_VALUES.md).
+==== The original stays unfrozen, and values are not frozen, only keys.
+k = [1, 2]
+m = {}
+m[k] = "a"
+print isFrozen(k)
+print isFrozen(m.indexes[0])
+print refEquals(m.indexes[0], k)
+k.push 3
+print m.indexes[0]
+print m[[1, 2]]
+print m.hasIndex(k)
+v = [5]
+m["v"] = v
+print isFrozen(m["v"])
+--------------------------------
+0
+1
+0
+[1, 2]
+a
+0
+0
+================================
+==== The same holds for map keys, keys added by push, and keys in a map
+==== literal; a key that is already frozen is stored as-is, without a copy.
+mk = {"x": 1}
+m = {}
+m[mk] = "map"
+mk.x = 99
+print m[{"x": 1}]
+p = {}
+p.push [8, 9]
+print isFrozen(p.indexes[0])
+lit = {[5, 7]: "lit"}
+print isFrozen(lit.indexes[0])
+f = frozenCopy([3, 4])
+q = {}
+q[f] = 1
+print refEquals(q.indexes[0], f)
+--------------------------------
+map
+1
+1
+1
+================================
+==== frozenCopy handles reference cycles and shared parts: the copy has the
+==== same shape as the original, rather than recursing forever.  So a cyclic
+==== list can also be used as a map key.
+c = [1]
+c.push c
+x = frozenCopy(c)
+print isFrozen(x)
+print refEquals(x[1], x)
+print refEquals(x, c)
+print isFrozen(c)
+d = {"name": "d"}
+d.me = d
+e = frozenCopy(d)
+print refEquals(e.me, e)
+print e.name
+s = [9]
+t = frozenCopy([s, s])
+print refEquals(t[0], t[1])
+m = {}
+m[c] = "cyclic"
+print isFrozen(m.indexes[0])
+--------------------------------
+1
+1
+0
+0
+1
+d
+1
+1
+================================
 ================================================================================
 ==== SECTION: FREE NAMES INSIDE FUNCTIONS
 ================================================================================

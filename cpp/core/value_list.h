@@ -30,7 +30,7 @@ Value list_copy(Value list_val);
 Value list_concat(Value a, Value b);
 
 // Hash & display
-uint32_t list_hash(Value list_val);
+uint32_t list_hash(Value list_val, int depth);
 Value    list_to_string(Value list_val, void* vm);
 
 

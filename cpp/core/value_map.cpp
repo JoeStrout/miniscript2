@@ -115,6 +115,9 @@ bool Value::MapSet(Value key, Value value) const {
     if (!map_val.IsMap()) return false;
     GCMap m = GCManager::Maps.Get(map_val.ItemIndex());
     if (m.Frozen) { vm_raise_runtime_error("Attempt to modify a frozen map"); return false; }
+    // A list or map key is stored as a frozen copy (or as itself, if already
+    // frozen), so it can't be mutated while in the map; see FROZEN_VALUES.md.
+    if (key.IsList() || key.IsMap()) key = key.FrozenCopy();
     m.Set(key, value);
     return true;
 }
@@ -248,9 +251,24 @@ Value Value::IterEntry(int iter) const {
 
 // ── Hash & display ──────────────────────────────────────────────────────
 
-uint32_t map_hash(Value map_val) {
+uint32_t map_hash(Value map_val, int depth) {
     if (!map_val.IsMap()) return 0;
-    return uint64_hash(map_val.bits);
+    // Hashes by content, to agree with RecursiveEqual (see value_hash in
+    // value.h).  Past the depth limit, only the count contributes.  Entry order
+    // doesn't affect equality, so entry hashes are combined by addition; each
+    // key/value pair is scrambled first, so that {"a":1, "b":2} and
+    // {"a":2, "b":1} don't collide.
+    GCMap m = GCManager::Maps.Get(map_val.ItemIndex());
+    uint32_t h = 0x4D415020u ^ (uint32_t)m.Count();
+    if (depth <= 0) return h;
+    uint32_t sum = 0;
+    for (int i = m.NextEntry(-1); i != -1; i = m.NextEntry(i)) {
+        uint32_t p = value_hash(m.KeyAt(i), depth - 1) * 31
+                   + value_hash(m.ValueAt(i), depth - 1);
+        p ^= p >> 16;  p *= 0x85EBCA6Bu;  p ^= p >> 13;
+        sum += p;
+    }
+    return h * 31 + sum;
 }
 
 Value map_to_string(Value map_val, void* vm) {

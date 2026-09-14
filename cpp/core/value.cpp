@@ -20,6 +20,7 @@
 #include <cstring>
 #include <cmath>
 #include <climits>
+#include <unordered_map>
 #include <vector>
 
 namespace MiniScript {
@@ -531,7 +532,7 @@ Value Value::ToNumber() const {
 }
 
 
-uint32_t value_hash(Value v) {
+uint32_t value_hash(Value v, int depth) {
     // Every string hashes by CONTENT, tiny or heap alike.  This must agree with
     // value_equal, which compares any two strings with string_equals (see the
     // IsString() branch there): if a tiny string and a heap string with the same
@@ -540,8 +541,12 @@ uint32_t value_hash(Value v) {
     // get_string_hash already handles both representations, running the same
     // FNV-1a over the same bytes either way.
     if (v.IsString())      return get_string_hash(v);
-    if (v.IsList())        return list_hash(v);
-    if (v.IsMap())         return map_hash(v);
+    if (v.IsList())        return list_hash(v, depth);
+    if (v.IsMap())         return map_hash(v, depth);
+    // 0 and -0 compare equal but differ in the sign bit, so hash -0 as 0.  (Only
+    // zero is normalized: masking the sign bit of every number would make each
+    // x collide with -x.)
+    if (v.bits == 0x8000000000000000ULL) return uint64_hash(0);
     return uint64_hash(v.bits);
 }
 
@@ -581,32 +586,47 @@ void Value::Freeze() const {
     }
 }
 
-Value Value::FrozenCopy() const {
-    Value v = *this;
+// Copies are recorded by the identity (bits) of their originals, and each is
+// recorded before its contents are copied, so a structure with reference
+// cycles (or shared parts) is copied with the same shape, rather than
+// recursing forever.
+static Value frozen_copy(Value v, std::unordered_map<uint64_t, Value>& copies) {
     if (v.IsList()) {
         GCList src = GCManager::Lists.Get(v.ItemIndex());
         if (src.Frozen) return v;
+        auto done = copies.find(v.bits);
+        if (done != copies.end()) return done->second;
         int srcCount = src.Count();
         Value newList = Value::make_list(srcCount);
+        copies[v.bits] = newList;
         int32_t dstIdx = newList.ItemIndex();
         GCList dst = GCManager::Lists.Get(dstIdx);
         GCManager::Lists.SetFrozen(dstIdx, true);
         for (int i = 0; i < srcCount; i++)
-            dst.Push(src.Get(i).FrozenCopy());
+            dst.Push(frozen_copy(src.Get(i), copies));
         return newList;
     }
     if (v.IsMap()) {
         GCMap src = GCManager::Maps.Get(v.ItemIndex());
         if (src.Frozen) return v;
+        auto done = copies.find(v.bits);
+        if (done != copies.end()) return done->second;
         Value newMap = Value::make_map(src.Count());
+        copies[v.bits] = newMap;
         int32_t dstIdx = newMap.ItemIndex();
         GCMap dst = GCManager::Maps.Get(dstIdx);
         GCManager::Maps.SetFrozen(dstIdx, true);
         for (int i = src.NextEntry(-1); i != -1; i = src.NextEntry(i))
-            dst.Set(src.KeyAt(i).FrozenCopy(), src.ValueAt(i).FrozenCopy());
+            dst.Set(frozen_copy(src.KeyAt(i), copies), frozen_copy(src.ValueAt(i), copies));
         return newMap;
     }
     return v;
+}
+
+// Returns this value if it is already frozen, or else a frozen deep copy.
+Value Value::FrozenCopy() const {
+    std::unordered_map<uint64_t, Value> copies;
+    return frozen_copy(*this, copies);
 }
 
 void set_short_name_lookup(ShortNameLookupFn fn) {

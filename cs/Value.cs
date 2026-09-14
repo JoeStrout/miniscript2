@@ -1012,6 +1012,9 @@ public readonly struct Value {
 		if (!IsMap()) return false;
 		GCMap m = GCManager.Maps.Get(ItemIndex());
 		if (m.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen map"); return false; }
+		// A list or map key is stored as a frozen copy (or as itself, if already
+		// frozen), so it can't be mutated while in the map; see FROZEN_VALUES.md.
+		if (key.IsList() || key.IsMap()) key = key.FrozenCopy();
 		m.Set(key, value);
 		return true;
 	}
@@ -1126,30 +1129,43 @@ public readonly struct Value {
 		}
 	}
 
+	// Returns this value if it is already frozen, or else a frozen deep copy.
 	public Value FrozenCopy() {
+		return FrozenCopy(new Dictionary<ulong, Value>());
+	}
+
+	// Copies are recorded by the identity of their originals, and each is
+	// recorded before its contents are copied, so a structure with reference
+	// cycles (or shared parts) is copied with the same shape, rather than
+	// recursing forever.
+	private Value FrozenCopy(Dictionary<ulong, Value> copies) {
 		Value v = this;
 		if (IsList()) {
 			GCList src = GCManager.Lists.Get(ItemIndex());
 			if (src.Frozen) return v;
+			if (copies.TryGetValue(_u, out Value done)) return done;
 			int srcCount = src.Count();
 			Value newList = make_list(srcCount);
+			copies[_u] = newList;
 			Int32 dstIdx = newList.ItemIndex();
 			GCList dst = GCManager.Lists.Get(dstIdx);
 			GCManager.Lists.SetFrozen(dstIdx, true);
-			for (int i = 0; i < srcCount; i++) dst.Push(src.Get(i).FrozenCopy());
+			for (int i = 0; i < srcCount; i++) dst.Push(src.Get(i).FrozenCopy(copies));
 			return newList;
 		}
 		if (IsMap()) {
 			GCMap src = GCManager.Maps.Get(ItemIndex());
 			if (src.Frozen) return v;
+			if (copies.TryGetValue(_u, out Value done)) return done;
 			Value newMap = make_map(src.Count());
+			copies[_u] = newMap;
 			Int32 dstIdx = newMap.ItemIndex();
 			GCMap dst = GCManager.Maps.Get(dstIdx);
 			GCManager.Maps.SetFrozen(dstIdx, true);
 			for (int iter = src.NextEntry(-1); iter != -1; iter = src.NextEntry(iter)) {
 				Value key = src.KeyAt(iter);
 				Value val = src.ValueAt(iter);
-				dst.Set(key.FrozenCopy(), val.FrozenCopy());
+				dst.Set(key.FrozenCopy(copies), val.FrozenCopy(copies));
 			}
 			return newMap;
 		}
@@ -1368,12 +1384,51 @@ public readonly struct Value {
 		return false;
 	}
 
-	public override int GetHashCode() {
-		if (this.IsString()) {
+	public override int GetHashCode() => HashToDepth(HashDepth);
+
+	// Hashing must agree with == (RecursiveEqual): values that compare equal
+	// must hash equal, or they can't be used as map keys.  Lists and maps compare
+	// by content, so they hash by content too -- but only down to HashDepth
+	// levels of nesting; a collection below that contributes just its type and
+	// count.  The limit bounds the cost, and guarantees termination on cycles.
+	// Mirrors value_hash/list_hash/map_hash in the C++ core.
+	private const int HashDepth = 2;
+
+	private int HashToDepth(int depth) {
+		if (IsString()) {
 			string s = GCManager.GetStringContent(this);
 			return s.GetHashCode(System.StringComparison.Ordinal);
 		}
-		return (int)(_u ^ (_u >> 32));
+		unchecked {
+			if (IsList()) {
+				int count = ListCount();
+				int h = 0x4C495354 ^ count;
+				if (depth <= 0) return h;
+				for (int i = 0; i < count; i++) h = h * 31 + ListGet(i).HashToDepth(depth - 1);
+				return h;
+			}
+			if (IsMap()) {
+				// Entry order doesn't affect equality, so entry hashes are combined
+				// by addition; each key/value pair is scrambled first, so that
+				// {"a":1, "b":2} and {"a":2, "b":1} don't collide.
+				GCMap m = GCManager.Maps.Get(ItemIndex());
+				int h = 0x4D415020 ^ m.Count();
+				if (depth <= 0) return h;
+				uint sum = 0;
+				for (int iter = m.NextEntry(-1); iter != -1; iter = m.NextEntry(iter)) {
+					uint p = (uint)(m.KeyAt(iter).HashToDepth(depth - 1) * 31
+								  + m.ValueAt(iter).HashToDepth(depth - 1));
+					p ^= p >> 16;  p *= 0x85EBCA6B;  p ^= p >> 13;
+					sum += p;
+				}
+				return h * 31 + (int)sum;
+			}
+			// 0 and -0 compare equal but differ in the sign bit, so hash -0 as 0.
+			// (Only zero is normalized: masking the sign bit of every number
+			// would make each x collide with -x.)
+			ulong u = (_u == 0x8000000000000000UL) ? 0UL : _u;
+			return (int)(u ^ (u >> 32));
+		}
 	}
 	
 	// And Hash, provided for compatibility with 1.0.

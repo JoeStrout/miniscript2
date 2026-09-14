@@ -46,7 +46,7 @@ bool        map_iterator_next(MapIterator* iter, Value* out_key, Value* out_valu
 //  are now Value:: static methods.)
 
 // Hash & display
-uint32_t map_hash(Value map_val);
+uint32_t map_hash(Value map_val, int depth);
 Value    map_to_string(Value map_val, void* vm);
 
 

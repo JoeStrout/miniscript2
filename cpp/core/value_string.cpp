@@ -315,8 +315,8 @@ Value Value::StringInsert(int index, Value value, void* vm) const {
     const char* iData = get_string_data_nullterm(&insertVal, tinyBufI);
     if (!sData || !iData) return str;
 
-    int byteIdx = UTF8CharIndexToByteIndex((const unsigned char*)sData, index, strLenB);
-    if (byteIdx < 0) byteIdx = strLenB;
+    TempStorage ts(str);
+    int byteIdx = ss_charToByteIndex(ts, index);
 
     int totalLenB = strLenB + insertLenB;
     char* buf = (char*)std::malloc((size_t)(totalLenB + 1));

@@ -85,16 +85,16 @@ char ss_charAt(const StringStorage* storage, int byteIndex) {
     return storage->data[byteIndex];
 }
 
-uint32_t ss_codePointAt(const StringStorage* storage, int charIndex) {
-    if (!storage || charIndex < 0) return 0;
+int ss_charToByteIndex(const StringStorage* storage, int charIndex) {
+    if (!storage || charIndex <= 0) return 0;
+    int lenC = ss_lengthC(storage);
+    if (charIndex >= lenC) return storage->lenB;
 
     // Fast path: ASCII-only string (all chars are single bytes)
-    if (storage->lenC >= 0 && storage->lenC == storage->lenB) {
-        if (charIndex >= storage->lenB) return 0;
-        return (uint32_t)(unsigned char)storage->data[charIndex];
-    }
+    if (lenC == storage->lenB) return charIndex;
 
-    // Non-ASCII path: navigate using cursor to amortize sequential access cost.
+    // Non-ASCII path: walk from whichever of the start, the cursor, or the end
+    // is nearest, and leave the cursor here, to amortize sequential access cost.
     // Cast away const to update the cursor (same pattern as lenC/hash lazy init).
     StringStorage* mut = (StringStorage*)storage;
     unsigned char* base = (unsigned char*)storage->data;
@@ -102,29 +102,60 @@ uint32_t ss_codePointAt(const StringStorage* storage, int charIndex) {
     unsigned char* ptr;
 
     int distFromStart = charIndex;
+    int distFromEnd = lenC - charIndex;
     int distFromCursor = charIndex - mut->cursorCharIdx;
+    int absFromCursor = distFromCursor < 0 ? -distFromCursor : distFromCursor;
 
-    if (distFromCursor == 0) {
+    if (absFromCursor <= distFromStart && absFromCursor <= distFromEnd) {
         ptr = base + mut->cursorByteIdx;
-    } else if (distFromCursor > 0 && distFromCursor < distFromStart) {
-        // Forward from cursor is shorter than scanning from the start
-        ptr = base + mut->cursorByteIdx;
-        AdvanceUTF8(&ptr, end, distFromCursor);
-    } else if (distFromCursor < 0 && (-distFromCursor) < distFromStart) {
-        // Backward from cursor is shorter than scanning from the start
-        ptr = base + mut->cursorByteIdx;
-        BackupUTF8(&ptr, base, -distFromCursor);
-    } else {
+        if (distFromCursor > 0) AdvanceUTF8(&ptr, end, distFromCursor);
+        else if (distFromCursor < 0) BackupUTF8(&ptr, base, -distFromCursor);
+    } else if (distFromStart <= distFromEnd) {
         ptr = base;
-        AdvanceUTF8(&ptr, end, charIndex);
+        AdvanceUTF8(&ptr, end, distFromStart);
+    } else {
+        ptr = end;
+        BackupUTF8(&ptr, base, distFromEnd);
     }
-
-    if (ptr < base || ptr >= end) return 0;
 
     mut->cursorCharIdx = charIndex;
     mut->cursorByteIdx = (int)(ptr - base);
+    return mut->cursorByteIdx;
+}
 
-    return (uint32_t)UTF8Decode(ptr);
+int ss_byteToCharIndex(const StringStorage* storage, int byteIndex) {
+    if (!storage || byteIndex <= 0) return 0;
+    int lenC = ss_lengthC(storage);
+    if (byteIndex >= storage->lenB) return lenC;
+
+    // Fast path: ASCII-only string (all chars are single bytes)
+    if (lenC == storage->lenB) return byteIndex;
+
+    const unsigned char* data = (const unsigned char*)storage->data;
+    if (IsUTF8IntraChar(data[byteIndex])) return -1;  // not a character boundary
+
+    // Non-ASCII path: count character starts from the cursor, if it's at or
+    // before byteIndex, or else from the start; then leave the cursor here.
+    StringStorage* mut = (StringStorage*)storage;
+    int pos = 0;
+    int charIdx = 0;
+    if (mut->cursorByteIdx <= byteIndex) {
+        pos = mut->cursorByteIdx;
+        charIdx = mut->cursorCharIdx;
+    }
+    for (; pos < byteIndex; pos++) {
+        if (!IsUTF8IntraChar(data[pos])) charIdx++;
+    }
+
+    mut->cursorCharIdx = charIdx;
+    mut->cursorByteIdx = byteIndex;
+    return charIdx;
+}
+
+uint32_t ss_codePointAt(const StringStorage* storage, int charIndex) {
+    if (!storage || charIndex < 0 || charIndex >= ss_lengthC(storage)) return 0;
+    int byteIndex = ss_charToByteIndex(storage, charIndex);
+    return (uint32_t)UTF8Decode((unsigned char*)storage->data + byteIndex);
 }
 
 // Comparison functions
@@ -150,25 +181,30 @@ int ss_compare(const StringStorage* storage, const StringStorage* other) {
 }
 
 // Search functions
+static int ss_findBytes(const char* hay, int hayLen, const char* needle, int needleLen, int from);
+
 int ss_indexOf(const StringStorage* storage, const StringStorage* needle) {
     return ss_indexOfFrom(storage, needle, 0);
 }
 
 int ss_indexOfFrom(const StringStorage* storage, const StringStorage* needle, int startIndex) {
     if (!storage || !needle) return -1;
-    if (startIndex < 0 || startIndex >= ss_lengthC(storage)) return -1;
+    int lenC = ss_lengthC(storage);
+    if (startIndex < 0 || startIndex >= lenC) return -1;
     if (ss_isEmpty(needle)) return startIndex;
 
     int n_lenB = needle->lenB;
-    unsigned char* ptr = (unsigned char*)storage->data;
-    const unsigned char* end = ptr + storage->lenB;
-    int charIdx = 0;
+    int startByteIndex = ss_charToByteIndex(storage, startIndex);
 
-    // Skip past startIndex characters
-    if (startIndex > 0) {
-        AdvanceUTF8(&ptr, end, startIndex);
-        charIdx = startIndex;
+    // Fast path: ASCII-only string, where every byte is a character boundary
+    // and byte and character indexes are the same
+    if (lenC == storage->lenB) {
+        return ss_findBytes(storage->data, storage->lenB, needle->data, n_lenB, startByteIndex);
     }
+
+    unsigned char* ptr = (unsigned char*)storage->data + startByteIndex;
+    const unsigned char* end = (const unsigned char*)storage->data + storage->lenB;
+    int charIdx = startIndex;
 
     // Search: at each character boundary, check for a byte match
     while (ptr + n_lenB <= end) {
@@ -189,17 +225,15 @@ int ss_indexOfCharFrom(const StringStorage* storage, char ch, int startIndex) {
     if (startIndex < 0 || startIndex >= ss_lengthC(storage)) return -1;
     
     // Convert character index to byte index
-    int startByteIndex = UTF8CharIndexToByteIndex(
-        (const unsigned char*)storage->data, startIndex, storage->lenB);
-    if (startByteIndex < 0) return -1;
-    
+    int startByteIndex = ss_charToByteIndex(storage, startIndex);
+
     const char* found = strchr(storage->data + startByteIndex, ch);
     if (!found) return -1;
-    
-    // Convert back to character index
+
+    // Convert back to character index (-1 if we found the terminator)
     int foundByteIndex = found - storage->data;
-    return UTF8ByteIndexToCharIndex(
-        (const unsigned char*)storage->data, foundByteIndex, storage->lenB);
+    if (foundByteIndex >= storage->lenB) return -1;
+    return ss_byteToCharIndex(storage, foundByteIndex);
 }
 
 int ss_lastIndexOf(const StringStorage* storage, const StringStorage* needle) {
@@ -209,7 +243,7 @@ int ss_lastIndexOf(const StringStorage* storage, const StringStorage* needle) {
     // Search backwards
     for (int i = storage->lenB - needle->lenB; i >= 0; i--) {
         if (memcmp(storage->data + i, needle->data, needle->lenB) == 0) {
-            return UTF8ByteIndexToCharIndex((const unsigned char*)storage->data, i, storage->lenB);
+            return ss_byteToCharIndex(storage, i);
         }
     }
     return -1;
@@ -219,9 +253,11 @@ int ss_lastIndexOfChar(const StringStorage* storage, char ch) {
     if (!storage) return -1;
     const char* found = strrchr(storage->data, ch);
     if (!found) return -1;
-    
+
+    // Convert to character index (-1 if we found the terminator)
     int foundByteIndex = found - storage->data;
-    return UTF8ByteIndexToCharIndex((const unsigned char*)storage->data, foundByteIndex, storage->lenB);
+    if (foundByteIndex >= storage->lenB) return -1;
+    return ss_byteToCharIndex(storage, foundByteIndex);
 }
 
 bool ss_contains(const StringStorage* storage, const StringStorage* needle) {
@@ -247,19 +283,23 @@ StringStorage* ss_substring(const StringStorage* storage, int startIndex, String
 
 StringStorage* ss_substringLen(const StringStorage* storage, int startIndex, int length, StringStorageAllocator allocator) {
     if (!storage || startIndex < 0 || length < 0 || !allocator) return NULL;
-    if (startIndex >= ss_lengthC(storage)) return ss_create("", allocator);
-    
+    int lenC = ss_lengthC(storage);
+    if (startIndex >= lenC) return ss_create("", allocator);
+
     // Convert character indices to byte indices
-    int startByteIndex = UTF8CharIndexToByteIndex(
-        (const unsigned char*)storage->data, startIndex, storage->lenB);
-    if (startByteIndex < 0) return ss_create("", allocator);
-    
-    int endCharIndex = startIndex + length;
-    if (endCharIndex > ss_lengthC(storage)) endCharIndex = ss_lengthC(storage);
-    int endByteIndex = UTF8CharIndexToByteIndex(
-        (const unsigned char*)storage->data, endCharIndex, storage->lenB);
-    if (endByteIndex < 0) endByteIndex = storage->lenB;
-    
+    int endCharIndex = (length > lenC - startIndex) ? lenC : startIndex + length;
+    int startByteIndex = ss_charToByteIndex(storage, startIndex);
+    int endByteIndex;
+    if (lenC == storage->lenB) {
+        endByteIndex = endCharIndex;  // ASCII-only: byte and character indexes agree
+    } else {
+        // Advance from the substring's start, so this costs only its length
+        unsigned char* ptr = (unsigned char*)storage->data + startByteIndex;
+        AdvanceUTF8(&ptr, (const unsigned char*)storage->data + storage->lenB,
+            endCharIndex - startIndex);
+        endByteIndex = (int)(ptr - (unsigned char*)storage->data);
+    }
+
     int subLenB = endByteIndex - startByteIndex;
     if (subLenB <= 0) return ss_create("", allocator);
     

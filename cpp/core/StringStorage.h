@@ -53,6 +53,19 @@ char ss_charAt(const StringStorage* storage, int byteIndex);
 // Character access (character-index-based, returns Unicode code point)
 uint32_t ss_codePointAt(const StringStorage* storage, int charIndex);
 
+// Conversion between character and byte indexes.  These take the ASCII fast
+// path (when every character is one byte, the two indexes are the same) and
+// otherwise navigate from the sequential-access cursor, so that stepping
+// through a string costs O(1) per step rather than O(n).  Any operation that
+// takes a character index should convert it with these, never by scanning
+// from the start of the string.
+//
+// ss_charToByteIndex clamps charIndex to [0, lenC]; lenC maps to lenB.
+// ss_byteToCharIndex returns lenC for byteIndex >= lenB, and -1 if byteIndex
+// falls inside a multi-byte character.
+int ss_charToByteIndex(const StringStorage* storage, int charIndex);
+int ss_byteToCharIndex(const StringStorage* storage, int byteIndex);
+
 // Comparison
 bool ss_equals(const StringStorage* storage, const StringStorage* other);
 int ss_compare(const StringStorage* storage, const StringStorage* other);

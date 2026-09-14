@@ -4452,6 +4452,61 @@ print "café" == "café"
 --------------------------------
 1
 ================================
+==== Character indexing in any order (exercises the sequential-access cursor
+==== moving forward, backward, and from either end over 1- to 4-byte characters)
+================================
+s = "aé日b😀cüd"
+r = ""
+for i in [0, 7, 3, 2, 6, 1, 4, 5, 7, 0]
+	r += s[i]
+end for
+print r
+--------------------------------
+adb日üé😀cda
+================================
+s = "aé日b😀cüd"
+print s[-1] + s[-3] + s[-8]
+print s[2:5]
+print s[-3:]
+print s[:2]
+--------------------------------
+dca
+日b😀
+cüd
+aé
+================================
+==== indexOf with a start position, on a non-ASCII string
+================================
+s = "é-é-é-"
+print s.indexOf("é")
+print s.indexOf("é", 0)
+print s.indexOf("é", 2)
+print s.indexOf("-", 4)
+print s.indexOf("é", 4) == null
+--------------------------------
+0
+2
+4
+5
+1
+================================
+==== values and insert on a non-ASCII string
+================================
+print "aé日".values.join("|")
+print "aé日b".insert(2, "ü")
+--------------------------------
+a|é|日
+aéü日b
+================================
+==== Indexing and search deep into a long ASCII string
+================================
+s = "x" * 1000 + "yz"
+print s[1001] + s[-2] + s.indexOf("z", 500)
+print s[999:1002]
+--------------------------------
+zy1001
+xyz
+================================
 ================================================================================
 ==== SECTION 24: LIST/MAP/STRING INTRINSICS
 ================================================================================

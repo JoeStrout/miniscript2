@@ -81,6 +81,22 @@ public static class GCManager {
 	// several times per frame.
 	private static Int32 _ticksSinceCollect = 0;
 
+	// ── Allocation-volume trigger ────────────────────────────────────────────
+	// Independent of ticks: collect once the objects allocated since the last
+	// collection reach GCAllocGrowthFactor times the number that survived it.
+	// 1.0 lets the heap roughly double between collections, the usual choice
+	// for a mark-sweep collector (Lua's default pause is the same).
+	public static Double GCAllocGrowthFactor = 1.0;
+
+	// Floor for that allowance, so a small heap is not collected every frame.
+	// A small list or map costs on the order of 100 bytes, so this lets about
+	// 10 MB of garbage build up before the allocation trigger fires.
+	public static Int32 GCMinAllocsBeforeCollect = 100000;
+
+	// Objects in use (not counting interned strings) just after the last
+	// collection.
+	private static Int32 _inUseAfterCollect = 0;
+
 	private static List<Value> _roots = null;
 
 	// ── Mark callbacks ───────────────────────────────────────────────────────
@@ -272,9 +288,23 @@ public static class GCManager {
 	// Collect, but only if enough has happened since the last time to be worth
 	// it.  Safe to call often; the host is expected to call it once per frame.
 	//
-	// Mark-sweep costs O(live set) rather than O(garbage), so an unconditional
-	// collection every frame is a tax proportional to heap size, paid whether or
-	// not there is anything to reclaim.  Hence the interval.
+	// There are two triggers, and whichever comes first wins:
+	//
+	//   Allocation volume -- enough objects allocated since the last collection
+	//   (see GCAllocGrowthFactor).  This bounds the garbage backlog by the size
+	//   of the live set rather than by allocation rate, so a script churning out
+	//   thousands of short-lived lists per frame cannot balloon memory while it
+	//   waits for the clock.
+	//
+	//   Ticks -- GCIntervalTicks since the last collection, pulled earlier by
+	//   live handles.  This runs finalizers promptly for a script that allocates
+	//   little but holds scarce host resources.
+	//
+	// A collection is not O(live set).  Marking is, but clearing mark bits,
+	// marking retained items, and sweeping each walk every slot, and the sweep
+	// does real work for each dead object.  Collecting every frame would pay
+	// for the slot walks with nothing to show for it; collecting rarely just
+	// saves the sweep work up into one long pause.
 	//
 	// `encouraged` says the caller is at a known-good moment -- an explicit
 	// yield, or the start of a wait -- where the pause is hidden by idleness
@@ -294,6 +324,15 @@ public static class GCManager {
 	public static void MaybeCollect(Boolean encouraged = false) {
 		if (!encouraged) _ticksSinceCollect++;
 
+		// Allocation volume.  Only Sweep frees slots, so the growth in slots in
+		// use since the last collection is exactly what has been allocated since.
+		Int32 allowance = (Int32)(_inUseAfterCollect * GCAllocGrowthFactor);
+		if (allowance < GCMinAllocsBeforeCollect) allowance = GCMinAllocsBeforeCollect;
+		if (InUseCount() - _inUseAfterCollect >= allowance) {
+			CollectGarbage();
+			return;
+		}
+
 		Int32 interval    = encouraged ? GCEncouragedIntervalTicks : GCIntervalTicks;
 		Int32 minInterval = encouraged ? GCEncouragedMinIntervalTicks : GCMinIntervalTicks;
 
@@ -311,6 +350,14 @@ public static class GCManager {
 
 		if (_ticksSinceCollect < interval) return;
 		CollectGarbage();		// resets _ticksSinceCollect
+	}
+
+	// Slots in use across the sets an ordinary collection sweeps.  Interned
+	// strings are left out; only FullCollectGarbage sweeps them.
+	private static Int32 InUseCount() {
+		Int32 n = BigStrings.LiveCount() + Lists.LiveCount() + Maps.LiveCount();
+		n += Errors.LiveCount() + Functions.LiveCount() + Handles.LiveCount();
+		return n;
 	}
 
 	// Run a full mark-sweep cycle.
@@ -364,6 +411,8 @@ public static class GCManager {
 		// The table is keyed by string content, so we must purge its
 		// entries before InternedStrings.Sweep() clears the .Data fields.
 		if (includeInterned) SweepInternTable();
+
+		_inUseAfterCollect = InUseCount();
 	}
 
 	private static void SweepInternTable() {

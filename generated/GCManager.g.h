@@ -39,6 +39,9 @@ class GCManager {
 	public: static Int32 GCEncouragedMinIntervalTicks;
 	public: static Int32 GCHandlesForMinInterval;
 	private: static Int32 _ticksSinceCollect;
+	public: static Double GCAllocGrowthFactor;
+	public: static Int32 GCMinAllocsBeforeCollect;
+	private: static Int32 _inUseAfterCollect;
 	private: static List<Value> _roots;
 	private: static List<MarkCallback> _markCallbackFns;
 	private: static List<object> _markCallbackData;
@@ -82,6 +85,19 @@ class GCManager {
 	// Ticks since the last collection.  Only an ordinary (non-encouraged) call
 	// advances this, so it stays an honest frame count even when a script yields
 	// several times per frame.
+
+	// ── Allocation-volume trigger ────────────────────────────────────────────
+	// Independent of ticks: collect once the objects allocated since the last
+	// collection reach GCAllocGrowthFactor times the number that survived it.
+	// 1.0 lets the heap roughly double between collections, the usual choice
+	// for a mark-sweep collector (Lua's default pause is the same).
+
+	// Floor for that allowance, so a small heap is not collected every frame.
+	// A small list or map costs on the order of 100 bytes, so this lets about
+	// 10 MB of garbage build up before the allocation trigger fires.
+
+	// Objects in use (not counting interned strings) just after the last
+	// collection.
 
 	// ── Mark callbacks ───────────────────────────────────────────────────────
 	// Callback registered by a VM (or any other root provider) and invoked once
@@ -154,9 +170,20 @@ class GCManager {
 
 	// Collect, but only if enough has happened since the last time to be worth
 	// it.  Safe to call often; the host is expected to call it once per frame.
-	// Mark-sweep costs O(live set) rather than O(garbage), so an unconditional
-	// collection every frame is a tax proportional to heap size, paid whether or
-	// not there is anything to reclaim.  Hence the interval.
+	// There are two triggers, and whichever comes first wins:
+	//   Allocation volume -- enough objects allocated since the last collection
+	//   (see GCAllocGrowthFactor).  This bounds the garbage backlog by the size
+	//   of the live set rather than by allocation rate, so a script churning out
+	//   thousands of short-lived lists per frame cannot balloon memory while it
+	//   waits for the clock.
+	//   Ticks -- GCIntervalTicks since the last collection, pulled earlier by
+	//   live handles.  This runs finalizers promptly for a script that allocates
+	//   little but holds scarce host resources.
+	// A collection is not O(live set).  Marking is, but clearing mark bits,
+	// marking retained items, and sweeping each walk every slot, and the sweep
+	// does real work for each dead object.  Collecting every frame would pay
+	// for the slot walks with nothing to show for it; collecting rarely just
+	// saves the sweep work up into one long pause.
 	// `encouraged` says the caller is at a known-good moment -- an explicit
 	// yield, or the start of a wait -- where the pause is hidden by idleness
 	// that was going to happen anyway.  Such calls use the lower thresholds and
@@ -172,6 +199,10 @@ class GCManager {
 	// fresh-call branch; a continuation runs on every VM step, and collecting
 	// from there would fire far more often than the interval implies.
 	public: static void MaybeCollect(Boolean encouraged = Boolean(false));
+
+	// Slots in use across the sets an ordinary collection sweeps.  Interned
+	// strings are left out; only FullCollectGarbage sweeps them.
+	private: static Int32 InUseCount();
 
 	// Run a full mark-sweep cycle.
 	public: static void CollectGarbage();

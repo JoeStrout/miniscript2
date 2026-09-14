@@ -48,6 +48,8 @@ List.methods.push MethodInfo.Make("Insert")
 List.methods.push MethodInfo.Make("Remove")
 List.methods.push MethodInfo.Make("Push")
 List.methods.push MethodInfo.Make("RemoveAt")
+List.methods.push MethodInfo.Make("RemoveRange")
+List.methods.push MethodInfo.Make("TrimExcess")
 List.methods.push MethodInfo.Make("Reverse")
 List.methods.push MethodInfo.Make("Sort")
 

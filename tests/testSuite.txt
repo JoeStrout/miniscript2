@@ -22,6 +22,12 @@ print 123  // and here is a comment after a statement
 --------------------------------
 123
 ================================
+==== A shebang (#!) line at the very start of a script is ignored
+#!/usr/bin/env miniscript2
+print "after shebang"
+--------------------------------
+after shebang
+================================
 // several statements separated by semicolons:
 print 1; print 2; print 3
 print 4 // however; a semicolon in a comment; does nothing

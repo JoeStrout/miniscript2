@@ -31,7 +31,9 @@ public interface IGCItem {
 //   void PrepareForGC()    - clear all mark bits before the Mark phase
 //   void Mark(Int32 idx)   - mark item at idx and recurse into its children
 //   void MarkRetained()    - mark all items with retain count > 0 (and children)
-//   void Sweep()           - free every live, unmarked, unretained item
-//   Int32 LiveCount()      - count of live slots (O(n); for diagnostics only)
+//   void Sweep()           - free every live, unmarked, unretained item, then
+//                            trim free slots off the end of the table
+//   Int32 LiveCount()      - slots in use, including garbage not yet swept
+//                            (O(1) running tally)
 
 }

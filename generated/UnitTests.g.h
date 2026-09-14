@@ -100,6 +100,12 @@ class UnitTests {
 
 	public: static Boolean TestGCHandle();
 
+	// ── GC slot trimming and allocation trigger ──────────────────────────────────
+
+	public: static Boolean TestGCSlotTrim();
+
+	public: static Boolean TestGCAllocTrigger();
+
 	// Helper for MayReadVar tests: parse an assignment, then ask its RHS.
 	private: static Boolean CheckMayReadVar(Parser parser, String input, String varName, Boolean expected);
 

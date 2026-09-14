@@ -44,6 +44,8 @@ struct GCSetBase {
 	protected: void CallMarkChildren(Int32 idx);
 	protected: void CallOnSweep(Int32 idx);
 	protected: void AppendItem();
+	protected: void TruncateItems(Int32 newCount, Boolean trimCapacity);
+	private: Int32 TrimCapacityMinSlots();
 
 	// Slots currently in use.  Maintained incrementally rather than counted on
 	// demand: LiveCount() is called on every MaybeCollect tick, and scanning
@@ -56,6 +58,12 @@ struct GCSetBase {
 	// Subclass calls item[idx].OnSweep().
 
 	// Subclass appends a default-constructed item to its items list.
+
+	// Subclass drops its items from newCount on, and releases their spare
+	// capacity if trimCapacity.
+
+	// Sweep releases spare capacity only when at least this many slots came off
+	// the end, so small tables are not reallocated over a handful of slots.
 
 	// ── Allocation ───────────────────────────────────────────────────────────
 
@@ -75,6 +83,14 @@ struct GCSetBase {
 
 	public: inline void MarkRetained();
 
+	// Free every in-use slot that is neither marked nor retained, then give
+	// back the free slots at the end of the table.
+	// Slots cannot be moved -- every Value that refers to one bakes in its
+	// index -- so only the tail can be trimmed.  To keep the tail trimmable, the
+	// free list is rebuilt so that AllocItem hands out the lowest free index
+	// first; live objects then settle toward the front of the table instead of
+	// staying scattered up to its high-water mark.  The rebuild is one more
+	// pass over a table that Sweep is already walking.
 	public: inline void Sweep();
 
 	// True if slot idx is currently in use and will survive the next Sweep
@@ -83,7 +99,8 @@ struct GCSetBase {
 
 	public: inline Int32 LiveCount();
 
-	// Slots allocated so far, live or free -- the high-water mark of this set.
+	// Length of the slot table, live or free.  Sweep trims free slots off the
+	// end, so this is the high-water mark only since the last collection.
 	public: inline Int32 SlotCount();
 }; // end of struct GCSetBase
 
@@ -100,6 +117,8 @@ class GCSetBaseStorage : public std::enable_shared_from_this<GCSetBaseStorage> {
 	protected: virtual void CallMarkChildren(Int32 idx) = 0;
 	protected: virtual void CallOnSweep(Int32 idx) = 0;
 	protected: virtual void AppendItem() = 0;
+	protected: virtual void TruncateItems(Int32 newCount, Boolean trimCapacity) = 0;
+	private: static const Int32 TrimCapacityMinSlots;
 
 	// Slots currently in use.  Maintained incrementally rather than counted on
 	// demand: LiveCount() is called on every MaybeCollect tick, and scanning
@@ -112,6 +131,12 @@ class GCSetBaseStorage : public std::enable_shared_from_this<GCSetBaseStorage> {
 	// Subclass calls item[idx].OnSweep().
 
 	// Subclass appends a default-constructed item to its items list.
+
+	// Subclass drops its items from newCount on, and releases their spare
+	// capacity if trimCapacity.
+
+	// Sweep releases spare capacity only when at least this many slots came off
+	// the end, so small tables are not reallocated over a handful of slots.
 
 	// ── Allocation ───────────────────────────────────────────────────────────
 
@@ -131,6 +156,14 @@ class GCSetBaseStorage : public std::enable_shared_from_this<GCSetBaseStorage> {
 
 	public: void MarkRetained();
 
+	// Free every in-use slot that is neither marked nor retained, then give
+	// back the free slots at the end of the table.
+	// Slots cannot be moved -- every Value that refers to one bakes in its
+	// index -- so only the tail can be trimmed.  To keep the tail trimmable, the
+	// free list is rebuilt so that AllocItem hands out the lowest free index
+	// first; live objects then settle toward the front of the table instead of
+	// staying scattered up to its high-water mark.  The rebuild is one more
+	// pass over a table that Sweep is already walking.
 	public: void Sweep();
 
 	// True if slot idx is currently in use and will survive the next Sweep
@@ -139,7 +172,8 @@ class GCSetBaseStorage : public std::enable_shared_from_this<GCSetBaseStorage> {
 
 	public: Int32 LiveCount();
 
-	// Slots allocated so far, live or free -- the high-water mark of this set.
+	// Length of the slot table, live or free.  Sweep trims free slots off the
+	// end, so this is the high-water mark only since the last collection.
 	public: Int32 SlotCount();
 }; // end of class GCSetBaseStorage
 
@@ -152,6 +186,7 @@ class GCStringSetStorage : public GCSetBaseStorage {
 	protected: void CallMarkChildren(Int32 idx);
 	protected: void CallOnSweep(Int32 idx);
 	protected: void AppendItem();
+	protected: void TruncateItems(Int32 newCount, Boolean trimCapacity);
 
 	public: GCString Get(Int32 idx);
 
@@ -167,6 +202,7 @@ class GCListSetStorage : public GCSetBaseStorage {
 	protected: void CallMarkChildren(Int32 idx);
 	protected: void CallOnSweep(Int32 idx);
 	protected: void AppendItem();
+	protected: void TruncateItems(Int32 newCount, Boolean trimCapacity);
 
 	public: GCList Get(Int32 idx);
 
@@ -189,6 +225,7 @@ class GCMapSetStorage : public GCSetBaseStorage {
 	protected: void CallMarkChildren(Int32 idx);
 	protected: void CallOnSweep(Int32 idx);
 	protected: void AppendItem();
+	protected: void TruncateItems(Int32 newCount, Boolean trimCapacity);
 
 	public: GCMap Get(Int32 idx);
 
@@ -217,6 +254,7 @@ class GCErrorSetStorage : public GCSetBaseStorage {
 	protected: void CallMarkChildren(Int32 idx);
 	protected: void CallOnSweep(Int32 idx);
 	protected: void AppendItem();
+	protected: void TruncateItems(Int32 newCount, Boolean trimCapacity);
 
 	public: GCError Get(Int32 idx);
 
@@ -232,6 +270,7 @@ class GCHandleSetStorage : public GCSetBaseStorage {
 	protected: void CallMarkChildren(Int32 idx);
 	protected: void CallOnSweep(Int32 idx);
 	protected: void AppendItem();
+	protected: void TruncateItems(Int32 newCount, Boolean trimCapacity);
 
 	public: GCHandle Get(Int32 idx);
 
@@ -247,6 +286,7 @@ class GCFuncRefSetStorage : public GCSetBaseStorage {
 	protected: void CallMarkChildren(Int32 idx);
 	protected: void CallOnSweep(Int32 idx);
 	protected: void AppendItem();
+	protected: void TruncateItems(Int32 newCount, Boolean trimCapacity);
 
 	public: GCFunction Get(Int32 idx);
 
@@ -272,6 +312,7 @@ struct GCStringSet : public GCSetBase {
 	protected: void CallMarkChildren(Int32 idx) { return get()->CallMarkChildren(idx); }
 	protected: void CallOnSweep(Int32 idx) { return get()->CallOnSweep(idx); }
 	protected: void AppendItem() { return get()->AppendItem(); }
+	protected: void TruncateItems(Int32 newCount, Boolean trimCapacity) { return get()->TruncateItems(newCount, trimCapacity); }
 
 	public: inline GCString Get(Int32 idx);
 
@@ -297,6 +338,7 @@ struct GCListSet : public GCSetBase {
 	protected: void CallMarkChildren(Int32 idx) { return get()->CallMarkChildren(idx); }
 	protected: void CallOnSweep(Int32 idx) { return get()->CallOnSweep(idx); }
 	protected: void AppendItem() { return get()->AppendItem(); }
+	protected: void TruncateItems(Int32 newCount, Boolean trimCapacity) { return get()->TruncateItems(newCount, trimCapacity); }
 
 	public: inline GCList Get(Int32 idx);
 
@@ -329,6 +371,7 @@ struct GCMapSet : public GCSetBase {
 	protected: void CallMarkChildren(Int32 idx) { return get()->CallMarkChildren(idx); }
 	protected: void CallOnSweep(Int32 idx) { return get()->CallOnSweep(idx); }
 	protected: void AppendItem() { return get()->AppendItem(); }
+	protected: void TruncateItems(Int32 newCount, Boolean trimCapacity) { return get()->TruncateItems(newCount, trimCapacity); }
 
 	public: inline GCMap Get(Int32 idx);
 
@@ -367,6 +410,7 @@ struct GCErrorSet : public GCSetBase {
 	protected: void CallMarkChildren(Int32 idx) { return get()->CallMarkChildren(idx); }
 	protected: void CallOnSweep(Int32 idx) { return get()->CallOnSweep(idx); }
 	protected: void AppendItem() { return get()->AppendItem(); }
+	protected: void TruncateItems(Int32 newCount, Boolean trimCapacity) { return get()->TruncateItems(newCount, trimCapacity); }
 
 	public: inline GCError Get(Int32 idx);
 
@@ -392,6 +436,7 @@ struct GCHandleSet : public GCSetBase {
 	protected: void CallMarkChildren(Int32 idx) { return get()->CallMarkChildren(idx); }
 	protected: void CallOnSweep(Int32 idx) { return get()->CallOnSweep(idx); }
 	protected: void AppendItem() { return get()->AppendItem(); }
+	protected: void TruncateItems(Int32 newCount, Boolean trimCapacity) { return get()->TruncateItems(newCount, trimCapacity); }
 
 	public: inline GCHandle Get(Int32 idx);
 
@@ -417,6 +462,7 @@ struct GCFuncRefSet : public GCSetBase {
 	protected: void CallMarkChildren(Int32 idx) { return get()->CallMarkChildren(idx); }
 	protected: void CallOnSweep(Int32 idx) { return get()->CallOnSweep(idx); }
 	protected: void AppendItem() { return get()->AppendItem(); }
+	protected: void TruncateItems(Int32 newCount, Boolean trimCapacity) { return get()->TruncateItems(newCount, trimCapacity); }
 
 	public: inline GCFunction Get(Int32 idx);
 
@@ -439,6 +485,8 @@ inline void GCSetBase::set__liveCount(Int32 _v) { get()->_liveCount = _v; }
 inline void GCSetBase::CallMarkChildren(Int32 idx) { return get()->CallMarkChildren(idx); }
 inline void GCSetBase::CallOnSweep(Int32 idx) { return get()->CallOnSweep(idx); }
 inline void GCSetBase::AppendItem() { return get()->AppendItem(); }
+inline void GCSetBase::TruncateItems(Int32 newCount,Boolean trimCapacity) { return get()->TruncateItems(newCount, trimCapacity); }
+inline Int32 GCSetBase::TrimCapacityMinSlots() { return get()->TrimCapacityMinSlots; }
 inline Int32 GCSetBase::AllocItem() { return get()->AllocItem(); }
 inline void GCSetBase::Retain(Int32 idx) { return get()->Retain(idx); }
 inline void GCSetBase::Release(Int32 idx) { return get()->Release(idx); }

@@ -35,6 +35,14 @@ public abstract class GCSetBase {
 	// Subclass appends a default-constructed item to its items list.
 	protected abstract void AppendItem();
 
+	// Subclass drops its items from newCount on, and releases their spare
+	// capacity if trimCapacity.
+	protected abstract void TruncateItems(Int32 newCount, Boolean trimCapacity);
+
+	// Sweep releases spare capacity only when at least this many slots came off
+	// the end, so small tables are not reallocated over a handful of slots.
+	private const Int32 TrimCapacityMinSlots = 1024;
+
 	// ── Allocation ───────────────────────────────────────────────────────────
 
 	public Int32 AllocItem() {
@@ -86,16 +94,57 @@ public abstract class GCSetBase {
 		}
 	}
 
+	// Free every in-use slot that is neither marked nor retained, then give
+	// back the free slots at the end of the table.
+	//
+	// Slots cannot be moved -- every Value that refers to one bakes in its
+	// index -- so only the tail can be trimmed.  To keep the tail trimmable, the
+	// free list is rebuilt so that AllocItem hands out the lowest free index
+	// first; live objects then settle toward the front of the table instead of
+	// staying scattered up to its high-water mark.  The rebuild is one more
+	// pass over a table that Sweep is already walking.
 	public void Sweep() {
-		for (Int32 i = 0; i < _inUse.Count; i++) {
-			if (_inUse[i] && !_marked[i] && _retainCounts[i] == 0) {
+		Int32 count = _inUse.Count;
+		Int32 lastInUse = -1;
+		for (Int32 i = 0; i < count; i++) {
+			if (!_inUse[i]) continue;
+			if (!_marked[i] && _retainCounts[i] == 0) {
 				CallOnSweep(i);
 				_inUse[i]        = false;
 				_retainCounts[i] = 0;
-				_free.Add(i);
 				_liveCount--;
+			} else {
+				lastInUse = i;
 			}
 		}
+
+		// Truncating is cheap, since the removed slots are already empty.
+		// Returning their memory means reallocating, so do that only when the
+		// table has shrunk a lot; otherwise a heap that swings around a steady
+		// size would reallocate on every cycle.
+		Int32 newCount = lastInUse + 1;
+		Boolean trimCapacity = false;
+		if (newCount < count) {
+			Int32 removed = count - newCount;
+			trimCapacity = (removed >= TrimCapacityMinSlots && newCount < count / 4);
+			_inUse.RemoveRange(newCount, removed);
+			_marked.RemoveRange(newCount, removed);
+			_retainCounts.RemoveRange(newCount, removed);
+			TruncateItems(newCount, trimCapacity);
+			if (trimCapacity) {
+				_inUse.TrimExcess();
+				_marked.TrimExcess();
+				_retainCounts.TrimExcess();
+			}
+		}
+
+		// Rebuild the free list highest index first, so that AllocItem (which
+		// pops from the end) reuses the lowest free slot.
+		_free.Clear();
+		for (Int32 i = newCount - 1; i >= 0; i--) {
+			if (!_inUse[i]) _free.Add(i);
+		}
+		if (trimCapacity) _free.TrimExcess();
 	}
 
 	// True if slot idx is currently in use and will survive the next Sweep
@@ -108,7 +157,8 @@ public abstract class GCSetBase {
 		return _liveCount;
 	}
 
-	// Slots allocated so far, live or free -- the high-water mark of this set.
+	// Length of the slot table, live or free.  Sweep trims free slots off the
+	// end, so this is the high-water mark only since the last collection.
 	public Int32 SlotCount() {
 		return _inUse.Count;
 	}
@@ -133,6 +183,10 @@ public class GCStringSet : GCSetBase {
 	}
 	protected override void AppendItem() {
 		_items.Add(new GCString());
+	}
+	protected override void TruncateItems(Int32 newCount, Boolean trimCapacity) {
+		_items.RemoveRange(newCount, _items.Count - newCount);
+		if (trimCapacity) _items.TrimExcess();
 	}
 
 	[MethodImpl(AggressiveInlining)]
@@ -167,6 +221,10 @@ public class GCListSet : GCSetBase {
 	}
 	protected override void AppendItem() {
 		_items.Add(new GCList());
+	}
+	protected override void TruncateItems(Int32 newCount, Boolean trimCapacity) {
+		_items.RemoveRange(newCount, _items.Count - newCount);
+		if (trimCapacity) _items.TrimExcess();
 	}
 
 	[MethodImpl(AggressiveInlining)]
@@ -215,6 +273,10 @@ public class GCMapSet : GCSetBase {
 	}
 	protected override void AppendItem() {
 		_items.Add(new GCMap());
+	}
+	protected override void TruncateItems(Int32 newCount, Boolean trimCapacity) {
+		_items.RemoveRange(newCount, _items.Count - newCount);
+		if (trimCapacity) _items.TrimExcess();
 	}
 
 	[MethodImpl(AggressiveInlining)]
@@ -281,6 +343,10 @@ public class GCErrorSet : GCSetBase {
 	protected override void AppendItem() {
 		_items.Add(new GCError());
 	}
+	protected override void TruncateItems(Int32 newCount, Boolean trimCapacity) {
+		_items.RemoveRange(newCount, _items.Count - newCount);
+		if (trimCapacity) _items.TrimExcess();
+	}
 
 	[MethodImpl(AggressiveInlining)]
 	public GCError Get(Int32 idx) {
@@ -318,6 +384,10 @@ public class GCHandleSet : GCSetBase {
 	protected override void AppendItem() {
 		_items.Add(new GCHandle());
 	}
+	protected override void TruncateItems(Int32 newCount, Boolean trimCapacity) {
+		_items.RemoveRange(newCount, _items.Count - newCount);
+		if (trimCapacity) _items.TrimExcess();
+	}
 
 	[MethodImpl(AggressiveInlining)]
 	public GCHandle Get(Int32 idx) {
@@ -352,6 +422,10 @@ public class GCFuncRefSet : GCSetBase {
 	}
 	protected override void AppendItem() {
 		_items.Add(new GCFunction());
+	}
+	protected override void TruncateItems(Int32 newCount, Boolean trimCapacity) {
+		_items.RemoveRange(newCount, _items.Count - newCount);
+		if (trimCapacity) _items.TrimExcess();
 	}
 
 	[MethodImpl(AggressiveInlining)]

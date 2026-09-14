@@ -29,6 +29,9 @@ Int32 GCManager::GCEncouragedIntervalTicks = 20;
 Int32 GCManager::GCEncouragedMinIntervalTicks = 5;
 Int32 GCManager::GCHandlesForMinInterval = 64;
 Int32 GCManager::_ticksSinceCollect = 0;
+Double GCManager::GCAllocGrowthFactor = 1.0;
+Int32 GCManager::GCMinAllocsBeforeCollect = 100000;
+Int32 GCManager::_inUseAfterCollect = 0;
 List<Value> GCManager::_roots = nullptr;
 List<MarkCallback> GCManager::_markCallbackFns = nullptr;
 List<object> GCManager::_markCallbackData = nullptr;
@@ -164,6 +167,15 @@ void GCManager::FullCollectGarbage() {
 void GCManager::MaybeCollect(Boolean encouraged ) {
 	if (!encouraged) _ticksSinceCollect++;
 
+	// Allocation volume.  Only Sweep frees slots, so the growth in slots in
+	// use since the last collection is exactly what has been allocated since.
+	Int32 allowance = (Int32)(_inUseAfterCollect * GCAllocGrowthFactor);
+	if (allowance < GCMinAllocsBeforeCollect) allowance = GCMinAllocsBeforeCollect;
+	if (InUseCount() - _inUseAfterCollect >= allowance) {
+		CollectGarbage();
+		return;
+	}
+
 	Int32 interval    = encouraged ? GCEncouragedIntervalTicks : GCIntervalTicks;
 	Int32 minInterval = encouraged ? GCEncouragedMinIntervalTicks : GCMinIntervalTicks;
 
@@ -181,6 +193,11 @@ void GCManager::MaybeCollect(Boolean encouraged ) {
 
 	if (_ticksSinceCollect < interval) return;
 	CollectGarbage();		// resets _ticksSinceCollect
+}
+Int32 GCManager::InUseCount() {
+	Int32 n = BigStrings.LiveCount() + Lists.LiveCount() + Maps.LiveCount();
+	n += Errors.LiveCount() + Functions.LiveCount() + Handles.LiveCount();
+	return n;
 }
 void GCManager::CollectGarbage() {
 	CollectGarbageInternal(Boolean(false));
@@ -231,6 +248,8 @@ void GCManager::CollectGarbageInternal(Boolean includeInterned) {
 	// The table is keyed by string content, so we must purge its
 	// entries before InternedStrings.Sweep() clears the .Data fields.
 	if (includeInterned) SweepInternTable();
+
+	_inUseAfterCollect = InUseCount();
 }
 void GCManager::SweepInternTable() {
 	List<String> dead =  List<String>::New();

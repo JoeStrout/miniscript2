@@ -23,6 +23,16 @@ Lexer::Lexer(String source) {
 	_column = 1;
 	Error = Value::Null;
 	FileName = "";
+
+	// Skip a shebang line (e.g. "#!/usr/bin/env miniscript") at the very
+	// start of the source.  Stop at the newline, so it still produces an
+	// EOL token and line numbers stay correct.
+	if (_input.Length() >= 2 && _input[0] == '#' && _input[1] == '!') {
+		while (_position < _input.Length() && _input[_position] != '\n') {
+			_position++;
+			_column++;
+		}
+	}
 }
 Char Lexer::Peek() {
 	if (_position >= _input.Length()) return '\0';

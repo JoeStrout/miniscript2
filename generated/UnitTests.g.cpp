@@ -1148,6 +1148,74 @@ Boolean UnitTests::TestGCHandle() {
 	if (!ok) IOHelper::Print("TestGCHandle FAILED");
 	return ok;
 }
+Boolean UnitTests::TestGCSlotTrim() {
+	Boolean ok = Boolean(true);
+	GCManager::CollectGarbage();
+	Int32 baseSlots = GCManager::Lists.SlotCount();
+
+	// Enough garbage to fill any free slots and grow the table...
+	for (Int32 i = 0; i < baseSlots + 5000; i++) GCManager::NewList(4);
+	ok = ok && Assert(GCManager::Lists.SlotCount() > baseSlots,
+		"garbage lists should grow the slot table");
+
+	// ...and collecting it gives the tail back.
+	GCManager::CollectGarbage();
+	ok = ok && Assert(GCManager::Lists.SlotCount() <= baseSlots,
+		"Sweep should trim free slots off the end of the table");
+
+	// Free slots are reused lowest first.
+	List<Value> kept =  List<Value>::New();
+	for (Int32 i = 0; i < 10; i++) {
+		Value v = GCManager::NewList(4);
+		GCManager::Lists.Retain(v.ItemIndex());
+		kept.Add(v);
+	}
+	Int32 idx2 = kept[2].ItemIndex();
+	Int32 idx5 = kept[5].ItemIndex();
+	GCManager::Lists.Release(idx2);
+	GCManager::Lists.Release(idx5);
+	GCManager::CollectGarbage();
+	Value r1 = GCManager::NewList(4);
+	Value r2 = GCManager::NewList(4);
+	ok = ok && Assert(r1.ItemIndex() <= idx2 && r2.ItemIndex() <= idx5
+		&& r1.ItemIndex() < r2.ItemIndex(), "free slots should be reused lowest first");
+
+	for (Int32 i = 0; i < 10; i++) {
+		if (i != 2 && i != 5) GCManager::Lists.Release(kept[i].ItemIndex());
+	}
+	GCManager::CollectGarbage();
+
+	if (!ok) IOHelper::Print("TestGCSlotTrim FAILED");
+	return ok;
+}
+Boolean UnitTests::TestGCAllocTrigger() {
+	Boolean ok = Boolean(true);
+	Int32 savedFloor = GCManager::GCMinAllocsBeforeCollect;
+	Double savedFactor = GCManager::GCAllocGrowthFactor;
+	GCManager::GCMinAllocsBeforeCollect = 1000;
+	GCManager::GCAllocGrowthFactor = 0.0;
+
+	// Also restarts the tick clock, so only the allocation trigger can fire
+	// below (an encouraged call does not advance the ticks).
+	GCManager::CollectGarbage();
+	Int32 before = GCManager::Lists.LiveCount();
+
+	for (Int32 i = 0; i < 999; i++) GCManager::NewList(4);
+	GCManager::MaybeCollect(Boolean(true));
+	ok = ok && Assert(GCManager::Lists.LiveCount() == before + 999,
+		"MaybeCollect should not collect below the allocation allowance");
+
+	GCManager::NewList(4);
+	GCManager::MaybeCollect(Boolean(true));
+	ok = ok && Assert(GCManager::Lists.LiveCount() == before,
+		"MaybeCollect should collect once allocations reach the allowance");
+
+	GCManager::GCMinAllocsBeforeCollect = savedFloor;
+	GCManager::GCAllocGrowthFactor = savedFactor;
+
+	if (!ok) IOHelper::Print("TestGCAllocTrigger FAILED");
+	return ok;
+}
 Boolean UnitTests::CheckMayReadVar(Parser parser,String input,String varName,Boolean expected) {
 	ASTNode ast = parser.Parse(input);
 	if (parser.HadError()) {
@@ -1484,7 +1552,9 @@ Boolean UnitTests::RunAll() {
 	&& TestHostGlobals()
 	&& TestGlobalsSwitch()
 		&& TestRunFunction()
-		&& TestGCHandle();
+		&& TestGCHandle()
+		&& TestGCSlotTrim()
+		&& TestGCAllocTrigger();
 }
 
 } // end of namespace MiniScript

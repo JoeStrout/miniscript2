@@ -5,6 +5,7 @@
 
 namespace MiniScript {
 
+const Int32 GCSetBaseStorage::TrimCapacityMinSlots = 1024;
 Int32 GCSetBaseStorage::AllocItem() {
 	Int32 idx;
 	_liveCount++;
@@ -43,15 +44,47 @@ void GCSetBaseStorage::MarkRetained() {
 	}
 }
 void GCSetBaseStorage::Sweep() {
-	for (Int32 i = 0; i < _inUse.Count(); i++) {
-		if (_inUse[i] && !_marked[i] && _retainCounts[i] == 0) {
+	Int32 count = _inUse.Count();
+	Int32 lastInUse = -1;
+	for (Int32 i = 0; i < count; i++) {
+		if (!_inUse[i]) continue;
+		if (!_marked[i] && _retainCounts[i] == 0) {
 			CallOnSweep(i);
 			_inUse[i]        = Boolean(false);
 			_retainCounts[i] = 0;
-			_free.Add(i);
 			_liveCount--;
+		} else {
+			lastInUse = i;
 		}
 	}
+
+	// Truncating is cheap, since the removed slots are already empty.
+	// Returning their memory means reallocating, so do that only when the
+	// table has shrunk a lot; otherwise a heap that swings around a steady
+	// size would reallocate on every cycle.
+	Int32 newCount = lastInUse + 1;
+	Boolean trimCapacity = Boolean(false);
+	if (newCount < count) {
+		Int32 removed = count - newCount;
+		trimCapacity = (removed >= TrimCapacityMinSlots && newCount < count / 4);
+		_inUse.RemoveRange(newCount, removed);
+		_marked.RemoveRange(newCount, removed);
+		_retainCounts.RemoveRange(newCount, removed);
+		TruncateItems(newCount, trimCapacity);
+		if (trimCapacity) {
+			_inUse.TrimExcess();
+			_marked.TrimExcess();
+			_retainCounts.TrimExcess();
+		}
+	}
+
+	// Rebuild the free list highest index first, so that AllocItem (which
+	// pops from the end) reuses the lowest free slot.
+	_free.Clear();
+	for (Int32 i = newCount - 1; i >= 0; i--) {
+		if (!_inUse[i]) _free.Add(i);
+	}
+	if (trimCapacity) _free.TrimExcess();
 }
 Boolean GCSetBaseStorage::IsLiveSlot(Int32 idx) {
 	return _inUse[idx] && (_marked[idx] || _retainCounts[idx] > 0);
@@ -77,6 +110,10 @@ void GCStringSetStorage::CallOnSweep(Int32 idx) {
 void GCStringSetStorage::AppendItem() {
 	_items.Add(GCString());
 }
+void GCStringSetStorage::TruncateItems(Int32 newCount,Boolean trimCapacity) {
+	_items.RemoveRange(newCount, _items.Count() - newCount);
+	if (trimCapacity) _items.TrimExcess();
+}
 
 GCListSetStorage::GCListSetStorage(Int32 initialCapacity ) {
 	_items =  List<GCList>::New(initialCapacity);
@@ -91,6 +128,10 @@ void GCListSetStorage::CallOnSweep(Int32 idx) {
 }
 void GCListSetStorage::AppendItem() {
 	_items.Add(GCList());
+}
+void GCListSetStorage::TruncateItems(Int32 newCount,Boolean trimCapacity) {
+	_items.RemoveRange(newCount, _items.Count() - newCount);
+	if (trimCapacity) _items.TrimExcess();
 }
 void GCListSetStorage::Init(Int32 idx,Int32 capacity) {
 	GCList item = _items[idx];
@@ -111,6 +152,10 @@ void GCMapSetStorage::CallOnSweep(Int32 idx) {
 }
 void GCMapSetStorage::AppendItem() {
 	_items.Add(GCMap());
+}
+void GCMapSetStorage::TruncateItems(Int32 newCount,Boolean trimCapacity) {
+	_items.RemoveRange(newCount, _items.Count() - newCount);
+	if (trimCapacity) _items.TrimExcess();
 }
 void GCMapSetStorage::Init(Int32 idx,Int32 capacity) {
 	GCMap item = _items[idx];
@@ -137,6 +182,10 @@ void GCErrorSetStorage::CallOnSweep(Int32 idx) {
 void GCErrorSetStorage::AppendItem() {
 	_items.Add(GCError());
 }
+void GCErrorSetStorage::TruncateItems(Int32 newCount,Boolean trimCapacity) {
+	_items.RemoveRange(newCount, _items.Count() - newCount);
+	if (trimCapacity) _items.TrimExcess();
+}
 
 GCHandleSetStorage::GCHandleSetStorage(Int32 initialCapacity ) {
 	_items =  List<GCHandle>::New(initialCapacity);
@@ -152,6 +201,10 @@ void GCHandleSetStorage::CallOnSweep(Int32 idx) {
 void GCHandleSetStorage::AppendItem() {
 	_items.Add(GCHandle());
 }
+void GCHandleSetStorage::TruncateItems(Int32 newCount,Boolean trimCapacity) {
+	_items.RemoveRange(newCount, _items.Count() - newCount);
+	if (trimCapacity) _items.TrimExcess();
+}
 
 GCFuncRefSetStorage::GCFuncRefSetStorage(Int32 initialCapacity ) {
 	_items =  List<GCFunction>::New(initialCapacity);
@@ -166,6 +219,10 @@ void GCFuncRefSetStorage::CallOnSweep(Int32 idx) {
 }
 void GCFuncRefSetStorage::AppendItem() {
 	_items.Add(GCFunction());
+}
+void GCFuncRefSetStorage::TruncateItems(Int32 newCount,Boolean trimCapacity) {
+	_items.RemoveRange(newCount, _items.Count() - newCount);
+	if (trimCapacity) _items.TrimExcess();
 }
 
 } // end of namespace MiniScript

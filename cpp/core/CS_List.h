@@ -230,6 +230,12 @@ public:
         data->erase(data->begin() + index, data->begin() + index + actualCount);
     }
 
+    // TrimExcess - release unused capacity.  (C# skips the reallocation when
+    // the list is over 90% full; we always do it, so call it only when worth it.)
+    void TrimExcess() {
+        if (data) data->shrink_to_fit();
+    }
+
     // Sort - simple bubble sort
     void Sort() {
         if (!data || data->size() <= 1) return;

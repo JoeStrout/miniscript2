@@ -1647,14 +1647,18 @@ public class CodeGenerator : IASTVisitor {
 		return resultReg;
 	}
 
-	// Shared tail for VisitIndex/VisitMember: emit INDEX (address-of),
-	// IDXGET (bracket access, no auto-invoke), or
-	// METHFIND + optional SETSELF + CALLIFREF (dot access with auto-invoke).
+	// Shared tail for VisitIndex/VisitMember: emit IDXGET (bracket access, which
+	// never auto-invokes, so @ makes no difference to it), INDEX (@ on dot
+	// access), or METHFIND + optional SETSELF + CALLIFREF (dot access with
+	// auto-invoke).
 	private void EmitAccessOrInvoke(Int32 resultReg, Int32 targetReg, Int32 indexReg, bool addressOf, bool isDotAccess, ASTNode targetNode, String comment) {
-		if (addressOf) {
+		if (!isDotAccess) {
+			String at = addressOf ? "@" : "";
+			_emitter.EmitABC(Opcode.IDXGET_rA_rB_rC, resultReg, targetReg, indexReg, $"{at}{comment}");
+		} else if (addressOf) {
 			_emitter.EmitABC(Opcode.INDEX_rA_rB_rC, resultReg, targetReg, indexReg,
 				$"@{comment}");
-		} else if (isDotAccess) {
+		} else {
 			_emitter.EmitABC(Opcode.METHFIND_rA_rB_rC, resultReg, targetReg, indexReg, comment);
 			SuperNode superTarget = targetNode as SuperNode;
 			if (superTarget != null) {
@@ -1662,9 +1666,6 @@ public class CodeGenerator : IASTVisitor {
 				_emitter.EmitA(Opcode.SETSELF_rA, selfReg, $"preserve self for super access");
 			}
 			_emitter.EmitA(Opcode.CALLIFREF_rA, resultReg, $"auto-invoke if funcref");
-		} else {
-			// Bracket access: look up value (with type-map fallback) but never auto-invoke a funcRef.
-			_emitter.EmitABC(Opcode.IDXGET_rA_rB_rC, resultReg, targetReg, indexReg, comment);
 		}
 	}
 

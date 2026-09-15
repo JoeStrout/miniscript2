@@ -447,9 +447,10 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 	// Compile member access, optionally as address-of (no auto-invoke)
 	private: Int32 VisitMember(MemberNode node, bool addressOf);
 
-	// Shared tail for VisitIndex/VisitMember: emit INDEX (address-of),
-	// IDXGET (bracket access, no auto-invoke), or
-	// METHFIND + optional SETSELF + CALLIFREF (dot access with auto-invoke).
+	// Shared tail for VisitIndex/VisitMember: emit IDXGET (bracket access, which
+	// never auto-invokes, so @ makes no difference to it), INDEX (@ on dot
+	// access), or METHFIND + optional SETSELF + CALLIFREF (dot access with
+	// auto-invoke).
 	private: void EmitAccessOrInvoke(Int32 resultReg, Int32 targetReg, Int32 indexReg, bool addressOf, bool isDotAccess, ASTNode targetNode, String comment);
 
 	public: Int32 Visit(ExprCallNode node);
@@ -978,9 +979,10 @@ struct CodeGenerator : public IASTVisitor {
 	// Compile member access, optionally as address-of (no auto-invoke)
 	private: inline Int32 VisitMember(MemberNode node, bool addressOf);
 
-	// Shared tail for VisitIndex/VisitMember: emit INDEX (address-of),
-	// IDXGET (bracket access, no auto-invoke), or
-	// METHFIND + optional SETSELF + CALLIFREF (dot access with auto-invoke).
+	// Shared tail for VisitIndex/VisitMember: emit IDXGET (bracket access, which
+	// never auto-invokes, so @ makes no difference to it), INDEX (@ on dot
+	// access), or METHFIND + optional SETSELF + CALLIFREF (dot access with
+	// auto-invoke).
 	private: inline void EmitAccessOrInvoke(Int32 resultReg, Int32 targetReg, Int32 indexReg, bool addressOf, bool isDotAccess, ASTNode targetNode, String comment);
 
 	public: inline Int32 Visit(ExprCallNode node);

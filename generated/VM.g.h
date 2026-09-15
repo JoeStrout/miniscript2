@@ -13,6 +13,7 @@
 #include <chrono>
 #include "GCManager.g.h"
 #include "Globals.g.h"
+#include "CoreIntrinsics.g.h"
 
 namespace MiniScript {
 
@@ -274,6 +275,11 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	// saved and accurately reflects the failing instruction.
 	public: void RaiseRuntimeError(String message);
 
+	// Same, formatting the message from a format string and one value, so that
+	// callers (some of them inline, and compiled where StringUtils is not
+	// visible) need not do it themselves.
+	public: void RaiseRuntimeError(String format, Value arg);
+
 	// Attach a stack trace to a pending runtime error.  Called from SaveState,
 	// so that PC and CurrentFunction reflect the instruction that failed.
 	private: void FinalizeErrorStackTrace();
@@ -371,6 +377,19 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	// when this returns false, since RaiseRuntimeError does not stop the current
 	// opcode handler on its own.
 	private: bool EnsureFrame(Int32 baseIndex, UInt16 neededRegs);
+	private: static const Int32 MemberMissing; // not found; a runtime error was raised
+	private: static const Int32 MemberMethod; // from the container or its type; self = container
+	private: static const Int32 MemberField; // an error's own field; no call context
+	private: static const Int32 MemberElement; // numeric index into a list or string
+
+	// Results of LookupMember, saying what call context the value found implies.
+
+	// Dot-access lookup (container.key), shared by METHFIND and INDEX (@x.foo):
+	// an error's own fields, then the container itself with __isa inheritance,
+	// then its type map, then a numeric index into a list or string.  On failure,
+	// raises a runtime error and yields null.  superVal is the __isa of the map
+	// the key was found in, when it was found in a map.
+	private: Int32 LookupMember(Value container, Value key, Value* result, Value* superVal);
 	void SwitchFrame(const FuncDef& currentFunc, Int32 baseIndex, FuncDefStorage* &curFuncRaw, Int32 &codeCount, UInt32* &curCode, Value* &curConstants, Value* &localStack, Value* stackPtr);
 
 	// Switch all frame-local execution state to the given function.
@@ -688,6 +707,11 @@ struct VM {
 	// saved and accurately reflects the failing instruction.
 	public: inline void RaiseRuntimeError(String message);
 
+	// Same, formatting the message from a format string and one value, so that
+	// callers (some of them inline, and compiled where StringUtils is not
+	// visible) need not do it themselves.
+	public: inline void RaiseRuntimeError(String format, Value arg);
+
 	// Attach a stack trace to a pending runtime error.  Called from SaveState,
 	// so that PC and CurrentFunction reflect the instruction that failed.
 	private: inline void FinalizeErrorStackTrace();
@@ -777,6 +801,19 @@ struct VM {
 	// when this returns false, since RaiseRuntimeError does not stop the current
 	// opcode handler on its own.
 	private: inline bool EnsureFrame(Int32 baseIndex, UInt16 neededRegs);
+	private: Int32 MemberMissing(); // not found; a runtime error was raised
+	private: Int32 MemberMethod(); // from the container or its type; self = container
+	private: Int32 MemberField(); // an error's own field; no call context
+	private: Int32 MemberElement(); // numeric index into a list or string
+
+	// Results of LookupMember, saying what call context the value found implies.
+
+	// Dot-access lookup (container.key), shared by METHFIND and INDEX (@x.foo):
+	// an error's own fields, then the container itself with __isa inheritance,
+	// then its type map, then a numeric index into a list or string.  On failure,
+	// raises a runtime error and yields null.  superVal is the __isa of the map
+	// the key was found in, when it was found in a map.
+	private: inline Int32 LookupMember(Value container, Value key, Value* result, Value* superVal);
 
 	// Switch all frame-local execution state to the given function.
 
@@ -921,6 +958,7 @@ inline void VM::Reset(List<FuncDef> allFunctions,Globals globals) { return get()
 inline void VM::Stop() { return get()->Stop(); }
 inline void VM::RequestExit(Int32 resultCode) { return get()->RequestExit(resultCode); }
 inline void VM::RaiseRuntimeError(String message) { return get()->RaiseRuntimeError(message); }
+inline void VM::RaiseRuntimeError(String format,Value arg) { return get()->RaiseRuntimeError(format, arg); }
 inline void VM::FinalizeErrorStackTrace() { return get()->FinalizeErrorStackTrace(); }
 inline void VM::RaiseRuntimeError(Value error) { return get()->RaiseRuntimeError(error); }
 inline Value VM::CurrentStackTrace() { return get()->CurrentStackTrace(); }
@@ -946,6 +984,70 @@ inline bool VMStorage::EnsureFrame(Int32 baseIndex,UInt16 neededRegs) {
 		return Boolean(false);
 	}
 	return Boolean(true);
+}
+inline Int32 VM::MemberMissing() { return get()->MemberMissing; } // not found; a runtime error was raised
+inline Int32 VM::MemberMethod() { return get()->MemberMethod; } // from the container or its type; self = container
+inline Int32 VM::MemberField() { return get()->MemberField; } // an error's own field; no call context
+inline Int32 VM::MemberElement() { return get()->MemberElement; } // numeric index into a list or string
+inline Int32 VM::LookupMember(Value container,Value key,Value* result,Value* superVal) { return get()->LookupMember(container, key, result, superVal); }
+inline Int32 VMStorage::LookupMember(Value container,Value key,Value* result,Value* superVal) {
+	*result = Value::Null;
+	*superVal = Value::Null;
+	Value found;
+	Value origin;
+	Value typeMap = Value::Null;
+
+	if (container.IsError()) {
+		if (key.IsString()) {
+			String keyStr = key.AsCString();
+			if (keyStr == "message") { *result = container.Message(); return MemberField; }
+			if (keyStr == "inner")   { *result = container.Inner();   return MemberField; }
+			if (keyStr == "stack")   { *result = container.Stack();   return MemberField; }
+			if (keyStr == "__isa")   { *result = container.Isa();     return MemberField; }
+		}
+		if (CoreIntrinsics::ErrorType().TryGet(key, &found)) {
+			*result = found;
+			return MemberMethod;
+		}
+		RaiseRuntimeError("Undefined error field '{0}'", key);
+		return MemberMissing;
+	}
+	if (container.IsMap()) {
+		if (container.LookupWithOrigin(key, &found, &origin)) {
+			*result = found;
+			*superVal = origin;
+			return MemberMethod;
+		}
+		typeMap = CoreIntrinsics::MapType();
+	} else if (container.IsList()) {
+		typeMap = CoreIntrinsics::ListType();
+	} else if (container.IsString()) {
+		typeMap = CoreIntrinsics::StringType();
+	} else if (container.IsNumber()) {
+		typeMap = CoreIntrinsics::NumberType();
+	}
+	if (typeMap.IsNull()) {
+		RaiseRuntimeError("Can't index into {0}", container);
+		return MemberMissing;
+	}
+	if (typeMap.TryGet(key, &found)) {
+		*result = found;
+		return MemberMethod;
+	}
+	if (key.IsNumber()) {
+		if (container.IsList()) {
+			*result = container.ListGet(key.IntValue());
+			return MemberElement;
+		}
+		if (container.IsString()) {
+			*result = container.Substring(key.IntValue(), 1);
+			return MemberElement;
+		}
+		RaiseRuntimeError("Can't index into {0}", container);
+		return MemberMissing;
+	}
+	RaiseRuntimeError("Key Not Found: '{0}' not found in map", key);
+	return MemberMissing;
 }
 inline Int32 VM::ResolveGlobalRef(FuncDef func,Int32 refIdx) { return get()->ResolveGlobalRef(func, refIdx); }
 inline Boolean VM::GlobalFastPath() { return get()->GlobalFastPath(); }

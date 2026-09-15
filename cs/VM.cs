@@ -12,6 +12,7 @@ using static System.Runtime.CompilerServices.MethodImplOptions;
 // H: #include <chrono>
 // H: #include "GCManager.g.h"
 // H: #include "Globals.g.h"
+// H: #include "CoreIntrinsics.g.h"
 // CPP: #include "value_list.h"
 // CPP: #include "value_string.h"
 // CPP: #include "Bytecode.g.h"
@@ -761,6 +762,13 @@ public class VM {
 		IsRunning = false;
 	}
 
+	// Same, formatting the message from a format string and one value, so that
+	// callers (some of them inline, and compiled where StringUtils is not
+	// visible) need not do it themselves.
+	public void RaiseRuntimeError(String format, Value arg) {
+		RaiseRuntimeError(StringUtils.Format(format, arg));
+	}
+
 	// Attach a stack trace to a pending runtime error.  Called from SaveState,
 	// so that PC and CurrentFunction reflect the instruction that failed.
 	private void FinalizeErrorStackTrace() {
@@ -1439,8 +1447,7 @@ public class VM {
 							chkFound = chkFrame.LocalVarMap.TryGet(valC, out chkValue);
 						}
 						if (!chkFound) {
-							RaiseRuntimeError(StringUtils.Format(
-								"Undefined Local Identifier: '{0}' is not yet assigned in this scope", valC));
+							RaiseRuntimeError("Undefined Local Identifier: '{0}' is not yet assigned in this scope", valC);
 						}
 					}
 					break;
@@ -1551,34 +1558,14 @@ public class VM {
 				}
 
 				case Opcode.INDEX_rA_rB_rC: {
-					// R[A] = R[B][R[C]] (supports lists, maps, and strings)
+					// R[A] = @R[B].R[C]: dot access without auto-invoke.  Same lookup as
+					// METHFIND, but leaves no pending self/super behind, since no call
+					// follows to consume them.
 					Byte a = BytecodeUtil.Au(instruction);
 					Byte b = BytecodeUtil.Bu(instruction);
 					Byte c = BytecodeUtil.Cu(instruction);
-					valB = localStack[b];  // container
-					valC = localStack[c];  // index
-
-					if (valB.IsError()) {
-						// Address-of on an error is always an lvalue operation; terminate.
-						RaiseRuntimeError("Cannot take reference into an error value");
-						localStack[a] = Value.Null;
-						break;
-					}
-					if (valB.IsList()) {
-						// ToDo: add a list_try_get and use it here, like we do with map below
-						localStack[a] = valB.ListGet(valC.IntValue());
-					} else if (valB.IsMap()) {
-						if (!valB.Lookup(valC, out val)) {
-							RaiseRuntimeError(StringUtils.Format("Key Not Found: '{0}' not found in map", valC));
-						}
-						localStack[a] = val;
-					} else if (valB.IsString()) {
-						Int32 idx = valC.IntValue();
-						localStack[a] = valB.Substring(idx, 1);
-					} else {
-						RaiseRuntimeError(StringUtils.Format("Can't index into {0}", valB));
-						localStack[a] = Value.Null;
-					}
+					LookupMember(localStack[b], localStack[c], out val, out valD);
+					localStack[a] = val;
 					break;
 				}
 
@@ -1600,7 +1587,7 @@ public class VM {
 					} else if (valA.IsMap()) {
 						valA.MapSet(valB, valC);
 					} else {
-						RaiseRuntimeError(StringUtils.Format("Can't set indexed value in {0}", valA));
+						RaiseRuntimeError("Can't set indexed value in {0}", valA);
 					}
 					break;
 				}
@@ -1629,7 +1616,7 @@ public class VM {
 						Int32 endIdx = valD.IsNull() ? len : valD.IntValue();
 						localStack[a] = valB.ListSlice(startIdx, endIdx);
 					} else {
-						RaiseRuntimeError(StringUtils.Format("Can't slice {0}", valB));
+						RaiseRuntimeError("Can't slice {0}", valB);
 						localStack[a] = Value.Null;
 					}
 					break;
@@ -1870,7 +1857,7 @@ public class VM {
 					Byte a = BytecodeUtil.Au(instruction);
 					Int32 offset = BytecodeUtil.BCs(instruction);
 					if (localStack[a].IsError()) {
-						RaiseRuntimeError(StringUtils.Format("Error used in conditional: {0}", localStack[a]));
+						RaiseRuntimeError("Error used in conditional: {0}", localStack[a]);
 						break;
 					}
 					if (localStack[a].BoolValue()){
@@ -1883,7 +1870,7 @@ public class VM {
 					Byte a = BytecodeUtil.Au(instruction);
 					Int32 offset = BytecodeUtil.BCs(instruction);
 					if (localStack[a].IsError()) {
-						RaiseRuntimeError(StringUtils.Format("Error used in conditional: {0}", localStack[a]));
+						RaiseRuntimeError("Error used in conditional: {0}", localStack[a]);
 						break;
 					}
 					if (!localStack[a].BoolValue()){
@@ -2468,79 +2455,18 @@ public class VM {
 					Byte b = BytecodeUtil.Bu(instruction);
 					Byte c = BytecodeUtil.Cu(instruction);
 					valB = localStack[b];  // container
-					valC = localStack[c];  // index
-					typeMap = Value.Null;
-					
-					if (valB.IsError()) {
-						// Error field access: return field directly for reserved names,
-						// else fall back to ErrorType() for method lookup (e.g., e.err).
-						// Any other key terminates per language spec.
-						if (valC.IsString()) {
-							String keyStr = valC.AsCString();
-							if (keyStr == "message") { localStack[a] = valB.Message(); hasPendingContext = false; break; }
-							if (keyStr == "inner")   { localStack[a] = valB.Inner();   hasPendingContext = false; break; }
-							if (keyStr == "stack")   { localStack[a] = valB.Stack();   hasPendingContext = false; break; }
-							if (keyStr == "__isa")   { localStack[a] = valB.Isa();     hasPendingContext = false; break; }
-						}
-						typeMap = CoreIntrinsics.ErrorType();
-						if (typeMap.TryGet(valC, out val)) {
-							localStack[a] = val;
-							pendingSelf = valB;
-							pendingSuper = Value.Null;
-							hasPendingContext = true;
-							break;
-						}
-						// Wrap the error as inner in a new termination error
-						RaiseRuntimeError(StringUtils.Format("Undefined error field '{0}'", valC));
-						localStack[a] = Value.Null;
-						break;
-					}
-					if (valB.IsMap()) {
-						// For maps: first do lookup in the map itself, with inheritance
-						// (valD: the "super" value, i.e., __isa of the map in which valC
-						// was actually found.)
-						if (valB.LookupWithOrigin(valC, out val, out valD)) {
-							localStack[a] = val;
-							pendingSelf = valB;
-							pendingSuper = valD;
-							hasPendingContext = true;
-							break; // CPP: VM_NEXT();
-						}
-						// ...falling back on the map type map
-						typeMap = CoreIntrinsics.MapType();
-					} else if (valB.IsList()) {
-						typeMap = CoreIntrinsics.ListType();
-					} else if (valB.IsString()) {
-						typeMap = CoreIntrinsics.StringType();
-					} else if (valB.IsNumber()) {
-						typeMap = CoreIntrinsics.NumberType();
-					}
-					if (typeMap.IsNull()) {
-						// If we didn't get a type map, then user is trying to index
-						// into something not indexable
-						RaiseRuntimeError(StringUtils.Format("Can't index into {0}", valB));
-						localStack[a] = Value.Null;
-					} else if (typeMap.TryGet(valC, out val)) {
-						// found what we're looking for in the type map
-						localStack[a] = val;
+					Int32 found = LookupMember(valB, localStack[c], out val, out valD);
+					localStack[a] = val;
+					if (found == MemberMethod) {
 						pendingSelf = valB;
-						pendingSuper = Value.Null;
-					} else if (valC.IsNumber()) {
-						// try indexing numerically
-						int index = valC.IntValue();
-						if (valB.IsList()) {
-							localStack[a] = valB.ListGet(index);
-						} else if (valB.IsString()) {
-							localStack[a] = valB.Substring(index, 1);
-						} else {
-							RaiseRuntimeError(StringUtils.Format("Can't index into {0}", valB));
-							localStack[a] = Value.Null;
-						}
-					} else {
-						RaiseRuntimeError(StringUtils.Format("Key Not Found: '{0}' not found in map", valC));
-						localStack[a] = Value.Null;
+						pendingSuper = valD;
+						hasPendingContext = true;
+					} else if (found == MemberField) {
+						hasPendingContext = false;
+					} else if (found == MemberElement) {
+						// pendingSelf is left as it was (long-standing behavior)
+						hasPendingContext = true;
 					}
-					hasPendingContext = true;
 					break; // CPP: VM_NEXT();
 				}
 
@@ -2554,6 +2480,13 @@ public class VM {
 					valC = localStack[c];  // index
 					typeMap = Value.Null;
 
+					if (valB.IsError()) {
+						// Indexing into an error, as an rvalue, evaluates to the error
+						// itself, whatever the index (lvalue use terminates; see IDXSET).
+						localStack[a] = valB;
+						hasPendingContext = false;
+						break; // CPP: VM_NEXT();
+					}
 					if (valB.IsMap()) {
 						if (valB.LookupWithOrigin(valC, out val, out valD)) {
 							localStack[a] = val;
@@ -2569,7 +2502,7 @@ public class VM {
 						typeMap = CoreIntrinsics.NumberType();
 					}
 					if (typeMap.IsNull()) {
-						RaiseRuntimeError(StringUtils.Format("Can't index into {0}", valB));
+						RaiseRuntimeError("Can't index into {0}", valB);
 						localStack[a] = Value.Null;
 					} else if (typeMap.TryGet(valC, out val)) {
 						localStack[a] = val;
@@ -2580,11 +2513,11 @@ public class VM {
 						} else if (valB.IsString()) {
 							localStack[a] = valB.Substring(index, 1);
 						} else {
-							RaiseRuntimeError(StringUtils.Format("Can't index into {0}", valB));
+							RaiseRuntimeError("Can't index into {0}", valB);
 							localStack[a] = Value.Null;
 						}
 					} else {
-						RaiseRuntimeError(StringUtils.Format("Key Not Found: '{0}' not found in map", valC));
+						RaiseRuntimeError("Key Not Found: '{0}' not found in map", valC);
 						localStack[a] = Value.Null;
 					}
 					hasPendingContext = false;
@@ -2746,6 +2679,78 @@ public class VM {
 		return true;
 	}
 
+	// Results of LookupMember, saying what call context the value found implies.
+	private const Int32 MemberMissing = 0;  // not found; a runtime error was raised
+	private const Int32 MemberMethod = 1;   // from the container or its type; self = container
+	private const Int32 MemberField = 2;    // an error's own field; no call context
+	private const Int32 MemberElement = 3;  // numeric index into a list or string
+
+	// Dot-access lookup (container.key), shared by METHFIND and INDEX (@x.foo):
+	// an error's own fields, then the container itself with __isa inheritance,
+	// then its type map, then a numeric index into a list or string.  On failure,
+	// raises a runtime error and yields null.  superVal is the __isa of the map
+	// the key was found in, when it was found in a map.
+	[MethodImpl(AggressiveInlining)]
+	private Int32 LookupMember(Value container, Value key, out Value result, out Value superVal) {
+		result = Value.Null;
+		superVal = Value.Null;
+		Value found;
+		Value origin;
+		Value typeMap = Value.Null;
+
+		if (container.IsError()) {
+			if (key.IsString()) {
+				String keyStr = key.AsCString();
+				if (keyStr == "message") { result = container.Message(); return MemberField; }
+				if (keyStr == "inner")   { result = container.Inner();   return MemberField; }
+				if (keyStr == "stack")   { result = container.Stack();   return MemberField; }
+				if (keyStr == "__isa")   { result = container.Isa();     return MemberField; }
+			}
+			if (CoreIntrinsics.ErrorType().TryGet(key, out found)) {
+				result = found;
+				return MemberMethod;
+			}
+			RaiseRuntimeError("Undefined error field '{0}'", key);
+			return MemberMissing;
+		}
+		if (container.IsMap()) {
+			if (container.LookupWithOrigin(key, out found, out origin)) {
+				result = found;
+				superVal = origin;
+				return MemberMethod;
+			}
+			typeMap = CoreIntrinsics.MapType();
+		} else if (container.IsList()) {
+			typeMap = CoreIntrinsics.ListType();
+		} else if (container.IsString()) {
+			typeMap = CoreIntrinsics.StringType();
+		} else if (container.IsNumber()) {
+			typeMap = CoreIntrinsics.NumberType();
+		}
+		if (typeMap.IsNull()) {
+			RaiseRuntimeError("Can't index into {0}", container);
+			return MemberMissing;
+		}
+		if (typeMap.TryGet(key, out found)) {
+			result = found;
+			return MemberMethod;
+		}
+		if (key.IsNumber()) {
+			if (container.IsList()) {
+				result = container.ListGet(key.IntValue());
+				return MemberElement;
+			}
+			if (container.IsString()) {
+				result = container.Substring(key.IntValue(), 1);
+				return MemberElement;
+			}
+			RaiseRuntimeError("Can't index into {0}", container);
+			return MemberMissing;
+		}
+		RaiseRuntimeError("Key Not Found: '{0}' not found in map", key);
+		return MemberMissing;
+	}
+
 	// Switch all frame-local execution state to the given function.
 	//*** BEGIN CS_ONLY ***
 	[MethodImpl(AggressiveInlining)]
@@ -2833,7 +2838,7 @@ public class VM {
 		// self/super read as null outside a method, matching LookupVariable.
 		if (name == Value.selfString || name == Value.superString) return Value.Null;
 
-		RaiseRuntimeError(StringUtils.Format("Undefined Identifier: '{0}' is unknown in this context", name));
+		RaiseRuntimeError("Undefined Identifier: '{0}' is unknown in this context", name);
 		return Value.Null;
 	}
 
@@ -2927,7 +2932,7 @@ public class VM {
 		}
 
 		// Variable not found anywhere — raise an error
-		RaiseRuntimeError(StringUtils.Format("Undefined Identifier: '{0}' is unknown in this context", varName));
+		RaiseRuntimeError("Undefined Identifier: '{0}' is unknown in this context", varName);
 		return Value.Null;
 	}
 }

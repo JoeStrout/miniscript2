@@ -514,6 +514,9 @@ void VMStorage::RaiseRuntimeError(String message) {
 	_errorStackPending = Boolean(true);
 	IsRunning = Boolean(false);
 }
+void VMStorage::RaiseRuntimeError(String format,Value arg) {
+	RaiseRuntimeError(StringUtils::Format(format, arg));
+}
 void VMStorage::FinalizeErrorStackTrace() {
 	_errorStackPending = Boolean(false);
 	if (!Error.IsError()) return;
@@ -1115,8 +1118,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 						chkFound = chkFrame.LocalVarMap.TryGet(valC, &chkValue);
 					}
 					if (!chkFound) {
-						RaiseRuntimeError(StringUtils::Format(
-							"Undefined Local Identifier: '{0}' is not yet assigned in this scope", valC));
+						RaiseRuntimeError("Undefined Local Identifier: '{0}' is not yet assigned in this scope", valC);
 					}
 				}
 				VM_NEXT();
@@ -1227,34 +1229,14 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 			}
 
 			VM_CASE(INDEX_rA_rB_rC) {
-				// R[A] = R[B][R[C]] (supports lists, maps, and strings)
+				// R[A] = @R[B].R[C]: dot access without auto-invoke.  Same lookup as
+				// METHFIND, but leaves no pending self/super behind, since no call
+				// follows to consume them.
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				Byte c = BytecodeUtil::Cu(instruction);
-				valB = localStack[b];  // container
-				valC = localStack[c];  // index
-
-				if (valB.IsError()) {
-					// Address-of on an error is always an lvalue operation; terminate.
-					RaiseRuntimeError("Cannot take reference into an error value");
-					localStack[a] = Value::Null;
-					VM_NEXT();
-				}
-				if (valB.IsList()) {
-					// ToDo: add a list_try_get and use it here, like we do with map below
-					localStack[a] = valB.ListGet(valC.IntValue());
-				} else if (valB.IsMap()) {
-					if (!valB.Lookup(valC, &val)) {
-						RaiseRuntimeError(StringUtils::Format("Key Not Found: '{0}' not found in map", valC));
-					}
-					localStack[a] = val;
-				} else if (valB.IsString()) {
-					Int32 idx = valC.IntValue();
-					localStack[a] = valB.Substring(idx, 1);
-				} else {
-					RaiseRuntimeError(StringUtils::Format("Can't index into {0}", valB));
-					localStack[a] = Value::Null;
-				}
+				LookupMember(localStack[b], localStack[c], &val, &valD);
+				localStack[a] = val;
 				VM_NEXT();
 			}
 
@@ -1276,7 +1258,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				} else if (valA.IsMap()) {
 					valA.MapSet(valB, valC);
 				} else {
-					RaiseRuntimeError(StringUtils::Format("Can't set indexed value in {0}", valA));
+					RaiseRuntimeError("Can't set indexed value in {0}", valA);
 				}
 				VM_NEXT();
 			}
@@ -1305,7 +1287,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 					Int32 endIdx = valD.IsNull() ? len : valD.IntValue();
 					localStack[a] = valB.ListSlice(startIdx, endIdx);
 				} else {
-					RaiseRuntimeError(StringUtils::Format("Can't slice {0}", valB));
+					RaiseRuntimeError("Can't slice {0}", valB);
 					localStack[a] = Value::Null;
 				}
 				VM_NEXT();
@@ -1545,7 +1527,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Byte a = BytecodeUtil::Au(instruction);
 				Int32 offset = BytecodeUtil::BCs(instruction);
 				if (localStack[a].IsError()) {
-					RaiseRuntimeError(StringUtils::Format("Error used in conditional: {0}", localStack[a]));
+					RaiseRuntimeError("Error used in conditional: {0}", localStack[a]);
 					VM_NEXT();
 				}
 				if (localStack[a].BoolValue()){
@@ -1558,7 +1540,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Byte a = BytecodeUtil::Au(instruction);
 				Int32 offset = BytecodeUtil::BCs(instruction);
 				if (localStack[a].IsError()) {
-					RaiseRuntimeError(StringUtils::Format("Error used in conditional: {0}", localStack[a]));
+					RaiseRuntimeError("Error used in conditional: {0}", localStack[a]);
 					VM_NEXT();
 				}
 				if (!localStack[a].BoolValue()){
@@ -2138,79 +2120,18 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Byte b = BytecodeUtil::Bu(instruction);
 				Byte c = BytecodeUtil::Cu(instruction);
 				valB = localStack[b];  // container
-				valC = localStack[c];  // index
-				typeMap = Value::Null;
-				
-				if (valB.IsError()) {
-					// Error field access: return field directly for reserved names,
-					// else fall back to ErrorType() for method lookup (e.g., e.err).
-					// Any other key terminates per language spec.
-					if (valC.IsString()) {
-						String keyStr = valC.AsCString();
-						if (keyStr == "message") { localStack[a] = valB.Message(); hasPendingContext = Boolean(false); break; }
-						if (keyStr == "inner")   { localStack[a] = valB.Inner();   hasPendingContext = Boolean(false); break; }
-						if (keyStr == "stack")   { localStack[a] = valB.Stack();   hasPendingContext = Boolean(false); break; }
-						if (keyStr == "__isa")   { localStack[a] = valB.Isa();     hasPendingContext = Boolean(false); break; }
-					}
-					typeMap = CoreIntrinsics::ErrorType();
-					if (typeMap.TryGet(valC, &val)) {
-						localStack[a] = val;
-						pendingSelf = valB;
-						pendingSuper = Value::Null;
-						hasPendingContext = Boolean(true);
-						VM_NEXT();
-					}
-					// Wrap the error as inner in a new termination error
-					RaiseRuntimeError(StringUtils::Format("Undefined error field '{0}'", valC));
-					localStack[a] = Value::Null;
-					VM_NEXT();
-				}
-				if (valB.IsMap()) {
-					// For maps: first do lookup in the map itself, with inheritance
-					// (valD: the "super" value, i.e., __isa of the map in which valC
-					// was actually found.)
-					if (valB.LookupWithOrigin(valC, &val, &valD)) {
-						localStack[a] = val;
-						pendingSelf = valB;
-						pendingSuper = valD;
-						hasPendingContext = Boolean(true);
-						VM_NEXT();
-					}
-					// ...falling back on the map type map
-					typeMap = CoreIntrinsics::MapType();
-				} else if (valB.IsList()) {
-					typeMap = CoreIntrinsics::ListType();
-				} else if (valB.IsString()) {
-					typeMap = CoreIntrinsics::StringType();
-				} else if (valB.IsNumber()) {
-					typeMap = CoreIntrinsics::NumberType();
-				}
-				if (typeMap.IsNull()) {
-					// If we didn't get a type map, then user is trying to index
-					// into something not indexable
-					RaiseRuntimeError(StringUtils::Format("Can't index into {0}", valB));
-					localStack[a] = Value::Null;
-				} else if (typeMap.TryGet(valC, &val)) {
-					// found what we're looking for in the type map
-					localStack[a] = val;
+				Int32 found = LookupMember(valB, localStack[c], &val, &valD);
+				localStack[a] = val;
+				if (found == MemberMethod) {
 					pendingSelf = valB;
-					pendingSuper = Value::Null;
-				} else if (valC.IsNumber()) {
-					// try indexing numerically
-					int index = valC.IntValue();
-					if (valB.IsList()) {
-						localStack[a] = valB.ListGet(index);
-					} else if (valB.IsString()) {
-						localStack[a] = valB.Substring(index, 1);
-					} else {
-						RaiseRuntimeError(StringUtils::Format("Can't index into {0}", valB));
-						localStack[a] = Value::Null;
-					}
-				} else {
-					RaiseRuntimeError(StringUtils::Format("Key Not Found: '{0}' not found in map", valC));
-					localStack[a] = Value::Null;
+					pendingSuper = valD;
+					hasPendingContext = Boolean(true);
+				} else if (found == MemberField) {
+					hasPendingContext = Boolean(false);
+				} else if (found == MemberElement) {
+					// pendingSelf is left as it was (long-standing behavior)
+					hasPendingContext = Boolean(true);
 				}
-				hasPendingContext = Boolean(true);
 				VM_NEXT();
 			}
 
@@ -2224,6 +2145,13 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				valC = localStack[c];  // index
 				typeMap = Value::Null;
 
+				if (valB.IsError()) {
+					// Indexing into an error, as an rvalue, evaluates to the error
+					// itself, whatever the index (lvalue use terminates; see IDXSET).
+					localStack[a] = valB;
+					hasPendingContext = Boolean(false);
+					VM_NEXT();
+				}
 				if (valB.IsMap()) {
 					if (valB.LookupWithOrigin(valC, &val, &valD)) {
 						localStack[a] = val;
@@ -2239,7 +2167,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 					typeMap = CoreIntrinsics::NumberType();
 				}
 				if (typeMap.IsNull()) {
-					RaiseRuntimeError(StringUtils::Format("Can't index into {0}", valB));
+					RaiseRuntimeError("Can't index into {0}", valB);
 					localStack[a] = Value::Null;
 				} else if (typeMap.TryGet(valC, &val)) {
 					localStack[a] = val;
@@ -2250,11 +2178,11 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 					} else if (valB.IsString()) {
 						localStack[a] = valB.Substring(index, 1);
 					} else {
-						RaiseRuntimeError(StringUtils::Format("Can't index into {0}", valB));
+						RaiseRuntimeError("Can't index into {0}", valB);
 						localStack[a] = Value::Null;
 					}
 				} else {
-					RaiseRuntimeError(StringUtils::Format("Key Not Found: '{0}' not found in map", valC));
+					RaiseRuntimeError("Key Not Found: '{0}' not found in map", valC);
 					localStack[a] = Value::Null;
 				}
 				hasPendingContext = Boolean(false);
@@ -2392,6 +2320,10 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 	SaveState(pc, baseIndex, currentFunc);
 	return Value::Null;
 }
+const Int32 VMStorage::MemberMissing = 0; // not found; a runtime error was raised
+const Int32 VMStorage::MemberMethod = 1; // from the container or its type; self = container
+const Int32 VMStorage::MemberField = 2; // an error's own field; no call context
+const Int32 VMStorage::MemberElement = 3; // numeric index into a list or string
 FORCE_INLINE void VMStorage::SwitchFrame(const FuncDef& currentFunc, Int32 baseIndex,
 		FuncDefStorage* &curFuncRaw, Int32 &codeCount,
 		UInt32* &curCode, Value* &curConstants,
@@ -2419,7 +2351,7 @@ Value VMStorage::GlobalMiss(FuncDef func,Int32 refIdx) {
 	// self/super read as null outside a method, matching LookupVariable.
 	if (name == Value::selfString || name == Value::superString) return Value::Null;
 
-	RaiseRuntimeError(StringUtils::Format("Undefined Identifier: '{0}' is unknown in this context", name));
+	RaiseRuntimeError("Undefined Identifier: '{0}' is unknown in this context", name);
 	return Value::Null;
 }
 Value VMStorage::GetGlobalsVarMap() {
@@ -2481,7 +2413,7 @@ Value VMStorage::LookupVariable(Value varName) {
 	}
 
 	// Variable not found anywhere — raise an error
-	RaiseRuntimeError(StringUtils::Format("Undefined Identifier: '{0}' is unknown in this context", varName));
+	RaiseRuntimeError("Undefined Identifier: '{0}' is unknown in this context", varName);
 	return Value::Null;
 }
 

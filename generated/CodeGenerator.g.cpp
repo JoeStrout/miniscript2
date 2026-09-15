@@ -1272,10 +1272,13 @@ Int32 CodeGeneratorStorage::VisitMember(MemberNode node,bool addressOf) {
 	return resultReg;
 }
 void CodeGeneratorStorage::EmitAccessOrInvoke(Int32 resultReg,Int32 targetReg,Int32 indexReg,bool addressOf,bool isDotAccess,ASTNode targetNode,String comment) {
-	if (addressOf) {
+	if (!isDotAccess) {
+		String at = addressOf ? "@" : "";
+		_emitter.EmitABC(Opcode::IDXGET_rA_rB_rC, resultReg, targetReg, indexReg, Interp("{}{}", at, comment));
+	} else if (addressOf) {
 		_emitter.EmitABC(Opcode::INDEX_rA_rB_rC, resultReg, targetReg, indexReg,
 			Interp("@{}", comment));
-	} else if (isDotAccess) {
+	} else {
 		_emitter.EmitABC(Opcode::METHFIND_rA_rB_rC, resultReg, targetReg, indexReg, comment);
 		SuperNode superTarget = As<SuperNode, SuperNodeStorage>(targetNode);
 		if (!IsNull(superTarget)) {
@@ -1283,9 +1286,6 @@ void CodeGeneratorStorage::EmitAccessOrInvoke(Int32 resultReg,Int32 targetReg,In
 			_emitter.EmitA(Opcode::SETSELF_rA, selfReg, Interp("preserve self for super access"));
 		}
 		_emitter.EmitA(Opcode::CALLIFREF_rA, resultReg, Interp("auto-invoke if funcref"));
-	} else {
-		// Bracket access: look up value (with type-map fallback) but never auto-invoke a funcRef.
-		_emitter.EmitABC(Opcode::IDXGET_rA_rB_rC, resultReg, targetReg, indexReg, comment);
 	}
 }
 Int32 CodeGeneratorStorage::Visit(ExprCallNode node) {

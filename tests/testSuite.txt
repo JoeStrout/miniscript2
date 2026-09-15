@@ -5784,6 +5784,46 @@ print @foo.bar.baz isa funcRef
 ---------------------------------
 1
 ================================
+==== address-of on list/string member finds the type-map function
+================================
+l = [7,8]
+print @l.len
+print @"abc".upper
+m = {}
+print @m.hasIndex
+---------------------------------
+FuncRef(len)
+FuncRef(upper)
+FuncRef(hasIndex)
+================================
+==== address-of on bracket access is the same as bracket access
+================================
+l = [7,8]
+print @l[1]
+print @l["len"] == l["len"]
+---------------------------------
+8
+1
+================================
+==== address-of on error member and index
+================================
+e = err("boom")
+print @e.message
+print @e[3]
+print @e.err isa funcRef
+---------------------------------
+boom
+error: boom
+1
+================================
+==== address-of on a member leaves no pending self for the next call
+================================
+m = {"g": function; return 1; end function}
+f = function(x); return self; end function
+print f(@m.g)
+---------------------------------
+null
+================================
 ==== error: basic creation and to_string
 ================================
 e = err("oops")
@@ -5831,6 +5871,25 @@ e = err("bad")
 print 5 * e
 ---------------------------------
 error: bad
+================================
+==== error: indexing an error evaluates to the error
+================================
+e = err("bad")
+print e[3]
+print e["x"]
+---------------------------------
+error: bad
+error: bad
+================================
+==== error: indexed error is the same error, and chains
+================================
+e = err("bad")
+x = e[0]
+print x == e
+print e[0][1].message
+---------------------------------
+1
+bad
 ================================
 ==== error: or short-circuits to non-error
 ================================

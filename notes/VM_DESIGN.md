@@ -28,7 +28,7 @@ Our internal opcode names include a verb/mnemonic, and a description of how the 
 | LIST_rA_iBC | R[A] := new list with capacity BC |
 | MAP_rA_iBC | R[A] := new map with initial capacity BC |
 | PUSH_rA_rB | push R[B] onto list R[A] |
-| INDEX_rA_rB_rC | R[A] := R[B][R[C]] (get element R[C] from list R[B]) |
+| INDEX_rA_rB_rC | R[A] := @R[B].R[C]: the same lookup as METHFIND (error fields, `__isa` inheritance, type-map fallback, numeric index on lists and strings), but sets no pending self/super and never invokes. Emitted only for `@x.foo`; `@x[k]` compiles to IDXGET, since bracket access never invokes anyway |
 | IDXSET_rA_rB_rC | R[A][R[B]] := R[C] (set element R[B] of list R[A] to R[C]) |
 | SLICE_rA_rB_rC | R[A] := R[B][R[C]:R[C+1]] (slice; end index in adjacent register) |
 | LOCALS_rA | R[A] := the VarMap for this frame's local variables (created on demand) |
@@ -145,7 +145,7 @@ intrinsics table, and raises Undefined Identifier if it is not there either.
 | NEW_rA_rB | R[A] := new map with __isa set to R[B] |
 | ISA_rA_rB_rC | R[A] := (R[B] isa R[C]) — true if identical or R[C] is in R[B]'s __isa chain |
 | METHFIND_rA_rB_rC | R[A] := method lookup on R[B] with key R[C], walking __isa chain; sets pendingSelf=R[B], pendingSuper=containing map's __isa |
-| IDXGET_rA_rB_rC | R[A] := R[B][R[C]] with type-map fallback, like METHFIND but never auto-invokes a funcRef result; clears pending context |
+| IDXGET_rA_rB_rC | R[A] := R[B][R[C]] with type-map fallback, like METHFIND but never auto-invokes a funcRef result; clears pending context. If R[B] is an error, R[A] := R[B]. Used for both `x[k]` and `@x[k]` |
 | SETSELF_rA | Override pendingSelf with R[A] (used for super.method() to preserve original self) |
 | CALLIFREF_rA | If R[A] is a funcref and pending context exists, auto-invoke it with pending self/super; otherwise clear pending context |
 | ITERGET_rA_rB_rC | R[A] := element at position R[C] from container R[B]; for lists/strings same as INDEX, for maps returns {"key":k, "value":v} |

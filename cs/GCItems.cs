@@ -17,6 +17,22 @@ namespace MiniScript {
 public struct GCString : IGCItem {
 	public String Data;
 
+	//*** BEGIN CS_ONLY ***
+	// MiniScript counts a character as one Unicode code point, but a C# string
+	// is indexed in UTF-16 code units, and the two differ for any string holding
+	// a character outside the Basic Multilingual Plane.  These three mirror what
+	// the C++ side keeps in StringStorage (see cpp/core/StringStorage.cpp):
+	// CpLen is Data's length in code points, or -1 when it has not been measured
+	// yet, and the cursor remembers one character index together with the code
+	// unit that character starts at, so that walking a string costs O(1) per
+	// step rather than O(n).  GCStringSet.SetData resets all three; cs/Value.cs
+	// is the only thing that reads or writes them.  C++ needs none of this: its
+	// strings are UTF-8, and StringStorage carries the same two caches already.
+	public Int32 CpLen;
+	public Int32 CursorChar;
+	public Int32 CursorUnit;
+	//*** END CS_ONLY ***
+
 	public void MarkChildren() {
 		// strings have no child Values
 	}

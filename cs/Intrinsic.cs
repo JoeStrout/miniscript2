@@ -96,6 +96,9 @@ public class Intrinsic {
 	}
 
 	public void AddParam(String name, Value defaultValue) {
+		// One default Value is shared by every call, so a list or map default
+		// must be frozen, just as script-defined defaults are.
+		defaultValue.Freeze();
 		_paramNames.Add(name);
 		_paramDefaults.Add(defaultValue);
 	}

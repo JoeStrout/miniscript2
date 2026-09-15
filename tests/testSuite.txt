@@ -4507,6 +4507,44 @@ print s[999:1002]
 zy1001
 xyz
 ================================
+==== Characters outside the Basic Multilingual Plane count as one character
+==== each, wherever a character index is taken or returned
+================================
+s = "a😀b😀c"
+print s.len
+print s[1] + s[3] + s[-3] + s[-5]
+print s[1:4] + "|" + s[-2:] + "|" + s[:2]
+print s.values.join("/")
+print s.split("").join("/")
+print s.indexOf("😀") + "," + s.indexOf("😀", 1) + "," + s.indexOf("c")
+print s.insert(1, "-") + " " + s.insert(-1, "-") + " " + s.insert(s.len, "-")
+print s.indexes
+--------------------------------
+5
+😀😀ba
+😀b😀|😀c|a😀
+a/😀/b/😀/c
+a/😀/b/😀/c
+1,3,4
+a-😀b😀c a😀b😀c- a😀b😀c-
+[0, 1, 2, 3, 4]
+================================
+==== A string that is nothing but an astral character, and one long enough to
+==== exercise the cursor rather than a scan from either end
+================================
+print "😀".len + "," + "😀"[0] + "," + "😀"[-1] + "," + "😀".values.len
+s = "😀" * 300
+print s.len
+print s[0] + s[150] + s[299] + s[-1]
+print s.indexOf("😀", 298)
+print (s[10:12]).len
+--------------------------------
+1,😀,😀,1
+300
+😀😀😀😀
+299
+2
+================================
 ================================================================================
 ==== SECTION 24: LIST/MAP/STRING INTRINSICS
 ================================================================================

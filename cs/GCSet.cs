@@ -198,8 +198,46 @@ public class GCStringSet : GCSetBase {
 	public void SetData(Int32 idx, String s) {
 		GCString item = _items[idx];
 		item.Data = s;
+		//*** BEGIN CS_ONLY ***
+		item.CpLen = -1;      // not yet measured; see GCString
+		item.CursorChar = 0;
+		item.CursorUnit = 0;
+		//*** END CS_ONLY ***
 		_items[idx] = item;
 	}
+
+	//*** BEGIN CS_ONLY ***
+	// Character-index cache, for cs/Value.cs; see GCString for what it holds.
+	// These live here because GCString is a struct, so a caller holding one
+	// fetched with Get() would be updating a copy of it.
+
+	[MethodImpl(AggressiveInlining)]
+	public Int32 GetCpLen(Int32 idx) {
+		return _items[idx].CpLen;
+	}
+
+	[MethodImpl(AggressiveInlining)]
+	public void SetCpLen(Int32 idx, Int32 cpLen) {
+		GCString item = _items[idx];
+		item.CpLen = cpLen;
+		_items[idx] = item;
+	}
+
+	[MethodImpl(AggressiveInlining)]
+	public void GetCursor(Int32 idx, out Int32 cursorChar, out Int32 cursorUnit) {
+		GCString item = _items[idx];
+		cursorChar = item.CursorChar;
+		cursorUnit = item.CursorUnit;
+	}
+
+	[MethodImpl(AggressiveInlining)]
+	public void SetCursor(Int32 idx, Int32 cursorChar, Int32 cursorUnit) {
+		GCString item = _items[idx];
+		item.CursorChar = cursorChar;
+		item.CursorUnit = cursorUnit;
+		_items[idx] = item;
+	}
+	//*** END CS_ONLY ***
 }
 
 // ── GCListSet ─────────────────────────────────────────────────────────────────

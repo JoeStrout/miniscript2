@@ -121,7 +121,7 @@ public readonly struct Value {
 	public bool BoolValue() {
 		if (IsNull()) return false;
 		if (IsNumber()) return _d != 0.0;
-		if (IsString()) return Length() != 0;
+		if (IsString()) return !IsEmptyString();
 		if (IsList()) return ListCount() != 0;
 		if (IsMap()) return MapCount() != 0;
 		return true;
@@ -1189,35 +1189,215 @@ public readonly struct Value {
 		return result;
 	}
 
+	// ==== CHARACTER INDEXING =================================================
+	// MiniScript counts a character as one Unicode code point, but a C# string
+	// is indexed in UTF-16 code units, and a character outside the Basic
+	// Multilingual Plane occupies two of them.  The two indexes agree for any
+	// string containing no surrogate pair, which is nearly every string, so the
+	// helpers below take that fast path wherever they can and navigate
+	// surrogates only where they must.  Every string operation that accepts or
+	// returns a character index goes through them; none indexes a C# string
+	// directly.
+	//
+	// The character count and a sequential-access cursor are cached per string,
+	// exactly as the C++ side caches them in StringStorage -- that is what makes
+	// both ss_charToByteIndex and CharToUnit below O(1) per step.  For a heap
+	// string they live in its GCString slot; a tiny string is at most five UTF-8
+	// bytes, so measuring one costs less than remembering it would.
+
+	// True when a surrogate pair starts at code unit i.
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static bool IsPairAt(string s, int i) {
+		return char.IsHighSurrogate(s[i]) && i + 1 < s.Length && char.IsLowSurrogate(s[i + 1]);
+	}
+
+	// True when the code unit at unitIndex is the low half of a surrogate pair,
+	// i.e. the interior of a character rather than the start of one.
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static bool IsIntraChar(string s, int unitIndex) {
+		return unitIndex > 0 && char.IsLowSurrogate(s[unitIndex])
+			&& char.IsHighSurrogate(s[unitIndex - 1]);
+	}
+
+	// Count of code points in s.  An unpaired surrogate counts as one.
+	private static int CountCodePoints(string s) {
+		int units = s.Length;
+		int n = 0;
+		for (int i = 0; i < units; i++) {
+			n++;
+			if (IsPairAt(s, i)) i++;
+		}
+		return n;
+	}
+
+	// The set holding this heap string, or null for a tiny string -- which has
+	// no GCString slot, and so nowhere to cache anything.  A tiny string is five
+	// UTF-8 bytes at most, so measuring one costs less than remembering it.
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private GCStringSet StringSet() {
+		if (!IsHeapString()) return null;
+		return (GCSetIndex() == GCManager.InternedStringSet)
+			? GCManager.InternedStrings : GCManager.BigStrings;
+	}
+
+	// Length in code points of s, which must be this value's string.  Measured
+	// once per string and cached in its slot; see GCString.
+	private int CodePointLen(string s) {
+		GCStringSet set = StringSet();
+		if (set == null) return CountCodePoints(s);
+		int idx = ItemIndex();
+		int n = set.GetCpLen(idx);
+		if (n < 0) {
+			n = CountCodePoints(s);
+			set.SetCpLen(idx, n);
+		}
+		return n;
+	}
+
+	// Move delta characters from code-unit index unit (delta may be negative),
+	// returning the code-unit index arrived at.
+	private static int StepUnits(string s, int unit, int delta) {
+		int units = s.Length;
+		while (delta > 0 && unit < units) {
+			if (IsPairAt(s, unit)) unit += 2;
+			else unit++;
+			delta--;
+		}
+		while (delta < 0 && unit > 0) {
+			unit--;
+			if (IsIntraChar(s, unit)) unit--;
+			delta++;
+		}
+		return unit;
+	}
+
+	// Code-unit index at which character charIndex starts, clamped to
+	// [0, s.Length].  Mirrors ss_charToByteIndex.
+	private int CharToUnit(string s, int charIndex) {
+		if (charIndex <= 0) return 0;
+		int units = s.Length;
+		int lenCp = CodePointLen(s);
+		if (charIndex >= lenCp) return units;
+		if (lenCp == units) return charIndex;   // no surrogate pairs
+
+		// Walk from whichever of the start, the cursor, or the end is nearest,
+		// then leave the cursor here, so that stepping through a string costs
+		// O(1) per step rather than O(n).
+		GCStringSet set = StringSet();
+		int idx = (set == null) ? -1 : ItemIndex();
+		int distStart = charIndex;
+		int distEnd   = lenCp - charIndex;
+		int unit;
+
+		if (idx >= 0) {
+			int cursorChar;
+			int cursorUnit;
+			set.GetCursor(idx, out cursorChar, out cursorUnit);
+			int distCursor = charIndex - cursorChar;
+			int absCursor  = distCursor < 0 ? -distCursor : distCursor;
+			if (absCursor <= distStart && absCursor <= distEnd) {
+				unit = StepUnits(s, cursorUnit, distCursor);
+				set.SetCursor(idx, charIndex, unit);
+				return unit;
+			}
+		}
+
+		if (distStart <= distEnd) unit = StepUnits(s, 0, distStart);
+		else unit = StepUnits(s, units, -distEnd);
+
+		if (idx >= 0) set.SetCursor(idx, charIndex, unit);
+		return unit;
+	}
+
+	// Character index of the character starting at code-unit index unitIndex,
+	// or -1 if that index falls inside a character.  Mirrors ss_byteToCharIndex.
+	private int UnitToChar(string s, int unitIndex) {
+		if (unitIndex <= 0) return 0;
+		int units = s.Length;
+		int lenCp = CodePointLen(s);
+		if (unitIndex >= units) return lenCp;
+		if (lenCp == units) return unitIndex;   // no surrogate pairs
+		if (IsIntraChar(s, unitIndex)) return -1;
+
+		// Count character starts from the cursor when it is at or before
+		// unitIndex, and from the start of the string otherwise.
+		GCStringSet set = StringSet();
+		int idx = (set == null) ? -1 : ItemIndex();
+		int unit = 0;
+		int charIdx = 0;
+		if (idx >= 0) {
+			int cursorChar;
+			int cursorUnit;
+			set.GetCursor(idx, out cursorChar, out cursorUnit);
+			if (cursorUnit <= unitIndex) {
+				unit = cursorUnit;
+				charIdx = cursorChar;
+			}
+		}
+		while (unit < unitIndex) {
+			if (IsPairAt(s, unit)) unit += 2;
+			else unit++;
+			charIdx++;
+		}
+
+		if (idx >= 0) set.SetCursor(idx, charIdx, unit);
+		return charIdx;
+	}
+
 	// ==== STRING OPERATIONS ==================================================
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public int Length() {
 		if (!IsString()) return 0;
-		return GetStringValue().Length;
+		return CodePointLen(GetStringValue());
 	}
 
+	// True for the empty string.  BoolValue wants only this, and going through
+	// Length() would measure the whole string (and materialize a tiny one) to
+	// answer it.
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public bool IsEmptyString() {
+		if (IsTinyString()) return TinyLen() == 0;
+		return GetStringValue().Length == 0;
+	}
+
 	public int StringIndexOf(Value needle, int start_pos) {
 		if (!IsString() || !needle.IsString()) return -1;
-		return GetStringValue().IndexOf(needle.GetStringValue(), start_pos, StringComparison.Ordinal);
+		string s = GetStringValue();
+		string n = needle.GetStringValue();
+		int unit = CharToUnit(s, start_pos);
+		// A match is only a match at a character boundary, so a hit inside a
+		// character (possible only when the needle opens with an unpaired
+		// surrogate) is skipped rather than reported.
+		while (unit <= s.Length) {
+			int found = s.IndexOf(n, unit, StringComparison.Ordinal);
+			if (found < 0) return -1;
+			int charIdx = UnitToChar(s, found);
+			if (charIdx >= 0) return charIdx;
+			unit = found + 1;
+		}
+		return -1;
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public Value Substring(int startIndex, int len) {
 		string s = GetStringValue();
-		if (startIndex < 0) startIndex += s.Length;
-		return make_string(s.Substring(startIndex, len));
+		if (startIndex < 0) startIndex += CodePointLen(s);
+		int startUnit = CharToUnit(s, startIndex);
+		int endUnit   = CharToUnit(s, startIndex + len);
+		if (endUnit <= startUnit) return Value.emptyString;
+		return make_string(s.Substring(startUnit, endUnit - startUnit));
 	}
 
 	public Value StringSlice(int start, int end) {
 		string s = GetStringValue();
-		int len = s.Length;
+		int len = CodePointLen(s);
 		if (start < 0) start += len;
 		if (end   < 0) end   += len;
 		if (start < 0) start = 0;
 		if (end > len) end   = len;
 		if (start >= end) return Value.emptyString;
-		return make_string(s.Substring(start, end - start));
+		int startUnit = CharToUnit(s, start);
+		int endUnit   = CharToUnit(s, end);
+		return make_string(s.Substring(startUnit, endUnit - startUnit));
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1236,13 +1416,18 @@ public readonly struct Value {
 		if (!IsString() || !delimiter.IsString()) return Value.Null;
 		string s = GetStringValue();
 		string delim = delimiter.GetStringValue();
-		string[] parts;
 		if (delim == "") {
-			parts = new string[s.Length];
-			for (int i = 0; i < s.Length; i++) parts[i] = s[i].ToString();
-		} else {
-			parts = s.Split(new string[] { delim }, StringSplitOptions.None);
+			// One element per character, not per code unit.
+			Value chars = make_list(CodePointLen(s));
+			int unit = 0;
+			while (unit < s.Length) {
+				int next = StepUnits(s, unit, 1);
+				chars.Push(make_string(s.Substring(unit, next - unit)));
+				unit = next;
+			}
+			return chars;
 		}
+		string[] parts = s.Split(new string[] { delim }, StringSplitOptions.None);
 		Value list = make_list(parts.Length);
 		foreach (string part in parts) list.Push(make_string(part));
 		return list;
@@ -1260,10 +1445,11 @@ public readonly struct Value {
 		if (!IsString()) return this;
 		string s = GetStringValue();
 		string insertStr = value.ToString(vm);
-		if (index < 0) index += s.Length + 1;
+		int len = CodePointLen(s);
+		if (index < 0) index += len + 1;
 		if (index < 0) index = 0;
-		if (index > s.Length) index = s.Length;
-		return make_string(s.Insert(index, insertStr));
+		if (index > len) index = len;
+		return make_string(s.Insert(CharToUnit(s, index), insertStr));
 	}
 
 	public Value SplitMax(Value delimiter, int maxCount) {
@@ -1272,13 +1458,17 @@ public readonly struct Value {
 		string delim = delimiter.GetStringValue();
 		Value list = make_list(8);
 		if (delim == "") {
+			// One element per character, not per code unit.
 			int count = 0;
-			for (int i = 0; i < s.Length; i++) {
+			int unit = 0;
+			while (unit < s.Length) {
 				if (maxCount > 0 && count >= maxCount - 1) {
-					list.Push(make_string(s.Substring(i)));
+					list.Push(make_string(s.Substring(unit)));
 					return list;
 				}
-				list.Push(make_string(s[i].ToString()));
+				int next = StepUnits(s, unit, 1);
+				list.Push(make_string(s.Substring(unit, next - unit)));
+				unit = next;
 				count++;
 			}
 			return list;

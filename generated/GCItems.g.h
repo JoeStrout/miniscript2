@@ -98,10 +98,33 @@ struct GCMap {
 	public: Boolean Frozen;
 	public: VarMapBacking _vmb;
 	public: Globals _gb;
+	public: List<Value> _order;
+	public: Dictionary<Value, Int32> _pos;
 
 	// Non-null for VarMap-backed maps (call-frame locals, closure contexts).
 
 	// Non-null for the `globals` map; then Items is null and _vmb is null.
+
+	// Keys in insertion order, which is what a `for` loop over this map walks.
+	// Items alone cannot supply that: C#'s Dictionary reuses a freed entry slot
+	// on the next add, so its enumeration order changes after any Remove, while
+	// the transpiled CS_Dictionary never reuses a hole until a resize compacts.
+	// The two would (and did) disagree.  Holding the order here makes it exact
+	// and identical on both platforms, and makes reaching the i'th entry O(1)
+	// instead of a walk from the start -- see NextEntry/KeyAt/ValueAt.
+	// A removed key's slot is left holding Value.Unassigned as a tombstone
+	// (a poison payload no make_* ever produces, so it cannot collide with a
+	// real key -- null can be a key, so null would not do).  Tombstones are
+	// compacted away once they outnumber the live entries.  The live keys here
+	// are exactly Items' keys, so MarkChildren has nothing extra to mark.
+	// Null only for the globals view, whose order comes from the slot table.
+
+	// key -> its slot in _order, so that Remove does not have to search for it.
+	// Built on a map's first removal and null before that, because most maps
+	// never see one: an object, a class, or a module map is filled and then only
+	// read.  Those pay nothing for this.  Once it exists it is kept in step with
+	// _order.  Callers that can create it must go through GCMapSet.Remove, since
+	// GCMap is a struct and the assignment would otherwise land in a copy.
 
 	public: Int32 Count();
 
@@ -122,11 +145,40 @@ struct GCMap {
 
 	public: void Clear();
 
+	// ── Order maintenance ─────────────────────────────────────────────────────
+
+	// Tombstone the slot holding key.  Called only when key was in Items, so it
+	// is in _order exactly once, and _pos knows where.
+	private: void OrderRemove(Value key);
+
+	// Index the live entries of _order.  Runs once, on a map's first removal.
+	private: void BuildPos();
+
+	// Drop tombstones, preserving the order of what is left.  Compacts in place:
+	// GCMap is a struct, so replacing the list reference would be lost unless
+	// every caller wrote the struct back.
+	private: void CompactOrder();
+
+	// Build the order for a map whose Items were attached wholesale rather than
+	// inserted one at a time (GCManager.NewMapFromDict).  Runs on a fresh slot,
+	// from GCMapSet.SetItems, which writes the struct back.
+	public: void SeedOrder();
+
+	// Rebuild the order from Items when the two have drifted apart.  That can
+	// only happen to a map wrapping a host-owned dictionary (GCManager
+	// .NewMapFromDict shares the caller's storage), where the host may insert
+	// behind our back.  The recovered order is Items' own enumeration order,
+	// which for a dictionary filled and never pruned is still insertion order.
+	private: void EnsureOrder();
+
+	private: Int32 CountTombstones();
+
 	// ── Iteration ─────────────────────────────────────────────────────────────
 	// iter = -1: start
 	// iter < -1: VarMap register entry -(i+2) where i is the reg-entry index
-	// iter >= 0: index into Items (in enumeration order), or -- for a globals
-	//            map, where Items is null -- a slot index in the global table
+	// iter >= 0: index into _order -- a slot, not an ordinal, so tombstoned
+	//            slots are simply skipped past.  For a globals map, where Items
+	//            and _order are null, it is a slot index in the global table.
 
 	public: Int32 NextEntry(Int32 after);
 

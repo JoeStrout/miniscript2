@@ -31,7 +31,9 @@ Our internal opcode names include a verb/mnemonic, and a description of how the 
 | INDEX_rA_rB_rC | R[A] := R[B][R[C]] (get element R[C] from list R[B]) |
 | IDXSET_rA_rB_rC | R[A][R[B]] := R[C] (set element R[B] of list R[A] to R[C]) |
 | SLICE_rA_rB_rC | R[A] := R[B][R[C]:R[C+1]] (slice; end index in adjacent register) |
-| LOCALS_rA | R[A] := new VarMap for local variables (r0-r4) |
+| LOCALS_rA | R[A] := the VarMap for this frame's local variables (created on demand) |
+| OUTER_rA | R[A] := the VarMap for the enclosing scope captured at definition time, or the globals map if there is none |
+| GLOBALS_rA | R[A] := the globals map |
 
 ### Globals
 
@@ -77,7 +79,7 @@ intrinsics table, and raises Undefined Identifier if it is not there either.
 
 | ADD_rA_rB_rC | R[A] := R[B] + R[C] |
 | SUB_rA_rB_rC | R[A] := R[B] - R[C] |
-| MULT_rA_rB_rC | R[A] := R[B] * R[C] |
+| MUL_rA_rB_rC | R[A] := R[B] * R[C] |
 | DIV_rA_rB_rC | R[A] := R[B] / R[C] |
 | MOD_rA_rB_rC | R[A] := R[B] % R[C] |
 | POW_rA_rB_rC | R[A] := R[B] ^ R[C] (exponentiation) |
@@ -119,6 +121,10 @@ intrinsics table, and raises Undefined Identifier if it is not there either.
 | BRLE_rA_rB_iC | if R[A] <= R[B] then PC += C (8-bit signed) |
 | BRLE_rA_iB_iC | if R[A] <= B then PC += C (8-bit signed) |
 | BRLE_iA_rB_iC | if A <= R[B] then PC += C (8-bit signed) |
+| BREQ_rA_rB_iC | if R[A] == R[B] then PC += C (8-bit signed) |
+| BREQ_rA_iB_iC | if R[A] == B then PC += C (8-bit signed) |
+| BRNE_rA_rB_iC | if R[A] != R[B] then PC += C (8-bit signed) |
+| BRNE_rA_iB_iC | if R[A] != B then PC += C (8-bit signed) |
 | IFLT_rA_rB | if R[A] < R[B] is **false** then PC += 1 |
 | IFLT_rA_iBC | if R[A] < BC is **false** then PC += 1 |
 | IFLT_iAB_rC | if AB < R[C] is **false** then PC += 1 |
@@ -129,9 +135,11 @@ intrinsics table, and raises Undefined Identifier if it is not there either.
 | IFEQ_rA_iBC | if R[A] == BC is **false** then PC += 1 |
 | IFNE_rA_rB | if R[A] != R[B] is **false** then PC += 1 |
 | IFNE_rA_iBC | if R[A] != BC is **false** then PC += 1 |
-| NEXT_rA_rB | R[A] += 1; if R[A] < len(R[B]) then PC += 1 |
+| NEXT_rA_rB | advance iterator R[A] over collection R[B]; skip the next instruction if there is no next entry.  For a list or string the iterator is a plain index; for a map it is the two-phase encoding described in [MAP_ITERATION.md](MAP_ITERATION.md) |
+| ARGBLK_iABC | begin an argument block of ABC `ARG` instructions, which this opcode consumes along with the `CALL` that follows them; see [FUNCTION_CALLS.md](FUNCTION_CALLS.md) |
+| ARG_rA | pass R[A] as the next argument.  Only valid inside an `ARGBLK` block, which executes it; reaching one on its own is an internal error |
+| ARG_iABC | pass the integer ABC as the next argument.  Same rule as `ARG_rA` |
 | CALLF_iA_iBC | call funcs[BC] with parameters/return value at register A |
-| CALLFN_iA_kBC | ~~call function named constants[BC] with params/return at rA~~ **(DEPRECATED)** — intrinsics are now callable FuncRefs resolved via LOADV + CALL |
 | CALL_rA_rB_rC | invoke FuncRef in R[C], with stack frame at R[B], result to R[A] |
 | RETURN | return with result in R[0] |
 | NEW_rA_rB | R[A] := new map with __isa set to R[B] |

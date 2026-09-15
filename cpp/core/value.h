@@ -1,19 +1,21 @@
 // value.h
 //
 // NaN-boxed 8-byte dynamic Value type. All non-immediate types (strings,
-// lists, maps, errors, funcrefs) carry a (gcSet, itemIndex) pair packed
-// into the lower 35 bits, dispatched by GCManager (see GCManager.h).
+// lists, maps, errors, funcrefs, handles) carry a (gcSet, itemIndex) pair
+// packed into the lower 35 bits, dispatched by GCManager (see GCManager.h).
 //
 // Bit layout (matches cs/Value.cs and cs/GCManager.cs):
 //   valid double  : top 16 bits < 0xFFF9 (includes ±inf and ±NaN)
 //   null          : 0xFFF9_0000_0000_0000
 //   GC object     : 0xFFFE_0000_000G_IIII_IIII
-//                     bits 34-32 = GCSet index (0-5)
+//                     bits 34-32 = GCSet index (0-6; see the *_SET defines)
 //                     bits 31-0  = item index within that GCSet
 //                     bits 47-35 = reserved/unused
-//   tiny string   : 0xFFFF_C4C3_C2C1_C0LL
-//                     bits 47-8  = up to 5 ASCII chars
-//                     bits  7-0  = length (0-5)
+//   tiny string   : 0xFFFF_B4B3_B2B1_B0LL
+//                     bits 47-8  = up to 5 UTF-8 *bytes* -- which is not the
+//                                  same as 5 characters: a 4-byte character
+//                                  such as an emoji still fits here
+//                     bits  7-0  = length in bytes (0-5)
 
 #ifndef NANBOX_H
 #define NANBOX_H

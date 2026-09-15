@@ -483,7 +483,7 @@ register speed — but their top-level names are not globals.  All thirteen
 `.msa` files in `examples/` were run and behave as before.  So do the `.ms`
 examples, apart from three pre-existing failures unrelated to this work:
 `textAdventure` and `therapist` hit the `input`-at-EOF crash
-([bugs.md](bugs.md) #2) when run with stdin closed, and `superstartrek` needs an
+(the `input`-at-EOF crash, since fixed) when run with stdin closed, and `superstartrek` needs an
 import path for `listUtil`.
 
 **Host API.**  `GetGlobalsVarMap()` stays, returning the globals map, so
@@ -550,8 +550,8 @@ embedding hosts keep compiling.
    than the pre-globals baseline, and that is **not** a win from this work.  It
    is a pre-existing cost around variables first assigned inside a loop body,
    which global scope no longer has because it no longer puts named variables in
-   registers.  The same pattern also miscompiles — [bugs.md](bugs.md) #3 — and
-   that bug is still live for function locals.
+   registers.  The same pattern also miscompiled for function locals at the
+   time, which is [bugs.md](bugs.md) #3; that has since been fixed.
 5. **Done.**  Free names inside functions now compile to `GLOADC`/`GLOADV` too,
    so `print` in a function body, a call to a top-level function, and a recursive
    call by name all reach a slot instead of walking out through

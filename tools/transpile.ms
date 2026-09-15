@@ -1484,6 +1484,14 @@ Transpiler.updateStateMETHOD = function
 		self.curClass.methodLines.push cline
 		return
 	end if
+	if self.match("foreach (≤type:w≥ ≤var:w≥ in ≤seq≥) ≤statement≥;") then
+		self.localVars.push VariableInfo.Make(self.m.var, self.m.type, Scope.LOCAL)
+		cline = line.indentation + self.fill("for (≤type≥ ≤var≥ : ≤seq≥) ≤statement≥;") + line.comment;
+		cline = fixStringInterpolation(cline)
+		cline = self.transformStatement(cline)
+		self.curClass.methodLines.push cline
+		return
+	end if
 	
 	// return statements, when we've pushed a GC scope (ToDo: remove obsolete GC handling!)
 	if self.pushedGCScope then

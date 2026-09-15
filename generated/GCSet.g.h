@@ -191,6 +191,7 @@ class GCStringSetStorage : public GCSetBaseStorage {
 	public: GCString Get(Int32 idx);
 
 	public: void SetData(Int32 idx, String s);
+
 }; // end of class GCStringSetStorage
 
 class GCListSetStorage : public GCSetBaseStorage {
@@ -230,6 +231,11 @@ class GCMapSetStorage : public GCSetBaseStorage {
 	public: GCMap Get(Int32 idx);
 
 	public: void Init(Int32 idx, Int32 capacity);
+
+	// Remove a key, writing the struct back afterwards: GCMap.Remove may build
+	// the map's position index on its first removal, and that assignment would
+	// otherwise land in the copy Get() returned.
+	public: Boolean Remove(Int32 idx, Value key);
 
 	// Initialize a slot as the `globals` map view; see GCManager.NewGlobalsMap.
 	public: void InitAsGlobals(Int32 idx, Globals g);
@@ -376,6 +382,11 @@ struct GCMapSet : public GCSetBase {
 	public: inline GCMap Get(Int32 idx);
 
 	public: inline void Init(Int32 idx, Int32 capacity);
+
+	// Remove a key, writing the struct back afterwards: GCMap.Remove may build
+	// the map's position index on its first removal, and that assignment would
+	// otherwise land in the copy Get() returned.
+	public: inline Boolean Remove(Int32 idx, Value key);
 
 	// Initialize a slot as the `globals` map view; see GCManager.NewGlobalsMap.
 	public: inline void InitAsGlobals(Int32 idx, Globals g);
@@ -542,6 +553,7 @@ inline GCMap GCMapSetStorage::Get(Int32 idx) {
 	return _items[idx];
 }
 inline void GCMapSet::Init(Int32 idx,Int32 capacity) { return get()->Init(idx, capacity); }
+inline Boolean GCMapSet::Remove(Int32 idx,Value key) { return get()->Remove(idx, key); }
 inline void GCMapSet::InitAsGlobals(Int32 idx,Globals g) { return get()->InitAsGlobals(idx, g); }
 inline void GCMapSet::SetFrozen(Int32 idx,Boolean frozen) { return get()->SetFrozen(idx, frozen); }
 inline void GCMapSetStorage::SetFrozen(Int32 idx,Boolean frozen) {
@@ -559,6 +571,10 @@ inline void GCMapSet::SetItems(Int32 idx,Dictionary<Value, Value> items) { retur
 inline void GCMapSetStorage::SetItems(Int32 idx,Dictionary<Value, Value> items) {
 	GCMap item = _items[idx];
 	item.Items = items;
+	// Seed the iteration order from what the dictionary already holds.  The
+	// host owns that dictionary and may add to it afterwards, which GCMap
+	// cannot see; GCMap.EnsureOrder notices the drift and rebuilds.
+	item.SeedOrder();
 	_items[idx] = item;
 }
 

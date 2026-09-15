@@ -4,29 +4,29 @@ This document describes the memory management systems used in MiniScript2 and ho
 
 ## Overview
 
-MiniScript2 uses **two distinct memory systems**, plus an intern side-table that piggybacks on the first:
+MiniScript2 uses **two distinct memory systems**, plus an intern table serving the first:
 
-1. **Custom GC for Value objects** — typed object pools (`GCSet<T>`) coordinated by a single `GCManager`, identical in design on the C# and C++ sides.
-2. **String intern table** — a side-table on the strings `GCSet`, transparent to callers.
+1. **Custom GC for Value objects** — typed object pools (`GCSet<T>`) coordinated by a single `GCManager`, identical in design on the C# and C++ sides because both are transpiled from the same source.
+2. **String intern table** — content-addressed lookup into a dedicated `InternedStrings` `GCSet`, transparent to callers.
 3. **Standard memory management for host code** — `std::shared_ptr` in C++ (`CS_String`, `CS_List`, `CS_Dictionary`), regular GC in C#.
 
 For the rationale behind the custom GC, see [adr/0004-GC-system.md](adr/0004-GC-system.md).
 
 ## 1. Custom GC for Value objects
 
-**C# source:** `cs/GCManager.cs`, `cs/GCSet.cs`, `cs/GCItems.cs`, `cs/IGCSet.cs`, `cs/IGCItem.cs`
-**C++ source:** `cpp/core/GCManager.{h,cpp}`, `cpp/core/GCSet.h`, `cpp/core/GCItems.{h,cpp}`, `cpp/core/IGCSet.h`
+**Source:** `cs/GCManager.cs`, `cs/GCSet.cs`, `cs/GCItems.cs`, `cs/GCInterfaces.cs` — all transpiled, so the C++ side is `generated/GCManager.g.{h,cpp}` and friends rather than anything hand-written in `cpp/core/`.
 
-A single `GCManager` owns five typed object pools:
+A single `GCManager` owns seven typed object pools:
 
-| Slot | GCSet              | C# type     | C++ type    |
-|------|--------------------|-------------|-------------|
-| 0    | Strings            | `GCString`  | `GCString`  |
-| 1    | Lists              | `GCList`    | `GCList`    |
-| 2    | Maps               | `GCMap`     | `GCMap`     |
-| 3    | Errors             | `GCError`   | `GCError`   |
-| 4    | FuncRefs           | `GCFuncRef` | `GCFuncRef` |
-| 5    | *(reserved for future `GCHandle`)* | — | — |
+| Slot | GCSet             | Item type   | Notes |
+|------|-------------------|-------------|-------|
+| 0    | BigStrings        | `GCString`  | heap strings of 128 bytes or more |
+| 1    | Lists             | `GCList`    | |
+| 2    | Maps              | `GCMap`     | |
+| 3    | Errors            | `GCError`   | |
+| 4    | Functions         | `GCFuncRef` | |
+| 5    | InternedStrings   | `GCString`  | shorter heap strings; semi-immortal, see §2 |
+| 6    | Handles           | `GCHandle`  | native objects with a dispose hook on sweep |
 
 Each `GCSet<T>` is a struct-of-arrays: the items themselves in one vector, and per-slot GC metadata (in-use, marked, retain count) in tight parallel arrays. Slots are recycled via a free-list stack; the high-water mark grows monotonically.
 
@@ -36,11 +36,11 @@ A `Value` is a 64-bit NaN-boxed word. For GC-managed types, the lower 35 bits ca
 
 ```
 GC object:  0xFFFE_0000_000G_IIII_IIII
-              bits 34-32 = GCSet index (0-5)
+              bits 34-32 = GCSet index (0-6)
               bits 31-0  = item index within that GCSet
 ```
 
-The same bit layout is used on both platforms, so the index in a Value's payload always means the same thing regardless of which side allocated it. Tiny strings (≤5 ASCII bytes) and immediate doubles are encoded inline in the Value bits and do not touch any GCSet.
+The same bit layout is used on both platforms, so the index in a Value's payload always means the same thing regardless of which side allocated it. Immediate doubles and tiny strings are encoded inline in the Value bits and do not touch any GCSet. A tiny string is up to 5 UTF-8 *bytes*, which is not the same as 5 characters — a 4-byte character such as an emoji is still a tiny string.
 
 ### Collection cycle
 
@@ -56,7 +56,16 @@ The same bit layout is used on both platforms, so the index in a Value's payload
 
 ### When does collection happen?
 
-Collection is **never triggered by allocation**. The new GC runs only when explicitly requested — currently at well-defined boundary times like `yield` and `wait` in the interpreter, or via an intrinsic. This removes the need to protect every local Value during a function body and eliminates the old shadow-stack scaffolding. Code that touches GC objects never has to worry about the value being collected mid-expression.
+Collection never happens *behind* an allocation: `make_list` and friends never collect, so no local Value can be swept out from under an expression in progress. This is what removes the need to protect every local during a function body, and what let the old shadow-stack scaffolding go.
+
+Instead, `GCManager.MaybeCollect(encouraged)` is called at well-defined boundary times and decides there whether to run a cycle. Two independent triggers, whichever fires first:
+
+- **Allocation volume.** Slots in use have grown by `GCAllocGrowthFactor` (1.0, so roughly a doubling) times the number that survived the last collection, with a floor of `GCMinAllocsBeforeCollect` (100000 slots, about 10 MB of small objects) so a small heap is left alone.
+- **Elapsed ticks.** A tick is one ordinary `MaybeCollect(false)` call; the caller defines what a tick means, and a host calling once per frame makes `GCIntervalTicks` (60) read as "about once a second". Live handles scale that interval down toward `GCMinIntervalTicks`, since a handle's cost is its finalizer, not its footprint. An `encouraged` call — a moment the caller knows we were about to idle anyway — uses a shorter interval.
+
+`CollectGarbage()` forces a cycle regardless, and resets the tick clock. All the tuning constants are public fields, so a host can retune them without a rebuild.
+
+Note which of the two is actually doing the work today. The only `MaybeCollect` call sites are the `wait` and `yield` intrinsics, and both pass `encouraged: true` — and only an *ordinary* call advances the tick counter. So in the command-line host the tick trigger never fires at all, and collection is driven entirely by allocation volume (plus an explicit `gc.collect`). The tick machinery is there for a host that calls `MaybeCollect(false)` on a regular beat, one frame at a time, the way Mini Micro will.
 
 ### Long-lived values
 
@@ -67,31 +76,33 @@ Locals and ephemeral expression results don't need any protection. For values th
 
 ### Mark callbacks
 
-`GCManager.RegisterMarkCallback(fn, userData)` lets a system inject roots without owning them in the explicit root list. The signature is `void(void*, GCManager&)`. The VM uses this to mark its register stack, names array, and intrinsics map on every collection cycle.
+`GCManager.RegisterMarkCallback(fn, userData)` lets a system inject roots without owning them in the explicit root list. The signature is `void(object userData)` in C#, `void(void*)` in C++. The VM registers one in its constructor, to mark its register stack, names array, and intrinsics table; `Intrinsic.MarkRoots` registers another, for intrinsic parameter defaults and registered short names.
 
-A legacy C-compatible shim in `cpp/core/gc.h` provides `gc_register_mark_callback` / `gc_mark_value` / `gc_collect` / etc. that forward to the new API, so older call sites continue to work unmodified. The shim also provides no-op `GC_PROTECT`, `GC_LOCALS_n`, and `GC_PUSH_SCOPE` / `GC_POP_SCOPE` macros for now — they're remnants of the old shadow-stack system and can be deleted from call sites at any time.
+There is no `GC_PROTECT`, and no shadow stack. Both are gone from the tree entirely — along with the `cpp/core/gc.h` shim that once provided them as no-ops — so there is nothing left to delete from call sites.
 
 ## 2. String intern table
 
-**Location:** `cpp/core/GCManager.{h,cpp}` (C++), built into `GCManager` on both platforms.
+**Location:** `cs/GCManager.cs`, built into `GCManager` and so shared by both platforms.
 
-Interning is a side-table on the strings GCSet rather than a separate system. Two heap strings with identical content end up at the same `GCSet` index, so map-key equality and hashing for interned strings collapse to bit-comparison of the Value.
+Interned strings live in their own GCSet (slot 5, `InternedStrings`), separate from the `BigStrings` set that holds everything longer. Two heap strings with identical content end up at the same slot, so map-key equality and hashing for interned strings collapse to a bit-comparison of the Value. `_internTable` is a `Dictionary<String, Int32>` mapping content to that slot.
 
 ### Routing rules
 
-`make_string(s)` (or `GCManager.NewString(data, len)`) dispatches based on length:
+`make_string(s)` dispatches on length:
 
 | Length     | Routing                                                            |
 |------------|--------------------------------------------------------------------|
-| ≤ 5 bytes  | Inline tiny string in Value bits; no GCSet slot.                   |
-| 6 – 127    | Hash-lookup the intern table; reuse existing slot or allocate a new one with `Interned = true`. |
-| ≥ 128      | Fresh GCSet slot; `Interned = false`; skips the intern table.      |
+| ≤ 5 bytes  | Inline tiny string in the Value bits; no GCSet slot at all.        |
+| under 128  | Hash-lookup `_internTable`; reuse the existing `InternedStrings` slot, or allocate one and record it. |
+| 128 and up | Fresh `BigStrings` slot; skips the intern table entirely.          |
+
+(The tiny-string cutoff is in UTF-8 bytes on both sides. The intern cutoff is in bytes on C++ but UTF-16 code units on C#, so a heavily non-ASCII string near the boundary can land in a different set on the two platforms. Nothing observable depends on which set a string is in.)
 
 ### Lifetime
 
-Interned slots are **not immortal** — they're swept like any other slot when nothing references them. `GCString::Interned` tells `GCManager` whether to also remove the slot from the intern side-table during sweep. Truly immortal strings (opcode names, lexer keywords, intrinsic names) should call `Retain` on their slot once at startup; this keeps them alive without polluting the root list.
+Interned strings are **semi-immortal**, per [adr/0005-string-interning.md](adr/0005-string-interning.md). An ordinary collection does not mark or sweep the `InternedStrings` set at all — it is skipped in both `PrepareForGC` and the sweep — so a short string keeps its canonical identity across normal cycles even when nothing references it for a while.
 
-The intern table is keyed on `StringRef{const char*, int}` views that point into each `GCString`'s `StringStorage->data` buffer. The buffers are `malloc`-allocated and stable across `std::vector` resizes (vector reallocations move the `GCString` struct, not the `StringStorage` it owns).
+Only `FullCollectGarbage()` reclaims them. It sets `_fullCollection`, which turns marking and sweeping back on for that set, and prunes the dead entries from `_internTable` *before* the sweep clears their `Data` fields. That is the path for a `reset`, memory pressure, or VM teardown — the escape valve that keeps a program generating endless unique short strings from growing without bound.
 
 ## 3. Shared `StringStorage` between Value strings and host strings
 
@@ -122,8 +133,7 @@ This layer is completely separate from the Value/GC system. Host strings are nev
 
 ## VarMap overlay
 
-**C# source:** `cs/VarMap.cs`
-**C++ source:** `cpp/core/VarMapBacking.{h,cpp}`
+**Source:** `cs/VarMap.cs`, transpiled to `generated/VarMap.g.{h,cpp}`.
 
 `VarMapBacking` is a per-map overlay attached to a `GCMap` as `_vmb`. When present, string-keyed `Get`/`Set`/`Remove` route through the VM's register window first, falling back to the regular hash table on misses. Iteration walks register entries (encoded with negative iterator values) before dense hash entries.
 
@@ -139,14 +149,14 @@ The C# version stores `List<Value>` references; the C++ side stores raw `Value*`
 - **Lifetime:** Lives as long as the Value exists
 - **System:** None (embedded in Value itself)
 
-### Interned heap strings (6 – 127 bytes)
-- **Storage:** `StringStorage` in `GCManager.Strings` slot, registered in intern side-table
+### Interned heap strings (under 128)
+- **Storage:** `GCManager.InternedStrings` slot, recorded in `_internTable`
 - **Examples:** identifiers, short literals, common keys
-- **Lifetime:** GC-managed; swept when unreachable (slot is removed from intern table on sweep)
-- **System:** GC + intern side-table
+- **Lifetime:** semi-immortal — skipped by ordinary collections; reclaimed only by `FullCollectGarbage`, which prunes the intern table first
+- **System:** GC (full cycles only) + intern table
 
-### Non-interned heap strings (≥ 128 bytes)
-- **Storage:** `StringStorage` in `GCManager.Strings` slot, no intern entry
+### Non-interned heap strings (128 and up)
+- **Storage:** `GCManager.BigStrings` slot, no intern entry
 - **Examples:** Long string literals, concatenation results
 - **Lifetime:** GC-managed (collected when unreachable)
 - **System:** GC
@@ -171,7 +181,14 @@ Both layers reach the same `StringStorage` struct and `ss_*` operations. The dif
 ## Debugging memory
 
 ### Value GC objects
-`GCManager.PrintStats()` reports the live slot count for each GCSet. The four (soon five) named members `Strings`, `Lists`, `Maps`, `Errors`, `FuncRefs` are directly accessible for ad-hoc inspection.
+From script, `gc.stats` returns a map of live slot counts per set plus a total:
+
+```
+{"bigStrings": 0, "internedStrings": 24, "lists": 2, "maps": 3,
+ "errors": 2, "functions": 130, "handles": 0, "total": 161}
+```
+
+and `gc.collect` forces a cycle. From C#, the seven named members `BigStrings`, `InternedStrings`, `Lists`, `Maps`, `Errors`, `Functions` and `Handles` are public, each with an O(1) `LiveCount()`, for ad-hoc inspection.
 
 ### Host memory
 Standard C++ tools:
@@ -184,7 +201,7 @@ Standard C++ tools:
 ### Why two systems?
 - **Same behaviour on both platforms.** A custom GC for Values is the only way to make C# and C++ behave identically — C# can't NaN-box a managed reference, so a managed-only solution doesn't fit, and a C++-only refcount system doesn't fit C#.
 - **No per-local protection.** Collection runs only at explicit boundaries, so locals don't need shadow-stack scaffolding or `GC_PROTECT` macros.
-- **Predictable cleanup for "handle" types.** A planned future `GCHandle` GCSet will give native objects a deterministic dispose hook on sweep — important for things like file handles.
+- **Predictable cleanup for "handle" types.** The `GCHandle` GCSet gives native objects a deterministic dispose hook on sweep — important for things like file handles. Live handle count is also what pulls the tick-based collection interval earlier, since a handle's cost is its finalizer rather than its footprint.
 
 ### Why `std::shared_ptr` for host code?
 - Standard C++ pattern: well understood, well tooled, well tested.

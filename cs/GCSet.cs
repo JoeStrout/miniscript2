@@ -328,6 +328,16 @@ public class GCMapSet : GCSetBase {
 		_items[idx] = item;
 	}
 
+	// Remove a key, writing the struct back afterwards: GCMap.Remove may build
+	// the map's position index on its first removal, and that assignment would
+	// otherwise land in the copy Get() returned.
+	public Boolean Remove(Int32 idx, Value key) {
+		GCMap item = _items[idx];
+		Boolean removed = item.Remove(key);
+		_items[idx] = item;
+		return removed;
+	}
+
 	// Initialize a slot as the `globals` map view; see GCManager.NewGlobalsMap.
 	public void InitAsGlobals(Int32 idx, Globals g) {
 		GCMap item = _items[idx];
@@ -357,6 +367,10 @@ public class GCMapSet : GCSetBase {
 	public void SetItems(Int32 idx, Dictionary<Value, Value> items) {
 		GCMap item = _items[idx];
 		item.Items = items;
+		// Seed the iteration order from what the dictionary already holds.  The
+		// host owns that dictionary and may add to it afterwards, which GCMap
+		// cannot see; GCMap.EnsureOrder notices the drift and rebuilds.
+		item.SeedOrder();
 		_items[idx] = item;
 	}
 }

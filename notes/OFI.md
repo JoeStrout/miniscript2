@@ -91,7 +91,7 @@ A survey of the C# (`cs/`) and C/C++ (`cpp/core/`) source for bad smells, incons
 - **`CodeGenerator.cs` ~86**: `_maxRegUsed` is updated only when the freed register equals the current max; it is not recalculated after nested scopes, potentially leaving it stale.
 - **`Disassembler.cs` ~101**: Pads mnemonic to 7 chars, but opcodes like `METHFIND` (8 chars) overflow the padding silently.
 - **`Assembler.cs` ~889–906**: Floating-point parsing in `NeedsConstant()` is unvalidated; malformed literals like `"1.2.3"` may pass silently.
-- **`VM.cs`**: No visible guard against infinite recursion / stack overflow; deep MiniScript recursion will crash the host rather than raise a runtime error.
+- ~~**`VM.cs`**: No visible guard against infinite recursion / stack overflow.~~  There is one: `RaiseRuntimeError("Call stack overflow")`, raised as an ordinary catchable runtime error. ✔️
 
 ---
 

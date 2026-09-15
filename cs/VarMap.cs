@@ -187,7 +187,7 @@ public class VarMapBacking {
 		if (map.TryGet(varName, out existingVal)) {
 			registers[regIndex] = existingVal;
 			_names[regIndex]    = varName;   // mark register as live so TryGet can find it
-			map.Remove(varName);
+			GCManager.Maps.Remove(mapIdx, varName);
 		}
 		GCManager.Maps.SetVmb(mapIdx, saved);
 	}

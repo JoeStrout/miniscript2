@@ -24,11 +24,16 @@ public struct MapIterator {
 // - a GC-managed object: GC_TAG | (gcSet << 32) | itemIndex
 //
 // GCSet assignments (must match GCManager constants):
-//   STRING_SET  = 0  → 0xFFFE_0000_0000_XXXX
-//   Value.list_SET    = 1  → 0xFFFE_0001_0000_XXXX
-//   MAP_SET     = 2  → 0xFFFE_0002_0000_XXXX
-//   ERROR_SET   = 3  → 0xFFFE_0003_0000_XXXX
-//   FUNCREF_SET = 4  → 0xFFFE_0004_0000_XXXX
+//   BigStringSet        = 0  → 0xFFFE_0000_0000_XXXX
+//   ListSet             = 1  → 0xFFFE_0001_0000_XXXX
+//   MapSet              = 2  → 0xFFFE_0002_0000_XXXX
+//   ErrorSet            = 3  → 0xFFFE_0003_0000_XXXX
+//   FunctionSet         = 4  → 0xFFFE_0004_0000_XXXX
+//   InternedStringSet   = 5  → 0xFFFE_0005_0000_XXXX
+//   HandleSet           = 6  → 0xFFFE_0006_0000_XXXX
+//
+// A tiny string holds up to 5 UTF-8 *bytes* inline, which is not the same as 5
+// characters -- a 4-byte character such as an emoji is still a tiny string.
 //
 // Keep Value at 8 bytes, blittable, and aggressively inlined.
 
@@ -1025,7 +1030,7 @@ public readonly struct Value {
 		if (!IsMap()) return false;
 		GCMap m = GCManager.Maps.Get(ItemIndex());
 		if (m.Frozen) { VM.ActiveVM().RaiseRuntimeError("Attempt to modify a frozen map"); return false; }
-		return m.Remove(key);
+		return GCManager.Maps.Remove(ItemIndex(), key);
 	}
 
 	public bool HasKey(Value key) {

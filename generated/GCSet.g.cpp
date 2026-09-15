@@ -162,6 +162,12 @@ void GCMapSetStorage::Init(Int32 idx,Int32 capacity) {
 	item.Init(capacity);
 	_items[idx] = item;
 }
+Boolean GCMapSetStorage::Remove(Int32 idx,Value key) {
+	GCMap item = _items[idx];
+	Boolean removed = item.Remove(key);
+	_items[idx] = item;
+	return removed;
+}
 void GCMapSetStorage::InitAsGlobals(Int32 idx,Globals g) {
 	GCMap item = _items[idx];
 	item.InitAsGlobals(g);

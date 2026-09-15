@@ -24,16 +24,31 @@ MiniScript documentation has always said that the order of data in a map is unde
 
 In MiniScript 2, we will commit to this behavior: **maps return keys in insertion order**, and this is true in both the C# and the C++ versions.
 
+## String Indexing
+
+**A string is indexed in Unicode code points**, and `len` counts them.  This is true in both the C# and the C++ versions, and it is the rule for every operation that takes or returns a character index — `s[i]`, slices, `indexOf` (both its start position and its result), `insert`, `values`, `indexes`, `split("")`, and a fractional `*`.
+
+**The consistency is new.**  MiniScript 1's two implementations disagreed: the C++ one counted characters (`SimpleString::Length()` returns a `charCount` analyzed from the UTF-8 bytes), while the C# one never handled surrogate pairs at all, so it counted UTF-16 code units and a string containing an emoji indexed differently on the two.  MiniScript 2 commits to the C++ reading on both sides.
+
+It is worth writing down because *nothing* in the implementations makes the rule obvious, and each one is one careless line away from breaking it in a way the other would not:
+
+- **C++ stores UTF-8.**  A character is 1 to 4 bytes, so a byte index and a character index differ for any non-ASCII string at all.  Code that confuses the two breaks on `é`, which is conspicuous.
+- **C# stores UTF-16.**  A character in the Basic Multilingual Plane is one code unit, so a code-unit index and a character index agree for `é`, `日`, `ü` and almost everything else anyone tests with.  They diverge only at a character outside the BMP — an emoji, say — which is stored as a *surrogate pair* of two code units.  Code that confuses the two therefore looks entirely correct until one shows up.
+
+That asymmetry is exactly how MiniScript 1's C# side got away with it for years, and how [bugs.md](bugs.md) entry 13 stayed hidden here: the whole test suite passed, because its non-ASCII coverage used only BMP characters.  Anything added to `cs/Value.cs` that touches a character index should go through its `CharToUnit` / `UnitToChar` helpers, never through `s.Length` or `s[i]` — and any new test for string indexing should include an astral character, not just an accented one.
+
+Note that a code point is not a user-perceived character.  `é` also has a two-code-point form (`e` followed by U+0301 combining acute), and an emoji carrying a skin tone or joined with ZWJ is several code points; all of these count as more than one character.  Grapheme-cluster semantics are deliberately out of scope, as they were in MiniScript 1.
+
 ## Function Info
 
-FuncRef will get some metadata which can be accessed via a new intrinsic, perhaps like `info(@f)`.  This will include:
+`info(x)` returns a frozen map describing any value.  Every result carries `type`, the same string `typeof` would give.  Beyond that it depends on what `x` is:
 
-- name: the text of the expression to the left of `=` where the function was defined, if any
-- note: when the first statement of a function body evaluates to a string constant, it is stored as the note (similar to a Python docstring)
-- params: a list of little maps, one for each parameter; each contains `name` and `default` (the actual default value)
-- sourceLoc: the location of this function definition in the source code
+- **funcRef** — `name`, the text of the expression to the left of `=` where the function was defined, if any; `note`, the string constant the first statement of the body evaluates to, if it does (similar to a Python docstring); `params`, a list of little maps, one per parameter, each with `name` and `default` (the actual default value); and `closure`, 1 if the function captured an enclosing scope.
+- **list** — `computed`, 1 if the list is still in its lazily-computed form (see [adr/0007-computed-lists.md](adr/0007-computed-lists.md)); and `frozen`.
+- **map** — `frozen`.
+- **error** — `message`, `inner`, `stack`, and `isa`.
 
-These details will be returned by `info` as a frozen map.
+Still to do: **`sourceLoc`**, the location of a function definition in the source code, which was part of the original design and is not yet returned.
 
 ## Error Type
 

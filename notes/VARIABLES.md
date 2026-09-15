@@ -103,7 +103,7 @@ To handle this, we will have a `LOADV` opcode, similar to `LOAD` except that it 
 1. If the source register name matches the LOADV name, use its value as-is.
 2. If not, then look for the same name in the _outer_ stack frame, and then in _globals_. Use the value found, or if not found, throw an undefined-identifier error.
 
-Note that this design leaves only 8 bits for the name constant; thus no function context can have more than 256 variable names, and the compiler will need to sort these to the start of the constants list.
+Note that this design leaves only 8 bits for the name constant in `LOADV_rA_rB_kC`, which would cap a function at 256 named constants.  That cap is lifted by the `LOADV_rA_rB_rC` / `LOADC_rA_rB_rC` forms, which take the expected name from a register instead, so a two-instruction sequence reaches any constant up to 65535.  `CodeGenerator.EmitNamedLoad` picks the form automatically; see "Naming a variable past constant 255" in [VM_DESIGN.md](VM_DESIGN.md).  The 256-register-per-function limit is unchanged.
 
 #### Assembly
 

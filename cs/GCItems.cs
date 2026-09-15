@@ -220,6 +220,31 @@ public struct GCMap : IGCItem {
 	// Non-null for the `globals` map; then Items is null and _vmb is null.
 	public Globals _gb;
 
+	// Keys in insertion order, which is what a `for` loop over this map walks.
+	// Items alone cannot supply that: C#'s Dictionary reuses a freed entry slot
+	// on the next add, so its enumeration order changes after any Remove, while
+	// the transpiled CS_Dictionary never reuses a hole until a resize compacts.
+	// The two would (and did) disagree.  Holding the order here makes it exact
+	// and identical on both platforms, and makes reaching the i'th entry O(1)
+	// instead of a walk from the start -- see NextEntry/KeyAt/ValueAt.
+	//
+	// A removed key's slot is left holding Value.Unassigned as a tombstone
+	// (a poison payload no make_* ever produces, so it cannot collide with a
+	// real key -- null can be a key, so null would not do).  Tombstones are
+	// compacted away once they outnumber the live entries.  The live keys here
+	// are exactly Items' keys, so MarkChildren has nothing extra to mark.
+	//
+	// Null only for the globals view, whose order comes from the slot table.
+	public List<Value> _order;
+
+	// key -> its slot in _order, so that Remove does not have to search for it.
+	// Built on a map's first removal and null before that, because most maps
+	// never see one: an object, a class, or a module map is filled and then only
+	// read.  Those pay nothing for this.  Once it exists it is kept in step with
+	// _order.  Callers that can create it must go through GCMapSet.Remove, since
+	// GCMap is a struct and the assignment would otherwise land in a copy.
+	public Dictionary<Value, Int32> _pos;
+
 	public Int32 Count() {
 		if (_gb != null) return _gb.Count();
 		Int32 n = (Items == null) ? 0 : Items.Count;
@@ -229,6 +254,8 @@ public struct GCMap : IGCItem {
 
 	public void Init(Int32 capacity = 8) {
 		Items  = new Dictionary<Value, Value>(Math.Max(capacity, 4));
+		_order = new List<Value>(Math.Max(capacity, 4));
+		_pos   = null;
 		Frozen = false;
 		_vmb   = null;
 		_gb    = null;
@@ -239,6 +266,8 @@ public struct GCMap : IGCItem {
 	// weight that Count/iteration would then have to skip past.
 	public void InitAsGlobals(Globals g) {
 		Items  = null;
+		_order = null;
+		_pos   = null;
 		Frozen = false;
 		_vmb   = null;
 		_gb    = g;
@@ -263,14 +292,24 @@ public struct GCMap : IGCItem {
 		if (_vmb != null && _vmb.TrySet(key, value)) return;
 
 		if (Items == null) Init();
+		// Whether the key is new is read off Count rather than asked for
+		// separately, so an insert still costs one hash lookup.  Assigning to an
+		// existing key must not move it in the order.
+		Int32 before = Items.Count;
 		Items[key] = value;
+		if (Items.Count != before && _order != null) {
+			if (_pos != null) _pos[key] = _order.Count;
+			_order.Add(key);
+		}
 	}
 
 	public Boolean Remove(Value key) {
 		if (_gb != null) return _gb.Remove(key);
 		if (_vmb != null && _vmb.TryRemove(key)) return true;
 		if (Items == null) return false;
-		return Items.Remove(key);
+		if (!Items.Remove(key)) return false;
+		OrderRemove(key);
+		return true;
 	}
 
 	[MethodImpl(AggressiveInlining)]
@@ -282,14 +321,105 @@ public struct GCMap : IGCItem {
 	public void Clear() {
 		if (_gb != null) { _gb.Clear(); return; }
 		if (Items != null) Items.Clear();
+		if (_order != null) _order.Clear();
+		if (_pos != null) _pos.Clear();
 		if (_vmb != null) _vmb.Clear();
+	}
+
+	// ── Order maintenance ─────────────────────────────────────────────────────
+
+	// Tombstone the slot holding key.  Called only when key was in Items, so it
+	// is in _order exactly once, and _pos knows where.
+	private void OrderRemove(Value key) {
+		if (_order == null) return;
+		if (_pos == null) BuildPos();
+		Int32 slot = 0;
+		if (!_pos.TryGetValue(key, out slot)) return;
+		_order[slot] = Value.Unassigned;
+		_pos.Remove(key);
+		// Compact once tombstones outnumber live entries, so that a map churned
+		// through many times does not grow without bound and NextEntry does not
+		// walk ever-longer runs of holes.  Amortized O(1) per removal.
+		if (_order.Count > 2 * Items.Count && _order.Count > 8) CompactOrder();
+	}
+
+	// Index the live entries of _order.  Runs once, on a map's first removal.
+	private void BuildPos() {
+		_pos = new Dictionary<Value, Int32>(Math.Max(_order.Count, 4));
+		for (Int32 i = 0; i < _order.Count; i++) {
+			Value ord = _order[i];
+			if (!ord.IsUnassigned()) _pos[ord] = i;
+		}
+	}
+
+	// Drop tombstones, preserving the order of what is left.  Compacts in place:
+	// GCMap is a struct, so replacing the list reference would be lost unless
+	// every caller wrote the struct back.
+	private void CompactOrder() {
+		Int32 w = 0;
+		for (Int32 r = 0; r < _order.Count; r++) {
+			if (_order[r].IsUnassigned()) continue;
+			_order[w] = _order[r];
+			w++;
+		}
+		if (w < _order.Count) _order.RemoveRange(w, _order.Count - w);
+		// Slots moved, so every recorded position is stale.  Cleared and
+		// refilled in place: replacing the dictionary would be a struct write.
+		if (_pos != null) {
+			_pos.Clear();
+			for (Int32 i = 0; i < _order.Count; i++) {
+				Value ord = _order[i];
+				_pos[ord] = i;
+			}
+		}
+	}
+
+	// Build the order for a map whose Items were attached wholesale rather than
+	// inserted one at a time (GCManager.NewMapFromDict).  Runs on a fresh slot,
+	// from GCMapSet.SetItems, which writes the struct back.
+	public void SeedOrder() {
+		_order = new List<Value>(Items == null ? 4 : Math.Max(Items.Count, 4));
+		_pos   = null;
+		if (Items == null) return;
+		foreach (Value k in Items.Keys) _order.Add(k);
+	}
+
+	// Rebuild the order from Items when the two have drifted apart.  That can
+	// only happen to a map wrapping a host-owned dictionary (GCManager
+	// .NewMapFromDict shares the caller's storage), where the host may insert
+	// behind our back.  The recovered order is Items' own enumeration order,
+	// which for a dictionary filled and never pruned is still insertion order.
+	private void EnsureOrder() {
+		if (_order == null || Items == null) return;
+		if (_order.Count - CountTombstones() == Items.Count) return;
+		_order.Clear();
+		foreach (Value k in Items.Keys) _order.Add(k);
+		if (_pos != null) {
+			_pos.Clear();
+			for (Int32 i = 0; i < _order.Count; i++) {
+				Value ord = _order[i];
+				_pos[ord] = i;
+			}
+		}
+	}
+
+	private Int32 CountTombstones() {
+		// Only walked when the cheap check above is inconclusive, which for a
+		// map with no removals is never.
+		if (_order.Count == Items.Count) return 0;
+		Int32 n = 0;
+		for (Int32 i = 0; i < _order.Count; i++) {
+			if (_order[i].IsUnassigned()) n++;
+		}
+		return n;
 	}
 
 	// ── Iteration ─────────────────────────────────────────────────────────────
 	// iter = -1: start
 	// iter < -1: VarMap register entry -(i+2) where i is the reg-entry index
-	// iter >= 0: index into Items (in enumeration order), or -- for a globals
-	//            map, where Items is null -- a slot index in the global table
+	// iter >= 0: index into _order -- a slot, not an ordinal, so tombstoned
+	//            slots are simply skipped past.  For a globals map, where Items
+	//            and _order are null, it is a slot index in the global table.
 
 	public Int32 NextEntry(Int32 after) {
 		// Globals: iter is the slot index directly.  Unassigned slots are
@@ -301,12 +431,18 @@ public struct GCMap : IGCItem {
 			Int32 startRegIdx = (after == -1) ? 0 : -(after) - 2 + 1;
 			Int32 found = _vmb.NextAssignedRegEntry(startRegIdx);
 			if (found >= 0) return -(found + 2);
-			// Fall through to Dictionary phase
+			// Fall through to the Items phase
 		}
 
-		if (Items == null) return -1;
+		if (_order == null) return -1;
+		// Entering phase 2 is the one place it is safe to resync, since no
+		// iterator is holding a slot index yet.
+		if (after < 0) EnsureOrder();
 		Int32 i = (after < 0) ? 0 : after + 1;
-		if (i < Items.Count) return i;
+		while (i < _order.Count) {
+			if (!_order[i].IsUnassigned()) return i;
+			i++;
+		}
 		return -1;
 	}
 
@@ -316,13 +452,8 @@ public struct GCMap : IGCItem {
 			Int32 regIdx = -(i) - 2;
 			return _vmb.GetRegEntryKey(regIdx);
 		}
-		if (Items == null) return Value.Null;
-		Int32 j = 0;
-		foreach (Value k in Items.Keys) {
-			if (j == i) return k;
-			j++;
-		}
-		return Value.Null;
+		if (_order == null || i < 0 || i >= _order.Count) return Value.Null;
+		return _order[i];
 	}
 
 	public Value ValueAt(Int32 i) {
@@ -331,13 +462,10 @@ public struct GCMap : IGCItem {
 			Int32 regIdx = -(i) - 2;
 			return _vmb.GetRegEntryValue(regIdx);
 		}
-		if (Items == null) return Value.Null;
-		Int32 j = 0;
-		foreach (Value v in Items.Values) {
-			if (j == i) return v;
-			j++;
-		}
-		return Value.Null;
+		if (_order == null || i < 0 || i >= _order.Count) return Value.Null;
+		Value v = Value.Null;
+		Items.TryGetValue(_order[i], out v);
+		return v;
 	}
 
 	// ── GC ────────────────────────────────────────────────────────────────────
@@ -357,6 +485,8 @@ public struct GCMap : IGCItem {
 
 	public void OnSweep() {
 		Items  = null;
+		_order = null;
+		_pos   = null;
 		Frozen = false;
 		_vmb   = null;
 		_gb    = null;

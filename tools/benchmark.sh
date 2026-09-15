@@ -84,6 +84,7 @@ EXPECTED_RECUR_FIB="3524578"              # fib(33)
 EXPECTED_GLOBAL_LOOP="21534"              # see tools/benchmarks/global_loop.ms
 EXPECTED_GLOBAL_CHURN="160238"            # see tools/benchmarks/global_churn.ms
 EXPECTED_GLOBAL_FROM_FN="21000000"        # see tools/benchmarks/global_from_fn.ms
+EXPECTED_MAP_OPS="1329694"                # see tools/benchmarks/map_ops.ms
 
 # Benchmark definitions: file:Name:expected[:kinds]
 #   kinds  "all" (default, when the field is absent) runs both the .msa and the
@@ -97,6 +98,7 @@ BENCHMARKS=(
     "global_loop_fn:Global Loop (locals):$EXPECTED_GLOBAL_LOOP:src"
     "global_churn:Global Churn:$EXPECTED_GLOBAL_CHURN:src"
     "global_from_fn:Globals From Function:$EXPECTED_GLOBAL_FROM_FN:src"
+    "map_ops:Map Ops:$EXPECTED_MAP_OPS:src"
 )
 
 # True if this benchmark has an assembly (.msa) form.

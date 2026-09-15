@@ -1,10 +1,23 @@
 This file tracks possible issues we become aware of during development, but haven't yet dealt with.
 
 
-## Intrinsics vs. VMs
+## Type maps are shared by every VM
 
-There is a possible issue if a user tries to set up two different VMs with different intrinsic functions.  The type maps (e.g. `_listType`) are static, and hold FuncRef indices based on whichever VM called `RegisterAll` most recently.  Those indices will vary depending on how many compiled functions there were.  So they're certainly not going to match up between VMs.  This means that when two different VMs are running at once, one of them is going to just flat-out invoke the wrong function (possibly a user function, like @main) instead of the intended intrinsic.
+The core type maps (`_listType`, `_stringType`, and friends in `CoreIntrinsics`)
+are static, so every interpreter in the process sees the same ones.  That means
+a script which extends a built-in type — `string.reverse = function ... ` — has
+extended it for every other VM as well, including ones created later.
 
-Ideally, the intrinsics would have stable function indices that never change.  Maybe we can do something like use negative values for intrinsics, and non-negative values for compiled functions.
+This is deliberate as far as it goes: `Intrinsic.EnsureBuilt` explicitly does
+*not* rebuild the type maps per VM, because doing so would discard whatever a
+script had added to `list`, `string` or `map`, and would also clear short names
+a host registered during its own setup.  The maps are GC roots, so nothing
+sweeps them out from under us.  But it has never been decided whether
+cross-VM leakage is what we actually want, and a host embedding two independent
+interpreters would probably say no.
 
-
+(An earlier version of this entry worried that the type maps held *function
+indices* that would differ between VMs, so one VM would invoke the wrong
+function entirely.  That cannot happen: `Intrinsic.GetFunc` builds a funcRef
+over a `FuncDef` object, not an index into any VM's function table, and the
+index-based `CALLFN` opcode is gone.)

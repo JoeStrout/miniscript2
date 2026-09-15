@@ -77,7 +77,7 @@ tools/build.sh cpp off  # Force switch-based
 
 - **Always edit C# files** in `cs/` directory, never generated C++ directly, unless trying to pin down some C++-only crash; then you may hack the generated C++ code to gain understanding.
 - **Never edit `notes/DEV_LOG.md`.**  That file is strictly the user's, and is written in the user's own voice; do not add, reword, or remove entries there, even when asked to "update the notes" after a change.  Other files in `notes/` (such as `bugs.md`) are fair game.
-- **Memory management:** Use GC_PROTECT for runtime Values, shared_ptr for host app data.
+- **Memory management:** runtime Values are handled by the custom mark/sweep GC and need no protection in ordinary code (there is no `GC_PROTECT`; the old shadow stack is gone).  Use `AddRoot`/`RetainValue` only for a Value that must outlive its natural reachability, and `shared_ptr` for host app data.  See [MEMORY_SYSTEMS.md](notes/MEMORY_SYSTEMS.md).
 - **Coding standards:** See [CS_CODING_STANDARDS.md](notes/CS_CODING_STANDARDS.md).
 
 In general, do not use the transpiler unless instructed otherwise, as it is token-expensive and is more the user's purview.  Do most edits in the C# code only, and notify the user when it's ready for transpilation and testing on the C++ side.  If you are instructed to transpile and test, use `tools/build.sh transpile` followed by - **Transpile after C# changes:** `tools/build.sh cpp`.

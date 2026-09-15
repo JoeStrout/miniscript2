@@ -14,7 +14,9 @@ Any attempt to mutate a frozen list/map will result in a runtime `Attempt to mod
 
 ## Rationale
 
-So, MiniScript gets immutable types — but not by introducing new types; by simply having a way to make any list/map immutable.  And immutable objects are functionally equivalent to values, so we get all the benefits thereof.  Maps in the MiniScript API which are currently read-only (due to under-the-hood assignOverride features) will become ordinary frozen maps.  And user code now has the ability to do the same thing.
+So, MiniScript gets immutable types — but not by introducing new types; by simply having a way to make any list/map immutable.  And immutable objects are functionally equivalent to values, so we get all the benefits thereof.  Maps in the MiniScript API which are currently read-only (due to under-the-hood assignOverride features) become ordinary frozen maps — the `gc` module and the map returned by `info` are both frozen, for example.  And user code now has the ability to do the same thing.
+
+**The core type maps are deliberately *not* frozen.**  `list`, `string`, `map`, `number` and `funcRef` stay writable, because extending them with additional methods is a normal and expected thing for user code to do (it is how `stringUtil` and `listUtil` work).  "Read-only" above means maps the API never intended anyone to modify, not the type maps.
 
 And, the whole issue of mutating map keys goes away, because map keys are now always immutable.  Yet you can still just stuff something like `[5, 7]` (e.g. 2D coordinates) into a map and retrieve by it just fine.  (Hashing and equality tests will ignore the frozen flag; the flag is not part of the "value" of the list/map.) 
 

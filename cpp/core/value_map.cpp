@@ -127,7 +127,10 @@ bool Value::MapRemove(Value key) const {
     if (!map_val.IsMap()) return false;
     GCMap m = GCManager::Maps.Get(map_val.ItemIndex());
     if (m.Frozen) { vm_raise_runtime_error("Attempt to modify a frozen map"); return false; }
-    return m.Remove(key);
+    // Through the set, not through m: GCMap is a struct and Get() returned a
+    // copy, but Remove may build the map's position index on its first removal.
+    // GCMapSet::Remove writes the struct back.  Mirrors cs/Value.cs MapRemove.
+    return GCManager::Maps.Remove(map_val.ItemIndex(), key);
 }
 
 bool Value::HasKey(Value key) const {
@@ -205,7 +208,10 @@ bool map_iterator_next(MapIterator* iter, Value* out_key, Value* out_value) {
     }
     GCMap m = GCManager::Maps.Get(iter->map_idx);
     int next = m.NextEntry(iter->iter);
-    if (next < 0) { iter->iter = Value::MAP_ITER_DONE; return false; }
+    // -1, exactly, is NextEntry's "no more entries".  Other negatives are real
+    // entries: a VarMap's register-backed keys are encoded as -(regIdx + 2),
+    // so testing next < 0 here ended iteration on the very first one.
+    if (next == -1) { iter->iter = Value::MAP_ITER_DONE; return false; }
     iter->iter = next;
     if (out_key)   *out_key   = m.KeyAt(next);
     if (out_value) *out_value = m.ValueAt(next);
@@ -236,7 +242,7 @@ int Value::IterNext(int iter) const {
     if (!map_val.IsMap() || iter == Value::MAP_ITER_DONE) return Value::MAP_ITER_DONE;
     GCMap m = GCManager::Maps.Get(map_val.ItemIndex());
     int next = m.NextEntry(iter);
-    return next < 0 ? Value::MAP_ITER_DONE : next;
+    return next == -1 ? Value::MAP_ITER_DONE : next;   // see map_iterator_next
 }
 
 Value Value::IterEntry(int iter) const {

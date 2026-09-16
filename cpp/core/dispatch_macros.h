@@ -70,37 +70,15 @@
 	X(JUMP_iABC) \
 	X(LT_rA_rB_rC) \
 	X(LT_rA_rB_iC) \
-	X(LT_rA_iB_rC) \
 	X(LE_rA_rB_rC) \
 	X(LE_rA_rB_iC) \
-	X(LE_rA_iB_rC) \
 	X(EQ_rA_rB_rC) \
 	X(EQ_rA_rB_iC) \
 	X(NE_rA_rB_rC) \
 	X(NE_rA_rB_iC) \
 	X(BRTRUE_rA_iBC) \
 	X(BRFALSE_rA_iBC) \
-	X(BRLT_rA_rB_iC) \
-	X(BRLT_rA_iB_iC) \
-	X(BRLT_iA_rB_iC) \
-	X(BRLE_rA_rB_iC) \
-	X(BRLE_rA_iB_iC) \
-	X(BRLE_iA_rB_iC) \
-	X(BREQ_rA_rB_iC) \
-	X(BREQ_rA_iB_iC) \
-	X(BRNE_rA_rB_iC) \
-	X(BRNE_rA_iB_iC) \
 	X(BRERR_rA_iBC) \
-	X(IFLT_rA_rB) \
-	X(IFLT_rA_iBC) \
-	X(IFLT_iAB_rC) \
-	X(IFLE_rA_rB) \
-	X(IFLE_rA_iBC) \
-	X(IFLE_iAB_rC) \
-	X(IFEQ_rA_rB) \
-	X(IFEQ_rA_iBC) \
-	X(IFNE_rA_rB) \
-	X(IFNE_rA_iBC) \
 	X(NEXT_rA_rB) \
 	X(ARGBLK_iABC) \
 	X(ARG_rA) \

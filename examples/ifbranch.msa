@@ -1,4 +1,5 @@
-# Testing IF-branches.
+# Testing comparison opcodes and conditional branches.
+# Every comparison below is false, so none of the branches should be taken.
 # -> 0 = no error
 # -> 1 = error
 
@@ -7,36 +8,41 @@
     LOAD r1, 1
     LOAD r2, 2
     LOAD r3, 3
+    LOAD r5, 500     # for the comparisons that need a big left operand
 
     ## Failure testing! NONE of these should branch unless there is an error!
-    
-    # IFLT
-    IFLT r2, r0      # r, r
-    JUMP done
-    IFLT r2, -500    # r, imm
-    JUMP done
-    IFLT 500, r2     # imm, r
-    JUMP done
 
-    # IFLE
-    IFLE r2, r1      # r, r
-    JUMP done
-    IFLE r2, -500    # r, imm
-    JUMP done
-    IFLE 500, r2     # imm, r
-    JUMP done
+    # LT
+    LT r4, r2, r0    # r, r
+    BRTRUE r4, done
+    LT r4, r2, -100  # r, imm
+    BRTRUE r4, done
+    LT r4, r5, r2    # 500 < 2
+    BRTRUE r4, done
 
-    # IFEQ
-    IFEQ r2, r1      # r, r
-    JUMP done
-    IFEQ r2, 9    # r, imm
-    JUMP done
+    # LE
+    LE r4, r2, r1    # r, r
+    BRTRUE r4, done
+    LE r4, r2, -100  # r, imm
+    BRTRUE r4, done
+    LE r4, r5, r2    # 500 <= 2
+    BRTRUE r4, done
 
-    # IFNE
-    IFNE r2, r2     # r, r
-    JUMP done
-    IFNE r2, 2      # r, imm
-    JUMP done
+    # EQ
+    EQ r4, r2, r1    # r, r
+    BRTRUE r4, done
+    EQ r4, r2, 9     # r, imm
+    BRTRUE r4, done
+
+    # NE
+    NE r4, r2, r2    # r, r
+    BRTRUE r4, done
+    NE r4, r2, 2     # r, imm
+    BRTRUE r4, done
+
+    # BRFALSE, on a comparison that is true
+    LT r4, r1, r2    # 1 < 2
+    BRFALSE r4, done
 
     ## SUCCESS: All the above tests succeeded. We can return 0.
 

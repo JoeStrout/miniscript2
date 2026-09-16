@@ -98,10 +98,8 @@ intrinsics table, and raises Undefined Identifier if it is not there either.
 | --- | --- |
 | LT_rA_rB_rC | R[A] := (R[B] < R[C]) |
 | LT_rA_rB_iC | R[A] := (R[B] < C (8-bit signed)) |
-| LT_rA_iB_rC | R[A] := (B (8-bit signed) < R[C]) |
 | LE_rA_rB_rC | R[A] := (R[B] <= R[C]) |
 | LE_rA_rB_iC | R[A] := (R[B] <= C (8-bit signed)) |
-| LE_rA_iB_rC | R[A] := (B (8-bit signed) <= R[C]) |
 | EQ_rA_rB_rC | R[A] := (R[B] == R[C]) |
 | EQ_rA_rB_iC | R[A] := (R[B] == C (8-bit signed)) |
 | NE_rA_rB_rC | R[A] := (R[B] != R[C]) |
@@ -115,26 +113,6 @@ intrinsics table, and raises Undefined Identifier if it is not there either.
 | BRTRUE_rA_iBC | if R[A] is true then PC += BC (16-bit signed); raises a runtime error if R[A] is an error |
 | BRFALSE_rA_iBC | if R[A] is false then PC += BC (16-bit signed); raises a runtime error if R[A] is an error |
 | BRERR_rA_iBC | if R[A] is an error then PC += BC (16-bit signed) |
-| BRLT_rA_rB_iC | if R[A] < R[B] then PC += C (8-bit signed) |
-| BRLT_rA_iB_iC | if R[A] < B then PC += C (8-bit signed) |
-| BRLT_iA_rB_iC | if A < R[B] then PC += C (8-bit signed) |
-| BRLE_rA_rB_iC | if R[A] <= R[B] then PC += C (8-bit signed) |
-| BRLE_rA_iB_iC | if R[A] <= B then PC += C (8-bit signed) |
-| BRLE_iA_rB_iC | if A <= R[B] then PC += C (8-bit signed) |
-| BREQ_rA_rB_iC | if R[A] == R[B] then PC += C (8-bit signed) |
-| BREQ_rA_iB_iC | if R[A] == B then PC += C (8-bit signed) |
-| BRNE_rA_rB_iC | if R[A] != R[B] then PC += C (8-bit signed) |
-| BRNE_rA_iB_iC | if R[A] != B then PC += C (8-bit signed) |
-| IFLT_rA_rB | if R[A] < R[B] is **false** then PC += 1 |
-| IFLT_rA_iBC | if R[A] < BC is **false** then PC += 1 |
-| IFLT_iAB_rC | if AB < R[C] is **false** then PC += 1 |
-| IFLE_rA_rB | if R[A] <= R[B] is **false** then PC += 1 |
-| IFLE_rA_iBC | if R[A] <= BC is **false** then PC += 1 |
-| IFLE_iAB_rC | if AB <= R[C] is **false** then PC += 1 |
-| IFEQ_rA_rB | if R[A] == R[B] is **false** then PC += 1 |
-| IFEQ_rA_iBC | if R[A] == BC is **false** then PC += 1 |
-| IFNE_rA_rB | if R[A] != R[B] is **false** then PC += 1 |
-| IFNE_rA_iBC | if R[A] != BC is **false** then PC += 1 |
 | NEXT_rA_rB | advance iterator R[A] over collection R[B]; skip the next instruction if there is no next entry.  For a list or string the iterator is a plain index; for a map it is the two-phase encoding described in [MAP_ITERATION.md](MAP_ITERATION.md) |
 | ARGBLK_iABC | begin an argument block of ABC `ARG` instructions, which this opcode consumes along with the `CALL` that follows them; see [FUNCTION_CALLS.md](FUNCTION_CALLS.md) |
 | ARG_rA | pass R[A] as the next argument.  Only valid inside an `ARGBLK` block, which executes it; reaching one on its own is an internal error |
@@ -190,16 +168,22 @@ This assembly representation is easier to read and write, but it does require th
 
 ## Comparison and Branching
 
-For each comparison operator (LT: less than, LE: less than or equal, EQ: equal, NE: not equal), there are several related opcodes:
+Each comparison operator (LT: less than, LE: less than or equal, EQ: equal, NE: not equal) has two opcodes, which work just like the math opcodes:
 
-- `BR` (branch) opcodes take a short (±127) jump if the comparison is true.
-  - `BRLT_rA_rB_iC` jumps by C (8-bit signed) if R[A] < r[B]
-  - `BRLT_rA_iB_iC` jumps by C (8-bit signed) if R[A] < B (8-bit signed)
-- `IF` opcodes execute the next instruction if the comparison is true; otherwise, they skip over it.
-  - `IFLT_rA_rB` skips the next instruction unless R[A] < r[B]
-  - `IFLT_rA_iBC` skips the next instruction unless R[A] < BC (16-bit signed)
-- plain comparison opcodes work just like the math opcodes
   - `LT_rA_rB_rC` computes R[B] < R[C], and stores the result in R[A]
+  - `LT_rA_rB_iC` does the same with an 8-bit signed immediate as the right operand
+
+A comparison therefore always lands in a register, and a conditional jump is a
+separate instruction that tests that register.  Earlier designs also had a
+compare-and-branch family (`BRLT` and friends) and a conditional-skip family
+(`IFLT` and friends), on the theory that a later optimization pass would fuse a
+comparison into the branch that consumes it.  That pass was never written, the
+code generator never emitted any of those 22 opcodes, and they were removed
+rather than left as dispatch-table weight.  Measurements before removing them
+put the fusion at roughly 5-10% on a tight `while` loop and nothing at all
+elsewhere -- `for` loops compile to `NEXT`/`ITERGET` and never compare-and-branch
+at all.  Should that trade look better later, the place to start is the loop-
+invariant `LOAD`s of constants, which cost considerably more on the same loops.
 
 For when we have a truth value already in a register (a common situation when compiling `if` statements), there are also:
 
@@ -226,28 +210,14 @@ The `and` and `or` operators short-circuit: the right operand is not evaluated w
 
 A subtlety for `or`: short-circuiting to `1` is only valid when the left operand alone forces the fuzzy result to `1` — that is, when its fuzzy value is >= 1.  A *partial* truth value such as `0.5` must **not** short-circuit, since `0.5 or x` is genuinely fuzzy.  The code generator tests this by negating: `not a` is false exactly when `a` is fully true, which reduces the question to a plain `BRFALSE`.  (The `and` side needs no such trick: a fuzzy `and` is `0` exactly when the left operand is false, which `BRFALSE` already tests directly.)
 
-Note that when emitting code, we often don't know whether a branch is going to be ±127 steps or less; we "back-patch" the jump later, once we've found the branch target.  We can accomplish that with these opcodes by first emitting a long branch:
+A conditional jump's target is usually not known when the jump is emitted, so the code generator emits it with a placeholder offset and "back-patches" it once the target is reached.  `BRTRUE`/`BRFALSE` carry a 16-bit signed offset, which is wide enough that the back-patch never has to reconsider the instruction it chose:
 
 ```
-  IFLT_rA_rB 5, 3  # if r5 < r3 then
-  JUMP_iABC 0      # jump (target TBD)
+  LT_rA_rB_rC 3, 5, 4    # r3 = (r5 < r4)
+  BRFALSE_rA_iBC 3, 0    # if not, jump past the body (target TBD)
+  ...
+  # target found: rewrite that 0 as the real offset
 ```
-
-and then back-patching it as needed:
-
-```
-  IFLT_rA_rB 5, 3  # if r5 < r3 then
-  JUMP_iABC 42     # jump to end of loop
-```
-
-Then, in an optimization phase, we can easily spot `IF`-`JUMP` pairs where the jump offset is small enough to replace the pair with a BRanch:
-
-```
-  BRLT_rA_rB_iC 5, 3, 42  # if r5 < r3 then goto end of loop
-  NOOP
-```
-
-And the NOOP could then be optimized away, making the code shorter.  (All jumps/branches that cross this point would have to be updated, but as that only makes the branch targets shorter, this can always be done.)
 
 Note that all jump/branch targets are relative to the *next* instruction.  So, `JUMP_iABC 0` would do the same as `NOOP`, and `JUMP_iABC -1` would put the machine into a tight infinite loop.
 

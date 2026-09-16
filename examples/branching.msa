@@ -1,7 +1,9 @@
 @main:
     LOAD r0, 50
-    BRLT r0, 0, negative
-    BRLT r0, 100, positive
+    LT r1, r0, 0
+    BRTRUE r1, negative
+    LT r1, r0, 100
+    BRTRUE r1, positive
     JUMP large
     
 negative:

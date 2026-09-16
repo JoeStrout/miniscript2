@@ -128,8 +128,11 @@ public static class UnitTests {
 		asmOk = asmOk && AssertEqualU(assem.AddLine("JUMP 10"),
 			BytecodeUtil.INS(Opcode.JUMP_iABC) | (UInt32)(10 & 0xFFFFFF));
 
-		asmOk = asmOk && AssertEqualU(assem.AddLine("IFLT r8, r9"),
-			BytecodeUtil.INS_ABC(Opcode.IFLT_rA_rB, 8, 9, 0));
+		asmOk = asmOk && AssertEqualU(assem.AddLine("LT r7, r8, r9"),
+			BytecodeUtil.INS_ABC(Opcode.LT_rA_rB_rC, 7, 8, 9));
+
+		asmOk = asmOk && AssertEqualU(assem.AddLine("BRTRUE r7, 3"),
+			BytecodeUtil.INS_AB(Opcode.BRTRUE_rA_iBC, 7, 3));
 
 		asmOk = asmOk && AssertEqualU(assem.AddLine("RETURN"),
 			BytecodeUtil.INS(Opcode.RETURN));
@@ -152,7 +155,7 @@ public static class UnitTests {
 			"loop:",
 			"LOAD r1, 42",
 			"SUB r1, r1, r0", 
-			"IFLT r1, r0",
+			"LT r2, r1, r0",
 			"JUMP loop",
 			"RETURN"
 		}; // CPP: });
@@ -661,8 +664,6 @@ public static class UnitTests {
 			"LOAD_rA_iBC should be EmitPattern.AB");
 		ok = ok && Assert(BytecodeUtil.GetEmitPattern(Opcode.LOAD_rA_rB) == EmitPattern.ABC,
 			"LOAD_rA_rB should be EmitPattern.ABC");
-		ok = ok && Assert(BytecodeUtil.GetEmitPattern(Opcode.IFLT_iAB_rC) == EmitPattern.BC,
-			"IFLT_iAB_rC should be EmitPattern.BC");
 		ok = ok && Assert(BytecodeUtil.GetEmitPattern(Opcode.ADD_rA_rB_rC) == EmitPattern.ABC,
 			"ADD_rA_rB_rC should be EmitPattern.ABC");
 		ok = ok && Assert(BytecodeUtil.GetEmitPattern(Opcode.LT_rA_rB_iC) == EmitPattern.ABC,

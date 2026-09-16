@@ -8,8 +8,10 @@
 	LOAD r2, "def"
 	ADD r1, r1, r2
 	LOAD r3, "abcdef"
-	IFNE r1, r3
+	EQ r4, r1, r3
+	BRTRUE r4, ok0
 	RETURN
+ok0:
 	
 	LOAD r0, 0  # all good!
 	RETURN
@@ -21,8 +23,10 @@
 	LOAD r2, 1
 	ADD r1, r1, r2
 	LOAD r3, "abc1"
-	IFNE r1, r3
+	EQ r4, r1, r3
+	BRTRUE r4, ok1
 	RETURN
+ok1:
 
 	# 1 + "abc" == "1abc"
 	LOAD r0, "String Concat Number (number + string)"
@@ -30,8 +34,10 @@
 	LOAD r2, 1
 	ADD r1, r2, r1
 	LOAD r3, "1abc"
-	IFNE r1, r3
+	EQ r4, r1, r3
+	BRTRUE r4, ok2
 	RETURN
+ok2:
 
 	LOAD r0, 0  # all good!
 	RETURN
@@ -44,8 +50,10 @@
 	LOAD r2, 2
 	MUL r1, r1, r2
 	LOAD r3, "abcabc"
-	IFNE r1, r3
+	EQ r4, r1, r3
+	BRTRUE r4, ok3
 	RETURN
+ok3:
 	
 	# "abcdef" * 0.5 = "abc"
 	LOAD r0, "String * 0.5"
@@ -53,8 +61,10 @@
 	LOAD r2, 0.5
 	MUL r1, r1, r2
 	LOAD r3, "abc"
-	IFNE r1, r3
+	EQ r4, r1, r3
+	BRTRUE r4, ok4
 	RETURN
+ok4:
 	
 	# All good!
 	LOAD r0, 0
@@ -67,8 +77,10 @@
 	LOAD r2, 2
 	DIV r1, r1, r2
 	LOAD r3, "abc"
-	IFNE r1, r3
+	EQ r4, r1, r3
+	BRTRUE r4, ok5
 	RETURN
+ok5:
 	
 	# "abcdef" / 0.5 = "abcdefabcdef"
 	LOAD r0, "String / 0.5"
@@ -76,8 +88,10 @@
 	LOAD r2, 0.5
 	DIV r1, r1, r2
 	LOAD r3, "abcdefabcdef"
-	IFNE r1, r3
+	EQ r4, r1, r3
+	BRTRUE r4, ok6
 	RETURN
+ok6:
 	
 	# All good!
 	LOAD r0, 0

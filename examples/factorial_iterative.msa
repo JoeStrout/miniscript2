@@ -9,12 +9,12 @@
         LOAD r1, 1
 
         initialcheck:
-            IFLT r2, 2
-            JUMP ret1
+            LT r3, r2, 2
+            BRTRUE r3, ret1
 
         check:
-            IFLT r2, 2
-            JUMP done_inner
+            LT r3, r2, 2
+            BRTRUE r3, done_inner
             SUB r2, r2, r1
             MUL r0, r0, r2
             JUMP check    
@@ -25,7 +25,7 @@
         done_inner:
             # Increment outer counter and check if done
             ADD r4, r4, r1  # r4++
-            IFLT r4, r5     # if r4 < r5, continue
-            JUMP outer_loop
+            LT r3, r4, r5   # if r4 < r5, continue
+            BRTRUE r3, outer_loop
 
     RETURN

@@ -2,9 +2,11 @@
 
 @fib:
 	LOAD r1, 2				# r1 = 2
-	IFLT r0, r1				# if r0 < r1 then return
+	LT r3, r0, r1			# r3 = (n < 2)
+	BRFALSE r3, recurse		# if not, fall through to the recursive case
 	RETURN
-	
+
+recurse:
 	LOAD r1, 1				# r1 = 1
 	SUB r1, r0, r1			# r1 = n - r1
 	CALLF 1, @fib			# r1 = fib(r1)

@@ -21,18 +21,22 @@
 	# we can't do that yet, so...)
 	LOAD r3, 0
 	INDEX r2, r1, r3   # r2 = r1[0]
-	IFNE r2, 1
+	EQ r4, r2, 1
+	BRTRUE r4, ok0
 	RETURN
-	
+ok0:
 	LOAD r3, 1
 	INDEX r2, r1, r3   # r2 = r1[1]
-	IFNE r2, 2
+	EQ r4, r2, 2
+	BRTRUE r4, ok1
 	RETURN
-	
+ok1:
 	LOAD r3, 2
 	INDEX r2, r1, r3   # r2 = r1[2]
-	IFNE r2, 3
+	EQ r4, r2, 3
+	BRTRUE r4, ok2
 	RETURN
+ok2:
 
 	LOAD r0, 0  # all good!
 	RETURN
@@ -48,8 +52,10 @@
 	IDXSET r1, r2, r3  # r1[r2] = r3, i.e. r1[1] = 42
 	LOAD r2, 1
 	INDEX r2, r1, r2   # r2 = r1[1]
-	IFNE r2, 42
+	EQ r4, r2, 42
+	BRTRUE r4, ok3
 	RETURN
+ok3:
 
 	LOAD r0, 0  # all good!
 	RETURN

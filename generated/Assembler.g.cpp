@@ -438,22 +438,15 @@ UInt32 AssemblerStorage::AddLine(String line,Int32 lineNumber) {
 		}
 		instruction = BytecodeUtil::INS(Opcode::JUMP_iABC) | (UInt32)(offset & 0xFFFFFF);
 
-	} else if (mnemonic == "LT" || mnemonic == "LE") {
-		// Three-way comparison: rr, ir, ri variants
-		if (parts.Count() != 4) { Error("Syntax error"); return 0; }
-		Opcode opRR, opIR, opRI;
-		if (mnemonic == "LT") {
-			opRR = Opcode::LT_rA_rB_rC; opIR = Opcode::LT_rA_iB_rC; opRI = Opcode::LT_rA_rB_iC;
-		} else {
-			opRR = Opcode::LE_rA_rB_rC; opIR = Opcode::LE_rA_iB_rC; opRI = Opcode::LE_rA_rB_iC;
-		}
-		instruction = AssembleThreeWayCompare(parts, opRR, opIR, opRI);
-
-	} else if (mnemonic == "EQ" || mnemonic == "NE") {
+	} else if (mnemonic == "LT" || mnemonic == "LE" || mnemonic == "EQ" || mnemonic == "NE") {
 		// Two-way comparison: rr, ri variants (operand 2 always register)
 		if (parts.Count() != 4) { Error("Syntax error"); return 0; }
 		Opcode opRR, opRI;
-		if (mnemonic == "EQ") {
+		if (mnemonic == "LT") {
+			opRR = Opcode::LT_rA_rB_rC; opRI = Opcode::LT_rA_rB_iC;
+		} else if (mnemonic == "LE") {
+			opRR = Opcode::LE_rA_rB_rC; opRI = Opcode::LE_rA_rB_iC;
+		} else if (mnemonic == "EQ") {
 			opRR = Opcode::EQ_rA_rB_rC; opRI = Opcode::EQ_rA_rB_iC;
 		} else {
 			opRR = Opcode::NE_rA_rB_rC; opRI = Opcode::NE_rA_rB_iC;
@@ -465,7 +458,7 @@ UInt32 AssemblerStorage::AddLine(String line,Int32 lineNumber) {
 			Byte reg3 = ParseRegister(parts[3]);
 			instruction = BytecodeUtil::INS_ABC(opRR, reg1, reg2, reg3);
 		} else {
-			Byte immediate = ParseByte(parts[3]);
+			Byte immediate = ParseSByte(parts[3]);
 			instruction = BytecodeUtil::INS_ABC(opRI, reg1, reg2, immediate);
 		}
 	
@@ -489,59 +482,6 @@ UInt32 AssemblerStorage::AddLine(String line,Int32 lineNumber) {
 		Int32 offset = ResolveBranchOffset(parts[2], Int16MinValue, Int16MaxValue, "Int16");
 		if (HasError) return 0;
 		instruction = BytecodeUtil::INS_AB(Opcode::BRERR_rA_iBC, reg1, (Int16)offset);
-
-	} else if (mnemonic == "BRLT") {
-		if (parts.Count() != 4) { Error("Syntax error"); return 0; }
-		Int32 offset = ResolveBranchOffset(parts[3], SByteMinValue, SByteMaxValue, "SByte");
-		if (HasError) return 0;
-		instruction = AssembleThreeWayBranch(parts, Opcode::BRLT_rA_rB_iC, Opcode::BRLT_iA_rB_iC, Opcode::BRLT_rA_iB_iC, (Byte)offset);
-
-	} else if (mnemonic == "BRLE") {
-		if (parts.Count() != 4) { Error("Syntax error"); return 0; }
-		Int32 offset = ResolveBranchOffset(parts[3], SByteMinValue, SByteMaxValue, "SByte");
-		if (HasError) return 0;
-		instruction = AssembleThreeWayBranch(parts, Opcode::BRLE_rA_rB_iC, Opcode::BRLE_iA_rB_iC, Opcode::BRLE_rA_iB_iC, (Byte)offset);
-
-	} else if (mnemonic == "BREQ") {
-		if (parts.Count() != 4) { Error("Syntax error"); return 0; }
-		Int32 offset = ResolveBranchOffset(parts[3], SByteMinValue, SByteMaxValue, "SByte");
-		if (HasError) return 0;
-		instruction = AssembleRegOrImmBranch(parts, Opcode::BREQ_rA_rB_iC, Opcode::BREQ_rA_iB_iC, (Byte)offset);
-
-	} else if (mnemonic == "BRNE") {
-		if (parts.Count() != 4) { Error("Syntax error"); return 0; }
-		Int32 offset = ResolveBranchOffset(parts[3], SByteMinValue, SByteMaxValue, "SByte");
-		if (HasError) return 0;
-		instruction = AssembleRegOrImmBranch(parts, Opcode::BRNE_rA_rB_iC, Opcode::BRNE_rA_iB_iC, (Byte)offset);
-
-	} else if (mnemonic == "IFLT" || mnemonic == "IFLE") {
-		// Three-way conditional skip: rr, ir, ri variants
-		if (parts.Count() != 3) { Error("Syntax error"); return 0; }
-		Opcode opRR, opIR, opRI;
-		if (mnemonic == "IFLT") {
-			opRR = Opcode::IFLT_rA_rB; opIR = Opcode::IFLT_iAB_rC; opRI = Opcode::IFLT_rA_iBC;
-		} else {
-			opRR = Opcode::IFLE_rA_rB; opIR = Opcode::IFLE_iAB_rC; opRI = Opcode::IFLE_rA_iBC;
-		}
-		instruction = AssembleThreeWayIf(parts, opRR, opIR, opRI);
-
-	} else if (mnemonic == "IFEQ" || mnemonic == "IFNE") {
-		// Two-way conditional skip: rr, ri variants
-		if (parts.Count() != 3) { Error("Syntax error"); return 0; }
-		Opcode opRR, opRI;
-		if (mnemonic == "IFEQ") {
-			opRR = Opcode::IFEQ_rA_rB; opRI = Opcode::IFEQ_rA_iBC;
-		} else {
-			opRR = Opcode::IFNE_rA_rB; opRI = Opcode::IFNE_rA_iBC;
-		}
-		Byte reg1 = ParseRegister(parts[1]);
-		if (parts[2][0] == 'r') {
-			Byte reg2 = ParseRegister(parts[2]);
-			instruction = BytecodeUtil::INS_ABC(opRR, reg1, reg2, 0);
-		} else {
-			Int16 immediate = ParseInt16(parts[2]);
-			instruction = BytecodeUtil::INS_AB(opRI, reg1, immediate);
-		}
 
 	} else if (mnemonic == "NEXT") {
 		if (parts.Count() != 3) { Error("Syntax error: NEXT requires 2 register operands"); return 0; }
@@ -677,33 +617,6 @@ Int32 AssemblerStorage::ResolveBranchOffset(String target,Int32 minVal,Int32 max
 	}
 	return offset;
 }
-UInt32 AssemblerStorage::AssembleThreeWayBranch(List<String> parts,Opcode opRR,Opcode opIR,Opcode opRI,Byte offset) {
-	if (parts[2][0] == 'r') {
-		if (parts[1][0] == 'r') {
-			Byte reg1 = ParseRegister(parts[1]);
-			Byte reg2 = ParseRegister(parts[2]);
-			return BytecodeUtil::INS_ABC(opRR, reg1, reg2, offset);
-		} else {
-			Byte immediate = (Byte)ParseInt16(parts[1]);
-			Byte reg2 = ParseRegister(parts[2]);
-			return BytecodeUtil::INS_ABC(opIR, immediate, reg2, offset);
-		}
-	} else {
-		Byte reg1 = ParseRegister(parts[1]);
-		Byte immediate = (Byte)ParseInt16(parts[2]);
-		return BytecodeUtil::INS_ABC(opRI, reg1, immediate, offset);
-	}
-}
-UInt32 AssemblerStorage::AssembleRegOrImmBranch(List<String> parts,Opcode opRR,Opcode opRI,Byte offset) {
-	Byte reg1 = ParseRegister(parts[1]);
-	if (parts[2][0] == 'r') {
-		Byte reg2 = ParseRegister(parts[2]);
-		return BytecodeUtil::INS_ABC(opRR, reg1, reg2, offset);
-	} else {
-		Byte immediate = (Byte)ParseInt16(parts[2]);
-		return BytecodeUtil::INS_ABC(opRI, reg1, immediate, offset);
-	}
-}
 Opcode AssemblerStorage::ArithmeticOpcode(String mnemonic) {
 	if (mnemonic == "ADD") return Opcode::ADD_rA_rB_rC;
 	if (mnemonic == "SUB") return Opcode::SUB_rA_rB_rC;
@@ -714,42 +627,6 @@ Opcode AssemblerStorage::ArithmeticOpcode(String mnemonic) {
 	if (mnemonic == "AND") return Opcode::AND_rA_rB_rC;
 	if (mnemonic == "OR") return Opcode::OR_rA_rB_rC;
 	return Opcode::NOOP;
-}
-UInt32 AssemblerStorage::AssembleThreeWayCompare(List<String> parts,Opcode opRR,Opcode opIR,Opcode opRI) {
-	Byte reg1 = ParseRegister(parts[1]);
-	Current.ReserveRegister(reg1);
-	if (parts[3][0] == 'r') {
-		if (parts[2][0] == 'r') {
-			Byte reg2 = ParseRegister(parts[2]);
-			Byte reg3 = ParseRegister(parts[3]);
-			return BytecodeUtil::INS_ABC(opRR, reg1, reg2, reg3);
-		} else {
-			Byte immediate = ParseByte(parts[2]);
-			Byte reg3 = ParseRegister(parts[3]);
-			return BytecodeUtil::INS_ABC(opIR, reg1, immediate, reg3);
-		}
-	} else {
-		Byte reg2 = ParseRegister(parts[2]);
-		Byte immediate = ParseByte(parts[3]);
-		return BytecodeUtil::INS_ABC(opRI, reg1, reg2, immediate);
-	}
-}
-UInt32 AssemblerStorage::AssembleThreeWayIf(List<String> parts,Opcode opRR,Opcode opIR,Opcode opRI) {
-	if (parts[2][0] == 'r') {
-		if (parts[1][0] == 'r') {
-			Byte reg1 = ParseRegister(parts[1]);
-			Byte reg2 = ParseRegister(parts[2]);
-			return BytecodeUtil::INS_ABC(opRR, reg1, reg2, 0);
-		} else {
-			Int16 immediate = ParseInt16(parts[1]);
-			Byte reg2 = ParseRegister(parts[2]);
-			return BytecodeUtil::INS_BC(opIR, immediate, reg2);
-		}
-	} else {
-		Byte reg1 = ParseRegister(parts[1]);
-		Int16 immediate = ParseInt16(parts[2]);
-		return BytecodeUtil::INS_AB(opRI, reg1, immediate);
-	}
 }
 Byte AssemblerStorage::ParseRegister(String reg) {
 	if (reg.Length() < 2 || reg[0] != 'r') {
@@ -786,6 +663,9 @@ Int64 AssemblerStorage::ParseIntRange(String num,Int64 minVal,Int64 maxVal,Strin
 }
 Byte AssemblerStorage::ParseByte(String num) {
 	return (Byte)ParseIntRange(num, ByteMinValue, ByteMaxValue, "Byte");
+}
+Byte AssemblerStorage::ParseSByte(String num) {
+	return (Byte)(SByte)ParseIntRange(num, SByteMinValue, SByteMaxValue, "SByte");
 }
 Int16 AssemblerStorage::ParseInt16(String num) {
 	return (Int16)ParseIntRange(num, Int16MinValue, Int16MaxValue, "Int16");

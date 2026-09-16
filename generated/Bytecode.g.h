@@ -16,7 +16,7 @@ enum class EmitPattern : Byte {
 	None,   // Emit(op, comment) - no operands (e.g., RETURN, NOOP)
 	A,      // EmitA(op, a, comment) - 8-bit A only (e.g., LOCALS_rA)
 	AB,     // EmitAB(op, a, bc, comment) - 8-bit A + 16-bit BC (e.g., LOAD_rA_iBC)
-	BC,     // EmitBC(op, ab, c, comment) - 16-bit AB + 8-bit C (e.g., IFLT_iAB_rC)
+	BC,     // EmitBC(op, ab, c, comment) - 16-bit AB + 8-bit C (no opcode uses this shape today)
 	ABC     // EmitABC(op, a, b, c, comment) - 8-bit A + B + C (e.g., ADD_rA_rB_rC)
 }; // end of enum EmitPattern
 
@@ -59,37 +59,15 @@ enum class Opcode : Byte {
 	JUMP_iABC,
 	LT_rA_rB_rC,
 	LT_rA_rB_iC,
-	LT_rA_iB_rC,
 	LE_rA_rB_rC,
 	LE_rA_rB_iC,
-	LE_rA_iB_rC,
 	EQ_rA_rB_rC,
 	EQ_rA_rB_iC,
 	NE_rA_rB_rC,
 	NE_rA_rB_iC,
 	BRTRUE_rA_iBC,
 	BRFALSE_rA_iBC,
-	BRLT_rA_rB_iC,
-	BRLT_rA_iB_iC,
-	BRLT_iA_rB_iC,
-	BRLE_rA_rB_iC,
-	BRLE_rA_iB_iC,
-	BRLE_iA_rB_iC,
-	BREQ_rA_rB_iC,
-	BREQ_rA_iB_iC,
-	BRNE_rA_rB_iC,
-	BRNE_rA_iB_iC,
 	BRERR_rA_iBC,
-	IFLT_rA_rB,
-	IFLT_rA_iBC,
-	IFLT_iAB_rC,
-	IFLE_rA_rB,
-	IFLE_rA_iBC,
-	IFLE_iAB_rC,
-	IFEQ_rA_rB,
-	IFEQ_rA_iBC,
-	IFNE_rA_rB,
-	IFNE_rA_iBC,
 	NEXT_rA_rB,
 	ARGBLK_iABC,
 	ARG_rA,

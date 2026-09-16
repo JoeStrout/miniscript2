@@ -29,6 +29,9 @@ A survey of the C# (`cs/`) and C/C++ (`cpp/core/`) source for bad smells, incons
 - **`Intrinsic.cs` ~80–85**: `GetByName()` does a linear search every call despite the table being static after startup — should be a `Dictionary`. ✔️
 - **`VM.cs` ~260–285**: `MarkRoots()` iterates full stack/names arrays even when mostly empty; tracking a high-water mark would avoid unnecessary work. ✔️
 - **`CodeGenerator.cs` ~1555–1587**: `while` loops are not rotated, so every iteration pays an unconditional `JUMP` on top of the conditional branch. See [Rotate the `while` loop](#rotate-the-while-loop) below. ✔️
+- **`CodeGenerator.cs`, `Bytecode.cs`**: a constant operand is always materialized into a register first, so `i + 1` costs a `LOAD` plus an `ADD`. An `ADD_rA_rB_iC` family would fold the small ones. See [Three ways to spend fewer instructions per loop iteration](#three-ways-to-spend-fewer-instructions-per-loop-iteration) below.
+- **`CodeGenerator.cs`**: those constant `LOAD`s are re-emitted on every iteration of a loop, even though the value never changes. Hoisting them into the preheader that loop rotation already creates would remove them from the steady state. Same write-up.
+- **`CodeGenerator.cs`, `VM.cs` `LOADC_rA_rB_kC`**: every read of a named local copies it into a fresh temp first; a 16-instruction loop body measured eight such copies, four of them of the same variable. Same write-up, and the largest of the three.
 
 ---
 
@@ -137,6 +140,94 @@ Three things came with it:
 
 Costs, for the record: the condition appears twice in the generated code, and
 `continue` targets the back-edge test rather than the top of the body.
+
+### Three ways to spend fewer instructions per loop iteration
+
+*Measured 2026-09-16, while deciding what to do about the never-implemented
+IF/JUMP peephole.  The 22 opcodes that peephole would have emitted were removed
+instead; these are the alternatives that were weighed against it, and against
+each other.  All timings are the C++ build on one machine, 12M iterations,
+three runs each; a dispatched instruction costs about 5.5–6 ns whatever it is,
+so instruction count per iteration is a good proxy throughout.*
+
+The three compete for the same loop, so they are written up together.  None has
+been implemented.
+
+**1. Immediate arithmetic operands (`ADD_rA_rB_iC` and friends).**  A constant
+operand is materialized into a register before it can be used, so `i + 1` is a
+`LOAD` and an `ADD`.  VM_DESIGN.md flags this already: `ADD r5, r3, 42` is
+listed as an assembler error "unless we add an `ADD_rA_rB_iC` opcode".  Cheap to
+build and it helps straight-line code as well as loops, but the operand is 8-bit
+signed, so only small integers fold, and the asymmetric operators each need two
+variants (`SUB_rA_iB_rC` for `5 - x`, likewise `DIV`/`MOD`/`POW`) — about ten
+new opcodes, which would grow the table back past where removing the branch
+family left it.
+
+**2. Hoisting loop-invariant constant `LOAD`s.**  The same constant loads, but
+attacked from the other end: emit them once in the preheader that loop rotation
+already creates, instead of on every iteration.  No new opcodes, and no limit on
+the size or type of the constant.  The price is loop-invariance analysis plus a
+register held for the whole loop per hoisted constant, which makes it a
+register-allocator change rather than a local one.
+
+**3. Eliminating redundant `LOADC` copies.**  Every read of a named local copies
+it into a fresh temp via `LOADC_rA_rB_kC` before the arithmetic touches it.
+This is the big one, and the hardest.
+
+How they compare depends entirely on how constant-heavy the loop is, which is
+why both a constant-heavy and a typical loop are recorded here.
+
+`benchmarks/loopMath.ms`, whose body is 12 instructions of which four are
+constant loads — an unusually favorable case:
+
+| | instrs/iter | time |
+| --- | --- | --- |
+| as emitted today | 12 | 0.80–0.84 s |
+| loop-invariant `LOAD`s hoisted | 8 | 0.60–0.61 s (-26%) |
+
+A more typical loop, `total += a[i] * b[i]` over `while i < n`, has exactly one
+constant load in sixteen instructions:
+
+```
+0011:  LOADC   r6, r4, k3     # total
+0012:  LOADC   r9, r1, k0     # a
+0013:  LOADC   r10, r5, k4    # i
+0014:  IDXGET  r8, r9, r10
+0015:  LOADC   r10, r2, k1    # b
+0016:  LOADC   r11, r5, k4    # i
+0017:  IDXGET  r9, r10, r11
+0018:  MUL     r7, r8, r9
+0019:  ADD     r4, r6, r7
+0020:  LOADC   r6, r5, k4     # i
+0021:  LOAD    r7, 1          # <-- the only constant load
+0022:  ADD     r5, r6, r7
+0023:  LOADC   r7, r5, k4     # i
+0024:  LOADC   r8, r3, k2     # n
+0025:  LT      r6, r7, r8
+0026:  BRTRUE  r6, -16
+```
+
+Options 1 and 2 both remove that one instruction and nothing else, so on code
+like this they are each worth about 6%, and the choice between them is about
+implementation cost, not payoff.  Option 1 is the cheaper of the two, but 6% is
+a thin return for ten opcodes.
+
+Option 3 is looking at the other eight instructions.  `LOADC` costs the same as
+any other instruction (measured at ~5.6 ns, against ~6.2 ns for the loop's
+other instructions), so this is purely about count: `i` alone is copied four
+times per iteration, and halving the `LOADC`s would be worth roughly four times
+what either of the other two buys.
+
+The catch, and it is a real one: `LOADC` is not only a name check.  It also
+auto-invokes a zero-argument funcref, which is the semantics that make a bare
+`f` a call.  Skipping the copy therefore requires proving the register cannot
+hold a funcref, which needs local dataflow.  How often that is provable in real
+code has not been investigated, and it may well not be worth it — but it is
+the only target found on realistic code worth more than a few percent.
+
+For scale: across `sieve`, `levenshtein`, `wordCount`, `listSort`, `collatz` and
+`jsonParse`, constant `LOAD`s are 10–19% of all emitted instructions (a static
+count, so hot loops are under-weighted).
 
 ---
 

@@ -333,7 +333,7 @@ public class Parser : IParser {
 
 		// Special case: function expression (spans multiple lines)
 		if (token.Type == TokenType.FUNCTION) {
-			return ParseFunctionExpression();
+			return ParseFunctionExpression(token.Line);
 		}
 
 		// Look up the prefix parselet for this token
@@ -748,7 +748,11 @@ public class Parser : IParser {
 	// Parse a function expression: FUNCTION already consumed
 	// Syntax: function(param1, param2, ...) <body> end function
 	// The parentheses are optional for no-parameter functions.
-	private ASTNode ParseFunctionExpression() {
+	// funcLine is the line of the `function` keyword itself, which becomes the
+	// node's Line and, through it, the FuncDef's SourceLoc.  ParseStatement only
+	// stamps Line on a statement's root node, and a function expression is
+	// usually the right-hand side of an assignment, so it must be set here.
+	private ASTNode ParseFunctionExpression(Int32 funcLine) {
 		// Parse parameter list (parentheses optional for no-param functions)
 		List<String> paramNames = new List<String>();
 		List<ASTNode> paramDefaults = new List<ASTNode>();
@@ -781,7 +785,9 @@ public class Parser : IParser {
 		List<ASTNode> body = ParseBlock(TokenType.END, TokenType.END);
 		RequireEndKeyword(TokenType.FUNCTION, "function");
 
-		return new FunctionNode(paramNames, paramDefaults, body);
+		FunctionNode result = new FunctionNode(paramNames, paramDefaults, body);
+		result.Line = funcLine;
+		return result;
 	}
 
 	// Parse a statement (handles both simple statements and block statements)

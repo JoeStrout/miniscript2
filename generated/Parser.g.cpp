@@ -240,7 +240,7 @@ ASTNode ParserStorage::ParseExpressionAt(Precedence minPrecedence,Boolean callSt
 
 	// Special case: function expression (spans multiple lines)
 	if (token.Type == TokenType::FUNCTION) {
-		return ParseFunctionExpression();
+		return ParseFunctionExpression(token.Line);
 	}
 
 	// Look up the prefix parselet for this token
@@ -614,7 +614,7 @@ ASTNode ParserStorage::ParseForStatement() {
 
 	return  ForNode::New(varName, iterable, body);
 }
-ASTNode ParserStorage::ParseFunctionExpression() {
+ASTNode ParserStorage::ParseFunctionExpression(Int32 funcLine) {
 	// Parse parameter list (parentheses optional for no-param functions)
 	List<String> paramNames =  List<String>::New();
 	List<ASTNode> paramDefaults =  List<ASTNode>::New();
@@ -647,7 +647,9 @@ ASTNode ParserStorage::ParseFunctionExpression() {
 	List<ASTNode> body = ParseBlock(TokenType::END, TokenType::END);
 	RequireEndKeyword(TokenType::FUNCTION, "function");
 
-	return  FunctionNode::New(paramNames, paramDefaults, body);
+	FunctionNode result =  FunctionNode::New(paramNames, paramDefaults, body);
+	result.set_Line(funcLine);
+	return result;
 }
 ASTNode ParserStorage::ParseStatement() {
 	// Skip leading blank lines

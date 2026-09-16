@@ -43,12 +43,10 @@ Note that a code point is not a user-perceived character.  `é` also has a two-c
 
 `info(x)` returns a frozen map describing any value.  Every result carries `type`, the same string `typeof` would give.  Beyond that it depends on what `x` is:
 
-- **funcRef** — `name`, the text of the expression to the left of `=` where the function was defined, if any; `note`, the string constant the first statement of the body evaluates to, if it does (similar to a Python docstring); `params`, a list of little maps, one per parameter, each with `name` and `default` (the actual default value); and `closure`, 1 if the function captured an enclosing scope.
+- **funcRef** — `name`, the text of the expression to the left of `=` where the function was defined, if any; `note`, the string constant the first statement of the body evaluates to, if it does (similar to a Python docstring); `params`, a list of little maps, one per parameter, each with `name` and `default` (the actual default value); `closure`, 1 if the function captured an enclosing scope; and `sourceLoc`, where the function was defined, as a string in the same `"{file} line {n}"` form a stack trace entry uses (the line is that of the `function` keyword).  `sourceLoc` is null for a function with no source of its own — a built-in, or one loaded from assembly.
 - **list** — `computed`, 1 if the list is still in its lazily-computed form (see [adr/0007-computed-lists.md](adr/0007-computed-lists.md)); and `frozen`.
 - **map** — `frozen`.
 - **error** — `message`, `inner`, `stack`, and `isa`.
-
-Still to do: **`sourceLoc`**, the location of a function definition in the source code, which was part of the original design and is not yet returned.
 
 ## Error Type
 

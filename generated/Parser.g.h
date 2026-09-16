@@ -175,7 +175,11 @@ class ParserStorage : public std::enable_shared_from_this<ParserStorage>, public
 	// Parse a function expression: FUNCTION already consumed
 	// Syntax: function(param1, param2, ...) <body> end function
 	// The parentheses are optional for no-parameter functions.
-	private: ASTNode ParseFunctionExpression();
+	// funcLine is the line of the `function` keyword itself, which becomes the
+	// node's Line and, through it, the FuncDef's SourceLoc.  ParseStatement only
+	// stamps Line on a statement's root node, and a function expression is
+	// usually the right-hand side of an assignment, so it must be set here.
+	private: ASTNode ParseFunctionExpression(Int32 funcLine);
 
 	// Parse a statement (handles both simple statements and block statements)
 	public: ASTNode ParseStatement();
@@ -374,7 +378,11 @@ struct Parser : public IParser {
 	// Parse a function expression: FUNCTION already consumed
 	// Syntax: function(param1, param2, ...) <body> end function
 	// The parentheses are optional for no-parameter functions.
-	private: inline ASTNode ParseFunctionExpression();
+	// funcLine is the line of the `function` keyword itself, which becomes the
+	// node's Line and, through it, the FuncDef's SourceLoc.  ParseStatement only
+	// stamps Line on a statement's root node, and a function expression is
+	// usually the right-hand side of an assignment, so it must be set here.
+	private: inline ASTNode ParseFunctionExpression(Int32 funcLine);
 
 	// Parse a statement (handles both simple statements and block statements)
 	public: inline ASTNode ParseStatement();
@@ -450,7 +458,7 @@ inline ASTNode Parser::ParseSingleLineStatement() { return get()->ParseSingleLin
 inline ASTNode Parser::ParseSingleLineIfBody(ASTNode condition) { return get()->ParseSingleLineIfBody(condition); }
 inline ASTNode Parser::ParseWhileStatement() { return get()->ParseWhileStatement(); }
 inline ASTNode Parser::ParseForStatement() { return get()->ParseForStatement(); }
-inline ASTNode Parser::ParseFunctionExpression() { return get()->ParseFunctionExpression(); }
+inline ASTNode Parser::ParseFunctionExpression(Int32 funcLine) { return get()->ParseFunctionExpression(funcLine); }
 inline ASTNode Parser::ParseStatement() { return get()->ParseStatement(); }
 inline List<ASTNode> Parser::ParseProgram() { return get()->ParseProgram(); }
 inline ASTNode Parser::Parse(String source) { return get()->Parse(source); }

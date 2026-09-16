@@ -1808,9 +1808,14 @@ Int32 CodeGeneratorStorage::Visit(FunctionNode node) {
 	String funcName = StringUtils::Format("@f{0}", funcIndex);
 	FuncDef funcDef = innerEmitter.Finalize(funcName);
 
-	// Set the note (docstring) and file name
+	// Set the note (docstring), file name, and source location.  SourceLoc
+	// uses the same "{file} line {n}" form as a stack trace entry, with the
+	// same stand-in for source that has no file name of its own.
 	funcDef.set_Note(noteText);
 	funcDef.set_FileName(FileName);
+	String sourceFile = FileName;
+	if (sourceFile == "") sourceFile = "(current program)";
+	funcDef.set_SourceLoc(StringUtils::Format("{0} line {1}", sourceFile, node.Line()));
 
 	// Set parameter info on the FuncDef
 	Value defaultVal;

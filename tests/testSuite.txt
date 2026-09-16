@@ -5832,6 +5832,46 @@ print info(@g).name
 ---------------------------------
 f
 ================================
+==== info: sourceLoc gives the line of the `function` keyword
+================================
+f = function(x)
+	return x
+end function
+
+g = function
+	return 1
+end function
+print info(@f).sourceLoc
+print info(@g).sourceLoc
+---------------------------------
+(current program) line 1
+(current program) line 5
+================================
+==== info: sourceLoc of a function in a map literal, and of an inner function
+================================
+m = {"go": function
+	return 1
+end function}
+enclosing = function
+	inner = function
+		return 2
+	end function
+	print info(@inner).sourceLoc
+end function
+print info(@m.go).sourceLoc
+enclosing
+---------------------------------
+(current program) line 1
+(current program) line 5
+================================
+==== info: sourceLoc is null for a built-in function
+================================
+print info(@print).sourceLoc
+print info(@abs).sourceLoc == null
+---------------------------------
+null
+1
+================================
 ==== info: result is frozen
 ================================
 foo = function; end function

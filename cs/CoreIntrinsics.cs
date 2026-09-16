@@ -401,6 +401,14 @@ public static class CoreIntrinsics {
 				FuncDef func = arg.FunctionDef();
 				result.MapSet("name", func.Name);
 				result.MapSet("note", func.Note);
+				// Where the function was defined, in stack-trace form.  Empty for
+				// a function with no source of its own -- an intrinsic, or one
+				// assembled from .msa -- and reported as null rather than "".
+				if (func.SourceLoc == "") {
+					result.MapSet("sourceLoc", Value.Null);
+				} else {
+					result.MapSet("sourceLoc", Value.make_string(func.SourceLoc));
+				}
 				parameters = Value.make_list(func.ParamNames.Count);
 				for (int i=0; i < func.ParamNames.Count; i++) {
 					pinfo = Value.make_map(2);

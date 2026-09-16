@@ -55,7 +55,7 @@ Still to do: **`sourceLoc`**, the location of a function definition in the sourc
 We'll add one new type to MiniScript, `error`, which represents a runtime error, and a new `err(msg, innerErr=null)` intrinsic for creating them.  Here are the special rules, given an error `e` and any type `x`:
 
 - Global intrinsic `err(msg, e)` returns a new `error` (let's call it `e2`) such that `e2.message == msg`,  `e2.inner == e`, and `e2.stack` returns the stack trace at this point.
-- `se.err(msg, e)` does the same, but also sets `e2.__isa == se`, i.e., it creates a specialization of a more general error `se`.  The `__isa` chain can be probed with the `isa` operator, just like with maps.  Note that this `.err` method will terminate if it creates a *loop* in the `__isa` chain.  (`new` should also.)
+- `se.err(msg, e)` does the same, but also sets `e2.__isa == se`, i.e., it creates a specialization of a more general error `se`.  The `__isa` chain can be probed with the `isa` operator, just like with maps.  Note that this `.err` method will terminate if it creates a *loop* in the `__isa` chain.  The same rule applies to maps, but is enforced at the only place a loop can actually be made: assigning to a map's `__isa` key terminates if the assignment would close a cycle.  (`new` needs no check of its own -- it always allocates a fresh map, which nothing can already point at -- but it does require its operand to be a map, and returns an error value if it is not.)
 - `e.foo` (where `foo` is _not_ literally `message`, `inner`, `stack`, or `__isa`) terminates [note 1].
 - All errors are immutable, so attempting `e.message = rhs`, etc. will terminate with a runtime error.
 - `e or x` evaluates to `x`.

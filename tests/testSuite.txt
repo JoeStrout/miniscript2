@@ -3544,6 +3544,57 @@ print "__isa check: " + (duck.__isa == Animal)
 len: 1
 __isa check: 1
 ================================
+==== `new` requires a map, and returns an error value otherwise
+================================
+print new 5
+print new "hi"
+print "still running"
+--------------------------------
+error: can only use `new` with a map (got number)
+error: can only use `new` with a map (got string)
+still running
+================================
+==== `new` on a fresh map never forms an __isa cycle
+================================
+a = {"n": 1}
+a = new a
+print a.n
+print a.__isa.n
+--------------------------------
+1
+1
+================================
+==== assigning __isa to the map itself is a cycle, and terminates
+================================
+a = {}
+a.__isa = a
+print "NOT REACHED"
+--------------------------------
+Runtime Error: Assignment to __isa would form a cycle in the __isa chain [line 2]
+================================
+==== an indirect __isa cycle also terminates
+================================
+a = {}
+b = new a
+a["__isa"] = b
+print "NOT REACHED"
+--------------------------------
+Runtime Error: Assignment to __isa would form a cycle in the __isa chain [line 3]
+================================
+==== re-pointing __isa to an unrelated map is still allowed
+================================
+A = {"n": "A"}
+B = new A
+C = new B
+D = {}
+D.__isa = C
+print D.n
+D.__isa = {"n": "E"}
+print D.n
+--------------------------------
+A
+E
+================================
 ==== inheritance/override with manual construction
 ================================
 Animal = {"legs": 4, "tails": 1}

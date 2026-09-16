@@ -1281,6 +1281,14 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				if (valA.IsList()) {
 					valA.ListSet(valB.IntValue(), valC);
 				} else if (valA.IsMap()) {
+					// An __isa assignment that closes a loop in the chain is
+					// refused outright.  This is the only way a cycle can be
+					// made (`new` always allocates a fresh map), so guarding
+					// it here keeps every __isa chain in the system acyclic.
+					if (IsIsaKey(valB) && WouldFormIsaCycle(valA, valC)) {
+						RaiseRuntimeError("Assignment to __isa would form a cycle in the __isa chain");
+						VM_NEXT();
+					}
 					valA.MapSet(valB, valC);
 				} else {
 					RaiseRuntimeError("Can't set indexed value in {0}", valA);
@@ -2068,11 +2076,21 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 			}
 
 			VM_CASE(NEW_rA_rB) {
-				// R[A] = new map with __isa set to R[B]
+				// R[A] = new map with __isa set to R[B].  The result can never
+				// be part of an __isa cycle: the map is freshly allocated, so
+				// nothing can already point at it.  But R[B] must be a map --
+				// anything else would leave a chain that lookups can't walk.
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
+				valB = localStack[b];
+				if (valB.IsError()) { localStack[a] = valB; break; }
+				if (!valB.IsMap()) {
+					localStack[a] = MakeRuntimeError(StringUtils::Format(
+						"can only use `new` with a map (got {0})", valB.TypeName()));
+					VM_NEXT();
+				}
 				val = Value::make_map(2);
-				val.MapSet(Value::magicIsA, localStack[b]);
+				val.MapSet(Value::magicIsA, valB);
 				localStack[a] = val;
 				VM_NEXT();
 			}
@@ -2344,6 +2362,17 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 	// Save state after loop exit (e.g. from error condition)
 	SaveState(pc, baseIndex, currentFunc);
 	return Value::Null;
+}
+Boolean VMStorage::WouldFormIsaCycle(Value target,Value newIsa) {
+	Value current = newIsa;
+	Value next = Value::Null;
+	for (Int32 depth = 0; depth < 256; depth++) {
+		if (current.RefEquals(target)) return Boolean(true);
+		if (!current.IsMap()) return Boolean(false);
+		if (!current.TryGet(Value::magicIsA, &next)) return Boolean(false);
+		current = next;
+	}
+	return Boolean(true);
 }
 const Int32 VMStorage::MemberMissing = 0; // not found; a runtime error was raised
 const Int32 VMStorage::MemberMethod = 1; // from the container or its type; self = container

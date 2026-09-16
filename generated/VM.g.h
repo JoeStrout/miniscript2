@@ -384,6 +384,21 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	// when this returns false, since RaiseRuntimeError does not stop the current
 	// opcode handler on its own.
 	private: bool EnsureFrame(Int32 baseIndex, UInt16 neededRegs);
+
+	// True if `key` is the magic "__isa" key.  "__isa" is five UTF-8 bytes, so
+	// make_string always produces it as a tiny string, whose bits are canonical
+	// for its content -- hence the bitwise test catches every ordinary key, and
+	// the content compare is needed only for the (unexpected) heap-string form.
+	private: static Boolean IsIsaKey(Value key);
+
+	// True if setting `newIsa` as the __isa of `target` would make `target`
+	// reachable from itself along the __isa chain.  Such a chain has no valid
+	// meaning: inheritance lookups would never terminate on their own, and only
+	// the depth limit in Lookup/ISA keeps them bounded.  So the assignment that
+	// would close the loop is refused (see IDXSET_rA_rB_rC).  A chain already
+	// deeper than the limit counts as a cycle for the same reason: past that
+	// depth, lookups no longer see the whole chain anyway.
+	private: static Boolean WouldFormIsaCycle(Value target, Value newIsa);
 	private: static const Int32 MemberMissing; // not found; a runtime error was raised
 	private: static const Int32 MemberMethod; // from the container or its type; self = container
 	private: static const Int32 MemberField; // an error's own field; no call context
@@ -815,6 +830,21 @@ struct VM {
 	// when this returns false, since RaiseRuntimeError does not stop the current
 	// opcode handler on its own.
 	private: inline bool EnsureFrame(Int32 baseIndex, UInt16 neededRegs);
+
+	// True if `key` is the magic "__isa" key.  "__isa" is five UTF-8 bytes, so
+	// make_string always produces it as a tiny string, whose bits are canonical
+	// for its content -- hence the bitwise test catches every ordinary key, and
+	// the content compare is needed only for the (unexpected) heap-string form.
+	private: static Boolean IsIsaKey(Value key) { return VMStorage::IsIsaKey(key); }
+
+	// True if setting `newIsa` as the __isa of `target` would make `target`
+	// reachable from itself along the __isa chain.  Such a chain has no valid
+	// meaning: inheritance lookups would never terminate on their own, and only
+	// the depth limit in Lookup/ISA keeps them bounded.  So the assignment that
+	// would close the loop is refused (see IDXSET_rA_rB_rC).  A chain already
+	// deeper than the limit counts as a cycle for the same reason: past that
+	// depth, lookups no longer see the whole chain anyway.
+	private: static Boolean WouldFormIsaCycle(Value target, Value newIsa) { return VMStorage::WouldFormIsaCycle(target, newIsa); }
 	private: Int32 MemberMissing(); // not found; a runtime error was raised
 	private: Int32 MemberMethod(); // from the container or its type; self = container
 	private: Int32 MemberField(); // an error's own field; no call context
@@ -999,6 +1029,11 @@ inline bool VMStorage::EnsureFrame(Int32 baseIndex,UInt16 neededRegs) {
 		return Boolean(false);
 	}
 	return Boolean(true);
+}
+inline Boolean VMStorage::IsIsaKey(Value key) {
+	if (key.RefEquals(Value::magicIsA)) return Boolean(true);
+	if (key.IsTinyString() || !key.IsString()) return Boolean(false);
+	return key == Value::magicIsA;
 }
 inline Int32 VM::MemberMissing() { return get()->MemberMissing; } // not found; a runtime error was raised
 inline Int32 VM::MemberMethod() { return get()->MemberMethod; } // from the container or its type; self = container

@@ -1616,6 +1616,14 @@ public class VM {
 					if (valA.IsList()) {
 						valA.ListSet(valB.IntValue(), valC);
 					} else if (valA.IsMap()) {
+						// An __isa assignment that closes a loop in the chain is
+						// refused outright.  This is the only way a cycle can be
+						// made (`new` always allocates a fresh map), so guarding
+						// it here keeps every __isa chain in the system acyclic.
+						if (IsIsaKey(valB) && WouldFormIsaCycle(valA, valC)) {
+							RaiseRuntimeError("Assignment to __isa would form a cycle in the __isa chain");
+							break;
+						}
 						valA.MapSet(valB, valC);
 					} else {
 						RaiseRuntimeError("Can't set indexed value in {0}", valA);
@@ -2409,11 +2417,21 @@ public class VM {
 				}
 
 				case Opcode.NEW_rA_rB: {
-					// R[A] = new map with __isa set to R[B]
+					// R[A] = new map with __isa set to R[B].  The result can never
+					// be part of an __isa cycle: the map is freshly allocated, so
+					// nothing can already point at it.  But R[B] must be a map --
+					// anything else would leave a chain that lookups can't walk.
 					Byte a = BytecodeUtil.Au(instruction);
 					Byte b = BytecodeUtil.Bu(instruction);
+					valB = localStack[b];
+					if (valB.IsError()) { localStack[a] = valB; break; }
+					if (!valB.IsMap()) {
+						localStack[a] = MakeRuntimeError(StringUtils.Format(
+							"can only use `new` with a map (got {0})", valB.TypeName()));
+						break;
+					}
 					val = Value.make_map(2);
-					val.MapSet(Value.magicIsA, localStack[b]);
+					val.MapSet(Value.magicIsA, valB);
 					localStack[a] = val;
 					break;
 				}
@@ -2706,6 +2724,36 @@ public class VM {
 		if (baseIndex + neededRegs > stack.Count) {
 			RaiseRuntimeError("Stack Overflow");
 			return false;
+		}
+		return true;
+	}
+
+	// True if `key` is the magic "__isa" key.  "__isa" is five UTF-8 bytes, so
+	// make_string always produces it as a tiny string, whose bits are canonical
+	// for its content -- hence the bitwise test catches every ordinary key, and
+	// the content compare is needed only for the (unexpected) heap-string form.
+	[MethodImpl(AggressiveInlining)]
+	private static Boolean IsIsaKey(Value key) {
+		if (key.RefEquals(Value.magicIsA)) return true;
+		if (key.IsTinyString() || !key.IsString()) return false;
+		return key == Value.magicIsA;
+	}
+
+	// True if setting `newIsa` as the __isa of `target` would make `target`
+	// reachable from itself along the __isa chain.  Such a chain has no valid
+	// meaning: inheritance lookups would never terminate on their own, and only
+	// the depth limit in Lookup/ISA keeps them bounded.  So the assignment that
+	// would close the loop is refused (see IDXSET_rA_rB_rC).  A chain already
+	// deeper than the limit counts as a cycle for the same reason: past that
+	// depth, lookups no longer see the whole chain anyway.
+	private static Boolean WouldFormIsaCycle(Value target, Value newIsa) {
+		Value current = newIsa;
+		Value next = Value.Null;
+		for (Int32 depth = 0; depth < 256; depth++) {
+			if (current.RefEquals(target)) return true;
+			if (!current.IsMap()) return false;
+			if (!current.TryGet(Value.magicIsA, out next)) return false;
+			current = next;
 		}
 		return true;
 	}

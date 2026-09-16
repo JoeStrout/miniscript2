@@ -62,10 +62,18 @@ class FuncDefStorage : public std::enable_shared_from_this<FuncDefStorage> {
 	// Returns 0 if no line information is available.
 	public: Int32 GetLineNumber(Int32 pc);
 	public: NativeCallbackDelegate NativeCallback = nullptr;
+	public: UInt32 AcceptsErrorMask = 0;
+	public: Boolean AffectsState = Boolean(false);
 
 	// Native callback for intrinsic functions. When non-null, this FuncDef
 	// represents a built-in function: CALL invokes the callback directly
 	// instead of executing bytecode.  Parameters are in stack[baseIndex+1..].
+
+	// For native callbacks only: which parameters may receive an error value
+	// (bit i set for parameter i), and whether the intrinsic affects state.  An
+	// error passed to any other parameter never reaches the callback; the call
+	// evaluates to that error instead, or terminates if AffectsState.  See
+	// VM.RefusedErrorArg.
 
 	public: FuncDefStorage();
 
@@ -154,10 +162,20 @@ struct FuncDef {
 	public: inline Int32 GetLineNumber(Int32 pc);
 	public: NativeCallbackDelegate NativeCallback();
 	public: void set_NativeCallback(NativeCallbackDelegate _v);
+	public: UInt32 AcceptsErrorMask();
+	public: void set_AcceptsErrorMask(UInt32 _v);
+	public: Boolean AffectsState();
+	public: void set_AffectsState(Boolean _v);
 
 	// Native callback for intrinsic functions. When non-null, this FuncDef
 	// represents a built-in function: CALL invokes the callback directly
 	// instead of executing bytecode.  Parameters are in stack[baseIndex+1..].
+
+	// For native callbacks only: which parameters may receive an error value
+	// (bit i set for parameter i), and whether the intrinsic affects state.  An
+	// error passed to any other parameter never reaches the callback; the call
+	// evaluates to that error instead, or terminates if AffectsState.  See
+	// VM.RefusedErrorArg.
 
 	public: static FuncDef New() {
 		return FuncDef(std::make_shared<FuncDefStorage>());
@@ -213,6 +231,10 @@ inline void FuncDef::AddInstruction(UInt32 instruction,Int32 lineNumber) { retur
 inline Int32 FuncDef::GetLineNumber(Int32 pc) { return get()->GetLineNumber(pc); }
 inline NativeCallbackDelegate FuncDef::NativeCallback() { return get()->NativeCallback; }
 inline void FuncDef::set_NativeCallback(NativeCallbackDelegate _v) { get()->NativeCallback = _v; }
+inline UInt32 FuncDef::AcceptsErrorMask() { return get()->AcceptsErrorMask; }
+inline void FuncDef::set_AcceptsErrorMask(UInt32 _v) { get()->AcceptsErrorMask = _v; }
+inline Boolean FuncDef::AffectsState() { return get()->AffectsState; }
+inline void FuncDef::set_AffectsState(Boolean _v) { get()->AffectsState = _v; }
 inline void FuncDef::ReserveRegister(Int32 registerNumber) { return get()->ReserveRegister(registerNumber); }
 inline FuncDefStorage::operator bool() const {
 	return Name != "";

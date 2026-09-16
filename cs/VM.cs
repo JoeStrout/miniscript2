@@ -556,6 +556,12 @@ public class VM {
 		// does for an intrinsic (see AutoInvokeFuncRef), minus the frame push --
 		// there is nothing for the callback to return *to*.
 		if (callee.NativeCallback != null) {
+			Value refused = RefusedErrorArg(callee, calleeBase);
+			if (!refused.IsNull()) {
+				if (!callee.AffectsState) return refused;
+				RaiseUncaughtError(refused);
+				return Value.Null;
+			}
 			Context context = new Context(
 				this, // CPP: *this,
 				stack,
@@ -1034,10 +1040,35 @@ public class VM {
 		return 0;
 	}
 
+	// An intrinsic never swallows an error silently.  Unless a parameter is
+	// declared to accept one (Intrinsic.AddParam), an error passed to it means
+	// the intrinsic does not run at all: the call evaluates to that error, or
+	// terminates if the intrinsic affects state.  This returns the first such
+	// error among the arguments in place at calleeBase, or null if there is none.
+	private Value RefusedErrorArg(FuncDef callee, Int32 calleeBase) {
+		Int32 count = callee.ParamNames.Count;
+		for (Int32 i = 0; i < count; i++) {
+			Value arg = stack[calleeBase + 1 + i];
+			if (!arg.IsError()) continue;
+			if (i < 32 && (callee.AcceptsErrorMask & (1u << i)) != 0) continue;
+			return arg;
+		}
+		return Value.Null;
+	}
+
 	// Invoke a native callback and handle the result.  If done, writes the
 	// result to stack[absoluteResultIndex] and returns true.  If not done,
 	// stores the pending state for re-invocation and returns false.
 	private bool InvokeNativeCallback(NativeCallbackDelegate callback, FuncDef callee, Int32 calleeBase, Int32 argCount, IntrinsicResult partialResult, Int32 absoluteResultIndex) {
+		if (partialResult.done) {
+			// A first call, not a continuation: refuse any unwanted error argument.
+			Value refused = RefusedErrorArg(callee, calleeBase);
+			if (!refused.IsNull()) {
+				stack[absoluteResultIndex] = callee.AffectsState ? Value.Null : refused;
+				if (callee.AffectsState) RaiseUncaughtError(refused);
+				return true;
+			}
+		}
 		Context context = new Context(
 			this, // CPP: *this,
 			stack,

@@ -329,6 +329,12 @@ Value VMStorage::RunFunction(Value funcRef,List<Value> args) {
 	// does for an intrinsic (see AutoInvokeFuncRef), minus the frame push --
 	// there is nothing for the callback to return *to*.
 	if (!IsNull(callee.NativeCallback())) {
+		Value refused = RefusedErrorArg(callee, calleeBase);
+		if (!refused.IsNull()) {
+			if (!callee.AffectsState()) return refused;
+			RaiseUncaughtError(refused);
+			return Value::Null;
+		}
 		Context context = Context(
 			*this,
 			stack,
@@ -715,7 +721,26 @@ Int32 VMStorage::AutoInvokeFuncRef(Value funcRefVal,Int32 resultReg,Int32 return
 	*calleeOut = callee;
 	return 0;
 }
+Value VMStorage::RefusedErrorArg(FuncDef callee,Int32 calleeBase) {
+	Int32 count = callee.ParamNames().Count();
+	for (Int32 i = 0; i < count; i++) {
+		Value arg = stack[calleeBase + 1 + i];
+		if (!arg.IsError()) continue;
+		if (i < 32 && (callee.AcceptsErrorMask() & (1u << i)) != 0) continue;
+		return arg;
+	}
+	return Value::Null;
+}
 bool VMStorage::InvokeNativeCallback(NativeCallbackDelegate callback,FuncDef callee,Int32 calleeBase,Int32 argCount,IntrinsicResult partialResult,Int32 absoluteResultIndex) {
+	if (partialResult.done) {
+		// A first call, not a continuation: refuse any unwanted error argument.
+		Value refused = RefusedErrorArg(callee, calleeBase);
+		if (!refused.IsNull()) {
+			stack[absoluteResultIndex] = callee.AffectsState() ? Value::Null : refused;
+			if (callee.AffectsState()) RaiseUncaughtError(refused);
+			return Boolean(true);
+		}
+	}
 	Context context = Context(
 		*this,
 		stack,

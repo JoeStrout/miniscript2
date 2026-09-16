@@ -91,6 +91,14 @@ public class FuncDef {
 	// instead of executing bytecode.  Parameters are in stack[baseIndex+1..].
 	public NativeCallbackDelegate NativeCallback = null;
 
+	// For native callbacks only: which parameters may receive an error value
+	// (bit i set for parameter i), and whether the intrinsic affects state.  An
+	// error passed to any other parameter never reaches the callback; the call
+	// evaluates to that error instead, or terminates if AffectsState.  See
+	// VM.RefusedErrorArg.
+	public UInt32 AcceptsErrorMask = 0;
+	public Boolean AffectsState = false;
+
 	public FuncDef() {
 	}
 

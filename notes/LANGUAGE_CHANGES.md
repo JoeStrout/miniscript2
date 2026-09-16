@@ -60,7 +60,9 @@ We'll add one new type to MiniScript, `error`, which represents a runtime error,
 - All errors are immutable, so attempting `e.message = rhs`, etc. will terminate with a runtime error.
 - `e or x` evaluates to `x`.
 - `if e then` and `while e` both terminate.
-- `f(e)` returns `e` for any intrinsic pure function `f` [note 2]; functions that affect state (or which don't normally return a result) terminate.
+- Passing `e` to an intrinsic `f` never makes it vanish silently.  By default `f(e)` evaluates to `e` without running `f` at all, or terminates if `f` affects state (or doesn't normally return a result) [note 2].  The exceptions are parameters for which an error is a meaningful argument: `print` and `input` show it, `info` describes it, `err` takes it as the inner error, `hash` and `refEquals` use its identity, and `push`, `insert`, and `replace` can store it in a list or map.
+- When `e` is the thing searched for -- the value in `indexOf`, the index in `hasIndex` and `remove`, the old value in `replace` -- the search runs normally, since errors may be stored in lists and maps.  But if `e` is not found, the result is `e` itself rather than null or 0 (or, for `remove` and `replace`, which modify their receiver, the program terminates).
+- An error inside a list or map given to `sum` makes the sum `e`, as `+` would.
 - All binary operators except for `isa`, `==`, and `!=` (so `+`, `-`, `*`, `/`, `%`, `^`, `<`, `<=`, `>`, `>=`, `and`) involving `e` evaluate to `e` (or if both operands are errors, evaluate to the first one), as do the unary operators `-` and `not`.
 - `e[i]` evaluate to `e`.
 - Any use of `e.foo` or `e[i]` in an lvalue expression terminates.

@@ -438,6 +438,27 @@ for (Value key : d.Keys()) {
 single-argument `Value::Lookup(key)` (returns the mapped value or null) both
 carry over from 1.x.
 
+## Error Arguments
+
+MS2 has an `error` type, and your intrinsic needs no code to deal with one.  By
+default, an error passed to any parameter never reaches your callback: the VM
+makes the call evaluate to that error instead.  If the intrinsic changes state,
+or returns nothing, the program terminates instead.  Mark such an intrinsic:
+
+```cpp
+	i.set_AffectsState(true);
+```
+
+Only when your intrinsic has a real use for an error -- displaying it, storing
+it, or searching for it -- should a parameter accept one:
+
+```cpp
+	i.AddParam("item", Value::zero, true);   // this parameter may receive an error
+```
+
+Such a parameter must then never let the error vanish silently (for example, by
+treating it as 0 or an empty string).
+
 ## Reporting Runtime Errors
 
 MS1 intrinsics raised errors by throwing — `RuntimeException("msg").raise()`,

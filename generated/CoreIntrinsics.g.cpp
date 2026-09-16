@@ -227,7 +227,8 @@ void CoreIntrinsics::Init() {
 
 	// print(s="")
 	f = Intrinsic::Create("print");
-	f.AddParam("s", Value::make_string(""));
+	f.set_AffectsState(Boolean(true));
+	f.AddParam("s", Value::make_string(""), Boolean(true));
 	f.AddParam("delimiter", _EOL);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		String s = ctx.GetArg(0).ToStringValue(ctx.vm).AsCString();
@@ -252,7 +253,8 @@ void CoreIntrinsics::Init() {
 
 	// input(prompt=null)
 	f = Intrinsic::Create("input");
-	f.AddParam("prompt");
+	f.set_AffectsState(Boolean(true));
+	f.AddParam("prompt", Value::Null, Boolean(true));
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		String prompt =  String::New("");
 		if (!ctx.GetArg(0).IsNull()) {
@@ -269,7 +271,7 @@ void CoreIntrinsics::Init() {
 	// err(msg, inner=null) — global intrinsic: create a new error value.
 	f = Intrinsic::Create("err");
 	f.AddParam("msg");
-	f.AddParam("inner");
+	f.AddParam("inner", Value::Null, Boolean(true));
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value msg = ctx.GetArg(0);
 		Value inner = ctx.GetArg(1);
@@ -281,9 +283,9 @@ void CoreIntrinsics::Init() {
 	// whose __isa is se.  Terminates if this would create an __isa cycle.
 	_errorErrIntr = Intrinsic::Create("");
 	f = _errorErrIntr;
-	f.AddParam("self");
+	f.AddParam("self", Value::Null, Boolean(true));
 	f.AddParam("msg");
-	f.AddParam("inner");
+	f.AddParam("inner", Value::Null, Boolean(true));
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value self = ctx.GetArg(0);
 		Value msg = ctx.GetArg(1);
@@ -311,7 +313,7 @@ void CoreIntrinsics::Init() {
 
 	// info(ref)
 	f = Intrinsic::Create("info");
-	f.AddParam("ref");
+	f.AddParam("ref", Value::Null, Boolean(true));
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value arg = ctx.GetArg(0);
 		Value result = Value::make_map(8);
@@ -356,7 +358,6 @@ void CoreIntrinsics::Init() {
 	f.AddParam("self", Value::zero);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value v = ctx.GetArg(0);
-		if (v.IsError()) return IntrinsicResult(v);
 		if (v.IsNumber()) return IntrinsicResult(v);
 		if (v.IsString()) return IntrinsicResult(v.ToNumber());
 		return IntrinsicResult(Value::Null);
@@ -367,7 +368,6 @@ void CoreIntrinsics::Init() {
 	f.AddParam("x", Value::make_string(""));
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value v = ctx.GetArg(0);
-		if (v.IsError()) return IntrinsicResult(v);
 		if (v.IsNull()) return IntrinsicResult(Value::make_string(""));
 		return IntrinsicResult(v.ToStringValue(ctx.vm));
 	});
@@ -377,7 +377,6 @@ void CoreIntrinsics::Init() {
 	f.AddParam("self");
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value v = ctx.GetArg(0);
-		if (v.IsError()) return IntrinsicResult(v);
 		return IntrinsicResult(v.Upper());
 	});
 
@@ -386,7 +385,6 @@ void CoreIntrinsics::Init() {
 	f.AddParam("self");
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value v = ctx.GetArg(0);
-		if (v.IsError()) return IntrinsicResult(v);
 		return IntrinsicResult(v.Lower());
 	});
 
@@ -395,7 +393,6 @@ void CoreIntrinsics::Init() {
 	f.AddParam("codePoint", Value(65));
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value v = ctx.GetArg(0);
-		if (v.IsError()) return IntrinsicResult(v);
 		double cp;
 		Value e = RequireNumber(v, &cp);
 		if (!e.IsNull()) return IntrinsicResult(e);
@@ -407,7 +404,6 @@ void CoreIntrinsics::Init() {
 	f.AddParam("self");
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value v = ctx.GetArg(0);
-		if (v.IsError()) return IntrinsicResult(v);
 		if (!v.IsString()) return IntrinsicResult(ErrorTypes::TypeError("string", v));
 		return IntrinsicResult(Value(v.CodePoint()));
 	});
@@ -417,7 +413,6 @@ void CoreIntrinsics::Init() {
 	f.AddParam("self");
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value container = ctx.GetArg(0);
-		if (container.IsError()) return IntrinsicResult(container);
 		Value result = Value::Null;
 		if (container.IsList()) {
 			result = Value(container.ListCount());
@@ -431,16 +426,21 @@ void CoreIntrinsics::Init() {
 
 	// remove(self, index)
 	f = Intrinsic::Create("remove");
+	f.set_AffectsState(Boolean(true));
 	f.AddParam("self");
-	f.AddParam("index");
+	f.AddParam("index", Value::Null, Boolean(true));
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value container = ctx.GetArg(0);
-		if (container.IsError()) return ctx.vm.RaiseUncaughtError(container);
+		Value index = ctx.GetArg(1);
 		int result = 0;
 		if (container.IsList()) {
-			result = container.ListRemove(ctx.GetArg(1).IntValue()) ? 1 : 0;
+			if (index.IsError()) return ctx.vm.RaiseUncaughtError(index);
+			result = container.ListRemove(index.IntValue()) ? 1 : 0;
 		} else if (container.IsMap()) {
-			result = container.MapRemove(ctx.GetArg(1)) ? 1 : 0;
+			// An error is a legitimate map key; but if it is not one here,
+			// terminate rather than quietly answer 0.
+			result = container.MapRemove(index) ? 1 : 0;
+			if (result == 0 && index.IsError()) return ctx.vm.RaiseUncaughtError(index);
 		} else {
 			return IntrinsicResult(ErrorTypes::TypeError("list or map", container));
 		}
@@ -449,10 +449,10 @@ void CoreIntrinsics::Init() {
 
 	// freeze(x)
 	f = Intrinsic::Create("freeze");
+	f.set_AffectsState(Boolean(true));
 	f.AddParam("x");
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value v = ctx.GetArg(0);
-		if (v.IsError()) return ctx.vm.RaiseUncaughtError(v);
 		v.Freeze();
 		return IntrinsicResult(Value::Null);
 	});
@@ -462,7 +462,6 @@ void CoreIntrinsics::Init() {
 	f.AddParam("x");
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value v = ctx.GetArg(0);
-		if (v.IsError()) return IntrinsicResult(v);
 		return IntrinsicResult(Value::Truth(v.IsFrozen()));
 	});
 
@@ -471,7 +470,6 @@ void CoreIntrinsics::Init() {
 	f.AddParam("x");
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value v = ctx.GetArg(0);
-		if (v.IsError()) return IntrinsicResult(v);
 		return IntrinsicResult(v.FrozenCopy());
 	});
 
@@ -480,7 +478,6 @@ void CoreIntrinsics::Init() {
 	f.AddParam("x", Value::zero);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value v = ctx.GetArg(0);
-		if (v.IsError()) return IntrinsicResult(v);
 		double x;
 		Value e = RequireNumber(v, &x);
 		if (!e.IsNull()) return IntrinsicResult(e);
@@ -492,7 +489,6 @@ void CoreIntrinsics::Init() {
 	f.AddParam("x", Value::zero);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value v = ctx.GetArg(0);
-		if (v.IsError()) return IntrinsicResult(v);
 		double x;
 		Value e = RequireNumber(v, &x);
 		if (!e.IsNull()) return IntrinsicResult(e);
@@ -504,7 +500,6 @@ void CoreIntrinsics::Init() {
 	f.AddParam("x", Value::zero);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value v = ctx.GetArg(0);
-		if (v.IsError()) return IntrinsicResult(v);
 		double x;
 		Value e = RequireNumber(v, &x);
 		if (!e.IsNull()) return IntrinsicResult(e);
@@ -517,9 +512,7 @@ void CoreIntrinsics::Init() {
 	f.AddParam("x", Value::one);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value vy = ctx.GetArg(0);
-		if (vy.IsError()) return IntrinsicResult(vy);
 		Value vx = ctx.GetArg(1);
-		if (vx.IsError()) return IntrinsicResult(vx);
 		double y, x;
 		Value e = RequireNumber(vy, &y);
 		if (!e.IsNull()) return IntrinsicResult(e);
@@ -534,7 +527,6 @@ void CoreIntrinsics::Init() {
 	f.AddParam("x", Value::zero);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value v = ctx.GetArg(0);
-		if (v.IsError()) return IntrinsicResult(v);
 		double x;
 		Value e = RequireNumber(v, &x);
 		if (!e.IsNull()) return IntrinsicResult(e);
@@ -546,7 +538,6 @@ void CoreIntrinsics::Init() {
 	f.AddParam("radians", Value::zero);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value v = ctx.GetArg(0);
-		if (v.IsError()) return IntrinsicResult(v);
 		double x;
 		Value e = RequireNumber(v, &x);
 		if (!e.IsNull()) return IntrinsicResult(e);
@@ -558,7 +549,6 @@ void CoreIntrinsics::Init() {
 	f.AddParam("x", Value::zero);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value v = ctx.GetArg(0);
-		if (v.IsError()) return IntrinsicResult(v);
 		double x;
 		Value e = RequireNumber(v, &x);
 		if (!e.IsNull()) return IntrinsicResult(e);
@@ -571,9 +561,7 @@ void CoreIntrinsics::Init() {
 	f.AddParam("base", Value(10));
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value vx = ctx.GetArg(0);
-		if (vx.IsError()) return IntrinsicResult(vx);
 		Value vb = ctx.GetArg(1);
-		if (vb.IsError()) return IntrinsicResult(vb);
 		double x, b;
 		Value e = RequireNumber(vx, &x);
 		if (!e.IsNull()) return IntrinsicResult(e);
@@ -597,9 +585,7 @@ void CoreIntrinsics::Init() {
 	f.AddParam("decimalPlaces", Value::zero);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value vx = ctx.GetArg(0);
-		if (vx.IsError()) return IntrinsicResult(vx);
 		Value vd = ctx.GetArg(1);
-		if (vd.IsError()) return IntrinsicResult(vd);
 		double num, decimals;
 		Value e = RequireNumber(vx, &num);
 		if (!e.IsNull()) return IntrinsicResult(e);
@@ -620,10 +606,10 @@ void CoreIntrinsics::Init() {
 
 	// rnd(seed)
 	f = Intrinsic::Create("rnd");
+	f.set_AffectsState(Boolean(true));
 	f.AddParam("seed");
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value v = ctx.GetArg(0);
-		if (v.IsError()) return ctx.vm.RaiseUncaughtError(v);
 		// If a seed is supplied, reseed the generator before drawing.  null
 		// means "no seed"; a number (or numeric string) reseeds; any other
 		// type is a parameter error.
@@ -641,7 +627,6 @@ void CoreIntrinsics::Init() {
 	f.AddParam("x", Value::zero);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value v = ctx.GetArg(0);
-		if (v.IsError()) return IntrinsicResult(v);
 		double x;
 		Value e = RequireNumber(v, &x);
 		if (!e.IsNull()) return IntrinsicResult(e);
@@ -653,7 +638,6 @@ void CoreIntrinsics::Init() {
 	f.AddParam("radians", Value::zero);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value v = ctx.GetArg(0);
-		if (v.IsError()) return IntrinsicResult(v);
 		double x;
 		Value e = RequireNumber(v, &x);
 		if (!e.IsNull()) return IntrinsicResult(e);
@@ -665,7 +649,6 @@ void CoreIntrinsics::Init() {
 	f.AddParam("x", Value::zero);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value v = ctx.GetArg(0);
-		if (v.IsError()) return IntrinsicResult(v);
 		double x;
 		Value e = RequireNumber(v, &x);
 		if (!e.IsNull()) return IntrinsicResult(e);
@@ -677,7 +660,6 @@ void CoreIntrinsics::Init() {
 	f.AddParam("radians", Value::zero);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value v = ctx.GetArg(0);
-		if (v.IsError()) return IntrinsicResult(v);
 		double x;
 		Value e = RequireNumber(v, &x);
 		if (!e.IsNull()) return IntrinsicResult(e);
@@ -685,11 +667,11 @@ void CoreIntrinsics::Init() {
 	});
 	// push(self, value)
 	f = Intrinsic::Create("push");
+	f.set_AffectsState(Boolean(true));
 	f.AddParam("self");
-	f.AddParam("value");
+	f.AddParam("value", Value::Null, Boolean(true));
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value self = ctx.GetArg(0);
-		if (self.IsError()) return ctx.vm.RaiseUncaughtError(self);
 		Value value = ctx.GetArg(1);
 		if (self.IsList()) {
 			self.Push(value);
@@ -703,10 +685,10 @@ void CoreIntrinsics::Init() {
 
 	// pop(self)
 	f = Intrinsic::Create("pop");
+	f.set_AffectsState(Boolean(true));
 	f.AddParam("self");
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value self = ctx.GetArg(0);
-		if (self.IsError()) return ctx.vm.RaiseUncaughtError(self);
 		Value result = Value::Null;
 		if (self.IsList()) {
 			result = self.Pop();
@@ -725,10 +707,10 @@ void CoreIntrinsics::Init() {
 
 	// pull(self)
 	f = Intrinsic::Create("pull");
+	f.set_AffectsState(Boolean(true));
 	f.AddParam("self");
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value self = ctx.GetArg(0);
-		if (self.IsError()) return ctx.vm.RaiseUncaughtError(self);
 		Value result = Value::Null;
 		if (self.IsList()) {
 			result = self.Pull();
@@ -747,18 +729,19 @@ void CoreIntrinsics::Init() {
 
 	// insert(self, index, value)
 	f = Intrinsic::Create("insert");
+	f.set_AffectsState(Boolean(true));
 	f.AddParam("self");
 	f.AddParam("index");
-	f.AddParam("value");
+	f.AddParam("value", Value::Null, Boolean(true));
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value self = ctx.GetArg(0);
-		if (self.IsError()) return ctx.vm.RaiseUncaughtError(self);
 		int index = (int)ctx.GetArg(1).NumericVal();
 		Value value = ctx.GetArg(2);
 		if (self.IsList()) {
 			self.ListInsert(index, value);
 			return IntrinsicResult(self);
 		} else if (self.IsString()) {
+			if (value.IsError()) return IntrinsicResult(value);
 			return IntrinsicResult(self.StringInsert(index, value, ctx.vm));
 		}
 		return IntrinsicResult(ErrorTypes::TypeError("list or string", self));
@@ -767,14 +750,14 @@ void CoreIntrinsics::Init() {
 	// indexOf(self, value, after=null)
 	f = Intrinsic::Create("indexOf");
 	f.AddParam("self");
-	f.AddParam("value");
+	f.AddParam("value", Value::Null, Boolean(true));
 	f.AddParam("after");
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value self = ctx.GetArg(0);
-		if (self.IsError()) return IntrinsicResult(self);
 		Value value = ctx.GetArg(1);
 		Value after = ctx.GetArg(2);
 		Value result = Value::Null;
+		Boolean found = Boolean(false);
 		Value iterKey, iterVal;
 		if (self.IsList()) {
 			int afterIdx = -1;
@@ -783,16 +766,16 @@ void CoreIntrinsics::Init() {
 				if (afterIdx < -1) afterIdx += self.ListCount();
 			}
 			int idx = self.ListIndexOf(value, afterIdx);
-			if (idx >= 0) result = Value(idx);
+			if (idx >= 0) { result = Value(idx); found = Boolean(true); }
 		} else if (self.IsString()) {
-			if (!value.IsString()) return IntrinsicResult(Value::Null);
+			if (!value.IsString()) return IntrinsicResult(value.IsError() ? value : Value::Null);
 			int afterIdx = -1;
 			if (!after.IsNull()) {
 				afterIdx = (int)after.NumericVal();
 				if (afterIdx < -1) afterIdx += self.Length();
 			}
 			int idx = self.StringIndexOf(value, afterIdx + 1);
-			if (idx >= 0) result = Value(idx);
+			if (idx >= 0) { result = Value(idx); found = Boolean(true); }
 		} else if (self.IsMap()) {
 			// Find key where value matches
 			bool pastAfter = after.IsNull();
@@ -806,23 +789,27 @@ void CoreIntrinsics::Init() {
 				}
 				if (iterVal == value) {
 					result = iterKey;
+					found = Boolean(true);
 					break;
 				}
 			}
 		} else {
 			return IntrinsicResult(ErrorTypes::TypeError("list, string, or map", self));
 		}
+		// Searching for an error that is not there answers with the error
+		// itself, so that it cannot silently vanish.
+		if (!found && value.IsError()) return IntrinsicResult(value);
 		return IntrinsicResult(result);
 	});
 
 	// sort(self, byKey=null, ascending=1)
 	f = Intrinsic::Create("sort");
+	f.set_AffectsState(Boolean(true));
 	f.AddParam("self");
 	f.AddParam("byKey");
 	f.AddParam("ascending", Value::one);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value self = ctx.GetArg(0);
-		if (self.IsError()) return ctx.vm.RaiseUncaughtError(self);
 		Value byKey = ctx.GetArg(1);
 		bool ascending = ctx.GetArg(2).BoolValue();
 		if (!self.IsList()) return IntrinsicResult(ErrorTypes::TypeError("list", self));
@@ -837,10 +824,10 @@ void CoreIntrinsics::Init() {
 
 	// shuffle(self)
 	f = Intrinsic::Create("shuffle");
+	f.set_AffectsState(Boolean(true));
 	f.AddParam("self");
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value self = ctx.GetArg(0);
-		if (self.IsError()) return ctx.vm.RaiseUncaughtError(self);
 		Value temp;
 		Value iterKey, iterVal;
 		if (self.IsList()) {
@@ -885,7 +872,6 @@ void CoreIntrinsics::Init() {
 	f.AddParam("delimiter", Value::make_string(" "));
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value self = ctx.GetArg(0);
-		if (self.IsError()) return IntrinsicResult(self);
 		if (!self.IsList()) return IntrinsicResult(ErrorTypes::TypeError("list", self));
 		Value delim = ctx.GetArg(1);
 		String delimStr = delim.IsNull() ? " " : delim.ToString(nullptr);
@@ -904,7 +890,6 @@ void CoreIntrinsics::Init() {
 	f.AddParam("maxCount", Value(-1));
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value self = ctx.GetArg(0);
-		if (self.IsError()) return IntrinsicResult(self);
 		if (!self.IsString()) return IntrinsicResult(ErrorTypes::TypeError("string", self));
 		Value delim = ctx.GetArg(1);
 		int maxCount = (int)ctx.GetArg(2).NumericVal();
@@ -913,13 +898,13 @@ void CoreIntrinsics::Init() {
 
 	// replace(self, oldval, newval, maxCount=null)
 	f = Intrinsic::Create("replace");
+	f.set_AffectsState(Boolean(true));
 	f.AddParam("self");
-	f.AddParam("oldval");
-	f.AddParam("newval");
+	f.AddParam("oldval", Value::Null, Boolean(true));
+	f.AddParam("newval", Value::Null, Boolean(true));
 	f.AddParam("maxCount");
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value self = ctx.GetArg(0);
-		if (self.IsError()) return ctx.vm.RaiseUncaughtError(self);
 		Value oldVal = ctx.GetArg(1);
 		Value newVal = ctx.GetArg(2);
 		Value maxCountVal = ctx.GetArg(3);
@@ -935,6 +920,7 @@ void CoreIntrinsics::Init() {
 					if (maxCount > 0 && found >= maxCount) break;
 				}
 			}
+			if (found == 0 && oldVal.IsError()) return ctx.vm.RaiseUncaughtError(oldVal);
 			return IntrinsicResult(self);
 		} else if (self.IsMap()) {
 			// Collect keys whose values match
@@ -946,11 +932,15 @@ void CoreIntrinsics::Init() {
 					if (maxCount > 0 && keysToChange.Count() >= maxCount) break;
 				}
 			}
+			if (keysToChange.Count() == 0 && oldVal.IsError()) return ctx.vm.RaiseUncaughtError(oldVal);
 			for (int i = 0; i < keysToChange.Count(); i++) {
 				self.MapSet(keysToChange[i], newVal);
 			}
 			return IntrinsicResult(self);
 		} else if (self.IsString()) {
+			// A string can hold no error, so one given here comes straight back.
+			if (oldVal.IsError()) return IntrinsicResult(oldVal);
+			if (newVal.IsError()) return IntrinsicResult(newVal);
 			return IntrinsicResult(self.ReplaceMax(oldVal, newVal, maxCount));
 		}
 		return IntrinsicResult(ErrorTypes::TypeError("list, map, or string", self));
@@ -961,17 +951,19 @@ void CoreIntrinsics::Init() {
 	f.AddParam("self");
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value self = ctx.GetArg(0);
-		if (self.IsError()) return IntrinsicResult(self);
 		Value iterVal;
 		double total = 0;
 		if (self.IsList()) {
 			int count = self.ListCount();
 			for (int i = 0; i < count; i++) {
-				total += self.ListGet(i).NumericVal();
+				Value item = self.ListGet(i);
+				if (item.IsError()) return IntrinsicResult(item);
+				total += item.NumericVal();
 			}
 		} else if (self.IsMap()) {
 			MapIterator iter = self.Iterator();
 			while (map_iterator_next(&iter, nullptr, &iterVal)) {
+				if (iterVal.IsError()) return IntrinsicResult(iterVal);
 				total += iterVal.NumericVal();
 			}
 		} else {
@@ -990,7 +982,6 @@ void CoreIntrinsics::Init() {
 	f.AddParam("to");
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value seq = ctx.GetArg(0);
-		if (seq.IsError()) return IntrinsicResult(seq);
 		int fromIdx = (int)ctx.GetArg(1).NumericVal();
 		if (seq.IsList()) {
 			int count = seq.ListCount();
@@ -1009,7 +1000,6 @@ void CoreIntrinsics::Init() {
 	f.AddParam("self");
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value self = ctx.GetArg(0);
-		if (self.IsError()) return IntrinsicResult(self);
 		Value result = Value::Null;
 		Value iterKey;
 		if (self.IsList()) {
@@ -1041,23 +1031,23 @@ void CoreIntrinsics::Init() {
 	// hasIndex(self, index)
 	f = Intrinsic::Create("hasIndex");
 	f.AddParam("self");
-	f.AddParam("index");
+	f.AddParam("index", Value::Null, Boolean(true));
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value self = ctx.GetArg(0);
-		if (self.IsError()) return IntrinsicResult(self);
 		Value index = ctx.GetArg(1);
 		if (self.IsList()) {
-			if (!index.IsNumber()) return IntrinsicResult(Value::zero);
+			if (!index.IsNumber()) return IntrinsicResult(index.IsError() ? index : Value::zero);
 			int i = (int)index.NumericVal();
 			int count = self.ListCount();
 			return IntrinsicResult(Value::Truth(i >= -count && i < count));
 		} else if (self.IsString()) {
-			if (!index.IsNumber()) return IntrinsicResult(Value::zero);
+			if (!index.IsNumber()) return IntrinsicResult(index.IsError() ? index : Value::zero);
 			int i = (int)index.NumericVal();
 			int slen = self.Length();
 			return IntrinsicResult(Value::Truth(i >= -slen && i < slen));
 		} else if (self.IsMap()) {
-			return IntrinsicResult(Value::Truth(self.HasKey(index)));
+			if (self.HasKey(index)) return IntrinsicResult(Value::one);
+			return IntrinsicResult(index.IsError() ? index : Value::zero);
 		}
 		return IntrinsicResult(ErrorTypes::TypeError("list, string, or map", self));
 	});
@@ -1067,7 +1057,6 @@ void CoreIntrinsics::Init() {
 	f.AddParam("self");
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value self = ctx.GetArg(0);
-		if (self.IsError()) return IntrinsicResult(self);
 		Value result = self;
 		Value iterVal;
 		if (self.IsMap()) {
@@ -1097,11 +1086,8 @@ void CoreIntrinsics::Init() {
 	f.AddParam("step");
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value vFrom = ctx.GetArg(0);
-		if (vFrom.IsError()) return IntrinsicResult(vFrom);
 		Value vTo = ctx.GetArg(1);
-		if (vTo.IsError()) return IntrinsicResult(vTo);
 		Value vStep = ctx.GetArg(2);
-		if (vStep.IsError()) return IntrinsicResult(vStep);
 		double fromVal, toVal;
 		Value e = RequireNumber(vFrom, &fromVal);
 		if (!e.IsNull()) return IntrinsicResult(e);
@@ -1117,13 +1103,14 @@ void CoreIntrinsics::Init() {
 		if (step == 0) {
 			return IntrinsicResult(ErrorTypes::RuntimeError("range() step may not be zero"));
 		}
-		double rawCount = (toVal - fromVal) / step + 1.0;
+		// Note: floor (not truncation toward zero) is required here, so that
+		// a partial step in the wrong direction yields no elements at all.
+		double rawCount = Math::Floor((toVal - fromVal) / step) + 1.0;
 		if (StringUtils::IsNaN(rawCount) || rawCount > Value::MAX_COLLECTION_SIZE) {
 			return IntrinsicResult(ErrorTypes::RuntimeError(
 				"range() result too large (exceeds maximum list size)"));
 		}
-		int count = (int)((toVal - fromVal) / step) + 1;
-		if (count < 0) count = 0;
+		int count = (rawCount < 0) ? 0 : (int)rawCount;
 		// Build a computed list: element i is fromVal + step*i.  This is O(1)
 		// to construct and materializes lazily only if the list is mutated.
 		Value result = GCManager::NewComputedList(Value(fromVal), Value(step), count);
@@ -1201,6 +1188,7 @@ void CoreIntrinsics::Init() {
 	// seconds (default 1.0): how many seconds to wait
 	// See also: time, yield
 	f = Intrinsic::Create("wait");
+	f.set_AffectsState(Boolean(true));
 	f.AddParam("seconds", Value::one);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		double now = ctx.vm.ElapsedTime();
@@ -1208,7 +1196,6 @@ void CoreIntrinsics::Init() {
 		if (partialResult.done) {
 			// Fresh call: calculate end time and return as partial result
 			vSeconds = ctx.GetArg(0);
-			if (vSeconds.IsError()) return ctx.vm.RaiseUncaughtError(vSeconds);
 			double interval = vSeconds.NumericVal();
 			// We are about to be idle for a while, so this is a cheap moment
 			// to collect -- the pause hides inside the wait.  Only on the
@@ -1291,9 +1278,7 @@ void CoreIntrinsics::Init() {
 	f.AddParam("j", Value::zero);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value ai = ctx.GetArg(0);
-		if (ai.IsError()) return IntrinsicResult(ai);
 		Value aj = ctx.GetArg(1);
-		if (aj.IsError()) return IntrinsicResult(aj);
 		Double vi, vj;
 		Value e = RequireNumber(ai, &vi);
 		if (!e.IsNull()) return IntrinsicResult(e);
@@ -1314,9 +1299,7 @@ void CoreIntrinsics::Init() {
 	f.AddParam("j", Value::zero);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value ai = ctx.GetArg(0);
-		if (ai.IsError()) return IntrinsicResult(ai);
 		Value aj = ctx.GetArg(1);
-		if (aj.IsError()) return IntrinsicResult(aj);
 		Double vi, vj;
 		Value e = RequireNumber(ai, &vi);
 		if (!e.IsNull()) return IntrinsicResult(e);
@@ -1337,9 +1320,7 @@ void CoreIntrinsics::Init() {
 	f.AddParam("j", Value::zero);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value ai = ctx.GetArg(0);
-		if (ai.IsError()) return IntrinsicResult(ai);
 		Value aj = ctx.GetArg(1);
-		if (aj.IsError()) return IntrinsicResult(aj);
 		Double vi, vj;
 		Value e = RequireNumber(ai, &vi);
 		if (!e.IsNull()) return IntrinsicResult(e);
@@ -1356,7 +1337,7 @@ void CoreIntrinsics::Init() {
 
 	// hash(obj)
 	f = Intrinsic::Create("hash");
-	f.AddParam("obj");
+	f.AddParam("obj", Value::Null, Boolean(true));
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value v = ctx.GetArg(0);
 		return IntrinsicResult(Value(v.Hash()));
@@ -1364,8 +1345,8 @@ void CoreIntrinsics::Init() {
 
 	// refEquals(a, b)
 	f = Intrinsic::Create("refEquals");
-	f.AddParam("a");
-	f.AddParam("b");
+	f.AddParam("a", Value::Null, Boolean(true));
+	f.AddParam("b", Value::Null, Boolean(true));
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value a = ctx.GetArg(0);
 		Value b = ctx.GetArg(1);
@@ -1391,6 +1372,7 @@ void CoreIntrinsics::Init() {
 	// gc.collect(full=false)  — underlying implementation for gc.collect
 	_gcCollectIntr = Intrinsic::Create("");
 	f = _gcCollectIntr;
+	f.set_AffectsState(Boolean(true));
 	f.AddParam("full", Value::zero);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value vFull = ctx.GetArg(0);

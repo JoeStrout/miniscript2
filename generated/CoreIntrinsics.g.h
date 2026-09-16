@@ -30,8 +30,8 @@ class CoreIntrinsics {
 	// Returns Value.Null on success (with `result` set); otherwise returns an
 	// error Value to be returned from the intrinsic: a TypeError when the value
 	// is the wrong type (not a number or string), or a FormatError when it is a
-	// string that does not parse as a number.  Callers should check/propagate
-	// v.IsError() before calling this.
+	// string that does not parse as a number.  (v is never an error: the VM
+	// refuses error arguments before an intrinsic runs; see VM.RefusedErrorArg.)
 	private: static Value RequireNumber(Value v, double* result);
 
 	private: static void AddIntrinsicToMap(Value map, String methodName);

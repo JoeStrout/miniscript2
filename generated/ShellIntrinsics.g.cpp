@@ -802,6 +802,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 
 	// resize(bytes) — allocate / reallocate buffer; copies existing data
 	f = Intrinsic::Create("");
+	f.set_AffectsState(Boolean(true));
 	f.AddParam("self", Value::Null);
 	f.AddParam("bytes", Value(32.0));
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
@@ -832,6 +833,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	_rdKeys.Add("byte");
 
 	f = Intrinsic::Create("");
+	f.set_AffectsState(Boolean(true));
 	f.AddParam("self", Value::Null);
 	f.AddParam("offset", Value::zero);
 	f.AddParam("value", Value::zero);
@@ -867,6 +869,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	_rdKeys.Add("sbyte");
 
 	f = Intrinsic::Create("");
+	f.set_AffectsState(Boolean(true));
 	f.AddParam("self", Value::Null);
 	f.AddParam("offset", Value::zero);
 	f.AddParam("value", Value::zero);
@@ -905,6 +908,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	_rdKeys.Add("ushort");
 
 	f = Intrinsic::Create("");
+	f.set_AffectsState(Boolean(true));
 	f.AddParam("self", Value::Null);
 	f.AddParam("offset", Value::zero);
 	f.AddParam("value", Value::zero);
@@ -945,6 +949,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	_rdKeys.Add("short");
 
 	f = Intrinsic::Create("");
+	f.set_AffectsState(Boolean(true));
 	f.AddParam("self", Value::Null);
 	f.AddParam("offset", Value::zero);
 	f.AddParam("value", Value::zero);
@@ -986,6 +991,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	_rdKeys.Add("uint");
 
 	f = Intrinsic::Create("");
+	f.set_AffectsState(Boolean(true));
 	f.AddParam("self", Value::Null);
 	f.AddParam("offset", Value::zero);
 	f.AddParam("value", Value::zero);
@@ -1026,6 +1032,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	_rdKeys.Add("int");
 
 	f = Intrinsic::Create("");
+	f.set_AffectsState(Boolean(true));
 	f.AddParam("self", Value::Null);
 	f.AddParam("offset", Value::zero);
 	f.AddParam("value", Value::zero);
@@ -1067,6 +1074,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	_rdKeys.Add("float");
 
 	f = Intrinsic::Create("");
+	f.set_AffectsState(Boolean(true));
 	f.AddParam("self", Value::Null);
 	f.AddParam("offset", Value::zero);
 	f.AddParam("value", Value::zero);
@@ -1107,6 +1115,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	_rdKeys.Add("double");
 
 	f = Intrinsic::Create("");
+	f.set_AffectsState(Boolean(true));
 	f.AddParam("self", Value::Null);
 	f.AddParam("offset", Value::zero);
 	f.AddParam("value", Value::zero);
@@ -1147,6 +1156,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	_rdKeys.Add("utf8");
 
 	f = Intrinsic::Create("");
+	f.set_AffectsState(Boolean(true));
 	f.AddParam("self", Value::Null);
 	f.AddParam("offset", Value::zero);
 	f.AddParam("value", Value::emptyString);
@@ -1168,6 +1178,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	_fhStart = Intrinsic::Count();
 
 	f = Intrinsic::Create("");
+	f.set_AffectsState(Boolean(true));
 	f.AddParam("self", Value::Null);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value self = ctx.GetArg(0);
@@ -1190,6 +1201,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	_fhKeys.Add("isOpen");
 
 	f = Intrinsic::Create("");
+	f.set_AffectsState(Boolean(true));
 	f.AddParam("self", Value::Null);
 	f.AddParam("data", Value::emptyString);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
@@ -1203,6 +1215,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	_fhKeys.Add("write");
 
 	f = Intrinsic::Create("");
+	f.set_AffectsState(Boolean(true));
 	f.AddParam("self", Value::Null);
 	f.AddParam("data", Value::emptyString);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
@@ -1216,6 +1229,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	_fhKeys.Add("writeLine");
 
 	f = Intrinsic::Create("");
+	f.set_AffectsState(Boolean(true));
 	f.AddParam("self", Value::Null);
 	f.AddParam("byteCount", Value(-1.0));
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
@@ -1228,6 +1242,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	_fhKeys.Add("read");
 
 	f = Intrinsic::Create("");
+	f.set_AffectsState(Boolean(true));
 	f.AddParam("self", Value::Null);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value self = ctx.GetArg(0);
@@ -1250,6 +1265,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	_fhKeys.Add("position");
 
 	f = Intrinsic::Create("");
+	f.set_AffectsState(Boolean(true));
 	f.AddParam("self", Value::Null);
 	f.AddParam("pos", Value::zero);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
@@ -1283,6 +1299,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	_fmKeys.Add("curdir");
 
 	f = Intrinsic::Create("");
+	f.set_AffectsState(Boolean(true));
 	f.AddParam("path", Value::emptyString);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		String path = ctx.GetArg(0).ToString(nullptr);
@@ -1336,6 +1353,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	_fmKeys.Add("info");
 
 	f = Intrinsic::Create("");
+	f.set_AffectsState(Boolean(true));
 	f.AddParam("path", Value::emptyString);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		String path = ctx.GetArg(0).ToString(nullptr);
@@ -1345,6 +1363,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	_fmKeys.Add("makedir");
 
 	f = Intrinsic::Create("");
+	f.set_AffectsState(Boolean(true));
 	f.AddParam("oldPath", Value::emptyString);
 	f.AddParam("newPath", Value::emptyString);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
@@ -1356,6 +1375,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	_fmKeys.Add("move");
 
 	f = Intrinsic::Create("");
+	f.set_AffectsState(Boolean(true));
 	f.AddParam("oldPath", Value::emptyString);
 	f.AddParam("newPath", Value::emptyString);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
@@ -1367,6 +1387,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	_fmKeys.Add("copy");
 
 	f = Intrinsic::Create("");
+	f.set_AffectsState(Boolean(true));
 	f.AddParam("path", Value::emptyString);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		String path = ctx.GetArg(0).ToString(nullptr);
@@ -1384,6 +1405,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	_fmKeys.Add("readLines");
 
 	f = Intrinsic::Create("");
+	f.set_AffectsState(Boolean(true));
 	f.AddParam("path", Value::emptyString);
 	f.AddParam("lines", Value::Null);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
@@ -1400,6 +1422,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 	_fmKeys.Add("loadRaw");
 
 	f = Intrinsic::Create("");
+	f.set_AffectsState(Boolean(true));
 	f.AddParam("path", Value::emptyString);
 	f.AddParam("data", Value::Null);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
@@ -1410,6 +1433,7 @@ void ShellIntrinsics::InitFileIntrinsics() {
 
 	// open(path, mode) — return a FileHandle instance or an error
 	f = Intrinsic::Create("");
+	f.set_AffectsState(Boolean(true));
 	f.AddParam("path", Value::emptyString);
 	f.AddParam("mode", Value::make_string("r+"));
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
@@ -1522,6 +1546,7 @@ void ShellIntrinsics::Init() {
 	// child interpreter is that child's business, and must not shut down a
 	// host that is merely running it.  See VM.ExitRequested.
 	f = Intrinsic::Create("exit");
+	f.set_AffectsState(Boolean(true));
 	f.AddParam("resultCode", Value::Null);
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value resultCode = ctx.GetArg(0);
@@ -1556,7 +1581,6 @@ void ShellIntrinsics::Init() {
 			return FinishExec(partialResult.result);
 		}
 		Value cmdArg = ctx.GetArg(0);
-		if (cmdArg.IsError()) return IntrinsicResult(cmdArg);
 		String cmd = cmdArg.ToString(nullptr);
 		if (!_envMap.IsNull()) {
 			SyncEnvMap();
@@ -1576,7 +1600,6 @@ void ShellIntrinsics::Init() {
 	f.AddParam("dateStr");
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value date = ctx.GetArg(0);
-		if (date.IsError()) return IntrinsicResult(date);
 		Double t;
 		if (date.IsNull()) {
 			t = NowSeconds();
@@ -1598,9 +1621,7 @@ void ShellIntrinsics::Init() {
 	f.AddParam("format", Value::make_string("yyyy-MM-dd HH:mm:ss"));
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value date = ctx.GetArg(0);
-		if (date.IsError()) return IntrinsicResult(date);
 		Value format = ctx.GetArg(1);
-		if (format.IsError()) return IntrinsicResult(format);
 		String formatStr;
 		if (format.IsNull()) formatStr = "yyyy-MM-dd HH:mm:ss";
 		else formatStr = format.ToString(nullptr);
@@ -1640,7 +1661,6 @@ void ShellIntrinsics::Init() {
 		}
 		// Phase 1: find, parse, compile, and push the module.
 		Value libnameArg = ctx.GetArg(0);
-		if (libnameArg.IsError()) return IntrinsicResult(libnameArg);
 		String libname = libnameArg.ToString(nullptr);
 		if (libname.Length() == 0) {
 			return IntrinsicResult(ErrorTypes::FileError("import: no library name given"));

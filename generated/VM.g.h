@@ -358,6 +358,13 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	// On error, calls RaiseRuntimeError and returns -1.
 	private: Int32 AutoInvokeFuncRef(Value funcRefVal, Int32 resultReg, Int32 returnPC, Int32 baseIndex, FuncDef currentFunc, FuncDef* calleeOut);
 
+	// An intrinsic never swallows an error silently.  Unless a parameter is
+	// declared to accept one (Intrinsic.AddParam), an error passed to it means
+	// the intrinsic does not run at all: the call evaluates to that error, or
+	// terminates if the intrinsic affects state.  This returns the first such
+	// error among the arguments in place at calleeBase, or null if there is none.
+	private: Value RefusedErrorArg(FuncDef callee, Int32 calleeBase);
+
 	// Invoke a native callback and handle the result.  If done, writes the
 	// result to stack[absoluteResultIndex] and returns true.  If not done,
 	// stores the pending state for re-invocation and returns false.
@@ -782,6 +789,13 @@ struct VM {
 	// On error, calls RaiseRuntimeError and returns -1.
 	private: inline Int32 AutoInvokeFuncRef(Value funcRefVal, Int32 resultReg, Int32 returnPC, Int32 baseIndex, FuncDef currentFunc, FuncDef* calleeOut);
 
+	// An intrinsic never swallows an error silently.  Unless a parameter is
+	// declared to accept one (Intrinsic.AddParam), an error passed to it means
+	// the intrinsic does not run at all: the call evaluates to that error, or
+	// terminates if the intrinsic affects state.  This returns the first such
+	// error among the arguments in place at calleeBase, or null if there is none.
+	private: inline Value RefusedErrorArg(FuncDef callee, Int32 calleeBase);
+
 	// Invoke a native callback and handle the result.  If done, writes the
 	// result to stack[absoluteResultIndex] and returns true.  If not done,
 	// stores the pending state for re-invocation and returns false.
@@ -972,6 +986,7 @@ inline Int32 VM::ProcessArguments(Int32 argCount,Int32 selfParam,Int32 startPC,I
 inline void VM::ApplyPendingContext(Int32 calleeBase,FuncDef callee) { return get()->ApplyPendingContext(calleeBase, callee); }
 inline void VM::SetupCallFrame(Int32 argCount,Int32 selfParam,Int32 calleeBase,FuncDef callee) { return get()->SetupCallFrame(argCount, selfParam, calleeBase, callee); }
 inline Int32 VM::AutoInvokeFuncRef(Value funcRefVal,Int32 resultReg,Int32 returnPC,Int32 baseIndex,FuncDef currentFunc,FuncDef* calleeOut) { return get()->AutoInvokeFuncRef(funcRefVal, resultReg, returnPC, baseIndex, currentFunc, calleeOut); }
+inline Value VM::RefusedErrorArg(FuncDef callee,Int32 calleeBase) { return get()->RefusedErrorArg(callee, calleeBase); }
 inline bool VM::InvokeNativeCallback(NativeCallbackDelegate callback,FuncDef callee,Int32 calleeBase,Int32 argCount,IntrinsicResult partialResult,Int32 absoluteResultIndex) { return get()->InvokeNativeCallback(callback, callee, calleeBase, argCount, partialResult, absoluteResultIndex); }
 inline Value VM::Execute(FuncDef entry) { return get()->Execute(entry); }
 inline Value VM::Execute(FuncDef entry,UInt32 maxCycles) { return get()->Execute(entry, maxCycles); }

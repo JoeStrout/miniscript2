@@ -2,7 +2,11 @@
 // Each intrinsic is defined with a builder-style API:
 //   f = Intrinsic.Create("name");
 //   f.AddParam("paramName", defaultValue);
-//   f.Code = (stk, bi, ac) => { ... };
+//   f.AddParam("other", defaultValue, true);   // this one accepts an error argument
+//   f.AffectsState = true;                      // if it changes state or returns nothing
+//   f.Code = (Context ctx, IntrinsicResult partialResult) => { ... };
+// An error argument to any parameter not declared to accept one never reaches
+// Code: the call evaluates to that error, or terminates if AffectsState.
 
 using System;
 using System.Collections.Generic;
@@ -19,6 +23,11 @@ public class Intrinsic {
 
 	private List<String> _paramNames;
 	private List<Value> _paramDefaults;
+	private UInt32 _acceptsErrorMask = 0;
+
+	// Set for an intrinsic that changes state (or returns nothing), so that an
+	// error argument it did not ask for terminates rather than being returned.
+	public Boolean AffectsState = false;
 	private FuncDef _funcDef = null;
 	private Value _funcRef = Value.Null;
 
@@ -103,6 +112,15 @@ public class Intrinsic {
 		_paramDefaults.Add(defaultValue);
 	}
 
+	// Declare a parameter that accepts an error argument.  By default an error
+	// never reaches an intrinsic (see FuncDef.AcceptsErrorMask).  Accept one only
+	// where the intrinsic has a real use for it -- showing it, storing it, or
+	// searching for it -- and never lets it vanish silently.
+	public void AddParam(String name, Value defaultValue, Boolean acceptsError) {
+		if (acceptsError && _paramNames.Count < 32) _acceptsErrorMask |= (1u << _paramNames.Count);
+		AddParam(name, defaultValue);
+	}
+
 	public static Intrinsic GetByName(String name) {
 		Intrinsic result;
 		if (_byName.TryGetValue(name, out result)) return result;
@@ -139,6 +157,8 @@ public class Intrinsic {
 		}
 		def.MaxRegs = (UInt16)(_paramNames.Count + 1); // r0 + params
 		def.NativeCallback = Code;
+		def.AcceptsErrorMask = _acceptsErrorMask;
+		def.AffectsState = AffectsState;
 		return def;
 	}
 

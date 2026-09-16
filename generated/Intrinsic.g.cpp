@@ -67,6 +67,10 @@ void IntrinsicStorage::AddParam(String name,Value defaultValue) {
 	_paramNames.Add(name);
 	_paramDefaults.Add(defaultValue);
 }
+void IntrinsicStorage::AddParam(String name,Value defaultValue,Boolean acceptsError) {
+	if (acceptsError && _paramNames.Count() < 32) _acceptsErrorMask |= (1u << _paramNames.Count());
+	AddParam(name, defaultValue);
+}
 Intrinsic IntrinsicStorage::GetByName(String name) {
 	Intrinsic result;
 	if (_byName.TryGetValue(name, &result)) return result;
@@ -95,6 +99,8 @@ FuncDef IntrinsicStorage::BuildFuncDef() {
 	}
 	def.set_MaxRegs((UInt16)(_paramNames.Count() + 1)); // r0 + params
 	def.set_NativeCallback(Code);
+	def.set_AcceptsErrorMask(_acceptsErrorMask);
+	def.set_AffectsState(AffectsState);
 	return def;
 }
 void IntrinsicStorage::RegisterAll(Dictionary<String, Value> intrinsics) {

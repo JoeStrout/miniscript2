@@ -5025,6 +5025,36 @@ print range(3, 3)
 --------------------------------
 [3]
 ================================
+==== range: step in wrong direction
+================================
+print range(0, 1, -2)
+print range(0, 2, -1)
+print range(0, 2, -3)
+print range(10, 1, 1)
+print range(10, 1, 3)
+print range(2, 0, 2)
+print range(2, 0, 3)
+--------------------------------
+[]
+[]
+[]
+[]
+[]
+[]
+[]
+================================
+==== range: partial final step
+================================
+print range(0, 10, 4)
+print range(10, 0, -4)
+print range(0, 1, 2)
+print range(1, 0, -2)
+--------------------------------
+[0, 4, 8]
+[10, 6, 2]
+[0]
+[1]
+================================
 ================================================================================
 ==== SECTION 25: FOR OVER RANGE
 ================================================================================
@@ -5888,6 +5918,77 @@ x = e[0]
 print x == e
 print e[0][1].message
 ---------------------------------
+1
+bad
+================================
+==== error: indexOf answers an absent error with the error itself
+================================
+e = err("bad")
+print [1,2].indexOf(e) == e
+print "abc".indexOf(e) == e
+print [1,e].indexOf(e)
+print {"k": e}.indexOf(e)
+---------------------------------
+1
+1
+1
+k
+================================
+==== error: hasIndex and remove find an error used as a map key
+================================
+e = err("bad")
+m = {}
+m[e] = 5
+print m.hasIndex(e)
+print m.remove(e)
+print m.hasIndex(e) == e
+---------------------------------
+1
+1
+1
+================================
+==== error: removing an absent error key terminates
+================================
+e = err("bad")
+m = {1: 2}
+m.remove e
+---------------------------------
+Runtime Error: Uncaught bad [line 3]
+================================
+==== error: an unwanted error argument makes the call return it
+================================
+e = err("bad")
+print slice([1,2,3], 0, e) == e
+print "a,b".split(e) == e
+print "abc".replace("b", e) == e
+print "abc".insert(0, e) == e
+print sum([1, e]) == e
+print err(e) == e
+---------------------------------
+1
+1
+1
+1
+1
+1
+================================
+==== error: an unwanted error argument to a state-changing intrinsic terminates
+================================
+e = err("bad")
+print "x", e
+---------------------------------
+Runtime Error: Uncaught bad [line 2]
+================================
+==== error: accepted error arguments are used
+================================
+e = err("bad")
+l = [1]
+l.push e
+print l
+print err("outer", e).inner == e
+print info(e).message
+---------------------------------
+[1, error: bad]
 1
 bad
 ================================

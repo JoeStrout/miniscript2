@@ -1431,6 +1431,7 @@ public static class ShellIntrinsics {
 
 		// resize(bytes) — allocate / reallocate buffer; copies existing data
 		f = Intrinsic.Create("");
+		f.AffectsState = true;
 		f.AddParam("self", Value.Null);
 		f.AddParam("bytes", new Value(32.0));
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
@@ -1461,6 +1462,7 @@ public static class ShellIntrinsics {
 		_rdKeys.Add("byte");
 
 		f = Intrinsic.Create("");
+		f.AffectsState = true;
 		f.AddParam("self", Value.Null);
 		f.AddParam("offset", Value.zero);
 		f.AddParam("value", Value.zero);
@@ -1496,6 +1498,7 @@ public static class ShellIntrinsics {
 		_rdKeys.Add("sbyte");
 
 		f = Intrinsic.Create("");
+		f.AffectsState = true;
 		f.AddParam("self", Value.Null);
 		f.AddParam("offset", Value.zero);
 		f.AddParam("value", Value.zero);
@@ -1534,6 +1537,7 @@ public static class ShellIntrinsics {
 		_rdKeys.Add("ushort");
 
 		f = Intrinsic.Create("");
+		f.AffectsState = true;
 		f.AddParam("self", Value.Null);
 		f.AddParam("offset", Value.zero);
 		f.AddParam("value", Value.zero);
@@ -1574,6 +1578,7 @@ public static class ShellIntrinsics {
 		_rdKeys.Add("short");
 
 		f = Intrinsic.Create("");
+		f.AffectsState = true;
 		f.AddParam("self", Value.Null);
 		f.AddParam("offset", Value.zero);
 		f.AddParam("value", Value.zero);
@@ -1615,6 +1620,7 @@ public static class ShellIntrinsics {
 		_rdKeys.Add("uint");
 
 		f = Intrinsic.Create("");
+		f.AffectsState = true;
 		f.AddParam("self", Value.Null);
 		f.AddParam("offset", Value.zero);
 		f.AddParam("value", Value.zero);
@@ -1655,6 +1661,7 @@ public static class ShellIntrinsics {
 		_rdKeys.Add("int");
 
 		f = Intrinsic.Create("");
+		f.AffectsState = true;
 		f.AddParam("self", Value.Null);
 		f.AddParam("offset", Value.zero);
 		f.AddParam("value", Value.zero);
@@ -1696,6 +1703,7 @@ public static class ShellIntrinsics {
 		_rdKeys.Add("float");
 
 		f = Intrinsic.Create("");
+		f.AffectsState = true;
 		f.AddParam("self", Value.Null);
 		f.AddParam("offset", Value.zero);
 		f.AddParam("value", Value.zero);
@@ -1736,6 +1744,7 @@ public static class ShellIntrinsics {
 		_rdKeys.Add("double");
 
 		f = Intrinsic.Create("");
+		f.AffectsState = true;
 		f.AddParam("self", Value.Null);
 		f.AddParam("offset", Value.zero);
 		f.AddParam("value", Value.zero);
@@ -1776,6 +1785,7 @@ public static class ShellIntrinsics {
 		_rdKeys.Add("utf8");
 
 		f = Intrinsic.Create("");
+		f.AffectsState = true;
 		f.AddParam("self", Value.Null);
 		f.AddParam("offset", Value.zero);
 		f.AddParam("value", Value.emptyString);
@@ -1797,6 +1807,7 @@ public static class ShellIntrinsics {
 		_fhStart = Intrinsic.Count();
 
 		f = Intrinsic.Create("");
+		f.AffectsState = true;
 		f.AddParam("self", Value.Null);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value self = ctx.GetArg(0);
@@ -1819,6 +1830,7 @@ public static class ShellIntrinsics {
 		_fhKeys.Add("isOpen");
 
 		f = Intrinsic.Create("");
+		f.AffectsState = true;
 		f.AddParam("self", Value.Null);
 		f.AddParam("data", Value.emptyString);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
@@ -1832,6 +1844,7 @@ public static class ShellIntrinsics {
 		_fhKeys.Add("write");
 
 		f = Intrinsic.Create("");
+		f.AffectsState = true;
 		f.AddParam("self", Value.Null);
 		f.AddParam("data", Value.emptyString);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
@@ -1845,6 +1858,7 @@ public static class ShellIntrinsics {
 		_fhKeys.Add("writeLine");
 
 		f = Intrinsic.Create("");
+		f.AffectsState = true;
 		f.AddParam("self", Value.Null);
 		f.AddParam("byteCount", new Value(-1.0));
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
@@ -1857,6 +1871,7 @@ public static class ShellIntrinsics {
 		_fhKeys.Add("read");
 
 		f = Intrinsic.Create("");
+		f.AffectsState = true;
 		f.AddParam("self", Value.Null);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value self = ctx.GetArg(0);
@@ -1879,6 +1894,7 @@ public static class ShellIntrinsics {
 		_fhKeys.Add("position");
 
 		f = Intrinsic.Create("");
+		f.AffectsState = true;
 		f.AddParam("self", Value.Null);
 		f.AddParam("pos", Value.zero);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
@@ -1912,6 +1928,7 @@ public static class ShellIntrinsics {
 		_fmKeys.Add("curdir");
 
 		f = Intrinsic.Create("");
+		f.AffectsState = true;
 		f.AddParam("path", Value.emptyString);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			String path = ctx.GetArg(0).ToString(null);
@@ -1965,6 +1982,7 @@ public static class ShellIntrinsics {
 		_fmKeys.Add("info");
 
 		f = Intrinsic.Create("");
+		f.AffectsState = true;
 		f.AddParam("path", Value.emptyString);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			String path = ctx.GetArg(0).ToString(null);
@@ -1974,6 +1992,7 @@ public static class ShellIntrinsics {
 		_fmKeys.Add("makedir");
 
 		f = Intrinsic.Create("");
+		f.AffectsState = true;
 		f.AddParam("oldPath", Value.emptyString);
 		f.AddParam("newPath", Value.emptyString);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
@@ -1985,6 +2004,7 @@ public static class ShellIntrinsics {
 		_fmKeys.Add("move");
 
 		f = Intrinsic.Create("");
+		f.AffectsState = true;
 		f.AddParam("oldPath", Value.emptyString);
 		f.AddParam("newPath", Value.emptyString);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
@@ -1996,6 +2016,7 @@ public static class ShellIntrinsics {
 		_fmKeys.Add("copy");
 
 		f = Intrinsic.Create("");
+		f.AffectsState = true;
 		f.AddParam("path", Value.emptyString);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			String path = ctx.GetArg(0).ToString(null);
@@ -2013,6 +2034,7 @@ public static class ShellIntrinsics {
 		_fmKeys.Add("readLines");
 
 		f = Intrinsic.Create("");
+		f.AffectsState = true;
 		f.AddParam("path", Value.emptyString);
 		f.AddParam("lines", Value.Null);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
@@ -2029,6 +2051,7 @@ public static class ShellIntrinsics {
 		_fmKeys.Add("loadRaw");
 
 		f = Intrinsic.Create("");
+		f.AffectsState = true;
 		f.AddParam("path", Value.emptyString);
 		f.AddParam("data", Value.Null);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
@@ -2039,6 +2062,7 @@ public static class ShellIntrinsics {
 
 		// open(path, mode) — return a FileHandle instance or an error
 		f = Intrinsic.Create("");
+		f.AffectsState = true;
 		f.AddParam("path", Value.emptyString);
 		f.AddParam("mode", Value.make_string("r+"));
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
@@ -2240,6 +2264,7 @@ public static class ShellIntrinsics {
 		// child interpreter is that child's business, and must not shut down a
 		// host that is merely running it.  See VM.ExitRequested.
 		f = Intrinsic.Create("exit");
+		f.AffectsState = true;
 		f.AddParam("resultCode", Value.Null);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value resultCode = ctx.GetArg(0);
@@ -2274,7 +2299,6 @@ public static class ShellIntrinsics {
 				return FinishExec(partialResult.result);
 			}
 			Value cmdArg = ctx.GetArg(0);
-			if (cmdArg.IsError()) return new IntrinsicResult(cmdArg);
 			String cmd = cmdArg.ToString(null);
 			if (!_envMap.IsNull()) {
 				SyncEnvMap();
@@ -2294,7 +2318,6 @@ public static class ShellIntrinsics {
 		f.AddParam("dateStr");
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value date = ctx.GetArg(0);
-			if (date.IsError()) return new IntrinsicResult(date);
 			Double t;
 			if (date.IsNull()) {
 				t = NowSeconds();
@@ -2316,9 +2339,7 @@ public static class ShellIntrinsics {
 		f.AddParam("format", Value.make_string("yyyy-MM-dd HH:mm:ss"));
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value date = ctx.GetArg(0);
-			if (date.IsError()) return new IntrinsicResult(date);
 			Value format = ctx.GetArg(1);
-			if (format.IsError()) return new IntrinsicResult(format);
 			String formatStr;
 			if (format.IsNull()) formatStr = "yyyy-MM-dd HH:mm:ss";
 			else formatStr = format.ToString(null);
@@ -2358,7 +2379,6 @@ public static class ShellIntrinsics {
 			}
 			// Phase 1: find, parse, compile, and push the module.
 			Value libnameArg = ctx.GetArg(0);
-			if (libnameArg.IsError()) return new IntrinsicResult(libnameArg);
 			String libname = libnameArg.ToString(null);
 			if (libname.Length == 0) {
 				return new IntrinsicResult(ErrorTypes.FileError("import: no library name given"));

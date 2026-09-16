@@ -8,7 +8,11 @@
 // Each intrinsic is defined with a builder-style API:
 //   f = Intrinsic.Create("name");
 //   f.AddParam("paramName", defaultValue);
-//   f.Code = (stk, bi, ac) => { ... };
+//   f.AddParam("other", defaultValue, true);   // this one accepts an error argument
+//   f.AffectsState = true;                      // if it changes state or returns nothing
+//   f.Code = (Context ctx, IntrinsicResult partialResult) => { ... };
+// An error argument to any parameter not declared to accept one never reaches
+// Code: the call evaluates to that error, or terminates if AffectsState.
 
 #include "value.h"
 #include "FuncDef.g.h"
@@ -23,6 +27,8 @@ class IntrinsicStorage : public std::enable_shared_from_this<IntrinsicStorage> {
 	public: NativeCallbackDelegate Code;
 	private: List<String> _paramNames;
 	private: List<Value> _paramDefaults;
+	private: UInt32 _acceptsErrorMask = 0;
+	public: Boolean AffectsState = Boolean(false);
 	private: FuncDef _funcDef = nullptr;
 	private: Value _funcRef = Value::Null;
 	private: static List<Intrinsic> _all;
@@ -31,6 +37,9 @@ class IntrinsicStorage : public std::enable_shared_from_this<IntrinsicStorage> {
 	private: static Boolean _markCallbackRegistered;
 	private: static List<Value> _shortNameKeys;
 	private: static List<String> _shortNameVals;
+
+	// Set for an intrinsic that changes state (or returns nothing), so that an
+	// error argument it did not ask for terminates rather than being returned.
 
 	// Short-name registry: maps known Values (e.g. type maps) to display names.
 
@@ -58,6 +67,12 @@ class IntrinsicStorage : public std::enable_shared_from_this<IntrinsicStorage> {
 	public: void AddParam(String name);
 
 	public: void AddParam(String name, Value defaultValue);
+
+	// Declare a parameter that accepts an error argument.  By default an error
+	// never reaches an intrinsic (see FuncDef.AcceptsErrorMask).  Accept one only
+	// where the intrinsic has a real use for it -- showing it, storing it, or
+	// searching for it -- and never lets it vanish silently.
+	public: void AddParam(String name, Value defaultValue, Boolean acceptsError);
 
 	public: static Intrinsic GetByName(String name);
 
@@ -96,6 +111,10 @@ struct Intrinsic {
 	private: void set__paramNames(List<String> _v);
 	private: List<Value> _paramDefaults();
 	private: void set__paramDefaults(List<Value> _v);
+	private: UInt32 _acceptsErrorMask();
+	private: void set__acceptsErrorMask(UInt32 _v);
+	public: Boolean AffectsState();
+	public: void set_AffectsState(Boolean _v);
 	private: FuncDef _funcDef();
 	private: void set__funcDef(FuncDef _v);
 	private: Value _funcRef();
@@ -112,6 +131,9 @@ struct Intrinsic {
 	private: void set__shortNameKeys(List<Value> _v);
 	private: List<String> _shortNameVals();
 	private: void set__shortNameVals(List<String> _v);
+
+	// Set for an intrinsic that changes state (or returns nothing), so that an
+	// error argument it did not ask for terminates rather than being returned.
 
 	// Short-name registry: maps known Values (e.g. type maps) to display names.
 
@@ -141,6 +163,12 @@ struct Intrinsic {
 	public: inline void AddParam(String name);
 
 	public: inline void AddParam(String name, Value defaultValue);
+
+	// Declare a parameter that accepts an error argument.  By default an error
+	// never reaches an intrinsic (see FuncDef.AcceptsErrorMask).  Accept one only
+	// where the intrinsic has a real use for it -- showing it, storing it, or
+	// searching for it -- and never lets it vanish silently.
+	public: inline void AddParam(String name, Value defaultValue, Boolean acceptsError);
 
 	public: static Intrinsic GetByName(String name) { return IntrinsicStorage::GetByName(name); }
 
@@ -172,6 +200,10 @@ inline List<String> Intrinsic::_paramNames() { return get()->_paramNames; }
 inline void Intrinsic::set__paramNames(List<String> _v) { get()->_paramNames = _v; }
 inline List<Value> Intrinsic::_paramDefaults() { return get()->_paramDefaults; }
 inline void Intrinsic::set__paramDefaults(List<Value> _v) { get()->_paramDefaults = _v; }
+inline UInt32 Intrinsic::_acceptsErrorMask() { return get()->_acceptsErrorMask; }
+inline void Intrinsic::set__acceptsErrorMask(UInt32 _v) { get()->_acceptsErrorMask = _v; }
+inline Boolean Intrinsic::AffectsState() { return get()->AffectsState; }
+inline void Intrinsic::set_AffectsState(Boolean _v) { get()->AffectsState = _v; }
 inline FuncDef Intrinsic::_funcDef() { return get()->_funcDef; }
 inline void Intrinsic::set__funcDef(FuncDef _v) { get()->_funcDef = _v; }
 inline Value Intrinsic::_funcRef() { return get()->_funcRef; }
@@ -190,6 +222,7 @@ inline List<String> Intrinsic::_shortNameVals() { return get()->_shortNameVals; 
 inline void Intrinsic::set__shortNameVals(List<String> _v) { get()->_shortNameVals = _v; }
 inline void Intrinsic::AddParam(String name) { return get()->AddParam(name); }
 inline void Intrinsic::AddParam(String name,Value defaultValue) { return get()->AddParam(name, defaultValue); }
+inline void Intrinsic::AddParam(String name,Value defaultValue,Boolean acceptsError) { return get()->AddParam(name, defaultValue, acceptsError); }
 inline void Intrinsic::EnsureBuilt() { return get()->EnsureBuilt(); }
 inline Value Intrinsic::GetFunc() { return get()->GetFunc(); }
 inline FuncDef Intrinsic::BuildFuncDef() { return get()->BuildFuncDef(); }

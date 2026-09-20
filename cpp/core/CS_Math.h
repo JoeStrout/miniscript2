@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <type_traits>
 
 namespace MiniScript {
 
@@ -14,15 +15,17 @@ namespace MiniScript {
 // Static Math class - equivalent to C# Math
 class Math {
 public:
+	// Spelled out rather than deduced: a bare `auto` return type is C++14, and
+	// this project builds as C++11 (gnu++11, for the computed-goto extension).
 	template <typename T, typename U>
-	static auto Min(T a, U b) {
-		using Common = typename std::common_type<T, U>::type;
+	static typename std::common_type<T, U>::type Min(T a, U b) {
+		typedef typename std::common_type<T, U>::type Common;
 		return std::min(static_cast<Common>(a), static_cast<Common>(b));
 	}
 
-    template <typename T, typename U>
-	static auto Max(T a, U b) {
-		using Common = typename std::common_type<T, U>::type;
+	template <typename T, typename U>
+	static typename std::common_type<T, U>::type Max(T a, U b) {
+		typedef typename std::common_type<T, U>::type Common;
 		return std::max(static_cast<Common>(a), static_cast<Common>(b));
 	}
 

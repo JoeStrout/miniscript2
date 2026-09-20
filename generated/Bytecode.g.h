@@ -56,6 +56,7 @@ enum class Opcode : Byte {
 	GLOADC_rA_iBC,
 	GLOADV_rA_iBC,
 	GSTORE_rA_iBC,
+	LSTORE_rA_kBC,
 	JUMP_iABC,
 	LT_rA_rB_rC,
 	LT_rA_rB_iC,

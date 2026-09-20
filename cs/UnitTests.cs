@@ -1649,6 +1649,49 @@ public static class UnitTests {
 		return ok;
 	}
 
+	// A function with more named variables than the register file can hold: past
+	// MaxVarRegIndex the code generator spills them to the frame's variable map
+	// (bugs.md entry 18).  Checks that the early ones -- the spilled ones -- still
+	// read back, that a spilled variable can be updated and used as a loop
+	// variable, and that they appear in `locals`.
+	public static Boolean TestSpilledLocals() {
+		Boolean ok = true;
+		Int32 count = 300;
+
+		String source = new String("f = function()\n");
+		for (Int32 i = 1; i <= count; i++) {
+			source = source + StringUtils.Format("\tv{0} = {1}\n", i, i);
+		}
+		// A spilled variable read and written, a spilled loop variable, and a
+		// closure that captures a spilled variable.
+		source = source + "\tv1 = v1 + 40\n";
+		source = source + "\ttotal = 0\n\tfor item in [10, 20]\n\t\ttotal = total + item\n\tend for\n";
+		source = source + "\tinner = function\n\t\treturn v250\n\tend function\n";
+		source = source + StringUtils.Format("\treturn [v1, v{0}, total, inner, locals.len]\n", count);
+		source = source + "end function\nresult = f\n";
+
+		Interpreter interp;
+		interp = new Interpreter(source);
+		interp.RunUntilDone(30, false);
+
+		Value result = interp.GetGlobalValue("result");
+		ok = ok && Assert(result.IsList() && result.ListCount() == 5,
+			"spilled-locals test should return a list of 5");
+		if (!ok) {
+			IOHelper.Print("TestSpilledLocals FAILED");
+			return false;
+		}
+		ok = ok && Assert(result.ListGet(0) == new Value(41), "v1 (spilled, updated) should be 41");
+		ok = ok && Assert(result.ListGet(1) == new Value(count), "the last variable should be its own number");
+		ok = ok && Assert(result.ListGet(2) == new Value(30), "spilled loop variable should sum to 30");
+		ok = ok && Assert(result.ListGet(3) == new Value(250), "closure over a spilled variable should see 250");
+		ok = ok && Assert(result.ListGet(4).IntValue() >= count,
+			"`locals` should hold every variable, spilled or not");
+
+		if (!ok) IOHelper.Print("TestSpilledLocals FAILED");
+		return ok;
+	}
+
 	public static Boolean RunAll() {
 		return TestIntrinsicDefaults()   // first: wants to run before any VM builds the funcrefs
 			&& TestStringUtils()
@@ -1667,6 +1710,7 @@ public static class UnitTests {
 		&& TestHostGlobals()
 		&& TestGlobalsSwitch()
 			&& TestRunFunction()
+			&& TestSpilledLocals()
 			&& TestGCHandle()
 			&& TestGCSlotTrim()
 			&& TestGCAllocTrigger();

@@ -54,6 +54,30 @@ public class CodeGenerator : IASTVisitor {
 	// global-reference table rather than through a register or the constant pool.
 	private Boolean _globalScope;
 
+	// ── The register ceiling ─────────────────────────────────────────────────
+	//
+	// Every register field in the ABC encoding is 8 bits, so no instruction can
+	// name a register above 255.  A function with more named variables than that
+	// used to keep allocating anyway, and the emitter rejected the instructions
+	// one by one while compilation carried on -- see bugs.md entry 18, where a
+	// module's top-level names (which are locals, not globals) silently went
+	// missing from the map `import` returns.
+	//
+	// Named variables therefore stop at MaxVarRegIndex and spill: past it, a
+	// variable lives in the frame's own variable map under its name, exactly like
+	// one made by `locals["x"] = 1` or by the `import` intrinsic's SetVar.  Stores
+	// go through LSTORE; reads need nothing new, since a name with no register
+	// already compiles to GLOADC/GLOADV, whose run-time search consults that map
+	// first.  The gap up to MaxRegIndex is left to temporaries, callee frame bases
+	// and loop machinery, which have nowhere else to go; exhausting *those* is a
+	// compile error.
+	private const Int32 MaxRegIndex = 255;
+	private const Int32 MaxVarRegIndex = 200;
+
+	// Named variables that have no register in this function and live in the
+	// frame's variable map instead.  Empty for all but the very largest functions.
+	private Dictionary<String, Boolean> _spilledVars;
+
 	public String FileName = "";               // Source file name, copied to each compiled FuncDef
 	public Value Error;
 
@@ -79,6 +103,7 @@ public class CodeGenerator : IASTVisitor {
 		_loopContinueLabels = new List<Int32>();
 		_functions = new List<FuncDef>();
 		_globalScope = false;
+		_spilledVars = new Dictionary<String, Boolean>();
 		Error = Value.Null;
 	}
 
@@ -93,6 +118,18 @@ public class CodeGenerator : IASTVisitor {
 		Int32 reg = _firstAvailable;
 		while (reg < _regInUse.Count && _regInUse[reg]) {
 			reg = reg + 1;
+		}
+
+		// Out of registers.  Named variables spill to the frame's variable map
+		// before it comes to this (see AllocVarReg), so what is left here is the
+		// machinery of a single statement -- temps, a callee frame base -- which
+		// has no such fallback.  Report it as a compile error rather than letting
+		// the emitter truncate the operand.
+		if (reg > MaxRegIndex) {
+			if (Error.IsNull()) {
+				Error = ErrorTypes.CompilerError("out of registers: statement too complex", FileName, _emitter.CurrentLine);
+			}
+			return MaxRegIndex;
 		}
 
 		// Expand the list if needed
@@ -132,6 +169,40 @@ public class CodeGenerator : IASTVisitor {
 		}
 	}
 
+	// Allocate the register a named variable will live in, or -1 if this function
+	// has used up the share of the register file variables may occupy.  A -1 is
+	// not a failure: the caller spills the variable to the frame's variable map
+	// instead (see MaxVarRegIndex, and VisitSpilledAssignment).
+	private Int32 AllocVarReg() {
+		if (_firstAvailable > MaxVarRegIndex) return -1;
+		Int32 reg = AllocReg();
+		if (reg <= MaxVarRegIndex) return reg;
+		FreeReg(reg);
+		return -1;
+	}
+
+	// Does this variable live in the frame's variable map rather than a register?
+	private Boolean IsSpilled(String varName) {
+		Boolean spilled;
+		if (!_spilledVars.TryGetValue(varName, out spilled)) return false;
+		return spilled;
+	}
+
+	private void MarkSpilled(String varName) {
+		_spilledVars[varName] = true;
+	}
+
+	// Store a register into a spilled variable: the frame's variable map, under
+	// the variable's name.  The counterpart of EmitGlobalStore, and reads are the
+	// counterpart too -- a spilled name has no register, so VisitIdentifier takes
+	// the same EmitFreeLoad path a global does, and LookupVariable finds it in the
+	// frame's map before it ever looks at `outer` or the globals.
+	private void EmitSpilledStore(String varName, Int32 valueReg) {
+		Int32 nameIdx = _emitter.AddConstant(Value.make_string(varName));
+		_emitter.EmitAB(Opcode.LSTORE_rA_kBC, valueReg, nameIdx,
+			$"local {varName} = r{valueReg} (no register available)");
+	}
+
 	// Allocate a block of consecutive registers
 	// Returns the first register of the block
 	private Int32 AllocConsecutiveRegs(Int32 count) {
@@ -152,6 +223,13 @@ public class CodeGenerator : IASTVisitor {
 				}
 			}
 			if (allFree) break;
+		}
+
+		if (startReg + count - 1 > MaxRegIndex) {
+			if (Error.IsNull()) {
+				Error = ErrorTypes.CompilerError("out of registers: statement too complex", FileName, _emitter.CurrentLine);
+			}
+			return MaxRegIndex - count + 1;
 		}
 
 		// Allocate all registers in the block
@@ -379,7 +457,12 @@ public class CodeGenerator : IASTVisitor {
 			if (_variableRegs.TryGetValue(name, out existing)) continue;
 			String key = PendingVarRegKey(name);
 			if (_variableRegs.TryGetValue(key, out existing)) continue;
-			_variableRegs[key] = AllocReg();
+			// No register to reserve means the name will spill at its assignment,
+			// and a variable in the frame's map needs no protection from the
+			// condition's register reuse -- there is no register to protect.
+			Int32 bodyReg = AllocVarReg();
+			if (bodyReg < 0) continue;
+			_variableRegs[key] = bodyReg;
 			reserved.Add(name);
 			_loopReserved.Add(name);
 		}
@@ -427,7 +510,7 @@ public class CodeGenerator : IASTVisitor {
 			_variableRegs.Remove(key);
 			return reg;
 		}
-		return AllocReg();
+		return AllocVarReg();
 	}
 
 	// Collect the names of variables that assignments in this statement list
@@ -818,6 +901,7 @@ public class CodeGenerator : IASTVisitor {
 		_firstAvailable = 0;
 		_maxRegUsed = -1;
 		_variableRegs.Clear();
+		_spilledVars.Clear();
 		_namedStack.Clear();
 		_namedIsReg.Clear();
 		ClearLoopNames();
@@ -842,6 +926,7 @@ public class CodeGenerator : IASTVisitor {
 		_firstAvailable = 0;
 		_maxRegUsed = -1;
 		_variableRegs.Clear();
+		_spilledVars.Clear();
 		_namedStack.Clear();
 		_namedIsReg.Clear();
 		ClearLoopNames();
@@ -874,6 +959,7 @@ public class CodeGenerator : IASTVisitor {
 		_firstAvailable = 0;
 		_maxRegUsed = -1;
 		_variableRegs.Clear();
+		_spilledVars.Clear();
 		_namedStack.Clear();
 		_namedIsReg.Clear();
 		ClearLoopNames();
@@ -1033,6 +1119,7 @@ public class CodeGenerator : IASTVisitor {
 		}
 
 		if (_globalScope) return VisitGlobalAssignment(node);
+		if (IsSpilled(node.Variable)) return VisitSpilledAssignment(node);
 
 		// Get or allocate register for this variable.
 		Int32 varReg;
@@ -1044,6 +1131,13 @@ public class CodeGenerator : IASTVisitor {
 			// the target register when done.  But we should probably return to
 			// this later and see if we can optimize it more.
 			varReg = TakeVarReg(node.Variable);
+			// No register left for another variable: this one lives in the frame's
+			// variable map from here on, in this function and every later one that
+			// mentions it.
+			if (varReg < 0) {
+				MarkSpilled(node.Variable);
+				return VisitSpilledAssignment(node);
+			}
 		}
 
 		// A first assignment whose RHS names the same variable is an error: see
@@ -1174,6 +1268,52 @@ public class CodeGenerator : IASTVisitor {
 		}
 
 		EmitGlobalStore(node.Variable, valueReg);
+		return valueReg;
+	}
+
+	//
+	// Assignment to a spilled variable: evaluate the right-hand side into a temp,
+	// then store it into the frame's variable map under the variable's name.
+	//
+	// This is VisitGlobalAssignment with LSTORE in place of GSTORE, and for the
+	// same reason: the variable is not a register, so none of the register
+	// bookkeeping applies -- no NAME op, and no first-assignment special case,
+	// since the map is not written until the RHS has been evaluated.
+	//
+	// The one thing it keeps from the register path is the unqualified-local rule
+	// (bugs.md entry 4): `x = x + 1` creating x still reads the enclosing scope on
+	// the first pass and the local afterwards, which is nobody's intent, so it is
+	// an error here as it is there.  The run-time softening of that rule for a
+	// sibling branch in a loop (entry 11) rests on a reserved register, which a
+	// spilled variable does not have, so it does not apply.
+	//
+	private Int32 VisitSpilledAssignment(AssignmentNode node) {
+		FunctionNode rhsFunc = node.Value as FunctionNode;
+		Int32 funcIndexBeforeRHS = _functions.Count;
+
+		String savedLocalOnly = _localOnlyName;
+		Boolean savedDeferred = _localOnlyDeferred;
+		if (!IsDefinitelyAssigned(node.Variable)) {
+			_localOnlyName = node.Variable;
+			_localOnlyDeferred = false;
+		}
+
+		Int32 valueReg = AllocReg();
+		CompileInto(node.Value, valueReg);
+
+		_localOnlyName = savedLocalOnly;
+		_localOnlyDeferred = savedDeferred;
+
+		if (rhsFunc != null && funcIndexBeforeRHS < _functions.Count) {
+			FuncDef rhsFuncDef = _functions[funcIndexBeforeRHS];
+			if (rhsFuncDef != null) rhsFuncDef.Name = node.Variable;
+		}
+
+		EmitSpilledStore(node.Variable, valueReg);
+		// The variable exists from here on, but through the map rather than a
+		// register -- the same state `locals.x = ...` leaves behind, and recorded
+		// the same way.
+		PushName(node.Variable, false);
 		return valueReg;
 	}
 
@@ -1500,6 +1640,16 @@ public class CodeGenerator : IASTVisitor {
 
 		// Determine callee frame base (past all our used registers)
 		Int32 calleeBase = _maxRegUsed + 1;
+		// The base is an operand, so it has the same 8-bit ceiling everything else
+		// does.  Nothing can spill to make room for it, so this is an error like
+		// running out of temps -- and for the same reason, it takes a function with
+		// hundreds of live variables to reach.
+		if (calleeBase > MaxRegIndex) {
+			if (Error.IsNull()) {
+				Error = ErrorTypes.CompilerError("out of registers: statement too complex", FileName, _emitter.CurrentLine);
+			}
+			calleeBase = MaxRegIndex;
+		}
 		_emitter.ReserveRegister(calleeBase);
 
 		// Determine result register
@@ -1966,15 +2116,31 @@ public class CodeGenerator : IASTVisitor {
 		// only where ITERGET drops each element on its way to the slot; it is
 		// parked under an internal key so the body's ResetTempRegisters leaves it
 		// alone, and it is never findable by the user's name.
+		// A spilled loop variable works the same way as a global one: the register
+		// is only where ITERGET drops each element on its way to the frame's
+		// variable map, and it is parked under the internal key so the body cannot
+		// find it by the user's name.
 		Int32 varReg;
+		Boolean spilledVar = false;
 		if (_globalScope) {
 			varReg = AllocReg();
 			_variableRegs[LoopVarRegKey(node.Variable)] = varReg;
 		} else if (_variableRegs.TryGetValue(node.Variable, out varReg)) {
 			// Variable already exists
+		} else if (IsSpilled(node.Variable)) {
+			spilledVar = true;
 		} else {
 			varReg = TakeVarReg(node.Variable);
-			_variableRegs[node.Variable] = varReg;
+			if (varReg < 0) {
+				MarkSpilled(node.Variable);
+				spilledVar = true;
+			} else {
+				_variableRegs[node.Variable] = varReg;
+			}
+		}
+		if (spilledVar) {
+			varReg = AllocReg();
+			_variableRegs[LoopVarRegKey(node.Variable)] = varReg;
 		}
 
 		// Give the body's new variables their registers before compiling the body,
@@ -1991,7 +2157,10 @@ public class CodeGenerator : IASTVisitor {
 		// a NAME already dominates -- the variable existed before the loop -- there
 		// is nothing to place and the plain layout is smaller.
 		Int32 nameMark = _namedStack.Count;
-		Boolean peelFirst = !_globalScope && !IsRegisterNamed(node.Variable);
+		// A spilled loop variable needs no peel: there is no NAME op to place, and a
+		// zero-iteration loop simply never stores it, which leaves it undefined
+		// afterwards exactly as the peel does for a register-bound one.
+		Boolean peelFirst = !_globalScope && !spilledVar && !IsRegisterNamed(node.Variable);
 		if (peelFirst) {
 			_emitter.EmitABC(Opcode.NEXT_rA_rB, indexReg, listReg, 0, "index++; skip next if done");
 			_emitter.EmitJump(Opcode.JUMP_iABC, afterLoop, "no iterations: leave the loop variable undefined");
@@ -2012,8 +2181,10 @@ public class CodeGenerator : IASTVisitor {
 		// For lists/strings this is the same as INDEX; for maps it returns {"key":k, "value":v}
 		_emitter.EmitABC(Opcode.ITERGET_rA_rB_rC, varReg, listReg, indexReg, $"{node.Variable} = iterget(container, index)");
 
-		// At global scope, publish the element as a global before running the body.
+		// At global scope, publish the element as a global before running the body;
+		// a spilled loop variable is published to the frame's variable map instead.
 		if (_globalScope) EmitGlobalStore(node.Variable, varReg);
+		else if (spilledVar) EmitSpilledStore(node.Variable, varReg);
 
 		// Compile body statements
 		_emitter.PlaceLabel(bodyStart);
@@ -2044,7 +2215,7 @@ public class CodeGenerator : IASTVisitor {
 		// Remove internal variable names and free the registers
 		_variableRegs.Remove(idxName);
 		_variableRegs.Remove(listName);
-		if (_globalScope) {
+		if (_globalScope || spilledVar) {
 			_variableRegs.Remove(LoopVarRegKey(node.Variable));
 			FreeReg(varReg);
 		}
@@ -2156,7 +2327,12 @@ public class CodeGenerator : IASTVisitor {
 		innerGen._functions = _functions;  // share the function registry
 		innerGen.FileName = FileName;      // share the source file name
 
-		// Reserve r0 for return value, then set up param registers (r1, r2, ...)
+		// Reserve r0 for return value, then set up param registers (r1, r2, ...).
+		// Parameters cannot spill the way other named variables can: the caller
+		// places them in registers, so there is nowhere else for them to be.
+		if (node.ParamNames.Count > MaxVarRegIndex && Error.IsNull()) {
+			Error = ErrorTypes.CompilerError("too many parameters", FileName, _emitter.CurrentLine);
+		}
 		innerGen.AllocReg();  // r0 reserved for return value
 		for (Int32 i = 0; i < node.ParamNames.Count; i++) {
 			Int32 paramReg = innerGen.AllocReg();  // r1, r2, ...

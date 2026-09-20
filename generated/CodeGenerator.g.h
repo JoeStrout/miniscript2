@@ -38,6 +38,9 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 	private: List<Int32> _loopContinueLabels; // Stack of loop continue labels for continue
 	private: List<FuncDef> _functions; // Compile-time registry of all functions (for naming + disassembly)
 	private: Boolean _globalScope;
+	private: static const Int32 MaxRegIndex;
+	private: static const Int32 MaxVarRegIndex;
+	private: Dictionary<String, Boolean> _spilledVars;
 	public: String FileName = ""; // Source file name, copied to each compiled FuncDef
 	public: Value Error;
 	// Definite assignment at the `break`s of each open loop -- what survives past a
@@ -58,6 +61,25 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 	// GLOADC/GLOADV, all of which name the variable through this function's
 	// global-reference table rather than through a register or the constant pool.
 
+	// ── The register ceiling ─────────────────────────────────────────────────
+	// Every register field in the ABC encoding is 8 bits, so no instruction can
+	// name a register above 255.  A function with more named variables than that
+	// used to keep allocating anyway, and the emitter rejected the instructions
+	// one by one while compilation carried on -- see bugs.md entry 18, where a
+	// module's top-level names (which are locals, not globals) silently went
+	// missing from the map `import` returns.
+	// Named variables therefore stop at MaxVarRegIndex and spill: past it, a
+	// variable lives in the frame's own variable map under its name, exactly like
+	// one made by `locals["x"] = 1` or by the `import` intrinsic's SetVar.  Stores
+	// go through LSTORE; reads need nothing new, since a name with no register
+	// already compiles to GLOADC/GLOADV, whose run-time search consults that map
+	// first.  The gap up to MaxRegIndex is left to temporaries, callee frame bases
+	// and loop machinery, which have nowhere else to go; exhausting *those* is a
+	// compile error.
+
+	// Named variables that have no register in this function and live in the
+	// frame's variable map instead.  Empty for all but the very largest functions.
+
 	public: CodeGeneratorStorage(CodeEmitterBase emitter);
 
 	// Get all compiled functions (index 0 = @main, 1+ = inner functions)
@@ -68,6 +90,24 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 
 	// Free a register so it can be reused
 	private: void FreeReg(Int32 reg);
+
+	// Allocate the register a named variable will live in, or -1 if this function
+	// has used up the share of the register file variables may occupy.  A -1 is
+	// not a failure: the caller spills the variable to the frame's variable map
+	// instead (see MaxVarRegIndex, and VisitSpilledAssignment).
+	private: Int32 AllocVarReg();
+
+	// Does this variable live in the frame's variable map rather than a register?
+	private: Boolean IsSpilled(String varName);
+
+	private: void MarkSpilled(String varName);
+
+	// Store a register into a spilled variable: the frame's variable map, under
+	// the variable's name.  The counterpart of EmitGlobalStore, and reads are the
+	// counterpart too -- a spilled name has no register, so VisitIdentifier takes
+	// the same EmitFreeLoad path a global does, and LookupVariable finds it in the
+	// frame's map before it ever looks at `outer` or the globals.
+	private: void EmitSpilledStore(String varName, Int32 valueReg);
 
 	// Allocate a block of consecutive registers
 	// Returns the first register of the block
@@ -399,6 +439,20 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 	// to order things.
 	private: Int32 VisitGlobalAssignment(AssignmentNode node);
 
+	// Assignment to a spilled variable: evaluate the right-hand side into a temp,
+	// then store it into the frame's variable map under the variable's name.
+	// This is VisitGlobalAssignment with LSTORE in place of GSTORE, and for the
+	// same reason: the variable is not a register, so none of the register
+	// bookkeeping applies -- no NAME op, and no first-assignment special case,
+	// since the map is not written until the RHS has been evaluated.
+	// The one thing it keeps from the register path is the unqualified-local rule
+	// (bugs.md entry 4): `x = x + 1` creating x still reads the enclosing scope on
+	// the first pass and the local afterwards, which is nobody's intent, so it is
+	// an error here as it is there.  The run-time softening of that rule for a
+	// sibling branch in a loop (entry 11) rests on a reserved register, which a
+	// spilled variable does not have, so it does not apply.
+	private: Int32 VisitSpilledAssignment(AssignmentNode node);
+
 	public: Int32 Visit(IndexedAssignmentNode node);
 
 	public: Int32 Visit(UnaryOpNode node);
@@ -566,6 +620,10 @@ struct CodeGenerator : public IASTVisitor {
 	private: void set__functions(List<FuncDef> _v); // Compile-time registry of all functions (for naming + disassembly)
 	private: Boolean _globalScope();
 	private: void set__globalScope(Boolean _v);
+	private: Int32 MaxRegIndex();
+	private: Int32 MaxVarRegIndex();
+	private: Dictionary<String, Boolean> _spilledVars();
+	private: void set__spilledVars(Dictionary<String, Boolean> _v);
 	public: String FileName(); // Source file name, copied to each compiled FuncDef
 	public: void set_FileName(String _v); // Source file name, copied to each compiled FuncDef
 	public: Value Error();
@@ -588,6 +646,25 @@ struct CodeGenerator : public IASTVisitor {
 	// GLOADC/GLOADV, all of which name the variable through this function's
 	// global-reference table rather than through a register or the constant pool.
 
+	// ── The register ceiling ─────────────────────────────────────────────────
+	// Every register field in the ABC encoding is 8 bits, so no instruction can
+	// name a register above 255.  A function with more named variables than that
+	// used to keep allocating anyway, and the emitter rejected the instructions
+	// one by one while compilation carried on -- see bugs.md entry 18, where a
+	// module's top-level names (which are locals, not globals) silently went
+	// missing from the map `import` returns.
+	// Named variables therefore stop at MaxVarRegIndex and spill: past it, a
+	// variable lives in the frame's own variable map under its name, exactly like
+	// one made by `locals["x"] = 1` or by the `import` intrinsic's SetVar.  Stores
+	// go through LSTORE; reads need nothing new, since a name with no register
+	// already compiles to GLOADC/GLOADV, whose run-time search consults that map
+	// first.  The gap up to MaxRegIndex is left to temporaries, callee frame bases
+	// and loop machinery, which have nowhere else to go; exhausting *those* is a
+	// compile error.
+
+	// Named variables that have no register in this function and live in the
+	// frame's variable map instead.  Empty for all but the very largest functions.
+
 	public: static CodeGenerator New(CodeEmitterBase emitter) {
 		return CodeGenerator(std::make_shared<CodeGeneratorStorage>(emitter));
 	}
@@ -600,6 +677,24 @@ struct CodeGenerator : public IASTVisitor {
 
 	// Free a register so it can be reused
 	private: inline void FreeReg(Int32 reg);
+
+	// Allocate the register a named variable will live in, or -1 if this function
+	// has used up the share of the register file variables may occupy.  A -1 is
+	// not a failure: the caller spills the variable to the frame's variable map
+	// instead (see MaxVarRegIndex, and VisitSpilledAssignment).
+	private: inline Int32 AllocVarReg();
+
+	// Does this variable live in the frame's variable map rather than a register?
+	private: inline Boolean IsSpilled(String varName);
+
+	private: inline void MarkSpilled(String varName);
+
+	// Store a register into a spilled variable: the frame's variable map, under
+	// the variable's name.  The counterpart of EmitGlobalStore, and reads are the
+	// counterpart too -- a spilled name has no register, so VisitIdentifier takes
+	// the same EmitFreeLoad path a global does, and LookupVariable finds it in the
+	// frame's map before it ever looks at `outer` or the globals.
+	private: inline void EmitSpilledStore(String varName, Int32 valueReg);
 
 	// Allocate a block of consecutive registers
 	// Returns the first register of the block
@@ -931,6 +1026,20 @@ struct CodeGenerator : public IASTVisitor {
 	// to order things.
 	private: inline Int32 VisitGlobalAssignment(AssignmentNode node);
 
+	// Assignment to a spilled variable: evaluate the right-hand side into a temp,
+	// then store it into the frame's variable map under the variable's name.
+	// This is VisitGlobalAssignment with LSTORE in place of GSTORE, and for the
+	// same reason: the variable is not a register, so none of the register
+	// bookkeeping applies -- no NAME op, and no first-assignment special case,
+	// since the map is not written until the RHS has been evaluated.
+	// The one thing it keeps from the register path is the unqualified-local rule
+	// (bugs.md entry 4): `x = x + 1` creating x still reads the enclosing scope on
+	// the first pass and the local afterwards, which is nobody's intent, so it is
+	// an error here as it is there.  The run-time softening of that rule for a
+	// sibling branch in a loop (entry 11) rests on a reserved register, which a
+	// spilled variable does not have, so it does not apply.
+	private: inline Int32 VisitSpilledAssignment(AssignmentNode node);
+
 	public: inline Int32 Visit(IndexedAssignmentNode node);
 
 	public: inline Int32 Visit(UnaryOpNode node);
@@ -1092,6 +1201,10 @@ inline List<FuncDef> CodeGenerator::_functions() { return get()->_functions; } /
 inline void CodeGenerator::set__functions(List<FuncDef> _v) { get()->_functions = _v; } // Compile-time registry of all functions (for naming + disassembly)
 inline Boolean CodeGenerator::_globalScope() { return get()->_globalScope; }
 inline void CodeGenerator::set__globalScope(Boolean _v) { get()->_globalScope = _v; }
+inline Int32 CodeGenerator::MaxRegIndex() { return get()->MaxRegIndex; }
+inline Int32 CodeGenerator::MaxVarRegIndex() { return get()->MaxVarRegIndex; }
+inline Dictionary<String, Boolean> CodeGenerator::_spilledVars() { return get()->_spilledVars; }
+inline void CodeGenerator::set__spilledVars(Dictionary<String, Boolean> _v) { get()->_spilledVars = _v; }
 inline String CodeGenerator::FileName() { return get()->FileName; } // Source file name, copied to each compiled FuncDef
 inline void CodeGenerator::set_FileName(String _v) { get()->FileName = _v; } // Source file name, copied to each compiled FuncDef
 inline Value CodeGenerator::Error() { return get()->Error; }
@@ -1099,6 +1212,10 @@ inline void CodeGenerator::set_Error(Value _v) { get()->Error = _v; }
 inline List<FuncDef> CodeGenerator::GetFunctions() { return get()->GetFunctions(); }
 inline Int32 CodeGenerator::AllocReg() { return get()->AllocReg(); }
 inline void CodeGenerator::FreeReg(Int32 reg) { return get()->FreeReg(reg); }
+inline Int32 CodeGenerator::AllocVarReg() { return get()->AllocVarReg(); }
+inline Boolean CodeGenerator::IsSpilled(String varName) { return get()->IsSpilled(varName); }
+inline void CodeGenerator::MarkSpilled(String varName) { return get()->MarkSpilled(varName); }
+inline void CodeGenerator::EmitSpilledStore(String varName,Int32 valueReg) { return get()->EmitSpilledStore(varName, valueReg); }
 inline Int32 CodeGenerator::AllocConsecutiveRegs(Int32 count) { return get()->AllocConsecutiveRegs(count); }
 inline Boolean CodeGenerator::IsLiveVariableReg(Int32 reg) { return get()->IsLiveVariableReg(reg); }
 inline Int32 CodeGenerator::CompileInto(ASTNode node,Int32 targetReg) { return get()->CompileInto(node, targetReg); }
@@ -1144,6 +1261,7 @@ inline void CodeGenerator::EmitNamedLoad(Boolean addressOf,Int32 resultReg,Int32
 inline Int32 CodeGenerator::Visit(IdentifierNode node) { return get()->Visit(node); }
 inline Int32 CodeGenerator::Visit(AssignmentNode node) { return get()->Visit(node); }
 inline Int32 CodeGenerator::VisitGlobalAssignment(AssignmentNode node) { return get()->VisitGlobalAssignment(node); }
+inline Int32 CodeGenerator::VisitSpilledAssignment(AssignmentNode node) { return get()->VisitSpilledAssignment(node); }
 inline Int32 CodeGenerator::Visit(IndexedAssignmentNode node) { return get()->Visit(node); }
 inline Int32 CodeGenerator::Visit(UnaryOpNode node) { return get()->Visit(node); }
 inline Int32 CodeGenerator::Visit(BinaryOpNode node) { return get()->Visit(node); }

@@ -7,6 +7,8 @@
 
 namespace MiniScript {
 
+const Int32 CodeGeneratorStorage::MaxRegIndex = 255;
+const Int32 CodeGeneratorStorage::MaxVarRegIndex = 200;
 CodeGeneratorStorage::CodeGeneratorStorage(CodeEmitterBase emitter) {
 	_emitter = emitter;
 	_regInUse =  List<Boolean>::New();
@@ -29,6 +31,7 @@ CodeGeneratorStorage::CodeGeneratorStorage(CodeEmitterBase emitter) {
 	_loopContinueLabels =  List<Int32>::New();
 	_functions =  List<FuncDef>::New();
 	_globalScope = Boolean(false);
+	_spilledVars =  Dictionary<String, Boolean>::New();
 	Error = Value::Null;
 }
 List<FuncDef> CodeGeneratorStorage::GetFunctions() {
@@ -39,6 +42,18 @@ Int32 CodeGeneratorStorage::AllocReg() {
 	Int32 reg = _firstAvailable;
 	while (reg < _regInUse.Count() && _regInUse[reg]) {
 		reg = reg + 1;
+	}
+
+	// Out of registers.  Named variables spill to the frame's variable map
+	// before it comes to this (see AllocVarReg), so what is left here is the
+	// machinery of a single statement -- temps, a callee frame base -- which
+	// has no such fallback.  Report it as a compile error rather than letting
+	// the emitter truncate the operand.
+	if (reg > MaxRegIndex) {
+		if (Error.IsNull()) {
+			Error = ErrorTypes::CompilerError("out of registers: statement too complex", FileName, _emitter.CurrentLine());
+		}
+		return MaxRegIndex;
 	}
 
 	// Expand the list if needed
@@ -75,6 +90,26 @@ void CodeGeneratorStorage::FreeReg(Int32 reg) {
 		}
 	}
 }
+Int32 CodeGeneratorStorage::AllocVarReg() {
+	if (_firstAvailable > MaxVarRegIndex) return -1;
+	Int32 reg = AllocReg();
+	if (reg <= MaxVarRegIndex) return reg;
+	FreeReg(reg);
+	return -1;
+}
+Boolean CodeGeneratorStorage::IsSpilled(String varName) {
+	Boolean spilled;
+	if (!_spilledVars.TryGetValue(varName, &spilled)) return Boolean(false);
+	return spilled;
+}
+void CodeGeneratorStorage::MarkSpilled(String varName) {
+	_spilledVars[varName] = Boolean(true);
+}
+void CodeGeneratorStorage::EmitSpilledStore(String varName,Int32 valueReg) {
+	Int32 nameIdx = _emitter.AddConstant(Value::make_string(varName));
+	_emitter.EmitAB(Opcode::LSTORE_rA_kBC, valueReg, nameIdx,
+		Interp("local {} = r{} (no register available)", varName, valueReg));
+}
 Int32 CodeGeneratorStorage::AllocConsecutiveRegs(Int32 count) {
 	if (count <= 0) return -1;
 	if (count == 1) return AllocReg();
@@ -93,6 +128,13 @@ Int32 CodeGeneratorStorage::AllocConsecutiveRegs(Int32 count) {
 			}
 		}
 		if (allFree) break;
+	}
+
+	if (startReg + count - 1 > MaxRegIndex) {
+		if (Error.IsNull()) {
+			Error = ErrorTypes::CompilerError("out of registers: statement too complex", FileName, _emitter.CurrentLine());
+		}
+		return MaxRegIndex - count + 1;
 	}
 
 	// Allocate all registers in the block
@@ -225,7 +267,12 @@ List<String> CodeGeneratorStorage::ReserveBodyVarRegs(List<ASTNode> body) {
 		if (_variableRegs.TryGetValue(name, &existing)) continue;
 		String key = PendingVarRegKey(name);
 		if (_variableRegs.TryGetValue(key, &existing)) continue;
-		_variableRegs[key] = AllocReg();
+		// No register to reserve means the name will spill at its assignment,
+		// and a variable in the frame's map needs no protection from the
+		// condition's register reuse -- there is no register to protect.
+		Int32 bodyReg = AllocVarReg();
+		if (bodyReg < 0) continue;
+		_variableRegs[key] = bodyReg;
 		reserved.Add(name);
 		_loopReserved.Add(name);
 	}
@@ -256,7 +303,7 @@ Int32 CodeGeneratorStorage::TakeVarReg(String varName) {
 		_variableRegs.Remove(key);
 		return reg;
 	}
-	return AllocReg();
+	return AllocVarReg();
 }
 void CodeGeneratorStorage::CollectAssignedVars(List<ASTNode> body,List<String> result) {
 	for (Int32 i = 0; i < body.Count(); i++) {
@@ -497,6 +544,7 @@ FuncDef CodeGeneratorStorage::CompileFunction(ASTNode ast,String funcName) {
 	_firstAvailable = 0;
 	_maxRegUsed = -1;
 	_variableRegs.Clear();
+	_spilledVars.Clear();
 	_namedStack.Clear();
 	_namedIsReg.Clear();
 	ClearLoopNames();
@@ -517,6 +565,7 @@ List<FuncDef> CodeGeneratorStorage::CompileImport(List<ASTNode> statements,Strin
 	_firstAvailable = 0;
 	_maxRegUsed = -1;
 	_variableRegs.Clear();
+	_spilledVars.Clear();
 	_namedStack.Clear();
 	_namedIsReg.Clear();
 	ClearLoopNames();
@@ -547,6 +596,7 @@ FuncDef CodeGeneratorStorage::CompileProgram(List<ASTNode> statements,String fun
 	_firstAvailable = 0;
 	_maxRegUsed = -1;
 	_variableRegs.Clear();
+	_spilledVars.Clear();
 	_namedStack.Clear();
 	_namedIsReg.Clear();
 	ClearLoopNames();
@@ -688,6 +738,7 @@ Int32 CodeGeneratorStorage::Visit(AssignmentNode node) {
 	}
 
 	if (_globalScope) return VisitGlobalAssignment(node);
+	if (IsSpilled(node.Variable())) return VisitSpilledAssignment(node);
 
 	// Get or allocate register for this variable.
 	Int32 varReg;
@@ -699,6 +750,13 @@ Int32 CodeGeneratorStorage::Visit(AssignmentNode node) {
 		// the target register when done.  But we should probably return to
 		// this later and see if we can optimize it more.
 		varReg = TakeVarReg(node.Variable());
+		// No register left for another variable: this one lives in the frame's
+		// variable map from here on, in this function and every later one that
+		// mentions it.
+		if (varReg < 0) {
+			MarkSpilled(node.Variable());
+			return VisitSpilledAssignment(node);
+		}
 	}
 
 	// A first assignment whose RHS names the same variable is an error: see
@@ -817,6 +875,35 @@ Int32 CodeGeneratorStorage::VisitGlobalAssignment(AssignmentNode node) {
 	}
 
 	EmitGlobalStore(node.Variable(), valueReg);
+	return valueReg;
+}
+Int32 CodeGeneratorStorage::VisitSpilledAssignment(AssignmentNode node) {
+	FunctionNode rhsFunc = As<FunctionNode, FunctionNodeStorage>(node.Value());
+	Int32 funcIndexBeforeRHS = _functions.Count();
+
+	String savedLocalOnly = _localOnlyName;
+	Boolean savedDeferred = _localOnlyDeferred;
+	if (!IsDefinitelyAssigned(node.Variable())) {
+		_localOnlyName = node.Variable();
+		_localOnlyDeferred = Boolean(false);
+	}
+
+	Int32 valueReg = AllocReg();
+	CompileInto(node.Value(), valueReg);
+
+	_localOnlyName = savedLocalOnly;
+	_localOnlyDeferred = savedDeferred;
+
+	if (!IsNull(rhsFunc) && funcIndexBeforeRHS < _functions.Count()) {
+		FuncDef rhsFuncDef = _functions[funcIndexBeforeRHS];
+		if (!IsNull(rhsFuncDef)) rhsFuncDef.set_Name(node.Variable());
+	}
+
+	EmitSpilledStore(node.Variable(), valueReg);
+	// The variable exists from here on, but through the map rather than a
+	// register -- the same state `locals.x = ...` leaves behind, and recorded
+	// the same way.
+	PushName(node.Variable(), Boolean(false));
 	return valueReg;
 }
 Int32 CodeGeneratorStorage::Visit(IndexedAssignmentNode node) {
@@ -1129,6 +1216,16 @@ Int32 CodeGeneratorStorage::EmitCallSequence(Int32 funcReg,List<Int32> argRegs,I
 
 	// Determine callee frame base (past all our used registers)
 	Int32 calleeBase = _maxRegUsed + 1;
+	// The base is an operand, so it has the same 8-bit ceiling everything else
+	// does.  Nothing can spill to make room for it, so this is an error like
+	// running out of temps -- and for the same reason, it takes a function with
+	// hundreds of live variables to reach.
+	if (calleeBase > MaxRegIndex) {
+		if (Error.IsNull()) {
+			Error = ErrorTypes::CompilerError("out of registers: statement too complex", FileName, _emitter.CurrentLine());
+		}
+		calleeBase = MaxRegIndex;
+	}
 	_emitter.ReserveRegister(calleeBase);
 
 	// Determine result register
@@ -1586,15 +1683,31 @@ Int32 CodeGeneratorStorage::Visit(ForNode node) {
 	// only where ITERGET drops each element on its way to the slot; it is
 	// parked under an internal key so the body's ResetTempRegisters leaves it
 	// alone, and it is never findable by the user's name.
+	// A spilled loop variable works the same way as a global one: the register
+	// is only where ITERGET drops each element on its way to the frame's
+	// variable map, and it is parked under the internal key so the body cannot
+	// find it by the user's name.
 	Int32 varReg;
+	Boolean spilledVar = Boolean(false);
 	if (_globalScope) {
 		varReg = AllocReg();
 		_variableRegs[LoopVarRegKey(node.Variable())] = varReg;
 	} else if (_variableRegs.TryGetValue(node.Variable(), &varReg)) {
 		// Variable already exists
+	} else if (IsSpilled(node.Variable())) {
+		spilledVar = Boolean(true);
 	} else {
 		varReg = TakeVarReg(node.Variable());
-		_variableRegs[node.Variable()] = varReg;
+		if (varReg < 0) {
+			MarkSpilled(node.Variable());
+			spilledVar = Boolean(true);
+		} else {
+			_variableRegs[node.Variable()] = varReg;
+		}
+	}
+	if (spilledVar) {
+		varReg = AllocReg();
+		_variableRegs[LoopVarRegKey(node.Variable())] = varReg;
 	}
 
 	// Give the body's new variables their registers before compiling the body,
@@ -1611,7 +1724,10 @@ Int32 CodeGeneratorStorage::Visit(ForNode node) {
 	// a NAME already dominates -- the variable existed before the loop -- there
 	// is nothing to place and the plain layout is smaller.
 	Int32 nameMark = _namedStack.Count();
-	Boolean peelFirst = !_globalScope && !IsRegisterNamed(node.Variable());
+	// A spilled loop variable needs no peel: there is no NAME op to place, and a
+	// zero-iteration loop simply never stores it, which leaves it undefined
+	// afterwards exactly as the peel does for a register-bound one.
+	Boolean peelFirst = !_globalScope && !spilledVar && !IsRegisterNamed(node.Variable());
 	if (peelFirst) {
 		_emitter.EmitABC(Opcode::NEXT_rA_rB, indexReg, listReg, 0, "index++; skip next if done");
 		_emitter.EmitJump(Opcode::JUMP_iABC, afterLoop, "no iterations: leave the loop variable undefined");
@@ -1632,8 +1748,10 @@ Int32 CodeGeneratorStorage::Visit(ForNode node) {
 	// For lists/strings this is the same as INDEX; for maps it returns {"key":k, "value":v}
 	_emitter.EmitABC(Opcode::ITERGET_rA_rB_rC, varReg, listReg, indexReg, Interp("{} = iterget(container, index)", node.Variable()));
 
-	// At global scope, publish the element as a global before running the body.
+	// At global scope, publish the element as a global before running the body;
+	// a spilled loop variable is published to the frame's variable map instead.
 	if (_globalScope) EmitGlobalStore(node.Variable(), varReg);
+	else if (spilledVar) EmitSpilledStore(node.Variable(), varReg);
 
 	// Compile body statements
 	_emitter.PlaceLabel(bodyStart);
@@ -1664,7 +1782,7 @@ Int32 CodeGeneratorStorage::Visit(ForNode node) {
 	// Remove internal variable names and free the registers
 	_variableRegs.Remove(idxName);
 	_variableRegs.Remove(listName);
-	if (_globalScope) {
+	if (_globalScope || spilledVar) {
 		_variableRegs.Remove(LoopVarRegKey(node.Variable()));
 		FreeReg(varReg);
 	}
@@ -1768,7 +1886,12 @@ Int32 CodeGeneratorStorage::Visit(FunctionNode node) {
 	innerGen.set__functions(_functions);  // share the function registry
 	innerGen.set_FileName(FileName);      // share the source file name
 
-	// Reserve r0 for return value, then set up param registers (r1, r2, ...)
+	// Reserve r0 for return value, then set up param registers (r1, r2, ...).
+	// Parameters cannot spill the way other named variables can: the caller
+	// places them in registers, so there is nowhere else for them to be.
+	if (node.ParamNames().Count() > MaxVarRegIndex && Error.IsNull()) {
+		Error = ErrorTypes::CompilerError("too many parameters", FileName, _emitter.CurrentLine());
+	}
 	innerGen.AllocReg();  // r0 reserved for return value
 	for (Int32 i = 0; i < node.ParamNames().Count(); i++) {
 		Int32 paramReg = innerGen.AllocReg();  // r1, r2, ...

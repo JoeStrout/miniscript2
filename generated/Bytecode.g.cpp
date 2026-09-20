@@ -109,6 +109,7 @@ String BytecodeUtil::ToMnemonic(Opcode opcode) {
 		case Opcode::GLOADC_rA_iBC:  return "GLOADC_rA_iBC";
 		case Opcode::GLOADV_rA_iBC:  return "GLOADV_rA_iBC";
 		case Opcode::GSTORE_rA_iBC:  return "GSTORE_rA_iBC";
+		case Opcode::LSTORE_rA_kBC:  return "LSTORE_rA_kBC";
 		case Opcode::JUMP_iABC:      return "JUMP_iABC";
 		case Opcode::LT_rA_rB_rC:    return "LT_rA_rB_rC";
 		case Opcode::LT_rA_rB_iC:    return "LT_rA_rB_iC";
@@ -175,6 +176,7 @@ Opcode BytecodeUtil::FromMnemonic(String s) {
 	if (s == "GLOADC_rA_iBC")   return Opcode::GLOADC_rA_iBC;
 	if (s == "GLOADV_rA_iBC")   return Opcode::GLOADV_rA_iBC;
 	if (s == "GSTORE_rA_iBC")   return Opcode::GSTORE_rA_iBC;
+	if (s == "LSTORE_rA_kBC")   return Opcode::LSTORE_rA_kBC;
 	if (s == "JUMP_iABC")       return Opcode::JUMP_iABC;
 	if (s == "LT_rA_rB_rC")     return Opcode::LT_rA_rB_rC;
 	if (s == "LT_rA_rB_iC")     return Opcode::LT_rA_rB_iC;

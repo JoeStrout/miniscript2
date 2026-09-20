@@ -1783,6 +1783,26 @@ public class VM {
 					break;
 				}
 
+				case Opcode.LSTORE_rA_kBC: {
+					// The local named by constants[BC] = R[A], stored in this frame's
+					// variable map rather than in a register.  This is where a named
+					// local goes when the function has more of them than the 8-bit
+					// register fields can address; see CodeGenerator's spill path and
+					// bugs.md entry 18.  Reads of such a name need no new opcode: with
+					// no register to check, they compile to GLOADC/GLOADV, whose
+					// run-time search looks in this same map first.
+					//
+					// GetCurrentLocalVarMap creates the map on first use, which is
+					// exactly the same object `locals`, a closure capture, and an
+					// imported module's result already see -- so a spilled local shows
+					// up in all three without further ceremony.
+					Byte a = BytecodeUtil.Au(instruction);
+					UInt16 constIdx = BytecodeUtil.BCu(instruction);
+					val = GetCurrentLocalVarMap(baseIndex, curFunc.MaxRegs); // CPP: val = GetCurrentLocalVarMap(baseIndex, curFuncRaw->MaxRegs);
+					val.MapSet(curConstants[constIdx], localStack[a]);
+					break;
+				}
+
 				case Opcode.JUMP_iABC: {
 					// Jump by signed 24-bit ABC offset from current PC
 					Int32 offset = BytecodeUtil.ABCs(instruction);

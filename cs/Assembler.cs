@@ -329,11 +329,13 @@ public class Assembler {
 			instruction = BytecodeUtil.INS_ABC(Opcode.ASSIGN_rA_rB_kC, dest, src, (Byte)constIdx);
 			Current.ReserveRegister(dest);
 
-		} else if (mnemonic == "NAME" || mnemonic == "CHKNAME") {
+		} else if (mnemonic == "NAME" || mnemonic == "CHKNAME" || mnemonic == "LSTORE") {
 			// NAME r1, "varname"     -->  NAME_rA_kBC
 			// Set variable name for r1 without changing its value
 			// CHKNAME r1, "varname"  -->  CHKNAME_rA_kBC
 			// Require that r1 already holds that variable; error if it does not
+			// LSTORE r1, "varname"   -->  LSTORE_rA_kBC
+			// Store r1 into this frame's variable map under that name
 			if (parts.Count != 3) {
 				Error(StringUtils.Format("Syntax error: {0} requires exactly 2 operands", mnemonic));
 				return 0;
@@ -346,7 +348,9 @@ public class Assembler {
 			Int32 constIdx = AddConstant(constantValue);
 			if (constIdx > 65535) Error(StringUtils.Format("Constant index out of range for {0} opcode", mnemonic));
 			if (HasError) return 0;
-			Opcode nameOp = (mnemonic == "NAME") ? Opcode.NAME_rA_kBC : Opcode.CHKNAME_rA_kBC;
+			Opcode nameOp = Opcode.CHKNAME_rA_kBC;
+			if (mnemonic == "NAME") nameOp = Opcode.NAME_rA_kBC;
+			else if (mnemonic == "LSTORE") nameOp = Opcode.LSTORE_rA_kBC;
 			instruction = BytecodeUtil.INS_AB(nameOp, dest, (Int16)constIdx);
 			Current.ReserveRegister(dest);
 

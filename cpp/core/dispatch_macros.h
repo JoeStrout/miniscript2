@@ -67,6 +67,7 @@
 	X(GLOADC_rA_iBC) \
 	X(GLOADV_rA_iBC) \
 	X(GSTORE_rA_iBC) \
+	X(LSTORE_rA_kBC) \
 	X(JUMP_iABC) \
 	X(LT_rA_rB_rC) \
 	X(LT_rA_rB_iC) \

@@ -139,6 +139,13 @@ class UnitTests {
 	// intrinsic has no bytecode for RunInner to run.
 	public: static Boolean TestRunFunction();
 
+	// A function with more named variables than the register file can hold: past
+	// MaxVarRegIndex the code generator spills them to the frame's variable map
+	// (bugs.md entry 18).  Checks that the early ones -- the spilled ones -- still
+	// read back, that a spilled variable can be updated and used as a loop
+	// variable, and that they appear in `locals`.
+	public: static Boolean TestSpilledLocals();
+
 	public: static Boolean RunAll();
 }; // end of struct UnitTests
 

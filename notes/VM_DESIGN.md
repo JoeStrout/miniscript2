@@ -75,6 +75,25 @@ GLOADV r2, "print"     # r2 = @print
 A read whose slot is unassigned — never bound, or removed — falls through to the
 intrinsics table, and raises Undefined Identifier if it is not there either.
 
+### Spilled locals
+
+Register fields are 8 bits, so a function can hold at most 256 variables in
+registers.  Past a threshold (`CodeGenerator.MaxVarRegIndex`, currently 200,
+with the rest of the file left for temporaries and callee frame bases) a named
+local *spills*: it lives in the frame's variable map under its name, exactly
+like one created by `locals["x"] = 1` or by the `import` intrinsic's `SetVar`.
+Only the store needs an opcode of its own — a spilled name has no register, so
+reads are already `GLOADC`/`GLOADV`, whose run-time search consults this frame's
+variable map before `outer` and the globals.  See bugs.md entry 18.
+
+| Mnemonic | Description |
+| --- | --- |
+| LSTORE_rA_kBC | this frame's local named by constants[BC] := R[A], creating the frame's variable map if it does not exist yet |
+
+```
+LSTORE r1, "count"     # count = r1, stored by name in this frame's variable map
+```
+
 ### Math
 
 | ADD_rA_rB_rC | R[A] := R[B] + R[C] |

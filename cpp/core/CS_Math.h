@@ -14,39 +14,17 @@ namespace MiniScript {
 // Static Math class - equivalent to C# Math
 class Math {
 public:
-    // Min functions - equivalent to C# Math.Min
-    static int32_t Min(int32_t a, int32_t b) {
-        return std::min(a, b);
-    }
+	template <typename T, typename U>
+	static auto Min(T a, U b) {
+		using Common = typename std::common_type<T, U>::type;
+		return std::min(static_cast<Common>(a), static_cast<Common>(b));
+	}
 
-    static int64_t Min(int64_t a, int64_t b) {
-        return std::min(a, b);
-    }
-
-    static float Min(float a, float b) {
-        return std::min(a, b);
-    }
-
-    static double Min(double a, double b) {
-        return std::min(a, b);
-    }
-
-    // Max functions - equivalent to C# Math.Max
-    static int32_t Max(int32_t a, int32_t b) {
-        return std::max(a, b);
-    }
-
-    static int64_t Max(int64_t a, int64_t b) {
-        return std::max(a, b);
-    }
-
-    static float Max(float a, float b) {
-        return std::max(a, b);
-    }
-
-    static double Max(double a, double b) {
-        return std::max(a, b);
-    }
+    template <typename T, typename U>
+	static auto Max(T a, U b) {
+		using Common = typename std::common_type<T, U>::type;
+		return std::max(static_cast<Common>(a), static_cast<Common>(b));
+	}
 
 	static double Round(double x) {
 		return std::round(x);

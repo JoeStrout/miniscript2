@@ -1572,12 +1572,64 @@ Boolean UnitTests::TestSpilledLocals() {
 	if (!ok) IOHelper::Print("TestSpilledLocals FAILED");
 	return ok;
 }
+Boolean UnitTests::TestHostMapSetters() {
+	Dictionary<Value, Value> plain =  Dictionary<Value, Value>::New();
+	plain[Value::make_string("x")] = Value(1.0);
+	Value plainMap = GCManager::NewMapFromDict(plain);
+
+	Dictionary<Value, Value> withSetter =  Dictionary<Value, Value>::New();
+	withSetter[Value::make_string("x")] = Value(1.0);
+	withSetter[Value::make_string("x=")] = Value::Null;   // i.e. a read-only property
+	Value setterMap = GCManager::NewMapFromDict(withSetter);
+
+	// Too long for the tiny-string form, so this covers the heap-string
+	// branch of Value.IsSetterKey as well as the bit-twiddling one.
+	Dictionary<Value, Value> longName =  Dictionary<Value, Value>::New();
+	longName[Value::make_string("backgroundColor=")] = Value::Null;
+	Value longMap = GCManager::NewMapFromDict(longName);
+
+	// A map that does not exist yet can have no descendants, so being born
+	// with a setter must not retire every other map's cached answer.
+	Int32 genBeforeBirth = GCManager::SetterGeneration;
+	Dictionary<Value, Value> another =  Dictionary<Value, Value>::New();
+	another[Value::make_string("y=")] = Value::Null;
+	Value anotherMap = GCManager::NewMapFromDict(another);
+	Int32 genAfterBirth = GCManager::SetterGeneration;
+
+	// The other native path: a setter stored into a map that already exists,
+	// which is how an intrinsic class map is built (cs/ShellIntrinsics.cs).
+	// Here the bump IS required, since the map may already have descendants.
+	Value liveMap = Value::make_map(4);
+	liveMap.MapSet(Value::make_string("x"), Value(1.0));
+	Boolean liveCleanFirst = GCManager::Maps.Get(liveMap.ItemIndex())._setterStatus != -1;
+	Int32 genBeforeStore = GCManager::SetterGeneration;
+	liveMap.MapSet(Value::make_string("x="), Value::Null);
+	Int32 genAfterStore = GCManager::SetterGeneration;
+
+	return Assert(liveCleanFirst,
+			"an ordinary key stored natively should not stamp the map")
+		&& Assert(GCManager::Maps.Get(liveMap.ItemIndex())._setterStatus == -1,
+			"a setter key stored natively should stamp the map")
+		&& Assert(GCManager::Maps.Get(plainMap.ItemIndex())._setterStatus == 0,
+			"a host map with no setter key should not be stamped")
+		&& Assert(GCManager::Maps.Get(setterMap.ItemIndex())._setterStatus == -1,
+			"a host map holding \"x=\" should be stamped as holding a setter")
+		&& Assert(GCManager::Maps.Get(longMap.ItemIndex())._setterStatus == -1,
+			"a heap-string setter key should be stamped too")
+		&& Assert(genAfterBirth == genBeforeBirth,
+			"a map born with a setter should not bump the setter generation")
+		&& Assert(genAfterStore != genBeforeStore,
+			"a setter stored into a live map should bump the setter generation")
+		&& Assert(GCManager::Maps.Get(anotherMap.ItemIndex())._setterStatus == -1,
+			"...and should still be stamped itself");
+}
 Boolean UnitTests::RunAll() {
 	return TestIntrinsicDefaults()   // first: wants to run before any VM builds the funcrefs
 		&& TestStringUtils()
 		&& TestDisassembler()
 		&& TestAssembler()
 		&& TestValueMap()
+		&& TestHostMapSetters()
 		&& TestGlobals()
 		&& TestLexer()
 		&& TestParser()

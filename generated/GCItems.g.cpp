@@ -180,7 +180,10 @@ void GCMap::SeedOrder() {
 	_order =  List<Value>::New(IsNull(Items) ? 4 : Math::Max(Items.Count(), 4));
 	_pos   = nullptr;
 	if (IsNull(Items)) return;
-	for (Value k : Items.Keys()) _order.Add(k);
+	for (Value k : Items.Keys()) {
+		_order.Add(k);
+		if (k.IsSetterKey()) _setterStatus = -1;
+	}
 }
 void GCMap::EnsureOrder() {
 	if (IsNull(_order) || IsNull(Items)) return;

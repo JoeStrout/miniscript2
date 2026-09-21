@@ -123,9 +123,12 @@ struct GCMap {
 	// Cache for "does this map's __isa chain hold any property setter?", which
 	// every map member/index assignment has to answer (see SETRFIND in VM.cs).
 	//   -1  this map itself holds at least one key ending in "=".  Written when
-	//       such a key is stored, not discovered by a search -- which is the
-	//       whole point: answering the question by scanning a map's keys would
-	//       cost more than the lookup it is trying to avoid.
+	//       such a key is stored, and when a map is born holding one (SeedOrder,
+	//       for a map adopted from a host dictionary).  Never discovered later by
+	//       a search -- that is the whole point: answering the question by
+	//       scanning a live map's keys would cost more than the lookup it is
+	//       trying to avoid.  At birth the scan is free, because the keys are
+	//       being walked anyway.
 	//    0  nothing known, except that no setter key has ever been stored here.
 	//  else the value GCManager.SetterGeneration had when this map's whole chain
 	//       was last walked and found to hold no setter at all.  Equal to the
@@ -181,6 +184,18 @@ struct GCMap {
 	// Build the order for a map whose Items were attached wholesale rather than
 	// inserted one at a time (GCManager.NewMapFromDict).  Runs on a fresh slot,
 	// from GCMapSet.SetItems, which writes the struct back.
+	// This is also where a host-built map declares its property setters.  A host
+	// fills a dictionary key by key and wraps it afterwards, so none of those
+	// stores passes the IDXSET path that normally notices a setter -- and a
+	// setter nobody noticed is simply dead, silently.  The keys are all being
+	// walked here anyway, so the test rides along on a loop that already runs
+	// once per map, and costs one bit test per key.
+	// No NoteSetterChange here, deliberately.  The generation bump exists because
+	// a map that *gains* a setter cannot find its descendants to invalidate them
+	// (maps have no back-pointers).  A map being born has no descendants: the
+	// Value has not been handed to the caller yet, so nothing can hold an __isa
+	// link to it, and no stamp anywhere can be passing through it.  So the whole
+	// program's caches survive a host class map being built.
 	public: void SeedOrder();
 
 	// Rebuild the order from Items when the two have drifted apart.  That can

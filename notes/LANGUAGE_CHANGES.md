@@ -151,7 +151,14 @@ mouse["x="] = null       // mouse.x is now read-only
 - **Frozen wins.**  A frozen map raises its usual error before any setter is consulted.  `freeze` keeps its plain meaning — this object cannot change — which matters because frozen values are what `frozenCopy` produces for map keys; a setter firing on a frozen map would let assignment to a live map *key* run arbitrary code.
 - **There is no way to un-inherit a setter.**  A subclass can replace an inherited setter with its own, or close the property with `null`, but it cannot restore plain storage for a key its prototype manages.  This has not come up; if it ever does, it wants a deliberate design, not a second magic value.
 - **No wildcard.**  There is no catch-all that sees keys with no setter defined.  If one is ever genuinely needed, a reserved key (`"?="`, with `"?"` as its read-side twin) is the shape it would take, but the expectation is that it never is.
-- **Setters installed from host code are not seen** unless the host tells the VM about them.  Whether a map needs setter dispatch at all is cached per map (see *Performance* below), and the cache is kept current by the assignment path in the VM; a native `MapSet("x=", ...)` goes around it.  A host installing a setter directly must call `VM.NoteSetterDefined(map)`, and one removing a key directly must call `VM.NoteKeyRemoved(key)`.
+- **Setters installed from host or intrinsic code work like any other.**  Whether a map needs setter dispatch at all is cached per map (see *Performance* below), so every way of installing a setter has to declare it, and each one does:
+  - a store from script, map literals included, is noted by the VM's assignment path;
+  - a map wrapped from a host dictionary is scanned as it is *born*, on the pass that seeds its iteration order -- so a host class map needs no declaration and cannot forget one;
+  - a native `MapSet` notes the key itself, which is how an intrinsic class map built key by key (`cs/ShellIntrinsics.cs`) gets its setters.
+
+  The one path left is a host that writes into a dictionary it has already wrapped as a map, going behind the map's back; that must call `VM.NoteSetterDefined(map)`.  A host removing a key directly must still call `VM.NoteKeyRemoved(key)`.
+
+  Worth knowing because the failure mode is silent and *reads as success*: an unnoticed setter stores the value under its own name, where it shadows the like-named getter, so reading the property back gives exactly what was assigned.  Test the effect, not the key.
 
 ### Performance
 
@@ -165,8 +172,12 @@ answer: a setter key stored or removed, or an `__isa` link rewired.  Each map
 carries a `_setterStatus`:
 
 - **-1** — this map itself holds at least one key ending in `=`.  Written when
-  such a key is *stored*, never discovered by searching: answering the question
-  by scanning a map's keys would cost more than the lookup it is avoiding.
+  such a key is *stored*, and when a map is *born* holding one (a map adopted
+  from a host dictionary, on the pass that seeds its iteration order).  Never
+  discovered later by searching: answering the question by scanning a live map's
+  keys would cost more than the lookup it is avoiding.  At birth the keys are
+  being walked anyway, so the scan is free -- and it needs no generation bump,
+  since a map that does not exist yet can have no descendants to invalidate.
 - **0** — nothing known, except that no setter key has ever been stored here.
 - **anything else** — the generation at which this map's whole chain was walked
   and found to hold no setter at all.

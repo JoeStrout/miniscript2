@@ -423,6 +423,23 @@ h2b.x = 4
 check "override is confined to its own hierarchy", taken, "h1only<-3,shared<-4"
 
 // ===========================================================================
+print "10. setters on intrinsic classes"
+// ---------------------------------------------------------------------------
+// RawData, FileHandle and the file module carry setters installed by native
+// code (cs/ShellIntrinsics.cs), which never passes the assignment path that
+// notices a setter -- Value.MapSet declares them instead.  The failure mode is
+// silent and reads as success, since a dead setter just stores the value and
+// shadows the getter of the same name; so check the effect, not the key.
+rd = new RawData
+rd.resize 8
+rd.len = 16
+rd.setByte 15, 200
+check "rd.len = n resizes the buffer", rd.byte(15), 200
+check "...and len reads back from the buffer", rd.len, 16
+rd.resize 4
+check "resize still does the same job", rd.len, 4
+
+// ===========================================================================
 print ""
 if failures == 0 then
 	print "OK -- " + checks + " checks passed"

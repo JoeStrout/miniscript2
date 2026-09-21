@@ -1443,6 +1443,22 @@ public static class ShellIntrinsics {
 		};
 		_rdKeys.Add("resize");
 
+		// len = n -- the same operation as resize, spelled as an assignment.
+		// resize stays: this class predates property setters and there is public
+		// code that calls it, so these two are deliberately the same thing twice.
+		f = Intrinsic.Create("");
+		f.AffectsState = true;
+		f.AddParam("self", Value.Null);
+		f.AddParam("value", Value.zero);
+		f.Code = (Context ctx, IntrinsicResult partialResult) => {
+			Value self = ctx.GetArg(0);
+			Int32 newSize = (Int32)ctx.GetArg(1).DoubleValue();
+			if (newSize < 0) newSize = 0;
+			ResizeRawBuf(self, newSize);
+			return IntrinsicResult.Null;
+		};
+		_rdKeys.Add("len=");
+
 		// Typed getter/setter factory lambdas.
 		// byte / setByte
 		f = Intrinsic.Create("");
@@ -1907,6 +1923,22 @@ public static class ShellIntrinsics {
 		};
 		_fhKeys.Add("seek");
 
+		// position = n -- the same seek, spelled as an assignment.  seek stays,
+		// for the same reason resize does.
+		f = Intrinsic.Create("");
+		f.AffectsState = true;
+		f.AddParam("self", Value.Null);
+		f.AddParam("value", Value.zero);
+		f.Code = (Context ctx, IntrinsicResult partialResult) => {
+			Value self = ctx.GetArg(0);
+			Value hv = Value.Null;
+			self.TryGet(Value.make_string("_handle"), out hv);
+			if (!IsFileHandleOpen(hv)) return new IntrinsicResult(ErrorTypes.FileError("file is not open"));
+			SeekFilePosition(hv, (Int32)ctx.GetArg(1).DoubleValue());
+			return IntrinsicResult.Null;
+		};
+		_fhKeys.Add("position=");
+
 		f = Intrinsic.Create("");
 		f.AddParam("self", Value.Null);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
@@ -1936,6 +1968,19 @@ public static class ShellIntrinsics {
 			return IntrinsicResult.Null;
 		};
 		_fmKeys.Add("setdir");
+
+		// curdir = path -- the same change of directory, spelled as an
+		// assignment.  Like setdir, it reports failure as an error value, which
+		// from a setter halts at the assignment that caused it.
+		f = Intrinsic.Create("");
+		f.AffectsState = true;
+		f.AddParam("value", Value.emptyString);
+		f.Code = (Context ctx, IntrinsicResult partialResult) => {
+			String path = ctx.GetArg(0).ToString(null);
+			if (!FsSetDir(path)) return new IntrinsicResult(ErrorTypes.FileError("curdir: could not change directory to: " + path));
+			return IntrinsicResult.Null;
+		};
+		_fmKeys.Add("curdir=");
 
 		f = Intrinsic.Create("");
 		f.AddParam("path", Value.emptyString);

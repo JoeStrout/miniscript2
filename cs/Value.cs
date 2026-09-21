@@ -198,6 +198,29 @@ public readonly struct Value {
 		return make_string(GetStringValue() + "=");
 	}
 
+	// Whether this string is itself a property-setter key, i.e. ends in "=".
+	// The bit test is conclusive: '=' is ASCII (0x3D) and a UTF-8 continuation
+	// byte is always 0x80..0xBF, so a trailing 0x3D cannot be part of some other
+	// character.  The tiny-string layout puts byte i at bit 8*(i+1), so the last
+	// byte of a len-byte string sits at 8*len.
+	//
+	// Here beside SetterKey, its twin, because both turn on the same layout --
+	// and because the map machinery needs it too: a map adopted from a host
+	// dictionary is scanned for setter keys as it is born (GCMap.SeedOrder).
+	public Boolean IsSetterKey() {
+		if (IsTinyString()) {
+			Int32 len = TinyLen();
+			if (len < 2) return false;
+			return (Int32)((_u >> (8 * len)) & 0xFF) == 0x3D;
+		}
+		if (IsHeapString()) {
+			String s = GetStringValue();
+			Int32 n = s.Length;
+			return n > 1 && s[n - 1] == '=';
+		}
+		return false;
+	}
+
 	private static Value make_tiny_utf8(ReadOnlySpan<byte> utf8) {
 		int len = utf8.Length;
 		ulong u = TINY_STRING_TAG | (ulong)((uint)len & 0xFFU);
@@ -1045,6 +1068,17 @@ public readonly struct Value {
 		// frozen), so it can't be mutated while in the map; see FROZEN_VALUES.md.
 		if (key.IsList() || key.IsMap()) key = key.FrozenCopy();
 		m.Set(key, value);
+		// Storing a setter key here declares a property setter, and this path --
+		// a host, or an intrinsic class map being built -- goes around the VM's
+		// assignment path, which is what would otherwise notice.  Through the
+		// set, not through m: GCMap is a struct and Get() returned a copy.  The
+		// generation bump is needed because, unlike a map still being born (see
+		// GCMap.SeedOrder), this map may already have descendants whose chains
+		// were stamped clean.
+		if (key.IsSetterKey()) {
+			GCManager.Maps.SetSetterStatus(ItemIndex(), -1);
+			GCManager.NoteSetterChange();
+		}
 		return true;
 	}
 	public bool MapSet(string key, Value value) => MapSet(make_string(key), value);

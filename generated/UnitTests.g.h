@@ -146,6 +146,12 @@ class UnitTests {
 	// variable, and that they appear in `locals`.
 	public: static Boolean TestSpilledLocals();
 
+	// A property setter that arrives in a host dictionary has to be noticed as
+	// the map is born (GCMap.SeedOrder): the host's stores never pass the VM's
+	// assignment path, so a setter nobody noticed would be silently dead -- it
+	// would simply never fire, with no error to say why.
+	public: static Boolean TestHostMapSetters();
+
 	public: static Boolean RunAll();
 }; // end of struct UnitTests
 

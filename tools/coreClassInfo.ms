@@ -164,6 +164,7 @@ Value.methods.push MethodInfo.Make("And", false, "Value")
 Value.methods.push MethodInfo.Make("Or", false, "Value")
 Value.methods.push MethodInfo.Make("ToFuzzyBool", false, "Double")
 Value.methods.push MethodInfo.Make("IsUnassigned", false, "Boolean")
+Value.methods.push MethodInfo.Make("IsSetterKey", false, "Boolean")
 
 all = [String, List, Dictionary, Value]
 for cls in all; cls.elsewhere = true; end for

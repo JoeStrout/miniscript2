@@ -215,6 +215,7 @@ typedef struct Value {
     String        ToString(void* vm = nullptr) const;
     const char*   AsCString() const;
     Value         SetterKey() const;
+    inline bool   IsSetterKey() const noexcept;
     // Like ToString().c_str() but SAFE: copies the bytes into the per-call
     // CStrArena and returns a pointer valid until the current native (intrinsic)
     // call returns.  Use this at C-API boundaries instead of the dangling
@@ -431,6 +432,27 @@ inline Value Value::SetterKey() const {
         }
     }
     return Value::make_string(String(AsCString()) + "=");
+}
+
+// Whether this string is itself a property-setter key, i.e. ends in "=".
+// Mirrors Value.IsSetterKey() in cs/Value.cs.
+//
+// The bit test is conclusive: '=' is ASCII (0x3D) and a UTF-8 continuation byte
+// is always 0x80..0xBF, so a trailing 0x3D cannot be part of some other
+// character.  The tiny-string layout puts byte i at bit 8*(i+1), so the last
+// byte of a len-byte string sits at 8*len.
+inline bool Value::IsSetterKey() const noexcept {
+    if (IsTinyString()) {
+        int len = TinyLen();
+        if (len < 2) return false;
+        return (int)((bits >> (8 * len)) & 0xFF) == 0x3D;
+    }
+    if (IsHeapString()) {
+        const char* s = AsCString();
+        size_t n = strlen(s);
+        return n > 1 && s[n - 1] == '=';
+    }
+    return false;
 }
 
 inline bool Value::IsGCObject() const noexcept {

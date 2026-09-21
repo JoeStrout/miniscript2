@@ -1289,17 +1289,11 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 						RaiseRuntimeError("Assignment to __isa would form a cycle in the __isa chain");
 						VM_NEXT();
 					}
-					// Storing a key like "x=" installs a property setter, and
-					// storing __isa rewires the chain a setter is looked up
-					// along.  Either can change the answer SETRFIND caches, so
-					// both are noted here -- the one place all of it passes
-					// through, map literals ({"x=": @f}) included.
-					if (IsSetterKey(valB)) {
-						GCManager::Maps.SetSetterStatus(valA.ItemIndex(), -1);
-						GCManager::NoteSetterChange();
-					} else if (IsIsaKey(valB)) {
-						GCManager::NoteSetterChange();
-					}
+					// Storing __isa rewires the chain a setter is looked up
+					// along, which can change the answer SETRFIND caches.
+					// (Storing a setter key can too; MapSet notes that one,
+					// so that a native store declares itself the same way.)
+					if (IsIsaKey(valB)) GCManager::NoteSetterChange();
 					valA.MapSet(valB, valC);
 				} else {
 					RaiseRuntimeError("Can't set indexed value in {0}", valA);
@@ -1976,7 +1970,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				if (valB.IsFrozen()) break;
 				// A key that already ends in "=" is never intercepted, so that
 				// installing a setter does not go looking for "x==".
-				if (IsSetterKey(valC)) break;
+				if (valC.IsSetterKey()) break;
 				// The whole chain is known to hold no setter: no key to build,
 				// no lookup to do.  This is the ordinary case for ordinary
 				// maps, and after the first assignment it is one compare.
@@ -2195,7 +2189,7 @@ void VMStorage::NoteSetterDefined(Value map) {
 	GCManager::NoteSetterChange();
 }
 void VMStorage::NoteKeyRemoved(Value key) {
-	if (IsSetterKey(key) || IsIsaKey(key)) GCManager::NoteSetterChange();
+	if (key.IsSetterKey() || IsIsaKey(key)) GCManager::NoteSetterChange();
 }
 Boolean VMStorage::ChainHasSetter(Value map) {
 	Int32 gen = GCManager::SetterGeneration;
@@ -2221,11 +2215,6 @@ Boolean VMStorage::ChainHasSetter(Value map) {
 		stampAt = next;
 	}
 	return Boolean(false);
-}
-Boolean VMStorage::IsIsaKey(Value key) {
-	if (key.RefEquals(Value::magicIsA)) return Boolean(true);
-	if (key.IsTinyString() || !key.IsString()) return Boolean(false);
-	return key == Value::magicIsA;
 }
 Boolean VMStorage::WouldFormIsaCycle(Value target,Value newIsa) {
 	Value current = newIsa;

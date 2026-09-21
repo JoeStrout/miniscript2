@@ -119,6 +119,17 @@ bool Value::MapSet(Value key, Value value) const {
     // frozen), so it can't be mutated while in the map; see FROZEN_VALUES.md.
     if (key.IsList() || key.IsMap()) key = key.FrozenCopy();
     m.Set(key, value);
+    // Storing a setter key here declares a property setter, and this path -- a
+    // host, or an intrinsic class map being built -- goes around the VM's
+    // assignment path, which is what would otherwise notice.  Through the set,
+    // not through m: GCMap is a struct and Get() returned a copy.  The
+    // generation bump is needed because, unlike a map still being born (see
+    // GCMap::SeedOrder), this map may already have descendants whose chains
+    // were stamped clean.  Mirrors cs/Value.cs MapSet.
+    if (key.IsSetterKey()) {
+        GCManager::Maps.SetSetterStatus(map_val.ItemIndex(), -1);
+        GCManager::NoteSetterChange();
+    }
     return true;
 }
 

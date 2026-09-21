@@ -1624,17 +1624,11 @@ public class VM {
 							RaiseRuntimeError("Assignment to __isa would form a cycle in the __isa chain");
 							break;
 						}
-						// Storing a key like "x=" installs a property setter, and
-						// storing __isa rewires the chain a setter is looked up
-						// along.  Either can change the answer SETRFIND caches, so
-						// both are noted here -- the one place all of it passes
-						// through, map literals ({"x=": @f}) included.
-						if (IsSetterKey(valB)) {
-							GCManager.Maps.SetSetterStatus(valA.ItemIndex(), -1);
-							GCManager.NoteSetterChange();
-						} else if (IsIsaKey(valB)) {
-							GCManager.NoteSetterChange();
-						}
+						// Storing __isa rewires the chain a setter is looked up
+						// along, which can change the answer SETRFIND caches.
+						// (Storing a setter key can too; MapSet notes that one,
+						// so that a native store declares itself the same way.)
+						if (IsIsaKey(valB)) GCManager.NoteSetterChange();
 						valA.MapSet(valB, valC);
 					} else {
 						RaiseRuntimeError("Can't set indexed value in {0}", valA);
@@ -2317,7 +2311,7 @@ public class VM {
 					if (valB.IsFrozen()) break;
 					// A key that already ends in "=" is never intercepted, so that
 					// installing a setter does not go looking for "x==".
-					if (IsSetterKey(valC)) break;
+					if (valC.IsSetterKey()) break;
 					// The whole chain is known to hold no setter: no key to build,
 					// no lookup to do.  This is the ordinary case for ordinary
 					// maps, and after the first assignment it is one compare.
@@ -2555,40 +2549,14 @@ public class VM {
 		return true;
 	}
 
-	// True if `key` is the magic "__isa" key.  "__isa" is five UTF-8 bytes, so
-	// make_string always produces it as a tiny string, whose bits are canonical
-	// for its content -- hence the bitwise test catches every ordinary key, and
-	// the content compare is needed only for the (unexpected) heap-string form.
-	[MethodImpl(AggressiveInlining)]
-	// True if `key` names a property setter, i.e. it is a string ending in "=".
-	// A bare "=" does not count: there is no property whose name is empty.
+	// Tell the VM that `map` has just been given a property setter.
 	//
-	// This runs on every map store, so it must not build a String.  AsCString()
-	// on a tiny string -- which is what almost every property name is -- decodes
-	// UTF-8 into a fresh String, so going through it would cost an allocation per
-	// assignment just to look at one byte.  Reading the byte straight out of the
-	// bits is conclusive: '=' is ASCII (0x3D), and a UTF-8 continuation byte is
-	// always 0x80..0xBF, so a trailing 0x3D cannot be part of some other
-	// character.  The tiny-string layout puts byte i at bit 8*(i+1), so the last
-	// byte of a len-byte string sits at 8*len (the same idiom GCManager uses to
-	// read tiny strings out).
-	private static Boolean IsSetterKey(Value key) {
-		if (key.IsTinyString()) {
-			Int32 len = key.TinyLen();
-			if (len < 2) return false;
-			return (Int32)((key.Bits() >> (8 * len)) & 0xFF) == 0x3D;
-		}
-		if (key.IsHeapString()) {
-			String s = key.AsCString();   // no decode: the String already exists
-			Int32 n = s.Length;
-			return n > 1 && s[n - 1] == '=';
-		}
-		return false;
-	}
-
-	// Tell the VM that `map` has just been given a property setter.  Host code
-	// that installs one by calling MapSet directly bypasses the IDXSET path that
-	// normally notices, and must call this or its setter will never fire.
+	// Rarely needed.  A setter stored by script is noticed by IDXSET below, one
+	// stored natively by Value.MapSet, and one that arrives in a host dictionary
+	// as the map is born (GCMap.SeedOrder).  What is left is a host that writes
+	// into a dictionary it has *already* wrapped as a map, going behind the
+	// map's back: that is seen by none of the three, and must be declared here
+	// or the setter will never fire.
 	public void NoteSetterDefined(Value map) {
 		if (map.IsMap()) GCManager.Maps.SetSetterStatus(map.ItemIndex(), -1);
 		GCManager.NoteSetterChange();
@@ -2598,7 +2566,7 @@ public class VM {
 	// can change a setter lookup matter, so this is a no-op for everything else.
 	// Nothing clears the removed-from map's own -1: see GCMap._setterStatus.
 	public void NoteKeyRemoved(Value key) {
-		if (IsSetterKey(key) || IsIsaKey(key)) GCManager.NoteSetterChange();
+		if (key.IsSetterKey() || IsIsaKey(key)) GCManager.NoteSetterChange();
 	}
 
 	// True if `map` or anything along its __isa chain holds a property setter.
@@ -2638,6 +2606,11 @@ public class VM {
 		return false;
 	}
 
+	// True if `key` is the magic "__isa" key.  "__isa" is five UTF-8 bytes, so
+	// make_string always produces it as a tiny string, whose bits are canonical
+	// for its content -- hence the bitwise test catches every ordinary key, and
+	// the content compare is needed only for the (unexpected) heap-string form.
+	[MethodImpl(AggressiveInlining)]
 	private static Boolean IsIsaKey(Value key) {
 		if (key.RefEquals(Value.magicIsA)) return true;
 		if (key.IsTinyString() || !key.IsString()) return false;

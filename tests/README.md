@@ -23,9 +23,14 @@ hand-written `cpp/compiler/` that no longer exists, and against core sources
 (`cpp/core/value.c`, `gc.c`) that have since moved or gone.  Look for them in
 git history rather than trusting anything that references them.
 
+It also holds standalone MiniScript scripts that check themselves and exit
+nonzero on failure, for behavior that wants more than the integration format
+comfortably gives.
+
 ```
 tests/
 ├── testSuite.txt          # the integration suite, run by --test
+├── setters.ms             # extended exercise of property setters
 ├── eof_input.ms           # fixture: `input` at end of file (build.sh test)
 └── cs/
     └── transpilable/      # layered C# unit tests
@@ -41,6 +46,12 @@ From the project root:
 ./tools/build.sh test        # quick smoke test of the built executables
 ./tools/build.sh test-all    # the C# unit tests under tests/
 ./tools/build.sh test-cs     # same thing; tests/ holds only C# tests now
+```
+
+Self-checking scripts run against either build and report a count:
+
+```bash
+build/cs/miniscript2 tests/setters.ms      # or build/cpp/miniscript2
 ```
 
 Or with make, from `tests/`:
@@ -62,6 +73,15 @@ cd tests/cs/transpilable/layer0 && make test
 **A language, VM, or intrinsic behavior:** add a case to `testSuite.txt`.  The
 format is a block of MiniScript source, then `=====`, then the exact expected
 output.
+
+**Behavior that needs a longer scenario** -- state accumulating across many
+steps, a combinatorial sweep, the exact order a chain of calls runs in, or
+sustained stress on a cache -- is awkward as a pile of small
+source/expected-output blocks.  Write a self-checking script instead, as
+`setters.ms` does: a `check(label, actual, expected)` helper, a count at the
+end, and `exit 1` if anything failed.  Note in its header what it deliberately
+leaves to `testSuite.txt`; anything that terminates the program (an uncatchable
+runtime error) needs its own process and belongs there.
 
 **A C# unit test of a low-level module:** add it under
 `cs/transpilable/layer0/`, register it in that layer's `TestRunner.cs`, and add

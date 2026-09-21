@@ -926,8 +926,7 @@ Int32 CodeGeneratorStorage::Visit(IndexedAssignmentNode node) {
 		}
 	}
 
-	_emitter.EmitABC(Opcode::IDXSET_rA_rB_rC, containerReg, indexReg, valueReg,
-		Interp("{}[{}] = {}", node.Target().ToStr(), node.Index().ToStr(), node.Value().ToStr()));
+	EmitPropertyStore(node, containerReg, indexReg, valueReg);
 
 	// `locals.x = ...` creates local x as surely as `x = ...` does, so a later
 	// `x = x + 1` is reading a variable that exists.  Record it (no register is
@@ -946,6 +945,50 @@ Int32 CodeGeneratorStorage::Visit(IndexedAssignmentNode node) {
 	FreeReg(valueReg);
 	FreeReg(indexReg);
 	return containerReg;
+}
+void CodeGeneratorStorage::EmitPropertyStore(IndexedAssignmentNode node,Int32 containerReg,Int32 indexReg,Int32 valueReg) {
+	String desc = Interp("{}[{}] = {}", node.Target().ToStr(), node.Index().ToStr(), node.Value().ToStr());
+
+	// `super.x = v` splits the two halves of the operation apart: the setter
+	// is looked up starting at super (so it finds the *parent's* setter, or
+	// none, rather than the one currently running), but the plain store it
+	// falls back to lands on self.  That combination is what makes
+	// `super.x = value` mean "do the ordinary storage" inside a setter.
+	SuperNode superTarget = As<SuperNode, SuperNodeStorage>(node.Target());
+	Int32 storeReg = containerReg;
+	if (!IsNull(superTarget)) storeReg = GetSelfReg();
+
+	Int32 setterReg = AllocReg();
+	_emitter.EmitABC(Opcode::SETRFIND_rA_rB_rC, setterReg, containerReg, indexReg,
+		Interp("r{} = setter for {}, if any", setterReg, node.Index().ToStr()));
+	if (!IsNull(superTarget)) {
+		_emitter.EmitA(Opcode::SETSELF_rA, storeReg, "preserve self for super setter");
+	}
+
+	Int32 plainStore = _emitter.CreateLabel();
+	Int32 afterStore = _emitter.CreateLabel();
+	_emitter.EmitBranch(Opcode::BRFALSE_rA_iBC, setterReg, plainStore, "no setter: store normally");
+
+	// The RHS goes into a register of its own for the call, because
+	// EmitCallSequence frees the argument registers it is given and the
+	// plain-store path below still needs valueReg.
+	Int32 argReg = AllocReg();
+	_emitter.EmitABC(Opcode::LOAD_rA_rB, argReg, valueReg, 0, Interp("r{} = {}", argReg, node.Value().ToStr()));
+	List<Int32> argRegs =  List<Int32>::New();
+	argRegs.Add(argReg);
+	Int32 resultReg = EmitCallSequence(setterReg, argRegs, -1, Interp("setter {}=", node.Index().ToStr()));
+	// A setter's return value is discarded, which puts it under the same rule
+	// as a bare expression statement (see EmitDiscardCheck): an error thrown
+	// away here is one nobody could ever catch, so halt on it.  Any other
+	// value is simply ignored.
+	_emitter.EmitA(Opcode::ERRCHK_rA, resultReg, "halt if the setter returned an uncaught error");
+	FreeReg(resultReg);
+	FreeReg(setterReg);
+	_emitter.EmitJump(Opcode::JUMP_iABC, afterStore, "setter handled the assignment");
+
+	_emitter.PlaceLabel(plainStore);
+	_emitter.EmitABC(Opcode::IDXSET_rA_rB_rC, storeReg, indexReg, valueReg, desc);
+	_emitter.PlaceLabel(afterStore);
 }
 Int32 CodeGeneratorStorage::Visit(UnaryOpNode node) {
 	CodeGenerator _this(std::static_pointer_cast<CodeGeneratorStorage>(shared_from_this()));

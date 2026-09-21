@@ -90,6 +90,7 @@
 	X(NEW_rA_rB) \
 	X(ISA_rA_rB_rC) \
 	X(METHFIND_rA_rB_rC) \
+	X(SETRFIND_rA_rB_rC) \
 	X(IDXGET_rA_rB_rC) \
 	X(SETSELF_rA) \
 	X(CALLIFREF_rA) \

@@ -242,6 +242,8 @@ class GCMapSetStorage : public GCSetBaseStorage {
 
 	public: void SetFrozen(Int32 idx, Boolean frozen);
 
+	public: void SetSetterStatus(Int32 idx, Int32 status);
+
 	public: void SetVmb(Int32 idx, VarMapBacking vmb);
 
 	// Attach an existing dictionary as this slot's contents, sharing its
@@ -392,6 +394,8 @@ struct GCMapSet : public GCSetBase {
 	public: inline void InitAsGlobals(Int32 idx, Globals g);
 
 	public: inline void SetFrozen(Int32 idx, Boolean frozen);
+
+	public: inline void SetSetterStatus(Int32 idx, Int32 status);
 
 	public: inline void SetVmb(Int32 idx, VarMapBacking vmb);
 
@@ -559,6 +563,12 @@ inline void GCMapSet::SetFrozen(Int32 idx,Boolean frozen) { return get()->SetFro
 inline void GCMapSetStorage::SetFrozen(Int32 idx,Boolean frozen) {
 	GCMap item = _items[idx];
 	item.Frozen = frozen;
+	_items[idx] = item;
+}
+inline void GCMapSet::SetSetterStatus(Int32 idx,Int32 status) { return get()->SetSetterStatus(idx, status); }
+inline void GCMapSetStorage::SetSetterStatus(Int32 idx,Int32 status) {
+	GCMap item = _items[idx];
+	item._setterStatus = status;
 	_items[idx] = item;
 }
 inline void GCMapSet::SetVmb(Int32 idx,VarMapBacking vmb) { return get()->SetVmb(idx, vmb); }

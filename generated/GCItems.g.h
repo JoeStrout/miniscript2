@@ -99,6 +99,7 @@ struct GCMap {
 	public: VarMapBacking _vmb;
 	public: Globals _gb;
 	public: List<Value> _order;
+	public: Int32 _setterStatus;
 	public: Dictionary<Value, Int32> _pos;
 
 	// Non-null for VarMap-backed maps (call-frame locals, closure contexts).
@@ -118,6 +119,24 @@ struct GCMap {
 	// compacted away once they outnumber the live entries.  The live keys here
 	// are exactly Items' keys, so MarkChildren has nothing extra to mark.
 	// Null only for the globals view, whose order comes from the slot table.
+
+	// Cache for "does this map's __isa chain hold any property setter?", which
+	// every map member/index assignment has to answer (see SETRFIND in VM.cs).
+	//   -1  this map itself holds at least one key ending in "=".  Written when
+	//       such a key is stored, not discovered by a search -- which is the
+	//       whole point: answering the question by scanning a map's keys would
+	//       cost more than the lookup it is trying to avoid.
+	//    0  nothing known, except that no setter key has ever been stored here.
+	//  else the value GCManager.SetterGeneration had when this map's whole chain
+	//       was last walked and found to hold no setter at all.  Equal to the
+	//       current generation, it means "clean" and the walk is skipped.
+	// Anything that could change the answer bumps the generation, which retires
+	// every stamp in one stroke; see GCManager.NoteSetterChange.  A stale stamp
+	// is therefore never wrong, only slow, and the next walk re-stamps it.
+	// The -1 is deliberately sticky: removing a setter key cannot clear it
+	// without scanning for other setter keys, so a map that held one keeps
+	// paying for a lookup.  That is the conservative direction, and removing a
+	// setter is not something programs do in a loop.
 
 	// key -> its slot in _order, so that Remove does not have to search for it.
 	// Built on a map's first removal and null before that, because most maps

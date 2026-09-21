@@ -1336,8 +1336,7 @@ public class CodeGenerator : IASTVisitor {
 			}
 		}
 
-		_emitter.EmitABC(Opcode.IDXSET_rA_rB_rC, containerReg, indexReg, valueReg,
-			$"{node.Target.ToStr()}[{node.Index.ToStr()}] = {node.Value.ToStr()}");
+		EmitPropertyStore(node, containerReg, indexReg, valueReg);
 
 		// `locals.x = ...` creates local x as surely as `x = ...` does, so a later
 		// `x = x + 1` is reading a variable that exists.  Record it (no register is
@@ -1356,6 +1355,68 @@ public class CodeGenerator : IASTVisitor {
 		FreeReg(valueReg);
 		FreeReg(indexReg);
 		return containerReg;
+	}
+
+	// Store `valueReg` into `containerReg[indexReg]`, giving a property setter
+	// first refusal.  See LANGUAGE_CHANGES.md; the shape is
+	//
+	//       SETRFIND rS, container, index    // rS = setter, or null
+	//       [SETSELF self]                     // super.x = v only
+	//       BRFALSE rS, plainStore
+	//       LOAD rArg, value                   // setter path: call it with the RHS
+	//       ARGBLK 1 / ARG rArg / CALL
+	//       ERRCHK rResult                     // halt if the setter returned an error
+	//       JUMP after
+	//   plainStore:
+	//       IDXSET store, index, value
+	//   after:
+	//
+	// The extra work all sits on the setter side of the branch, so an assignment
+	// to a map with no setter pays one SETRFIND (which returns immediately when
+	// the program has defined no setters at all) and one not-taken branch.
+	private void EmitPropertyStore(IndexedAssignmentNode node, Int32 containerReg, Int32 indexReg, Int32 valueReg) {
+		String desc = $"{node.Target.ToStr()}[{node.Index.ToStr()}] = {node.Value.ToStr()}";
+
+		// `super.x = v` splits the two halves of the operation apart: the setter
+		// is looked up starting at super (so it finds the *parent's* setter, or
+		// none, rather than the one currently running), but the plain store it
+		// falls back to lands on self.  That combination is what makes
+		// `super.x = value` mean "do the ordinary storage" inside a setter.
+		SuperNode superTarget = node.Target as SuperNode;
+		Int32 storeReg = containerReg;
+		if (superTarget != null) storeReg = GetSelfReg();
+
+		Int32 setterReg = AllocReg();
+		_emitter.EmitABC(Opcode.SETRFIND_rA_rB_rC, setterReg, containerReg, indexReg,
+			$"r{setterReg} = setter for {node.Index.ToStr()}, if any");
+		if (superTarget != null) {
+			_emitter.EmitA(Opcode.SETSELF_rA, storeReg, "preserve self for super setter");
+		}
+
+		Int32 plainStore = _emitter.CreateLabel();
+		Int32 afterStore = _emitter.CreateLabel();
+		_emitter.EmitBranch(Opcode.BRFALSE_rA_iBC, setterReg, plainStore, "no setter: store normally");
+
+		// The RHS goes into a register of its own for the call, because
+		// EmitCallSequence frees the argument registers it is given and the
+		// plain-store path below still needs valueReg.
+		Int32 argReg = AllocReg();
+		_emitter.EmitABC(Opcode.LOAD_rA_rB, argReg, valueReg, 0, $"r{argReg} = {node.Value.ToStr()}");
+		List<Int32> argRegs = new List<Int32>();
+		argRegs.Add(argReg);
+		Int32 resultReg = EmitCallSequence(setterReg, argRegs, -1, $"setter {node.Index.ToStr()}=");
+		// A setter's return value is discarded, which puts it under the same rule
+		// as a bare expression statement (see EmitDiscardCheck): an error thrown
+		// away here is one nobody could ever catch, so halt on it.  Any other
+		// value is simply ignored.
+		_emitter.EmitA(Opcode.ERRCHK_rA, resultReg, "halt if the setter returned an uncaught error");
+		FreeReg(resultReg);
+		FreeReg(setterReg);
+		_emitter.EmitJump(Opcode.JUMP_iABC, afterStore, "setter handled the assignment");
+
+		_emitter.PlaceLabel(plainStore);
+		_emitter.EmitABC(Opcode.IDXSET_rA_rB_rC, storeReg, indexReg, valueReg, desc);
+		_emitter.PlaceLabel(afterStore);
 	}
 
 	public Int32 Visit(UnaryOpNode node) {

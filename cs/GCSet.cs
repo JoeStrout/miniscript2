@@ -353,6 +353,13 @@ public class GCMapSet : GCSetBase {
 	}
 
 	[MethodImpl(AggressiveInlining)]
+	public void SetSetterStatus(Int32 idx, Int32 status) {
+		GCMap item = _items[idx];
+		item._setterStatus = status;
+		_items[idx] = item;
+	}
+
+	[MethodImpl(AggressiveInlining)]
 	public void SetVmb(Int32 idx, VarMapBacking vmb) {
 		GCMap item = _items[idx];
 		item._vmb = vmb;

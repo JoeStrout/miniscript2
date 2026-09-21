@@ -82,3 +82,129 @@ And here are some ways in which errors are perfectly ordinary:
 
 
 
+
+## Property Setters
+
+MiniScript 1.x had `assignOverride`: a function stored on a map, which was consulted on every assignment into that map and could cancel the store by returning true.  It was not inherited — a map made with `new` did not get its prototype's override — which forced a pile of work-arounds in Mini Micro, and it was all-or-nothing, so the override ran on every key whether it cared about that key or not.
+
+MiniScript 2 replaces it with **property setters**, which fall out of a symmetry the language already had.
+
+Reading a member already hides the difference between storage and computation: `foo.x` returns the stored value if `x` holds data, and *calls* it if `x` holds a function of no arguments.  So a getter is just a member named `x`.  The hiding was one-way, though; there was no matching story for writing.  Now there is:
+
+> **A member named `x` answers reads of `x`.  A member named `x=` answers writes to `x`.**
+
+When `foo.x = v` (or `foo["x"] = v`) executes, the `__isa` chain of `foo` is searched for the key `"x="`, exactly as a method lookup searches it:
+
+- **Not found** — the value is stored normally.  This is the overwhelmingly common case and costs one failed lookup.
+- **A function** — it is called with `v` as its one argument and `self` bound to `foo` (the object written to, not the map the setter was found on).  Nothing is stored; storing is now the setter's job.  The return value is discarded — *unless it is an error*, which halts the program at the assignment, since a discarded error is one nobody could ever catch.  That is the same rule a bare expression statement follows, and it is enforced the same way, with an `ERRCHK` after the call.
+- **`null`** — the property is read-only: the program terminates with a runtime error naming the property.
+- **Anything else** — a runtime error: the setter is invalid.
+
+Since the lookup is an ordinary `__isa` walk, setters are **inherited and overridable** like any other member, and the most-derived one wins.
+
+### Defining a setter
+
+`x=` is not a legal identifier, so a setter is installed with the bracket form:
+
+```
+Sprite = {}
+Sprite["x="] = function(value)
+    self.__x = value
+    // ...tell the renderer something moved...
+end function
+```
+
+That is deliberate.  Setters are an advanced, library-author feature, not something a typical user should reach for, and requiring the brackets keeps them visible as such while costing the language no new syntax.
+
+### Doing the ordinary store
+
+A setter that wants the normal storage to happen — after validating, or purely as a side channel — writes `super.x = value`.  That resumes the setter search *above* the map the running setter was found on, and if nothing is found there, performs the plain store into `self`.  So it serves both as "delegate to my parent's setter" and as the base case:
+
+```
+Sprite["x="] = function(value)
+    if value isa string then return   // silently ignore bad input
+    super.x = value                   // the ordinary store
+end function
+```
+
+`self.x = value` inside a setter would of course find the same setter again and recurse until the call stack overflows.
+
+**This changes what `super.x = v` means.**  It previously stored into the parent map; now the store lands on `self`.  Storing through `super` into a prototype was never a useful thing to do, and the new reading is the one that makes the base case work.
+
+### Read-only properties
+
+A module that exposes computed properties usually wants them protected.  Without protection, a user who guesses wrong — `mouse.x = 42`, hoping to move the cursor — silently clobbers the `x` getter and has no way to get it back.  Assigning `null` as the setter turns that into an immediate, clear error:
+
+```
+mouse["x="] = null       // mouse.x is now read-only
+```
+
+`null` was chosen over a stock "raise an error" function for two reasons.  It is legible: someone printing the map can tell at a glance which properties are actively managed and which are merely closed, whereas a sentinel function is indistinguishable from a real setter.  And it gives *better* errors, not worse — no setter is called, so the VM raises the error itself, and it has the key in hand and can name the property.
+
+### Rules and boundaries
+
+- **A setter reports failure by returning an error.**  `return err("...")` from a setter halts the program with that error, attributed to the assignment that triggered it.  There is no way to veto an assignment quietly and have the caller find out — a setter either handles the write, ignores it, or fails loudly.
+- **Only map member and index assignment is intercepted.**  `x = 5` on a plain variable is not a map store and never consults a setter.  Nor does `remove foo.x`.
+- **`foo.x = v` and `foo["x"] = v` behave identically**, including when the key is computed: `foo[k] = v` looks for `k + "="`.  There is no bracket form that quietly bypasses a setter.
+- **A key that already ends in `=` is never intercepted**, so installing a setter does not go looking for `"x=="`.
+- **Only the `__isa` chain is searched, not the type maps.**  Reads fall back to `map`, `list`, `string` and `number`; writes deliberately do not.  A `"x="` entry on the shared `map` type would otherwise intercept assignment to *every* map in the program, which is a far bigger hammer than the read-side fallback, and one that could silently swallow stores rather than merely adding a method.
+- **Frozen wins.**  A frozen map raises its usual error before any setter is consulted.  `freeze` keeps its plain meaning — this object cannot change — which matters because frozen values are what `frozenCopy` produces for map keys; a setter firing on a frozen map would let assignment to a live map *key* run arbitrary code.
+- **There is no way to un-inherit a setter.**  A subclass can replace an inherited setter with its own, or close the property with `null`, but it cannot restore plain storage for a key its prototype manages.  This has not come up; if it ever does, it wants a deliberate design, not a second magic value.
+- **No wildcard.**  There is no catch-all that sees keys with no setter defined.  If one is ever genuinely needed, a reserved key (`"?="`, with `"?"` as its read-side twin) is the shape it would take, but the expectation is that it never is.
+- **Setters installed from host code are not seen** unless the host tells the VM about them.  Whether a map needs setter dispatch at all is cached per map (see *Performance* below), and the cache is kept current by the assignment path in the VM; a native `MapSet("x=", ...)` goes around it.  A host installing a setter directly must call `VM.NoteSetterDefined(map)`, and one removing a key directly must call `VM.NoteKeyRemoved(key)`.
+
+### Performance
+
+Every map member/index assignment has to answer "does this map's `__isa` chain
+hold a setter?" before it can store anything, and the answer has to be cheap,
+because in a real environment (Mini Micro, say) *some* map somewhere will always
+have one.  So the answer is cached per map rather than per program.
+
+A global `SetterGeneration` counter is bumped whenever anything could change an
+answer: a setter key stored or removed, or an `__isa` link rewired.  Each map
+carries a `_setterStatus`:
+
+- **-1** — this map itself holds at least one key ending in `=`.  Written when
+  such a key is *stored*, never discovered by searching: answering the question
+  by scanning a map's keys would cost more than the lookup it is avoiding.
+- **0** — nothing known, except that no setter key has ever been stored here.
+- **anything else** — the generation at which this map's whole chain was walked
+  and found to hold no setter at all.
+
+An assignment walks the chain only until some map answers for the rest of it —
+a -1, or a stamp equal to the current generation.  When the walk comes out
+clean it stamps every map it passed, so a chain settles after one walk and
+stays settled until a setter or an `__isa` link actually moves.  Bumping the
+generation retires every stamp at once, which is what makes this safe: maps
+have no back-pointers, so there is no way to find the descendants of a map that
+just gained a setter and invalidate them individually.  A stale stamp is
+therefore never wrong, only slow, and the next walk replaces it.
+
+Building the `key + "="` string is the other cost, and it falls on every
+assignment to a map that has any setter.  `Value.SetterKey` does it with pure
+bit arithmetic whenever the result still fits a tiny string: a tiny string keeps
+byte *i* at bit 8*(i+1) and its length in the low byte, with the slots above the
+length left zero and the tag confined to bits 48-63, so appending one ASCII byte
+is "bump the length, drop 0x3D into the next slot" — no UTF-8 decode, no
+allocation, no intern-table lookup.  That covers every property name up to four
+UTF-8 bytes; longer ones fall back to building the string.  (Going through
+`AsCString()` instead would allocate on every assignment, and does not even
+compile on the C++ side, where it returns a `const char*`.)
+
+Measured on 1.2M map assignments: a program with no setters anywhere and a
+program with a setter on an unrelated map run identically (~0.92s vs ~0.97s),
+which is the whole point of caching per map instead of per program.  Assigning
+to a map that *does* have a setter — even on a different key — costs about a
+third more (~1.23s), which is the chain lookup for the setter key.  That cost is
+confined to the maps actually using the feature.
+
+Two subtleties worth keeping in mind when touching this:
+
+- `new` sets `__isa` without bumping the generation, and that is correct: the
+  map it is writing to was allocated a moment earlier, so nothing else can have
+  it in a chain and no stamp can go stale.  The same holds for the `RawData` and
+  `FileHandle` instances `ShellIntrinsics` builds.
+- The -1 is deliberately sticky.  Removing a setter key cannot clear it without
+  scanning for other setter keys, so a map that once held one keeps paying for a
+  lookup.  That is the conservative direction, and removing a setter is not
+  something programs do in a loop.

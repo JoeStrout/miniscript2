@@ -31,6 +31,28 @@ class GCManager {
 	public: static GCErrorSet Errors;
 	public: static GCFuncRefSet Functions;
 	public: static GCHandleSet Handles;
+	public: static Int32 SetterGeneration;
+
+	// GCSet indices — these constants define the encoding baked into every GC Value.
+
+	// Length boundary for interning: heap strings with Length < InternThreshold
+	// are placed in the InternedStrings set and deduplicated via _internTable.
+	// Strings of Length >= InternThreshold go into the ordinary BigStrings set.
+
+	// Typed accessors; use these to allocate new objects.
+
+	// Version stamp for the per-map property-setter caches (GCMap._setterStatus).
+	// It is bumped whenever anything could change the answer to "does this map's
+	// __isa chain hold a setter?" -- a setter key stored or removed, or an __isa
+	// link rewired -- which invalidates every cached "clean" stamp at once.  That
+	// matters because maps have no back-pointers, so there is no way to find and
+	// invalidate the descendants of a map that just gained a setter.
+	// It lives here rather than on the VM because the maps it describes are
+	// global; two VMs sharing this heap must share the stamp as well.
+	// Starts at 1 so that it never equals the 0 that means "unknown", and skips
+	// back past 0 and -1 on the (theoretical) wrap.
+
+	public: static void NoteSetterChange();
 	private: static Dictionary<String, Int32> _internTable;
 	private: static Boolean _fullCollection;
 	public: static Int32 GCIntervalTicks;
@@ -45,14 +67,6 @@ class GCManager {
 	private: static List<Value> _roots;
 	private: static List<MarkCallback> _markCallbackFns;
 	private: static List<object> _markCallbackData;
-
-	// GCSet indices — these constants define the encoding baked into every GC Value.
-
-	// Length boundary for interning: heap strings with Length < InternThreshold
-	// are placed in the InternedStrings set and deduplicated via _internTable.
-	// Strings of Length >= InternThreshold go into the ordinary BigStrings set.
-
-	// Typed accessors; use these to allocate new objects.
 
 	// Content-addressed intern table for short heap strings.
 	// Maps string content → InternedStrings slot index.

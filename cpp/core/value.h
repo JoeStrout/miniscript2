@@ -214,6 +214,7 @@ typedef struct Value {
     static Value  make_string(const String& s);
     String        ToString(void* vm = nullptr) const;
     const char*   AsCString() const;
+    Value         SetterKey() const;
     // Like ToString().c_str() but SAFE: copies the bytes into the per-call
     // CStrArena and returns a pointer valid until the current native (intrinsic)
     // call returns.  Use this at C-API boundaries instead of the dangling
@@ -408,6 +409,28 @@ inline bool Value::IsInt() const noexcept {
 
 inline bool Value::IsTinyString() const noexcept {
     return (bits & NANISH_MASK) == TINY_STRING_TAG;
+}
+
+// The property-setter key for this string: "x" -> "x=".  Mirrors
+// Value.SetterKey() in cs/Value.cs; see notes/LANGUAGE_CHANGES.md.
+//
+// Every assignment to a map that has any setter builds one of these, so the
+// common case is pure bit arithmetic.  A tiny string stores byte i at bit
+// 8*(i+1) and its length in the low byte, with the slots above the length left
+// zero, and TINY_STRING_TAG occupies only bits 48-63 -- so appending one ASCII
+// byte is "bump the length, drop 0x3D into the next slot".  No UTF-8 decode, no
+// allocation, no intern-table lookup.  Property names longer than four UTF-8
+// bytes fall back to building the string.
+inline Value Value::SetterKey() const {
+    if (IsTinyString()) {
+        int len = TinyLen();
+        if (len <= 4) {
+            return Value::fromBits((bits & ~(uint64_t)0xFF)
+                                   | (uint64_t)(len + 1)
+                                   | ((uint64_t)0x3D << (8 * (len + 1))));
+        }
+    }
+    return Value::make_string(String(AsCString()) + "=");
 }
 
 inline bool Value::IsGCObject() const noexcept {

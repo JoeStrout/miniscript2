@@ -40,6 +40,25 @@ public static class GCManager {
 	public static GCFuncRefSet Functions = null;
 	public static GCHandleSet Handles = null;
 
+	// Version stamp for the per-map property-setter caches (GCMap._setterStatus).
+	// It is bumped whenever anything could change the answer to "does this map's
+	// __isa chain hold a setter?" -- a setter key stored or removed, or an __isa
+	// link rewired -- which invalidates every cached "clean" stamp at once.  That
+	// matters because maps have no back-pointers, so there is no way to find and
+	// invalidate the descendants of a map that just gained a setter.
+	//
+	// It lives here rather than on the VM because the maps it describes are
+	// global; two VMs sharing this heap must share the stamp as well.
+	//
+	// Starts at 1 so that it never equals the 0 that means "unknown", and skips
+	// back past 0 and -1 on the (theoretical) wrap.
+	public static Int32 SetterGeneration = 1;
+
+	public static void NoteSetterChange() {
+		SetterGeneration++;
+		if (SetterGeneration <= 0) SetterGeneration = 1;
+	}
+
 	// Content-addressed intern table for short heap strings.
 	// Maps string content → InternedStrings slot index.
 	private static Dictionary<String, Int32> _internTable = null;

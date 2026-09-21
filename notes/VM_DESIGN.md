@@ -142,13 +142,13 @@ LSTORE r1, "count"     # count = r1, stored by name in this frame's variable map
 | NEW_rA_rB | R[A] := new map with __isa set to R[B] |
 | ISA_rA_rB_rC | R[A] := (R[B] isa R[C]) — true if identical or R[C] is in R[B]'s __isa chain |
 | METHFIND_rA_rB_rC | R[A] := method lookup on R[B] with key R[C], walking __isa chain; sets pendingSelf=R[B], pendingSuper=containing map's __isa |
+| SETRFIND_rA_rB_rC | R[A] := the property setter for key R[C] on map R[B] (the entry under `R[C] + "="`, found by walking the __isa chain), or null if there is none; sets pendingSelf/pendingSuper exactly as METHFIND. Yields null without building a key or looking anything up when R[B] is not a map or is frozen, when R[C] is not a string or already ends in `=`, or when R[B]'s chain is cached as holding no setter (see GCMap._setterStatus). Raises a runtime error if the entry found is null (a read-only property) or is not a funcRef. Emitted before every map member/index assignment; see LANGUAGE_CHANGES.md |
 | IDXGET_rA_rB_rC | R[A] := R[B][R[C]] with type-map fallback, like METHFIND but never auto-invokes a funcRef result; clears pending context. If R[B] is an error, R[A] := R[B]. Used for both `x[k]` and `@x[k]` |
 | SETSELF_rA | Override pendingSelf with R[A] (used for super.method() to preserve original self) |
 | CALLIFREF_rA | If R[A] is a funcref and pending context exists, auto-invoke it with pending self/super; otherwise clear pending context |
 | ITERGET_rA_rB_rC | R[A] := element at position R[C] from container R[B]; for lists/strings same as INDEX, for maps returns {"key":k, "value":v} |
 | ERRCHK_rA | if R[A] is an error, terminate with an "Uncaught" runtime error; otherwise do nothing |
 
-(More opcodes will be added as the prototype develops.)
 
 ### Naming a variable past constant 255
 

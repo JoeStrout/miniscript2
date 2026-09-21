@@ -85,6 +85,7 @@ void GCMap::Init(Int32 capacity ) {
 	Frozen = Boolean(false);
 	_vmb   = nullptr;
 	_gb    = nullptr;
+	_setterStatus = 0;
 }
 void GCMap::InitAsGlobals(Globals g) {
 	Items  = nullptr;
@@ -93,6 +94,7 @@ void GCMap::InitAsGlobals(Globals g) {
 	Frozen = Boolean(false);
 	_vmb   = nullptr;
 	_gb    = g;
+	_setterStatus = 0;
 }
 Boolean GCMap::TryGet(Value key,Value* value) {
 	if (!IsNull(_gb)) return _gb.TryGet(key, &*value);
@@ -266,6 +268,7 @@ void GCMap::OnSweep() {
 	Frozen = Boolean(false);
 	_vmb   = nullptr;
 	_gb    = nullptr;
+	_setterStatus = 0;
 }
 
 void GCError::MarkChildren() {

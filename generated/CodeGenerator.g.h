@@ -455,6 +455,23 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 
 	public: Int32 Visit(IndexedAssignmentNode node);
 
+	// Store `valueReg` into `containerReg[indexReg]`, giving a property setter
+	// first refusal.  See LANGUAGE_CHANGES.md; the shape is
+	//       SETRFIND rS, container, index    // rS = setter, or null
+	//       [SETSELF self]                     // super.x = v only
+	//       BRFALSE rS, plainStore
+	//       LOAD rArg, value                   // setter path: call it with the RHS
+	//       ARGBLK 1 / ARG rArg / CALL
+	//       ERRCHK rResult                     // halt if the setter returned an error
+	//       JUMP after
+	//   plainStore:
+	//       IDXSET store, index, value
+	//   after:
+	// The extra work all sits on the setter side of the branch, so an assignment
+	// to a map with no setter pays one SETRFIND (which returns immediately when
+	// the program has defined no setters at all) and one not-taken branch.
+	private: void EmitPropertyStore(IndexedAssignmentNode node, Int32 containerReg, Int32 indexReg, Int32 valueReg);
+
 	public: Int32 Visit(UnaryOpNode node);
 
 	public: Int32 Visit(BinaryOpNode node);
@@ -1042,6 +1059,23 @@ struct CodeGenerator : public IASTVisitor {
 
 	public: inline Int32 Visit(IndexedAssignmentNode node);
 
+	// Store `valueReg` into `containerReg[indexReg]`, giving a property setter
+	// first refusal.  See LANGUAGE_CHANGES.md; the shape is
+	//       SETRFIND rS, container, index    // rS = setter, or null
+	//       [SETSELF self]                     // super.x = v only
+	//       BRFALSE rS, plainStore
+	//       LOAD rArg, value                   // setter path: call it with the RHS
+	//       ARGBLK 1 / ARG rArg / CALL
+	//       ERRCHK rResult                     // halt if the setter returned an error
+	//       JUMP after
+	//   plainStore:
+	//       IDXSET store, index, value
+	//   after:
+	// The extra work all sits on the setter side of the branch, so an assignment
+	// to a map with no setter pays one SETRFIND (which returns immediately when
+	// the program has defined no setters at all) and one not-taken branch.
+	private: inline void EmitPropertyStore(IndexedAssignmentNode node, Int32 containerReg, Int32 indexReg, Int32 valueReg);
+
 	public: inline Int32 Visit(UnaryOpNode node);
 
 	public: inline Int32 Visit(BinaryOpNode node);
@@ -1263,6 +1297,7 @@ inline Int32 CodeGenerator::Visit(AssignmentNode node) { return get()->Visit(nod
 inline Int32 CodeGenerator::VisitGlobalAssignment(AssignmentNode node) { return get()->VisitGlobalAssignment(node); }
 inline Int32 CodeGenerator::VisitSpilledAssignment(AssignmentNode node) { return get()->VisitSpilledAssignment(node); }
 inline Int32 CodeGenerator::Visit(IndexedAssignmentNode node) { return get()->Visit(node); }
+inline void CodeGenerator::EmitPropertyStore(IndexedAssignmentNode node,Int32 containerReg,Int32 indexReg,Int32 valueReg) { return get()->EmitPropertyStore(node, containerReg, indexReg, valueReg); }
 inline Int32 CodeGenerator::Visit(UnaryOpNode node) { return get()->Visit(node); }
 inline Int32 CodeGenerator::Visit(BinaryOpNode node) { return get()->Visit(node); }
 inline Int32 CodeGenerator::CompileShortCircuit(BinaryOpNode node) { return get()->CompileShortCircuit(node); }

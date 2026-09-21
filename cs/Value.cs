@@ -174,6 +174,30 @@ public readonly struct Value {
 		return GCManager.NewString(str);
 	}
 
+	// The property-setter key for this string: "x" -> "x=".  See the Property
+	// Setters section of notes/LANGUAGE_CHANGES.md.
+	//
+	// Every assignment to a map that has any setter builds one of these, so the
+	// common case is done with pure bit arithmetic.  A tiny string stores byte i
+	// at bit 8*(i+1) and its length in the low byte, with the slots above the
+	// length left zero, and TINY_STRING_TAG lives entirely in bits 48-63 -- so
+	// appending one ASCII byte is just "bump the length, drop 0x3D into the next
+	// slot".  No UTF-8 decode, no allocation, no intern-table lookup.  That
+	// covers every property name up to four UTF-8 bytes; longer ones fall back
+	// to building the string the ordinary way.
+	//
+	// This lives on Value rather than in the VM because it is the tiny-string
+	// layout that makes it cheap, and FromBits is deliberately private to here.
+	public Value SetterKey() {
+		if (IsTinyString()) {
+			int len = TinyLen();
+			if (len <= 4) {
+				return FromBits((_u & ~0xFFUL) | (ulong)(len + 1) | (0x3DUL << (8 * (len + 1))));
+			}
+		}
+		return make_string(GetStringValue() + "=");
+	}
+
 	private static Value make_tiny_utf8(ReadOnlySpan<byte> utf8) {
 		int len = utf8.Length;
 		ulong u = TINY_STRING_TAG | (ulong)((uint)len & 0xFFU);

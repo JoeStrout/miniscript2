@@ -519,6 +519,7 @@ public static class CoreIntrinsics {
 				// An error is a legitimate map key; but if it is not one here,
 				// terminate rather than quietly answer 0.
 				result = container.MapRemove(index) ? 1 : 0;
+				if (result == 1) ctx.vm.NoteKeyRemoved(index);
 				if (result == 0 && index.IsError()) return ctx.vm.RaiseUncaughtError(index);
 			} else {
 				return new IntrinsicResult(ErrorTypes.TypeError("list or map", container));
@@ -777,6 +778,7 @@ public static class CoreIntrinsics {
 				if (Value.map_iterator_next(ref iter)) { // CPP: if (map_iterator_next(&iter, &result, nullptr)) {
 					result = iter.Key;             // CPP: // remove key that was found
 					self.MapRemove(result);
+					ctx.vm.NoteKeyRemoved(result);
 				}
 			} else {
 				return new IntrinsicResult(ErrorTypes.TypeError("list or map", self));
@@ -799,6 +801,7 @@ public static class CoreIntrinsics {
 				if (Value.map_iterator_next(ref iter)) { // CPP: if (map_iterator_next(&iter, &result, nullptr)) {
 					result = iter.Key;             // CPP: // remove key that was found
 					self.MapRemove(result);
+					ctx.vm.NoteKeyRemoved(result);
 				}
 			} else {
 				return new IntrinsicResult(ErrorTypes.TypeError("list or map", self));

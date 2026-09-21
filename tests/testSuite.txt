@@ -3779,6 +3779,378 @@ print obj.whoami
 C>B>A
 ================================
 ================================================================================
+==== SECTION 19b: PROPERTY SETTERS
+================================================================================
+==== A member named `x=` intercepts assignment to `x`.
+================================
+m = {}
+m["x="] = function(v)
+	print "setter got " + v
+end function
+m.x = 42
+print m.hasIndex("x")
+--------------------------------
+setter got 42
+0
+================================
+==== The dot form and the bracket form both go through the setter.
+================================
+m = {}
+m["x="] = function(v); print "set " + v; end function
+m.x = 1
+m["x"] = 2
+k = "x"
+m[k] = 3
+--------------------------------
+set 1
+set 2
+set 3
+================================
+==== `self` in a setter is the object written to, not the map it was found on.
+================================
+Proto = {"name": "Proto"}
+Proto["x="] = function(v)
+	print "writing to " + self.name
+end function
+inst = new Proto
+inst.name = "inst"
+inst.x = 1
+Proto.x = 2
+--------------------------------
+writing to inst
+writing to Proto
+================================
+==== Setters are inherited down the __isa chain.
+================================
+A = {}
+A["x="] = function(v); print "A setter " + v; end function
+B = new A
+C = new B
+c = new C
+c.x = 7
+--------------------------------
+A setter 7
+================================
+==== `super.x = v` performs the ordinary store, into self.
+================================
+Base = {}
+Base["x="] = function(v)
+	if v < 0 then return
+	super.x = v
+end function
+b = new Base
+b.x = 5
+print b.x
+b.x = -1
+print b.x
+--------------------------------
+5
+5
+================================
+==== A subclass setter can delegate to its parent's with `super`.
+================================
+Base = {}
+Base["x="] = function(v)
+	print "base " + v
+	super.x = v
+end function
+Derived = new Base
+Derived["x="] = function(v)
+	print "derived " + v
+	super.x = v * 2
+end function
+d = new Derived
+d.x = 4
+print d.x
+--------------------------------
+derived 4
+base 8
+8
+================================
+==== A getter and a setter together make a computed property.
+================================
+Temp = {"__c": 0}
+Temp.f = function; return self.__c * 9 / 5 + 32; end function
+Temp["f="] = function(v); self.__c = (v - 32) * 5 / 9; end function
+t = new Temp
+t.f = 212
+print t.__c
+print t.f
+t.f = t.f + 18
+print t.f
+--------------------------------
+100
+212
+230
+================================
+==== A setter's return value is discarded, whatever it is.
+================================
+m = {}
+m["a="] = function(v); return "a string"; end function
+m["b="] = function(v); return 99; end function
+m["c="] = function(v); return [1, 2]; end function
+m["d="] = function(v); return {"k": 1}; end function
+m.a = 1
+m.b = 2
+m.c = 3
+m.d = 4
+print "done"
+--------------------------------
+done
+================================
+==== But an error returned by a setter is discarded where nobody could catch
+==== it, so it halts the program, like any other dropped error.
+================================
+m = {}
+m["x="] = function(v)
+	return err("bad value: " + v)
+end function
+print "before"
+m.x = 42
+print "never reached"
+--------------------------------
+before
+Runtime Error: Uncaught bad value: 42 [line 6]
+================================
+==== An error returned through a delegating `super.x = v` halts at that line.
+================================
+Base = {}
+Base["x="] = function(v)
+	return err("from Base")
+end function
+D = new Base
+D["x="] = function(v)
+	super.x = v
+	return null
+end function
+d = new D
+print "before"
+d.x = 7
+--------------------------------
+before
+Runtime Error: Uncaught from Base [line 7]
+================================
+==== A setter may be defined in a map literal.
+================================
+Lit = {"y=": function(v); print "lit " + v; end function}
+L = new Lit
+L.y = 1
+--------------------------------
+lit 1
+================================
+==== Keys with no setter are stored normally on a map that has one.
+================================
+m = {}
+m["x="] = function(v); print "setter"; end function
+m.other = 3
+print m.other
+--------------------------------
+3
+================================
+==== A null setter makes the property read-only.
+================================
+mouse = {}
+mouse.x = function; return 100; end function
+mouse["x="] = null
+print mouse.x
+mouse.other = 3
+print mouse.other
+mouse.x = 42
+--------------------------------
+100
+3
+Runtime Error: Property 'x' is read-only [line 7]
+================================
+==== A read-only property is inherited too.
+================================
+Proto = {}
+Proto["x="] = null
+inst = new Proto
+inst.x = 1
+--------------------------------
+Runtime Error: Property 'x' is read-only [line 4]
+================================
+==== A subclass can replace an inherited read-only property with a real setter.
+================================
+Proto = {}
+Proto["x="] = null
+Sub = new Proto
+Sub["x="] = function(v); print "sub setter " + v; end function
+s = new Sub
+s.x = 1
+--------------------------------
+sub setter 1
+================================
+==== A setter that is neither a function nor null is an error.
+================================
+m = {}
+m["x="] = 5
+m.x = 1
+--------------------------------
+Runtime Error: Invalid setter: 'x=' is not a function [line 3]
+================================
+==== A frozen map raises its usual error; the setter never runs.
+================================
+m = {}
+m["x="] = function(v); print "setter ran"; end function
+freeze m
+m.x = 1
+--------------------------------
+Runtime Error: Attempt to modify a frozen map [line 4]
+================================
+==== Installing a setter is not itself intercepted (no search for "x==").
+================================
+m = {}
+m["x=="] = function(v); print "should not run"; end function
+m["x="] = function(v); print "installed " + v; end function
+m.x = 1
+--------------------------------
+installed 1
+================================
+==== A non-string key is never intercepted.
+================================
+m = {}
+m["1="] = function(v); print "should not run"; end function
+m[1] = "stored"
+print m[1]
+--------------------------------
+stored
+================================
+==== Setters on the `map` type map do not intercept assignment to every map.
+================================
+map["z="] = function(v); print "should not run"; end function
+plain = {}
+plain.z = 1
+print plain.z
+remove map, "z="
+--------------------------------
+1
+================================
+==== Plain variable assignment is never intercepted.
+================================
+m = {}
+m["x="] = function(v); print "should not run"; end function
+x = 99
+print x
+--------------------------------
+99
+================================
+==== `remove` is not intercepted by a setter.
+================================
+m = {}
+m["a="] = function(v); print "should not run"; end function
+m.b = 1
+remove m, "b"
+print m.hasIndex("b")
+--------------------------------
+0
+================================
+==== A setter that assigns the same property on self recurses until the stack overflows.
+================================
+m = {}
+m["x="] = function(v); self.x = v; end function
+m.x = 1
+--------------------------------
+Runtime Error: Call stack overflow [line 2]
+================================
+==== A setter defined after the map has already been assigned to still fires.
+==== (The map has a cached "no setters in my chain" stamp by then.)
+================================
+m = {}
+m.a = 1
+m["x="] = function(v); print "setter " + v; end function
+m.x = 2
+--------------------------------
+setter 2
+================================
+==== A setter added to a prototype fires for instances assigned to earlier.
+================================
+P = {}
+i = new P
+i.a = 1
+P["x="] = function(v); print "proto setter " + v; end function
+i.x = 2
+--------------------------------
+proto setter 2
+================================
+==== Rewiring __isa to a prototype that has setters takes effect immediately.
+================================
+Q = {}
+Q["x="] = function(v); print "Q setter " + v; end function
+n = {}
+n.a = 1
+n.__isa = Q
+n.x = 2
+--------------------------------
+Q setter 2
+================================
+==== A setter is found several links up the __isa chain.
+================================
+C = {}
+C["x="] = function(v); print "C setter " + v; end function
+B = new C
+A = new B
+a = new A
+a.x = 5
+a.y = 6
+print a.y
+--------------------------------
+C setter 5
+6
+================================
+==== Removing a setter restores ordinary storage.
+================================
+m = {}
+m["x="] = function(v); print "should not run"; end function
+remove m, "x="
+m.x = 9
+print m.x
+--------------------------------
+9
+================================
+==== An instance created after its prototype gained a setter uses it.
+================================
+P = {}
+P["x="] = function(v); print "setter " + v; end function
+p = new P
+p.x = 3
+--------------------------------
+setter 3
+================================
+==== Setter keys are found for property names either side of the tiny-string
+==== boundary, and for multi-byte ones (Value.SetterKey appends the "=" with bit
+==== arithmetic when the result still fits in 5 UTF-8 bytes, and builds the
+==== string otherwise).  The astral case matters: "*" is 4 bytes, so its setter
+==== key is exactly 5 and takes the bit path.
+================================
+m = {}
+m["a="]      = function(v); print "a " + v; end function
+m["abcd="]   = function(v); print "abcd " + v; end function
+m["abcde="]  = function(v); print "abcde " + v; end function
+m["abcdef="] = function(v); print "abcdef " + v; end function
+m["é="]      = function(v); print "e-acute " + v; end function
+m["🎉="]      = function(v); print "astral " + v; end function
+m["🎉🎉="]     = function(v); print "astral2 " + v; end function
+m.a = 1
+m.abcd = 2
+m.abcde = 3
+m.abcdef = 4
+m["é"] = 5
+m["🎉"] = 6
+m["🎉🎉"] = 7
+m.bcde = 8
+print m.bcde
+--------------------------------
+a 1
+abcd 2
+abcde 3
+abcdef 4
+e-acute 5
+astral 6
+astral2 7
+8
+================================
+================================================================================
 ==== SECTION 20: SLICING
 ================================================================================
 ==== String slicing: basic range

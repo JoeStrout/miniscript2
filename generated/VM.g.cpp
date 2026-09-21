@@ -1289,6 +1289,17 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 						RaiseRuntimeError("Assignment to __isa would form a cycle in the __isa chain");
 						VM_NEXT();
 					}
+					// Storing a key like "x=" installs a property setter, and
+					// storing __isa rewires the chain a setter is looked up
+					// along.  Either can change the answer SETRFIND caches, so
+					// both are noted here -- the one place all of it passes
+					// through, map literals ({"x=": @f}) included.
+					if (IsSetterKey(valB)) {
+						GCManager::Maps.SetSetterStatus(valA.ItemIndex(), -1);
+						GCManager::NoteSetterChange();
+					} else if (IsIsaKey(valB)) {
+						GCManager::NoteSetterChange();
+					}
 					valA.MapSet(valB, valC);
 				} else {
 					RaiseRuntimeError("Can't set indexed value in {0}", valA);
@@ -1846,6 +1857,11 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 					VM_NEXT();
 				}
 				val = Value::make_map(2);
+				// No NoteSetterChange here, unlike the __isa store in IDXSET:
+				// this map was allocated a moment ago, so nothing else has it
+				// in an __isa chain and no cached setter stamp can go stale.
+				// (The same reasoning covers ShellIntrinsics, which builds its
+				// RawData and FileHandle instances the same way.)
 				val.MapSet(Value::magicIsA, valB);
 				localStack[a] = val;
 				VM_NEXT();
@@ -1931,6 +1947,61 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 					// pendingSelf is left as it was (long-standing behavior)
 					hasPendingContext = Boolean(true);
 				}
+				VM_NEXT();
+			}
+
+			VM_CASE(SETRFIND_rA_rB_rC) {
+				// R[A] = the property setter for key R[C] on map R[B], or null
+				// if there is none.  This is the write-side twin of METHFIND:
+				// the code generator emits it ahead of every map member/index
+				// assignment, branches to a plain IDXSET when the result is
+				// null, and otherwise calls what it found with the right-hand
+				// side as the one argument.  See LANGUAGE_CHANGES.md.
+				//
+				// Side effects on a hit, exactly as METHFIND: pendingSelf is
+				// the map written to (NOT the map the setter was found on),
+				// and pendingSuper is that map's __isa, so `super.x = v`
+				// inside a setter resumes the search above it.
+				Byte a = BytecodeUtil::Au(instruction);
+				Byte b = BytecodeUtil::Bu(instruction);
+				Byte c = BytecodeUtil::Cu(instruction);
+				localStack[a] = Value::Null;
+
+				valB = localStack[b];  // container
+				valC = localStack[c];  // property name
+				if (!valB.IsMap() || !valC.IsString()) break;
+				// Frozen wins: leave it to the plain store to raise the usual
+				// error, so that `freeze` keeps its flat meaning and a setter
+				// can never run on an object that is supposed to be immutable.
+				if (valB.IsFrozen()) break;
+				// A key that already ends in "=" is never intercepted, so that
+				// installing a setter does not go looking for "x==".
+				if (IsSetterKey(valC)) break;
+				// The whole chain is known to hold no setter: no key to build,
+				// no lookup to do.  This is the ordinary case for ordinary
+				// maps, and after the first assignment it is one compare.
+				if (!ChainHasSetter(valB)) break;
+
+				// Only the __isa chain, deliberately not the type maps: an
+				// "x=" on the shared `map` type would intercept assignment to
+				// every map in the program.  See LANGUAGE_CHANGES.md.
+				if (!valB.LookupWithOrigin(valC.SetterKey(), &val, &valD)) break;
+
+				if (val.IsNull()) {
+					// A null setter marks the property read-only.  The error is
+					// raised here rather than by a stand-in function precisely
+					// because we still have the key, and can name it.
+					RaiseRuntimeError("Property '{0}' is read-only", valC);
+					VM_NEXT();
+				}
+				if (!val.IsFuncRef()) {
+					RaiseRuntimeError("Invalid setter: '{0}=' is not a function", valC);
+					VM_NEXT();
+				}
+				localStack[a] = val;
+				pendingSelf = valB;
+				pendingSuper = valD;
+				hasPendingContext = Boolean(true);
 				VM_NEXT();
 			}
 
@@ -2118,6 +2189,43 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 	// Save state after loop exit (e.g. from error condition)
 	SaveState(pc, baseIndex, currentFunc);
 	return Value::Null;
+}
+void VMStorage::NoteSetterDefined(Value map) {
+	if (map.IsMap()) GCManager::Maps.SetSetterStatus(map.ItemIndex(), -1);
+	GCManager::NoteSetterChange();
+}
+void VMStorage::NoteKeyRemoved(Value key) {
+	if (IsSetterKey(key) || IsIsaKey(key)) GCManager::NoteSetterChange();
+}
+Boolean VMStorage::ChainHasSetter(Value map) {
+	Int32 gen = GCManager::SetterGeneration;
+	Value current = map;
+	Value next = Value::Null;
+	Int32 toStamp = 0;   // maps from `map` up that this walk proves clean
+	for (Int32 depth = 0; depth < 256; depth++) {
+		if (!current.IsMap()) break;   // ran off the end of the chain: clean
+		Int32 status = GCManager::Maps.Get(current.ItemIndex())._setterStatus;
+		if (status == -1) return Boolean(true);
+		if (status == gen) break;      // already stamped; so is everything above
+		toStamp++;                     // clean, if the rest of the walk agrees
+		if (!current.TryGet(Value::magicIsA, &next)) break;
+		current = next;
+	}
+
+	// Clean.  Stamp exactly the maps the walk proved clean, so that the next
+	// assignment to any of them is a single compare.
+	Value stampAt = map;
+	for (Int32 i = 0; i < toStamp; i++) {
+		GCManager::Maps.SetSetterStatus(stampAt.ItemIndex(), gen);
+		if (!stampAt.TryGet(Value::magicIsA, &next)) break;
+		stampAt = next;
+	}
+	return Boolean(false);
+}
+Boolean VMStorage::IsIsaKey(Value key) {
+	if (key.RefEquals(Value::magicIsA)) return Boolean(true);
+	if (key.IsTinyString() || !key.IsString()) return Boolean(false);
+	return key == Value::magicIsA;
 }
 Boolean VMStorage::WouldFormIsaCycle(Value target,Value newIsa) {
 	Value current = newIsa;

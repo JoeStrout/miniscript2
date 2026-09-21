@@ -66,6 +66,7 @@ String Disassembler::AssemOp(Opcode opcode) {
 		case Opcode::NEW_rA_rB:     return "NEW";
 		case Opcode::ISA_rA_rB_rC:  return "ISA";
 		case Opcode::METHFIND_rA_rB_rC: return "METHFIND";
+		case Opcode::SETRFIND_rA_rB_rC: return "SETRFIND";
 		case Opcode::IDXGET_rA_rB_rC: return "IDXGET";
 		case Opcode::SETSELF_rA:    return "SETSELF";
 		case Opcode::CALLIFREF_rA:  return "CALLIFREF";
@@ -191,6 +192,7 @@ String Disassembler::ToString(UInt32 instruction) {
 		case Opcode::CALL_rA_rB_rC:
 		case Opcode::ISA_rA_rB_rC:
 		case Opcode::METHFIND_rA_rB_rC:
+		case Opcode::SETRFIND_rA_rB_rC:
 		case Opcode::IDXGET_rA_rB_rC:
 		case Opcode::ITERGET_rA_rB_rC:
 		case Opcode::LOADV_rA_rB_rC:

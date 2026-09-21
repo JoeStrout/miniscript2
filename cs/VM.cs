@@ -1624,6 +1624,17 @@ public class VM {
 							RaiseRuntimeError("Assignment to __isa would form a cycle in the __isa chain");
 							break;
 						}
+						// Storing a key like "x=" installs a property setter, and
+						// storing __isa rewires the chain a setter is looked up
+						// along.  Either can change the answer SETRFIND caches, so
+						// both are noted here -- the one place all of it passes
+						// through, map literals ({"x=": @f}) included.
+						if (IsSetterKey(valB)) {
+							GCManager.Maps.SetSetterStatus(valA.ItemIndex(), -1);
+							GCManager.NoteSetterChange();
+						} else if (IsIsaKey(valB)) {
+							GCManager.NoteSetterChange();
+						}
 						valA.MapSet(valB, valC);
 					} else {
 						RaiseRuntimeError("Can't set indexed value in {0}", valA);
@@ -2187,6 +2198,11 @@ public class VM {
 						break;
 					}
 					val = Value.make_map(2);
+					// No NoteSetterChange here, unlike the __isa store in IDXSET:
+					// this map was allocated a moment ago, so nothing else has it
+					// in an __isa chain and no cached setter stamp can go stale.
+					// (The same reasoning covers ShellIntrinsics, which builds its
+					// RawData and FileHandle instances the same way.)
 					val.MapSet(Value.magicIsA, valB);
 					localStack[a] = val;
 					break;
@@ -2273,6 +2289,61 @@ public class VM {
 						hasPendingContext = true;
 					}
 					break; // CPP: VM_NEXT();
+				}
+
+				case Opcode.SETRFIND_rA_rB_rC: {
+					// R[A] = the property setter for key R[C] on map R[B], or null
+					// if there is none.  This is the write-side twin of METHFIND:
+					// the code generator emits it ahead of every map member/index
+					// assignment, branches to a plain IDXSET when the result is
+					// null, and otherwise calls what it found with the right-hand
+					// side as the one argument.  See LANGUAGE_CHANGES.md.
+					//
+					// Side effects on a hit, exactly as METHFIND: pendingSelf is
+					// the map written to (NOT the map the setter was found on),
+					// and pendingSuper is that map's __isa, so `super.x = v`
+					// inside a setter resumes the search above it.
+					Byte a = BytecodeUtil.Au(instruction);
+					Byte b = BytecodeUtil.Bu(instruction);
+					Byte c = BytecodeUtil.Cu(instruction);
+					localStack[a] = Value.Null;
+
+					valB = localStack[b];  // container
+					valC = localStack[c];  // property name
+					if (!valB.IsMap() || !valC.IsString()) break;
+					// Frozen wins: leave it to the plain store to raise the usual
+					// error, so that `freeze` keeps its flat meaning and a setter
+					// can never run on an object that is supposed to be immutable.
+					if (valB.IsFrozen()) break;
+					// A key that already ends in "=" is never intercepted, so that
+					// installing a setter does not go looking for "x==".
+					if (IsSetterKey(valC)) break;
+					// The whole chain is known to hold no setter: no key to build,
+					// no lookup to do.  This is the ordinary case for ordinary
+					// maps, and after the first assignment it is one compare.
+					if (!ChainHasSetter(valB)) break;
+
+					// Only the __isa chain, deliberately not the type maps: an
+					// "x=" on the shared `map` type would intercept assignment to
+					// every map in the program.  See LANGUAGE_CHANGES.md.
+					if (!valB.LookupWithOrigin(valC.SetterKey(), out val, out valD)) break;
+
+					if (val.IsNull()) {
+						// A null setter marks the property read-only.  The error is
+						// raised here rather than by a stand-in function precisely
+						// because we still have the key, and can name it.
+						RaiseRuntimeError("Property '{0}' is read-only", valC);
+						break;
+					}
+					if (!val.IsFuncRef()) {
+						RaiseRuntimeError("Invalid setter: '{0}=' is not a function", valC);
+						break;
+					}
+					localStack[a] = val;
+					pendingSelf = valB;
+					pendingSuper = valD;
+					hasPendingContext = true;
+					break;
 				}
 
 				case Opcode.IDXGET_rA_rB_rC: {
@@ -2489,6 +2560,84 @@ public class VM {
 	// for its content -- hence the bitwise test catches every ordinary key, and
 	// the content compare is needed only for the (unexpected) heap-string form.
 	[MethodImpl(AggressiveInlining)]
+	// True if `key` names a property setter, i.e. it is a string ending in "=".
+	// A bare "=" does not count: there is no property whose name is empty.
+	//
+	// This runs on every map store, so it must not build a String.  AsCString()
+	// on a tiny string -- which is what almost every property name is -- decodes
+	// UTF-8 into a fresh String, so going through it would cost an allocation per
+	// assignment just to look at one byte.  Reading the byte straight out of the
+	// bits is conclusive: '=' is ASCII (0x3D), and a UTF-8 continuation byte is
+	// always 0x80..0xBF, so a trailing 0x3D cannot be part of some other
+	// character.  The tiny-string layout puts byte i at bit 8*(i+1), so the last
+	// byte of a len-byte string sits at 8*len (the same idiom GCManager uses to
+	// read tiny strings out).
+	private static Boolean IsSetterKey(Value key) {
+		if (key.IsTinyString()) {
+			Int32 len = key.TinyLen();
+			if (len < 2) return false;
+			return (Int32)((key.Bits() >> (8 * len)) & 0xFF) == 0x3D;
+		}
+		if (key.IsHeapString()) {
+			String s = key.AsCString();   // no decode: the String already exists
+			Int32 n = s.Length;
+			return n > 1 && s[n - 1] == '=';
+		}
+		return false;
+	}
+
+	// Tell the VM that `map` has just been given a property setter.  Host code
+	// that installs one by calling MapSet directly bypasses the IDXSET path that
+	// normally notices, and must call this or its setter will never fire.
+	public void NoteSetterDefined(Value map) {
+		if (map.IsMap()) GCManager.Maps.SetSetterStatus(map.ItemIndex(), -1);
+		GCManager.NoteSetterChange();
+	}
+
+	// Tell the VM that `key` has been removed from a map.  Only the keys that
+	// can change a setter lookup matter, so this is a no-op for everything else.
+	// Nothing clears the removed-from map's own -1: see GCMap._setterStatus.
+	public void NoteKeyRemoved(Value key) {
+		if (IsSetterKey(key) || IsIsaKey(key)) GCManager.NoteSetterChange();
+	}
+
+	// True if `map` or anything along its __isa chain holds a property setter.
+	//
+	// Walking stops at the first map that answers for the rest of the chain: a
+	// -1 (this map holds a setter) or a stamp equal to the current generation
+	// (this map and everything above it were already found clean).  When the
+	// answer comes out clean, every map walked is stamped, so the chain settles
+	// after one walk and stays settled until some setter or __isa link moves.
+	//
+	// The stamping pass is separate because the verdict is not known until the
+	// walk ends, and chains are short enough (usually one or two links) that
+	// re-walking beats allocating somewhere to remember them.
+	private static Boolean ChainHasSetter(Value map) {
+		Int32 gen = GCManager.SetterGeneration;
+		Value current = map;
+		Value next = Value.Null;
+		Int32 toStamp = 0;   // maps from `map` up that this walk proves clean
+		for (Int32 depth = 0; depth < 256; depth++) {
+			if (!current.IsMap()) break;   // ran off the end of the chain: clean
+			Int32 status = GCManager.Maps.Get(current.ItemIndex())._setterStatus;
+			if (status == -1) return true;
+			if (status == gen) break;      // already stamped; so is everything above
+			toStamp++;                     // clean, if the rest of the walk agrees
+			if (!current.TryGet(Value.magicIsA, out next)) break;
+			current = next;
+		}
+
+		// Clean.  Stamp exactly the maps the walk proved clean, so that the next
+		// assignment to any of them is a single compare.
+		Value stampAt = map;
+		for (Int32 i = 0; i < toStamp; i++) {
+			GCManager.Maps.SetSetterStatus(stampAt.ItemIndex(), gen);
+			if (!stampAt.TryGet(Value.magicIsA, out next)) break;
+			stampAt = next;
+		}
+		return false;
+	}
+
 	private static Boolean IsIsaKey(Value key) {
 		if (key.RefEquals(Value.magicIsA)) return true;
 		if (key.IsTinyString() || !key.IsString()) return false;

@@ -21,6 +21,11 @@ GCMapSet GCManager::Maps = nullptr;
 GCErrorSet GCManager::Errors = nullptr;
 GCFuncRefSet GCManager::Functions = nullptr;
 GCHandleSet GCManager::Handles = nullptr;
+Int32 GCManager::SetterGeneration = 1;
+void GCManager::NoteSetterChange() {
+	SetterGeneration++;
+	if (SetterGeneration <= 0) SetterGeneration = 1;
+}
 Dictionary<String, Int32> GCManager::_internTable = nullptr;
 Boolean GCManager::_fullCollection = Boolean(false);
 Int32 GCManager::GCIntervalTicks = 60;

@@ -389,6 +389,40 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	// make_string always produces it as a tiny string, whose bits are canonical
 	// for its content -- hence the bitwise test catches every ordinary key, and
 	// the content compare is needed only for the (unexpected) heap-string form.
+	// True if `key` names a property setter, i.e. it is a string ending in "=".
+	// A bare "=" does not count: there is no property whose name is empty.
+	// This runs on every map store, so it must not build a String.  AsCString()
+	// on a tiny string -- which is what almost every property name is -- decodes
+	// UTF-8 into a fresh String, so going through it would cost an allocation per
+	// assignment just to look at one byte.  Reading the byte straight out of the
+	// bits is conclusive: '=' is ASCII (0x3D), and a UTF-8 continuation byte is
+	// always 0x80..0xBF, so a trailing 0x3D cannot be part of some other
+	// character.  The tiny-string layout puts byte i at bit 8*(i+1), so the last
+	// byte of a len-byte string sits at 8*len (the same idiom GCManager uses to
+	// read tiny strings out).
+	private: static Boolean IsSetterKey(Value key);
+
+	// Tell the VM that `map` has just been given a property setter.  Host code
+	// that installs one by calling MapSet directly bypasses the IDXSET path that
+	// normally notices, and must call this or its setter will never fire.
+	public: void NoteSetterDefined(Value map);
+
+	// Tell the VM that `key` has been removed from a map.  Only the keys that
+	// can change a setter lookup matter, so this is a no-op for everything else.
+	// Nothing clears the removed-from map's own -1: see GCMap._setterStatus.
+	public: void NoteKeyRemoved(Value key);
+
+	// True if `map` or anything along its __isa chain holds a property setter.
+	// Walking stops at the first map that answers for the rest of the chain: a
+	// -1 (this map holds a setter) or a stamp equal to the current generation
+	// (this map and everything above it were already found clean).  When the
+	// answer comes out clean, every map walked is stamped, so the chain settles
+	// after one walk and stays settled until some setter or __isa link moves.
+	// The stamping pass is separate because the verdict is not known until the
+	// walk ends, and chains are short enough (usually one or two links) that
+	// re-walking beats allocating somewhere to remember them.
+	private: static Boolean ChainHasSetter(Value map);
+
 	private: static Boolean IsIsaKey(Value key);
 
 	// True if setting `newIsa` as the __isa of `target` would make `target`
@@ -835,6 +869,40 @@ struct VM {
 	// make_string always produces it as a tiny string, whose bits are canonical
 	// for its content -- hence the bitwise test catches every ordinary key, and
 	// the content compare is needed only for the (unexpected) heap-string form.
+	// True if `key` names a property setter, i.e. it is a string ending in "=".
+	// A bare "=" does not count: there is no property whose name is empty.
+	// This runs on every map store, so it must not build a String.  AsCString()
+	// on a tiny string -- which is what almost every property name is -- decodes
+	// UTF-8 into a fresh String, so going through it would cost an allocation per
+	// assignment just to look at one byte.  Reading the byte straight out of the
+	// bits is conclusive: '=' is ASCII (0x3D), and a UTF-8 continuation byte is
+	// always 0x80..0xBF, so a trailing 0x3D cannot be part of some other
+	// character.  The tiny-string layout puts byte i at bit 8*(i+1), so the last
+	// byte of a len-byte string sits at 8*len (the same idiom GCManager uses to
+	// read tiny strings out).
+	private: static Boolean IsSetterKey(Value key) { return VMStorage::IsSetterKey(key); }
+
+	// Tell the VM that `map` has just been given a property setter.  Host code
+	// that installs one by calling MapSet directly bypasses the IDXSET path that
+	// normally notices, and must call this or its setter will never fire.
+	public: inline void NoteSetterDefined(Value map);
+
+	// Tell the VM that `key` has been removed from a map.  Only the keys that
+	// can change a setter lookup matter, so this is a no-op for everything else.
+	// Nothing clears the removed-from map's own -1: see GCMap._setterStatus.
+	public: inline void NoteKeyRemoved(Value key);
+
+	// True if `map` or anything along its __isa chain holds a property setter.
+	// Walking stops at the first map that answers for the rest of the chain: a
+	// -1 (this map holds a setter) or a stamp equal to the current generation
+	// (this map and everything above it were already found clean).  When the
+	// answer comes out clean, every map walked is stamped, so the chain settles
+	// after one walk and stays settled until some setter or __isa link moves.
+	// The stamping pass is separate because the verdict is not known until the
+	// walk ends, and chains are short enough (usually one or two links) that
+	// re-walking beats allocating somewhere to remember them.
+	private: static Boolean ChainHasSetter(Value map) { return VMStorage::ChainHasSetter(map); }
+
 	private: static Boolean IsIsaKey(Value key) { return VMStorage::IsIsaKey(key); }
 
 	// True if setting `newIsa` as the __isa of `target` would make `target`
@@ -1030,11 +1098,21 @@ inline bool VMStorage::EnsureFrame(Int32 baseIndex,UInt16 neededRegs) {
 	}
 	return Boolean(true);
 }
-inline Boolean VMStorage::IsIsaKey(Value key) {
-	if (key.RefEquals(Value::magicIsA)) return Boolean(true);
-	if (key.IsTinyString() || !key.IsString()) return Boolean(false);
-	return key == Value::magicIsA;
+inline Boolean VMStorage::IsSetterKey(Value key) {
+	if (key.IsTinyString()) {
+		Int32 len = key.TinyLen();
+		if (len < 2) return Boolean(false);
+		return (Int32)((key.Bits() >> (8 * len)) & 0xFF) == 0x3D;
+	}
+	if (key.IsHeapString()) {
+		String s = key.AsCString();   // no decode: the String already exists
+		Int32 n = s.Length();
+		return n > 1 && s[n - 1] == '=';
+	}
+	return Boolean(false);
 }
+inline void VM::NoteSetterDefined(Value map) { return get()->NoteSetterDefined(map); }
+inline void VM::NoteKeyRemoved(Value key) { return get()->NoteKeyRemoved(key); }
 inline Int32 VM::MemberMissing() { return get()->MemberMissing; } // not found; a runtime error was raised
 inline Int32 VM::MemberMethod() { return get()->MemberMethod; } // from the container or its type; self = container
 inline Int32 VM::MemberField() { return get()->MemberField; } // an error's own field; no call context

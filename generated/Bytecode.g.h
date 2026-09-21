@@ -79,6 +79,7 @@ enum class Opcode : Byte {
 	NEW_rA_rB,
 	ISA_rA_rB_rC,
 	METHFIND_rA_rB_rC,
+	SETRFIND_rA_rB_rC,
 	IDXGET_rA_rB_rC,
 	SETSELF_rA,
 	CALLIFREF_rA,

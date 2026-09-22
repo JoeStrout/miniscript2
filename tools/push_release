@@ -119,13 +119,31 @@ $(find $SRC_DIRS \
     -print 2>/dev/null)
 EOF
 
-# Also consider the last commit touching those directories, which covers a
-# fresh checkout or a rebase that left mtimes untouched.
-COMMIT_TIME=$(git log -1 --format=%ct -- $SRC_DIRS 2>/dev/null || echo 0)
-if [ "${COMMIT_TIME:-0}" -gt "$NEWEST_TIME" ]; then
-    NEWEST_TIME="$COMMIT_TIME"
-    NEWEST_SRC="last commit touching $SRC_DIRS"
-fi
+# The mtime scan above is a fast first pass, but timestamps lie in both
+# directions, so a build stamp settles it by content.  build.sh dist writes
+# build/dist/.build-info with a hash of the sources each artifact was built
+# from; if that still matches the sources on disk, the binaries are current no
+# matter what any clock says.
+#
+# This replaces an earlier fallback that took the time of the last commit
+# touching $SRC_DIRS as a lower bound on source age.  That conflated when a
+# commit was *made* with when the source last *changed*, so the ordinary
+# build-then-commit-then-push order flagged every release as stale: the commit
+# is necessarily newer than the binaries it describes.
+STAMP="$DIST/.build-info"
+STAMP_FP=""
+[ -f "$STAMP" ] && STAMP_FP=$(awk '$1=="fingerprint"{print $2}' "$STAMP")
+
+source_fingerprint() {
+    find $SRC_DIRS \
+        \( -type d \( -name obj -o -name bin \) -prune \) -o \
+        -type f \( -name '*.cs' -o -name '*.c' -o -name '*.h' -o -name '*.cpp' \) \
+        -print 2>/dev/null \
+    | LC_ALL=C sort \
+    | xargs shasum \
+    | shasum \
+    | cut -d' ' -f1
+}
 
 STALE=0
 for f in "$DIST/miniscript2-mac" "$DIST/miniscript2-linux" \
@@ -135,9 +153,27 @@ for f in "$DIST/miniscript2-mac" "$DIST/miniscript2-linux" \
         STALE=1
     fi
 done
+
+if [ "$STALE" = "1" ]; then
+    CURRENT_FP=$(source_fingerprint)
+    if [ -n "$STAMP_FP" ] && [ "$STAMP_FP" = "$CURRENT_FP" ]; then
+        # The clock disagrees but the content does not: these binaries were
+        # built from exactly the sources now on disk.
+        echo "  ...but $STAMP matches the current sources, so they are current."
+        STALE=0
+    fi
+fi
+
 if [ "$STALE" = "1" ]; then
     echo
     echo "Newer source: $NEWEST_SRC ($(date -r "$NEWEST_TIME" '+%Y-%m-%d %H:%M'))"
+    if [ -z "$STAMP_FP" ]; then
+        echo "No build stamp at $STAMP to check the contents against."
+    else
+        echo "Build stamp does not match the current sources:"
+        echo "    stamped  $STAMP_FP"
+        echo "    on disk  $CURRENT_FP"
+    fi
     echo "These binaries predate the current sources.  Run:"
     echo "    tools/build.sh dist all"
     echo "Then push again (or re-run with --force to upload them anyway)."

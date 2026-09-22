@@ -143,6 +143,47 @@ dist_build() {
 }
 
 # ---------------------------------------------------------------------------
+# source_fingerprint
+#
+# A content hash of every source file a dist artifact is built from.  This is
+# what lets push_release tell "these binaries are current" from "these binaries
+# are old" without consulting timestamps, which lie in both directions: mtimes
+# survive a rebase unchanged, and a commit made after a build is newer than the
+# binaries it describes even though it holds exactly their source.
+#
+# obj/ and bin/ are pruned to match push_release's own file scan: dotnet
+# publish writes generated .cs files there during 'dist csharp'.
+source_fingerprint() {
+    find cs cpp generated \
+        \( -type d \( -name obj -o -name bin \) -prune \) -o \
+        -type f \( -name '*.cs' -o -name '*.c' -o -name '*.h' -o -name '*.cpp' \) \
+        -print 2>/dev/null \
+    | LC_ALL=C sort \
+    | xargs shasum \
+    | shasum \
+    | cut -d' ' -f1
+}
+
+# record_build_stamp
+#
+# Write the provenance of whatever is now in build/dist: the source
+# fingerprint, the commit it was built from, and whether the tree was dirty at
+# the time.  Read back by tools/push_release.
+record_build_stamp() {
+    mkdir -p build/dist
+    {
+        echo "fingerprint $(source_fingerprint)"
+        echo "commit $(git rev-parse HEAD 2>/dev/null || echo unknown)"
+        if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
+            echo "tree dirty"
+        else
+            echo "tree clean"
+        fi
+        echo "built $(date '+%Y-%m-%d %H:%M:%S')"
+    } > build/dist/.build-info
+    echo "  Recorded build stamp: build/dist/.build-info"
+}
+
 # dist_csharp
 #
 # Build a framework-dependent C# distribution package.
@@ -389,6 +430,18 @@ case "$TARGET" in
             dist_csharp
         else
             dist_build "$DIST_PLATFORM" "$DIST_GOTO"
+        fi
+
+        # Only a full 'dist all' can certify the whole set of artifacts that
+        # push_release uploads.  A partial build leaves the other three
+        # untouched and possibly built from older source, so rather than
+        # vouch for them, drop the stamp: push_release then falls back to
+        # comparing timestamps and says it has nothing to check against.
+        if [ "$DIST_PLATFORM" = "all" ]; then
+            record_build_stamp
+        elif [ -f build/dist/.build-info ]; then
+            rm -f build/dist/.build-info
+            echo "  Partial dist build; removed build/dist/.build-info."
         fi
         ;;
 

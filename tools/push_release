@@ -1,0 +1,202 @@
+#!/bin/bash
+# Push a numbered release to GitHub.
+# Usage: tools/push_release CHANNEL [number] [--force]
+#   CHANNEL is preview or fc.
+# With no number, finds the highest existing release in that channel and
+# increments it. Pass a number to override.
+# Examples:
+#   tools/push_release preview 3  →  tag v2.0-preview-3
+#   tools/push_release fc         →  tag v2.0-fc1 (if no fc release yet)
+#
+# tools/push_preview is a wrapper that supplies CHANNEL=preview.
+#
+# This script does NOT build anything; it uploads whatever is in build/dist.
+# --force skips the staleness and repository checks below (use only if you
+# know what the binaries and the tag each contain).
+
+set -e
+
+cd "$(dirname "$0")/.."
+
+CHANNEL=""
+NUM=""
+FORCE=0
+for arg in "$@"; do
+    case "$arg" in
+        --force)      FORCE=1 ;;
+        preview|fc)   CHANNEL="$arg" ;;
+        [0-9]*)       NUM="$arg" ;;
+        *)            echo "Unknown argument: $arg"; exit 1 ;;
+    esac
+done
+
+if [ -z "$CHANNEL" ]; then
+    echo "Usage: tools/push_release CHANNEL [number] [--force]   (CHANNEL: preview or fc)"
+    exit 1
+fi
+
+# Everything that distinguishes one channel from another lives here.  The two
+# tag shapes differ deliberately -- v2.0-preview-3 against v2.0-fc1 -- so the
+# separator is part of the prefix rather than assumed.
+case "$CHANNEL" in
+    preview)
+        TAG_PREFIX="v2.0-preview-"
+        CHANNEL_NAME="preview"
+        TITLE_FMT="MiniScript 2.0 Preview %s"
+        NOTES_FMT="Preview build %s of MiniScript 2.0."
+        ;;
+    fc)
+        TAG_PREFIX="v2.0-fc"
+        CHANNEL_NAME="final candidate"
+        TITLE_FMT="MiniScript 2.0 FC%s"
+        NOTES_FMT="Final candidate %s of MiniScript 2.0."
+        ;;
+esac
+
+if [ -z "$NUM" ]; then
+    # Find the highest existing number in this channel and add one.  The dots
+    # in the prefix are literal, so escape them before grepping.
+    TAG_RE=$(printf '%s' "$TAG_PREFIX" | sed 's/\./\\./g')
+    LAST=$(gh release list --limit 100 \
+        | grep -oE "${TAG_RE}[0-9]+" \
+        | grep -oE '[0-9]+$' \
+        | sort -n \
+        | tail -1)
+    NUM=$(( ${LAST:-0} + 1 ))
+    echo "Latest $CHANNEL_NAME is ${LAST:-none}; creating $CHANNEL_NAME $NUM."
+fi
+
+TAG="$TAG_PREFIX$NUM"
+TITLE=$(printf "$TITLE_FMT" "$NUM")
+NOTES=$(printf "$NOTES_FMT" "$NUM")
+DIST="build/dist"
+
+# Verify the expected binaries are present
+MISSING=0
+for f in "$DIST/miniscript2-mac" "$DIST/miniscript2-linux" "$DIST/miniscript2-win.exe" "$DIST/miniscript2-csharp.zip"; do
+    if [ ! -f "$f" ]; then
+        echo "Missing: $f"
+        MISSING=1
+    fi
+done
+if [ "$MISSING" = "1" ]; then
+    echo "Run 'tools/build.sh dist all' first."
+    exit 1
+fi
+
+# ---------------------------------------------------------------------------
+# Staleness check
+#
+# Since this script only uploads what it finds, a forgotten 'build.sh dist all'
+# silently re-releases the previous release's binaries.  (That is exactly what
+# happened with preview-7: all four assets were byte-identical to preview-6.)
+# So: refuse to push any artifact older than the newest source file, or older
+# than the last commit that touched the source directories.
+# ---------------------------------------------------------------------------
+# obj/ and bin/ are pruned: dotnet publish writes generated .cs files there
+# (e.g. cs/obj/Release/net6.0/MiniScript2.AssemblyInfo.cs) as the last step of
+# 'dist all', so they always look newer than the binaries.
+SRC_DIRS="cs cpp generated"
+
+# Epoch mtime of a file, portable between BSD (mac) and GNU (linux) stat.
+mtime() {
+    stat -f %m "$1" 2>/dev/null || stat -c %Y "$1"
+}
+
+NEWEST_SRC=""
+NEWEST_TIME=0
+while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    T=$(mtime "$f")
+    if [ "$T" -gt "$NEWEST_TIME" ]; then
+        NEWEST_TIME="$T"
+        NEWEST_SRC="$f"
+    fi
+done <<EOF
+$(find $SRC_DIRS \
+    \( -type d \( -name obj -o -name bin \) -prune \) -o \
+    -type f \( -name '*.cs' -o -name '*.c' -o -name '*.h' -o -name '*.cpp' \) \
+    -print 2>/dev/null)
+EOF
+
+# Also consider the last commit touching those directories, which covers a
+# fresh checkout or a rebase that left mtimes untouched.
+COMMIT_TIME=$(git log -1 --format=%ct -- $SRC_DIRS 2>/dev/null || echo 0)
+if [ "${COMMIT_TIME:-0}" -gt "$NEWEST_TIME" ]; then
+    NEWEST_TIME="$COMMIT_TIME"
+    NEWEST_SRC="last commit touching $SRC_DIRS"
+fi
+
+STALE=0
+for f in "$DIST/miniscript2-mac" "$DIST/miniscript2-linux" \
+         "$DIST/miniscript2-win.exe" "$DIST/miniscript2-csharp.zip"; do
+    if [ "$(mtime "$f")" -lt "$NEWEST_TIME" ]; then
+        echo "Stale: $f  ($(date -r "$(mtime "$f")" '+%Y-%m-%d %H:%M'))"
+        STALE=1
+    fi
+done
+if [ "$STALE" = "1" ]; then
+    echo
+    echo "Newer source: $NEWEST_SRC ($(date -r "$NEWEST_TIME" '+%Y-%m-%d %H:%M'))"
+    echo "These binaries predate the current sources.  Run:"
+    echo "    tools/build.sh dist all"
+    echo "Then push again (or re-run with --force to upload them anyway)."
+    [ "$FORCE" = "1" ] || exit 1
+    echo "--force given; uploading stale binaries anyway."
+fi
+
+# ---------------------------------------------------------------------------
+# Repository check
+#
+# The staleness check above compares binaries against source *files*, which
+# leaves it blind in the other direction: it cannot see source that was never
+# committed.  gh release create tags a commit on the remote, while this script
+# uploads binaries built from the working tree, so a dirty tree or an unpushed
+# HEAD means the tag and the assets describe different software -- anyone
+# building from the tag gets something other than what they can download.
+# ---------------------------------------------------------------------------
+DIRTY=$(git status --porcelain)
+if [ -n "$DIRTY" ]; then
+    echo "Working tree is not clean:"
+    echo "$DIRTY" | sed 's/^/    /'
+    echo
+    echo "These changes are in the binaries but would not be in tag $TAG."
+    echo "Commit (or stash) them, then push again."
+    [ "$FORCE" = "1" ] || exit 1
+    echo "--force given; releasing from a dirty tree anyway."
+fi
+
+UPSTREAM=$(git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null || true)
+if [ -z "$UPSTREAM" ]; then
+    echo "No upstream branch is configured, so the tag's commit cannot be"
+    echo "confirmed to exist on the remote.  Set one with:"
+    echo "    git push -u origin $(git rev-parse --abbrev-ref HEAD)"
+    [ "$FORCE" = "1" ] || exit 1
+    echo "--force given; continuing without an upstream."
+else
+    AHEAD=$(git rev-list --count "$UPSTREAM"..HEAD)
+    if [ "$AHEAD" != "0" ]; then
+        echo "HEAD is $AHEAD commit(s) ahead of $UPSTREAM:"
+        git log --oneline "$UPSTREAM"..HEAD | sed 's/^/    /'
+        echo
+        echo "Tag $TAG would be created on the remote, which does not have these."
+        echo "Run: git push"
+        [ "$FORCE" = "1" ] || exit 1
+        echo "--force given; releasing unpushed work anyway."
+    fi
+fi
+
+echo "Creating GitHub release $TAG ($TITLE) ..."
+# --target pins the tag to the exact commit these binaries were built from,
+# rather than letting gh take whatever the default branch points at.
+gh release create "$TAG" \
+    "$DIST/miniscript2-mac" \
+    "$DIST/miniscript2-linux" \
+    "$DIST/miniscript2-win.exe" \
+    "$DIST/miniscript2-csharp.zip" \
+    --target "$(git rev-parse HEAD)" \
+    --title "$TITLE" \
+    --prerelease \
+    --notes "$NOTES"
+
+echo "Done: https://github.com/$(gh repo view --json nameWithOwner -q .nameWithOwner)/releases/tag/$TAG"

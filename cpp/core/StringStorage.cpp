@@ -188,10 +188,17 @@ int ss_indexOf(const StringStorage* storage, const StringStorage* needle) {
 }
 
 int ss_indexOfFrom(const StringStorage* storage, const StringStorage* needle, int startIndex) {
-    if (!storage || !needle) return -1;
     int lenC = ss_lengthC(storage);
-    if (startIndex < 0 || startIndex >= lenC) return -1;
-    if (ss_isEmpty(needle)) return startIndex;
+    if (startIndex < 0) startIndex = 0;
+
+    // An empty needle matches at once, at the search position itself -- and
+    // that includes the position just past the last character, so a search
+    // starting at or beyond the end answers lenC rather than failing.  This
+    // has to come before the NULL checks, not after them: an empty string is
+    // a NULL storage, so testing the pointer first would answer -1 for every
+    // empty needle, and for every search of an empty haystack.
+    if (ss_isEmpty(needle)) return startIndex < lenC ? startIndex : lenC;
+    if (!storage || startIndex >= lenC) return -1;
 
     int n_lenB = needle->lenB;
     int startByteIndex = ss_charToByteIndex(storage, startIndex);
@@ -237,7 +244,15 @@ int ss_indexOfCharFrom(const StringStorage* storage, char ch, int startIndex) {
 }
 
 int ss_lastIndexOf(const StringStorage* storage, const StringStorage* needle) {
-    if (!storage || !needle || ss_isEmpty(needle)) return -1;
+    int lenC = ss_lengthC(storage);
+
+    // An empty needle matches at the end: the last position a search could
+    // start from, which is lenC and not lenC - 1.  As in ss_indexOfFrom, this
+    // has to come before the NULL checks rather than after them, since an
+    // empty string is a NULL storage -- the same shape that made empty-needle
+    // handling unreachable there.
+    if (ss_isEmpty(needle)) return lenC;
+    if (!storage) return -1;
     if (needle->lenB > storage->lenB) return -1;
     
     // Search backwards

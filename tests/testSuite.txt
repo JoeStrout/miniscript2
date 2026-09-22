@@ -7658,6 +7658,66 @@ print empty.len
 --------------------------------
 []
 0
+================================================================================
+==== SECTION: INDEXOF WITH AN EMPTY NEEDLE
+================================================================================
+==== An empty search string matches at once, at the position the search starts
+==== from.  C++ used to answer null for every one of these, because it stores an
+==== empty string as a NULL StringStorage and `ss_indexOfFrom` tested that
+==== pointer before it looked at whether the needle was empty -- so these pin
+==== the two platforms together as much as they pin the values.
+================================
+print "abcabc".indexOf("")
+print "abcabc".indexOf("", 2)
+print "".indexOf("")
+print "".indexOf("a")
+--------------------------------
+0
+3
+0
+null
+================================
+==== The search starts *after* the given index, so a match may land one past
+==== the last character; asking to start beyond the end clamps there rather
+==== than failing.  A non-empty needle still finds nothing past the end.
+================================
+print "abc".indexOf("", 2)
+print "abc".indexOf("", 3)
+print "abc".indexOf("", 10)
+print "abc".indexOf("a", 10)
+print "".indexOf("", 5)
+--------------------------------
+3
+3
+3
+null
+0
+================================
+==== A negative start counts from the end, as elsewhere, and clamps at zero.
+================================
+print "abc".indexOf("", -1)
+print "abc".indexOf("", -100)
+print "".indexOf("", -3)
+--------------------------------
+0
+0
+0
+================================
+==== Positions are in characters, not bytes or code units, for an empty needle
+==== as for any other -- this string is 6 characters in 11 UTF-8 bytes, and the
+==== emoji is a surrogate pair on C#.
+================================
+print "aé日b😀c".len
+print "aé日b😀c".indexOf("")
+print "aé日b😀c".indexOf("", 3)
+print "aé日b😀c".indexOf("", 6)
+print "aé日b😀c".indexOf("😀")
+--------------------------------
+6
+0
+4
+6
+4
 ================================
 ==== END OF TESTS
 ================================================================================

@@ -27,11 +27,11 @@ What I like about this is that it handles progressively more obscure/advanced si
 3. If they do mutate their lists/keys, then look in their map, they'll find that the map still contains the old values.  That's a little surprising, if they understand object references, so maybe they ask or search and learn about freezing and frozenCopy.  Neat!  Everything still works as well as can be (i.e. they can still look up by the old values).
 4. If they are now concerned about performance, they can explicitly freeze their keys before insertion, eliminating the copy.
 
-## Open Design Questions
+## Resolved Design Questions
 
-- Should `freeze` return `null`, or return `x`?
+- Should `freeze` return `null`, or return `x`?  Decision: It returns `null`.
 
-- How does this interact with closures (which contain a map of outer vars), if at all?
+- How does this interact with closures (which contain a map of outer vars), if at all?  Decision: not involved here.  The `outer` map is not frozen, as updating outer vars is a relatively common need.
 
-- Should we freeze and reuse default arguments on function declarations, or instead re-run the code evaluating those expressions every time the default is needed?  (Decision: just freeze them; this best fits our performance focus.)
+- Should we freeze and reuse default arguments on function declarations, or instead re-run the code evaluating those expressions every time the default is needed?  Decision: just freeze them; this best fits our performance focus.
 

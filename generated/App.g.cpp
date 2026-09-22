@@ -50,7 +50,7 @@ bool App::quietMode = Boolean(false);
 bool App::testMode = Boolean(false);
 void App::MainProgram(List<String> args) {
 	value_init_constants();
-	CoreIntrinsics::hostVersion = "2.0 Preview";
+	CoreIntrinsics::hostVersion = "2.0 FC1";
 	CoreIntrinsics::hostName = "Command-Line";
 	#if _WIN32 || _WIN64
 		CoreIntrinsics::hostName = "Command-Line (Windows)";

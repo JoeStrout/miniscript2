@@ -303,17 +303,18 @@ public:
     int sizeB() const { return lengthB(); }
 
     // C# String API - Search methods
+    // The empty needle is ss_indexOfFrom's business, not ours: these once
+    // pre-empted it here, which left two places defining what an empty needle
+    // means and only one of them right.
     int IndexOf(const String& value) const {
         const StringStorage* s = getStorageRaw();
         const StringStorage* needle = value.getStorageRaw();
-        if (!needle || needle->lenB == 0) return 0;
         return ss_indexOf(s, needle);
     }
     
     int IndexOf(const String& value, int startIndex) const {
         const StringStorage* s = getStorageRaw();
         const StringStorage* needle = value.getStorageRaw();
-        if (!needle || needle->lenB == 0) return startIndex;
         return ss_indexOfFrom(s, needle, startIndex);
     }
     
@@ -353,10 +354,12 @@ public:
         return -1;
     }
 
+    // The empty needle belongs to ss_lastIndexOf, as it does for IndexOf above.
+    // This used to answer it here with `return true` -- an int function handing
+    // back 1, copied from Contains below, where a bool is what is wanted.
     int LastIndexOf(const String& value) const {
         const StringStorage* s = getStorageRaw();
         const StringStorage* needle = value.getStorageRaw();
-        if (!needle || needle->lenB == 0) return true;
         return ss_lastIndexOf(s, needle);
     }
     

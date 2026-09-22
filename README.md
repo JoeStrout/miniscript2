@@ -16,17 +16,22 @@ tools/build.sh test       # Run smoke tests
 
 ## Notes
 
+- [CPP_HOST_UPDATE_GUIDE.md](notes/CPP_HOST_UPDATE_GUIDE.md) — For developers of C++ apps embedding MiniScript, updating existing 1.x code to 2.0.
 - [CS_CODING_STANDARDS.md](notes/CS_CODING_STANDARDS.md) — C# coding restrictions required by the C#-to-C++ transpiler.
 - [DEV_LOG.md](notes/DEV_LOG.md) — Development log documenting project status and decisions.
 - [FROZEN_VALUES.md](notes/FROZEN_VALUES.md) — Design for immutable maps and lists via freeze/isFrozen/frozenCopy.
 - [FUNCTION_CALLS.md](notes/FUNCTION_CALLS.md) — Design and considerations for the VM's function call mechanism.
-- [GC_USAGE.md](notes/GC_USAGE.md) — Guide to the garbage collection shadow-stack system.
+- [GLOBALS.md](notes/GLOBALS.md) — How the global namespace is represented, and what a global access costs.
 - [LANGUAGE_CHANGES.md](notes/LANGUAGE_CHANGES.md) — Observable language changes in MiniScript 2.0 vs 1.x.
+- [MAP_ITERATION.md](notes/MAP_ITERATION.md) — How `for` loops iterate maps, and the order they see.
 - [MEMORY_SYSTEMS.md](notes/MEMORY_SYSTEMS.md) — Overview of the three memory systems (GC, intern table, etc.).
+- [OFI.md](notes/OFI.md) — Opportunities for improvement: a standing survey of smells and inefficiencies.
 - [OPCODE_ADDITION.md](notes/OPCODE_ADDITION.md) — Procedure for adding new opcodes to the VM.
+- [POTENTIAL_ISSUES.md](notes/POTENTIAL_ISSUES.md) — Issues we are aware of but have not yet decided what to do about.
 - [UNARY_MINUS_QUIRK.md](notes/UNARY_MINUS_QUIRK.md) — Language quirk involving unary minus and call statement syntax.
 - [VARIABLES.md](notes/VARIABLES.md) — How variables map to registers and interact with scope maps.
 - [VM_DESIGN.md](notes/VM_DESIGN.md) — Architecture of the register-based VM and instruction encoding.
+- [bugs.md](notes/bugs.md) — Known bugs, and the record of those fixed, each with a reproduction.
 - [miniscript.g4](notes/miniscript.g4) — ANTLR grammar defining MiniScript syntax.
 
 

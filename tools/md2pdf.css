@@ -1,0 +1,210 @@
+/* Stylesheet for tools/md2pdf.sh (pandoc + WeasyPrint).
+   Tuned for the technical docs in docs/ -- prose, code blocks, and
+   GitHub-style alert callouts. */
+
+@page {
+	size: letter;
+	margin: 0.9in 0.85in 1.0in 0.85in;
+	@bottom-center {
+		content: counter(page);
+		font: 9pt "Helvetica Neue", Helvetica, sans-serif;
+		color: #8b949e;
+	}
+	@top-right {
+		content: string(doctitle);
+		font: 8.5pt "Helvetica Neue", Helvetica, sans-serif;
+		color: #8b949e;
+	}
+}
+@page :first {
+	@top-right { content: none; }
+}
+
+body {
+	font: 10.5pt/1.55 "Charter", "Palatino", Georgia, serif;
+	color: #1f2328;
+	hyphens: none;
+}
+
+/* ---- headings ---- */
+
+h1, h2, h3, h4 {
+	font-family: "Helvetica Neue", Helvetica, sans-serif;
+	font-weight: 600;
+	color: #0d1117;
+	break-after: avoid;
+}
+h1 {
+	string-set: doctitle content();
+	font-size: 22pt;
+	margin: 0 0 1.2em 0;
+	padding-bottom: .25em;
+	border-bottom: 2px solid #d0d7de;
+}
+h2 {
+	font-size: 15pt;
+	margin: 1.9em 0 .6em 0;
+	padding-bottom: .2em;
+	border-bottom: 1px solid #d8dee4;
+	break-before: auto;
+}
+h3 {
+	font-size: 12pt;
+	margin: 1.5em 0 .45em 0;
+}
+
+/* A horizontal rule in the source is a section divider, not a page break. */
+hr {
+	border: 0;
+	border-top: 1px solid #e3e7eb;
+	width: 30%;
+	margin: 2.2em auto;
+}
+
+p { margin: 0 0 .7em 0; orphans: 2; widows: 2; }
+
+/* ---- code ---- */
+
+code {
+	font-family: "SF Mono", Menlo, Consolas, monospace;
+	font-size: 0.86em;
+}
+p code, li code, td code, h3 code, h2 code {
+	background: #f2f3f5;
+	border-radius: 3px;
+	padding: .08em .3em;
+}
+pre {
+	font-family: "SF Mono", Menlo, Consolas, monospace;
+	font-size: 8.8pt;
+	line-height: 1.4;
+	background: #f6f8fa;
+	border: 1px solid #e3e7eb;
+	border-radius: 5px;
+	padding: .6em .8em;
+	margin: 0 0 .8em 0;
+	white-space: pre-wrap;
+	word-break: break-word;
+	break-inside: avoid;
+}
+pre code { background: none; padding: 0; font-size: inherit; }
+
+/* A fenced block immediately after another is sample output: tie the two
+   together and tint the second one so it reads as a result, not as more code. */
+pre + pre {
+	background: #fffdf5;
+	border-color: #ece3c8;
+	margin-top: -.55em;
+	break-before: avoid;
+}
+
+/* ---- alert callouts (pandoc -f gfm+alerts) ---- */
+
+div.note, div.tip, div.important, div.warning, div.caution {
+	border-left: 4px solid;
+	border-radius: 0 4px 4px 0;
+	padding: .55em .9em .1em .9em;
+	margin: 1em 0;
+	background: #fafbfc;
+	break-inside: avoid;
+}
+div.note     { border-color: #0969da; }
+div.tip      { border-color: #1a7f37; }
+div.important{ border-color: #8250df; }
+div.warning  { border-color: #9a6700; }
+div.caution  { border-color: #cf222e; }
+
+div.title p {
+	font-family: "Helvetica Neue", Helvetica, sans-serif;
+	font-size: 9pt;
+	font-weight: 700;
+	letter-spacing: .06em;
+	text-transform: uppercase;
+	margin: 0 0 .35em 0;
+}
+div.note      div.title p { color: #0969da; }
+div.tip       div.title p { color: #1a7f37; }
+div.important div.title p { color: #8250df; }
+div.warning   div.title p { color: #9a6700; }
+div.caution   div.title p { color: #cf222e; }
+
+/* ---- tables & lists ---- */
+
+table {
+	border-collapse: collapse;
+	width: 100%;
+	margin: .3em 0 1em 0;
+	font-size: 9.5pt;
+	break-inside: avoid;
+}
+th, td {
+	border: 1px solid #d0d7de;
+	padding: .35em .6em;
+	text-align: left;
+	vertical-align: top;
+}
+th {
+	background: #f2f3f5;
+	font-family: "Helvetica Neue", Helvetica, sans-serif;
+	font-size: 9pt;
+}
+
+ul, ol { margin: 0 0 .8em 0; padding-left: 1.4em; }
+li { margin-bottom: .3em; }
+
+a { color: #0969da; text-decoration: none; }
+
+/* ---- table of contents (built by tools/md2pdf-toc.lua) ---- */
+
+div.toc {
+	margin: 1.4em 0 1.8em 0;
+	padding: .9em 1.2em 1em 1.2em;
+	background: #fafbfc;
+	border: 1px solid #e3e7eb;
+	border-radius: 5px;
+	break-inside: avoid;
+	font-size: 9.5pt;
+}
+div.toc-title {
+	font-family: "Helvetica Neue", Helvetica, sans-serif;
+	font-size: 9pt;
+	font-weight: 700;
+	letter-spacing: .06em;
+	text-transform: uppercase;
+	color: #57606a;
+	margin: 0 0 .6em 0;
+}
+div.toc ul {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+div.toc > ul > li {
+	margin: 0 0 .28em 0;
+	font-family: "Helvetica Neue", Helvetica, sans-serif;
+	font-weight: 600;
+	font-size: 10pt;
+}
+/* The nested h3 entries: lighter, indented, and set back in the body face. */
+div.toc ul ul {
+	margin: .18em 0 .5em 0;
+	padding-left: 1.1em;
+}
+div.toc ul ul li {
+	font-family: "Charter", "Palatino", Georgia, serif;
+	font-weight: normal;
+	font-size: 9.5pt;
+	margin: 0 0 .1em 0;
+}
+div.toc p { margin: 0; }
+div.toc a {
+	color: #1f2328;
+	text-decoration: none;
+}
+/* Dot leader out to the page number, resolved by WeasyPrint at layout time. */
+div.toc a::after {
+	content: leader('.') target-counter(attr(href), page);
+	color: #8b949e;
+	font-family: "Helvetica Neue", Helvetica, sans-serif;
+	font-size: 8.5pt;
+}

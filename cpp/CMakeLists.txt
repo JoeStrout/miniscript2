@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.15)
-project(miniscript2 LANGUAGES C CXX)
+project(miniscript LANGUAGES C CXX)
 
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_EXTENSIONS ON)   # gnu++11, needed for POSIX extensions
@@ -17,13 +17,13 @@ list(FILTER CORE_CPP_SOURCES EXCLUDE REGEX "core/debug_.*\\.cpp$")
 # Generated (transpiled) C++ sources
 file(GLOB GEN_SOURCES ../generated/*.g.cpp)
 
-add_executable(miniscript2
+add_executable(miniscript
     ${CORE_C_SOURCES}
     ${CORE_CPP_SOURCES}
     ${GEN_SOURCES}
 )
 
-target_include_directories(miniscript2 PRIVATE
+target_include_directories(miniscript PRIVATE
     core
     ../generated
 )
@@ -31,5 +31,5 @@ target_include_directories(miniscript2 PRIVATE
 # Computed-goto option
 option(VM_USE_COMPUTED_GOTO "Force computed-goto dispatch" OFF)
 if(VM_USE_COMPUTED_GOTO)
-    target_compile_definitions(miniscript2 PRIVATE VM_USE_COMPUTED_GOTO=1)
+    target_compile_definitions(miniscript PRIVATE VM_USE_COMPUTED_GOTO=1)
 endif()

@@ -73,7 +73,7 @@ DIST="build/dist"
 
 # Verify the expected binaries are present
 MISSING=0
-for f in "$DIST/miniscript2-mac" "$DIST/miniscript2-linux" "$DIST/miniscript2-win.exe" "$DIST/miniscript2-csharp.zip"; do
+for f in "$DIST/miniscript-mac" "$DIST/miniscript-linux" "$DIST/miniscript-win.exe" "$DIST/miniscript-csharp.zip"; do
     if [ ! -f "$f" ]; then
         echo "Missing: $f"
         MISSING=1
@@ -146,8 +146,8 @@ source_fingerprint() {
 }
 
 STALE=0
-for f in "$DIST/miniscript2-mac" "$DIST/miniscript2-linux" \
-         "$DIST/miniscript2-win.exe" "$DIST/miniscript2-csharp.zip"; do
+for f in "$DIST/miniscript-mac" "$DIST/miniscript-linux" \
+         "$DIST/miniscript-win.exe" "$DIST/miniscript-csharp.zip"; do
     if [ "$(mtime "$f")" -lt "$NEWEST_TIME" ]; then
         echo "Stale: $f  ($(date -r "$(mtime "$f")" '+%Y-%m-%d %H:%M'))"
         STALE=1
@@ -226,10 +226,10 @@ echo "Creating GitHub release $TAG ($TITLE) ..."
 # --target pins the tag to the exact commit these binaries were built from,
 # rather than letting gh take whatever the default branch points at.
 gh release create "$TAG" \
-    "$DIST/miniscript2-mac" \
-    "$DIST/miniscript2-linux" \
-    "$DIST/miniscript2-win.exe" \
-    "$DIST/miniscript2-csharp.zip" \
+    "$DIST/miniscript-mac" \
+    "$DIST/miniscript-linux" \
+    "$DIST/miniscript-win.exe" \
+    "$DIST/miniscript-csharp.zip" \
     --target "$(git rev-parse HEAD)" \
     --title "$TITLE" \
     --prerelease \

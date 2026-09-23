@@ -2,7 +2,7 @@
 // than 255 module-scope variables loses all but the last 255 of them when
 // imported.  Run this one:
 //
-//   ./build/cpp/miniscript2 examples/manyVarsMain.ms
+//   ./build/cpp/miniscript examples/manyVarsMain.ms
 //
 // manyVarsModule.ms defines v001..v300, with vNNN == NNN.  All 300 should come
 // back in the imported module's map.  If the bug is present, the early names

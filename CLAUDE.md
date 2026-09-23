@@ -67,10 +67,10 @@ tools/build.sh cpp on   # Force computed-goto
 tools/build.sh cpp off  # Force switch-based
 
 # Run programs with different output modes
-./build/cpp/miniscript2 examples/test_calls.msa           # Clean output
-./build/cpp/miniscript2 --debug examples/test_calls.msa   # Verbose debug output
-./build/cpp/miniscript2 --test                            # Unit + integration test suites
-./build/cpp/miniscript2 --help                            # Full option list
+./build/cpp/miniscript examples/test_calls.msa           # Clean output
+./build/cpp/miniscript --debug examples/test_calls.msa   # Verbose debug output
+./build/cpp/miniscript --test                            # Unit + integration test suites
+./build/cpp/miniscript --help                            # Full option list
 ```
 
 ## Development Notes

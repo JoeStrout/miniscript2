@@ -2,7 +2,7 @@
 # Run all tests for the MiniScript 2.0 project
 #
 # Note: the bulk of the real coverage is NOT here -- it is in the interpreter
-# binary itself, as `miniscript2 --test`: UnitTests.RunAll plus the ~800-case
+# binary itself, as `miniscript --test`: UnitTests.RunAll plus the ~800-case
 # integration suite in testSuite.txt.  What lives under tests/ is the layered
 # C# unit tests, which only layer 0 still has.
 
@@ -14,7 +14,7 @@ all: cs scripts
 # Self-checking MiniScript scripts.  Each exits nonzero if any check fails, so
 # make stops on the first one that does.  Prefers the C++ build, falling back
 # to the C# one; skips with a note if neither has been built.
-MS2 := $(firstword $(wildcard ../build/cpp/miniscript2 ../build/cs/miniscript2))
+MS2 := $(firstword $(wildcard ../build/cpp/miniscript ../build/cs/miniscript))
 
 scripts:
 	@echo "========================================="

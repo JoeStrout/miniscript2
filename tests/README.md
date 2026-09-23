@@ -5,7 +5,7 @@
 **Most of the coverage lives in the interpreter binary, not in this directory:**
 
 ```bash
-build/cpp/miniscript2 --test     # or build/cs/miniscript2 --test
+build/cpp/miniscript --test     # or build/cs/miniscript --test
 ```
 
 That runs `UnitTests.RunAll` (`cs/UnitTests.cs`) followed by the integration
@@ -51,7 +51,7 @@ From the project root:
 Self-checking scripts run against either build and report a count:
 
 ```bash
-build/cs/miniscript2 tests/setters.ms      # or build/cpp/miniscript2
+build/cs/miniscript tests/setters.ms      # or build/cpp/miniscript
 ```
 
 Or with make, from `tests/`:

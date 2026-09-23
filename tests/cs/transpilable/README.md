@@ -194,7 +194,7 @@ the C++ core and never in C#; the layer Makefiles still listed `cs/MemPoolShim.c
 deleted in January 2026; and the C++ Makefiles referenced `cpp/compiler/` and
 `cpp/core/value.c`, both since gone.  They are in git history if you want them.
 
-The coverage they were meant to provide is now carried by `miniscript2 --test`
+The coverage they were meant to provide is now carried by `miniscript --test`
 (unit tests plus ~800 integration cases in `tests/testSuite.txt`).  Bring a
 layer back only if there is something that suite genuinely cannot reach.
 

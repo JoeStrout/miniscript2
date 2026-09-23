@@ -61,7 +61,7 @@ GEN_OBJECTS = $(GEN_SOURCES:$(GENDIR)/%.g.cpp=$(OBJDIR)/gen_%.o)
 OBJECTS = $(CORE_OBJECTS) $(GEN_OBJECTS) $(EDITLINE_OBJECTS)
 
 # Target executable
-TARGET = $(BUILDDIR)/miniscript2
+TARGET = $(BUILDDIR)/miniscript
 
 # Test programs
 TEST_STRING_POOL = $(BUILDDIR)/test_string_pool_debug
@@ -85,7 +85,7 @@ else
     ASAN_EDITLINE_OBJECTS =
 endif
 ASAN_OBJECTS = $(ASAN_CORE_OBJECTS) $(ASAN_GEN_OBJECTS) $(ASAN_EDITLINE_OBJECTS)
-ASAN_TARGET = $(BUILDDIR)/miniscript2_asan
+ASAN_TARGET = $(BUILDDIR)/miniscript_asan
 
 .PHONY: all clean test_string_pool test_simple test_debug_basic test_trivial debug_trivial test_keyboard asan
 

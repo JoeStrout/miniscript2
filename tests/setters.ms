@@ -14,8 +14,8 @@
 // error).  A runtime error cannot be caught, so each needs its own process;
 // those live in testSuite.txt.
 //
-// Run:  build/cs/miniscript2 tests/setters.ms
-//       build/cpp/miniscript2 tests/setters.ms
+// Run:  build/cs/miniscript tests/setters.ms
+//       build/cpp/miniscript tests/setters.ms
 // Exits 0 if every check passes, 1 otherwise.
 
 checks = 0

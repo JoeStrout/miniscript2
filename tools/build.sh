@@ -42,28 +42,28 @@ dist_build() {
             ZIG_TARGET="-target x86_64-macos"
             USE_EDITLINE=1
             DEFAULT_GOTO="on"
-            OUTPUT_NAME="miniscript2-mac-x86"
+            OUTPUT_NAME="miniscript-mac-x86"
             STRIP=0
             ;;
         mac-arm)
             ZIG_TARGET="-target aarch64-macos"
             USE_EDITLINE=1
             DEFAULT_GOTO="on"
-            OUTPUT_NAME="miniscript2-mac-arm"
+            OUTPUT_NAME="miniscript-mac-arm"
             STRIP=0
             ;;
         win)
             ZIG_TARGET="-target x86_64-windows-gnu"
             USE_EDITLINE=0
             DEFAULT_GOTO="on"
-            OUTPUT_NAME="miniscript2-win.exe"
+            OUTPUT_NAME="miniscript-win.exe"
             STRIP=1
             ;;
         linux)
             ZIG_TARGET="-target x86_64-linux-musl"
             USE_EDITLINE=1
             DEFAULT_GOTO="on"
-            OUTPUT_NAME="miniscript2-linux"
+            OUTPUT_NAME="miniscript-linux"
             STRIP=1
             ;;
         *)
@@ -187,7 +187,7 @@ record_build_stamp() {
 # dist_csharp
 #
 # Build a framework-dependent C# distribution package.
-# Output: build/dist/miniscript2-csharp.zip
+# Output: build/dist/miniscript-csharp.zip
 # ---------------------------------------------------------------------------
 dist_csharp() {
     echo "Building C# distribution package..."
@@ -198,18 +198,18 @@ dist_csharp() {
 
     dotnet publish "$CSPROJ" -c Release -o "$PUBLISH" --nologo -v quiet
 
-    cp "$PUBLISH/miniscript2.dll"                    "$ZIPDIR/miniscript2-csharp.dll"
-    cp "$PUBLISH/miniscript2.runtimeconfig.json"     "$ZIPDIR/miniscript2-csharp.runtimeconfig.json"
+    cp "$PUBLISH/miniscript.dll"                    "$ZIPDIR/miniscript-csharp.dll"
+    cp "$PUBLISH/miniscript.runtimeconfig.json"     "$ZIPDIR/miniscript-csharp.runtimeconfig.json"
     cp tools/csharp-dist-README.md                   "$ZIPDIR/README.md"
 
     rm -rf "$PUBLISH"
-    (cd "$ZIPDIR" && zip -q "../miniscript2-csharp.zip" \
-        miniscript2-csharp.dll \
-        miniscript2-csharp.runtimeconfig.json \
+    (cd "$ZIPDIR" && zip -q "../miniscript-csharp.zip" \
+        miniscript-csharp.dll \
+        miniscript-csharp.runtimeconfig.json \
         README.md)
     rm -rf "$ZIPDIR"
 
-    echo "  Done: build/dist/miniscript2-csharp.zip"
+    echo "  Done: build/dist/miniscript-csharp.zip"
 }
 
 # ---------------------------------------------------------------------------
@@ -410,18 +410,18 @@ case "$TARGET" in
             echo "Building Mac fat (universal) binary..."
             dist_build mac-x86 "$DIST_GOTO"
             dist_build mac-arm "$DIST_GOTO"
-            lipo -create -output build/dist/miniscript2-mac \
-                build/dist/miniscript2-mac-x86 \
-                build/dist/miniscript2-mac-arm
-            echo "  Fat binary: build/dist/miniscript2-mac"
+            lipo -create -output build/dist/miniscript-mac \
+                build/dist/miniscript-mac-x86 \
+                build/dist/miniscript-mac-arm
+            echo "  Fat binary: build/dist/miniscript-mac"
         elif [ "$DIST_PLATFORM" = "all" ]; then
             echo "Building all distribution targets..."
             dist_build mac-x86 "$DIST_GOTO"
             dist_build mac-arm "$DIST_GOTO"
-            lipo -create -output build/dist/miniscript2-mac \
-                build/dist/miniscript2-mac-x86 \
-                build/dist/miniscript2-mac-arm
-            echo "  Fat binary: build/dist/miniscript2-mac"
+            lipo -create -output build/dist/miniscript-mac \
+                build/dist/miniscript-mac-x86 \
+                build/dist/miniscript-mac-arm
+            echo "  Fat binary: build/dist/miniscript-mac"
             dist_build win   "$DIST_GOTO"
             dist_build linux "$DIST_GOTO"
             dist_csharp
@@ -448,10 +448,10 @@ case "$TARGET" in
     "test")
         echo "Running quick smoke tests..."
         echo "Testing C# version:"
-        cd build/cs && echo "These are some words for testing" | ./miniscript2
+        cd build/cs && echo "These are some words for testing" | ./miniscript
         cd ../..
         echo "Testing C++ version:"
-        cd build/cpp && echo "These are some words for testing" | ./miniscript2
+        cd build/cpp && echo "These are some words for testing" | ./miniscript
         cd ../..
 
         # Regression: `input` at end of file returns null on both ports, rather
@@ -460,7 +460,7 @@ case "$TARGET" in
         echo "Testing input at end-of-file:"
         eof_expected=$'isNull: 1\nisString: 0'
         eof_status=0
-        for exe in build/cs/miniscript2 build/cpp/miniscript2; do
+        for exe in build/cs/miniscript build/cpp/miniscript; do
             [ -x "$exe" ] || continue
             eof_actual=$("$exe" tests/eof_input.ms < /dev/null 2>&1 | tail -2)
             if [ "$eof_actual" = "$eof_expected" ]; then
@@ -492,8 +492,8 @@ case "$TARGET" in
         mkdir -p cpp/xcode
         cd cpp/xcode
         cmake -G Xcode -DCMAKE_BUILD_TYPE=Debug ..
-        echo "Xcode project generated at cpp/xcode/miniscript2.xcodeproj"
-        echo "Open with: open cpp/xcode/miniscript2.xcodeproj"
+        echo "Xcode project generated at cpp/xcode/miniscript.xcodeproj"
+        echo "Open with: open cpp/xcode/miniscript.xcodeproj"
         ;;
 
     *)
@@ -523,7 +523,7 @@ case "$TARGET" in
         echo "  test-cs     - Same thing (tests/ holds only C# tests now)"
         echo ""
         echo "  The main suite is in the interpreter itself: run"
-        echo "    build/cpp/miniscript2 --test"
+        echo "    build/cpp/miniscript --test"
         echo "  for the unit tests plus the testSuite.txt integration cases."
         echo ""
         echo "IDE:"

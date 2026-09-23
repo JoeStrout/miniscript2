@@ -188,7 +188,7 @@ if should_run_language "cs"; then
         if ! has_asm "$kinds"; then CS_ASM_TIMES+=("-"); continue; fi
 
         echo -e "${BLUE}  $name...${NC}"
-        cs_time=$(run_benchmark "$file" "$name" "$expected" "dotnet" "build/cs/miniscript2.dll" "msa")
+        cs_time=$(run_benchmark "$file" "$name" "$expected" "dotnet" "build/cs/miniscript.dll" "msa")
         CS_ASM_TIMES+=("$cs_time")
     done
     echo -e "${BOLD}Running C# benchmarks (source)...${NC}"
@@ -197,7 +197,7 @@ if should_run_language "cs"; then
         IFS=':' read -r file name expected kinds <<< "$benchmark_def"
 
         echo -e "${BLUE}  $name...${NC}"
-        cs_time=$(run_benchmark "$file" "$name" "$expected" "dotnet" "build/cs/miniscript2.dll" "ms")
+        cs_time=$(run_benchmark "$file" "$name" "$expected" "dotnet" "build/cs/miniscript.dll" "ms")
         CS_SRC_TIMES+=("$cs_time")
     done
     echo ""
@@ -206,7 +206,7 @@ fi
 # Build and run all C++ (switch-based) benchmarks
 if should_run_language "cpp-switch"; then
     echo -e "${BOLD}Building C++ version (switch-based)...${NC}"
-    rm -f build/cpp/obj/* build/cpp/miniscript2 2>/dev/null
+    rm -f build/cpp/obj/* build/cpp/miniscript 2>/dev/null
     if ! tools/build.sh cpp off; then
         echo -e "${RED}C++ (switch-based) build failed!${NC}"
         exit 1
@@ -219,7 +219,7 @@ if should_run_language "cpp-switch"; then
         if ! has_asm "$kinds"; then CPP_SWITCH_ASM_TIMES+=("-"); continue; fi
 
         echo -e "${BLUE}  $name...${NC}"
-        t=$(run_benchmark "$file" "$name" "$expected" "direct" "build/cpp/miniscript2" "msa")
+        t=$(run_benchmark "$file" "$name" "$expected" "direct" "build/cpp/miniscript" "msa")
         CPP_SWITCH_ASM_TIMES+=("$t")
     done
     echo -e "${BOLD}Running C++ switch benchmarks (source)...${NC}"
@@ -228,7 +228,7 @@ if should_run_language "cpp-switch"; then
         IFS=':' read -r file name expected kinds <<< "$benchmark_def"
 
         echo -e "${BLUE}  $name...${NC}"
-        t=$(run_benchmark "$file" "$name" "$expected" "direct" "build/cpp/miniscript2" "ms")
+        t=$(run_benchmark "$file" "$name" "$expected" "direct" "build/cpp/miniscript" "ms")
         CPP_SWITCH_SRC_TIMES+=("$t")
     done
     echo ""
@@ -237,7 +237,7 @@ fi
 # Build and run all C++ (computed-goto) benchmarks
 if should_run_language "cpp-goto" || should_run_language "msa"; then
     echo -e "${BOLD}Building C++ version (computed-goto)...${NC}"
-    rm -f build/cpp/obj/* build/cpp/miniscript2 2>/dev/null
+    rm -f build/cpp/obj/* build/cpp/miniscript 2>/dev/null
     if ! tools/build.sh cpp on; then
         echo -e "${RED}C++ (computed-goto) build failed!${NC}"
         exit 1
@@ -250,7 +250,7 @@ if should_run_language "cpp-goto" || should_run_language "msa"; then
         if ! has_asm "$kinds"; then CPP_GOTO_ASM_TIMES+=("-"); continue; fi
 
         echo -e "${BLUE}  $name...${NC}"
-        t=$(run_benchmark "$file" "$name" "$expected" "direct" "build/cpp/miniscript2" "msa")
+        t=$(run_benchmark "$file" "$name" "$expected" "direct" "build/cpp/miniscript" "msa")
         CPP_GOTO_ASM_TIMES+=("$t")
     done
     echo -e "${BOLD}Running C++ goto benchmarks (source)...${NC}"
@@ -259,7 +259,7 @@ if should_run_language "cpp-goto" || should_run_language "msa"; then
         IFS=':' read -r file name expected kinds <<< "$benchmark_def"
 
         echo -e "${BLUE}  $name...${NC}"
-        t=$(run_benchmark "$file" "$name" "$expected" "direct" "build/cpp/miniscript2" "ms")
+        t=$(run_benchmark "$file" "$name" "$expected" "direct" "build/cpp/miniscript" "ms")
         CPP_GOTO_SRC_TIMES+=("$t")
     done
     echo ""

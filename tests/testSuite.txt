@@ -7719,6 +7719,23 @@ print "aé日b😀c".indexOf("😀")
 6
 4
 ================================
+==== A returning frame must not leave its register names behind: a callee's
+==== frame base sits past the caller's in-use registers, not past its MaxRegs,
+==== so the two overlap.  A leftover name would show up in the caller's locals
+==== (here, the callee's parameter `x`) bound to one of its scratch registers.
+================================
+h = function(x)
+	return x
+end function
+g = function
+	a = 1
+	b = h(1) + h(2) * (h(3) + h(4) * (h(5) + h(6) * (h(7) + h(8))))
+	return locals
+end function
+print g
+--------------------------------
+{"a": 1, "b": 767}
+================================
 ==== END OF TESTS
 ================================================================================
 

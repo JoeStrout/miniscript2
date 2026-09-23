@@ -2494,6 +2494,22 @@ public class VM {
 						callStack[callStackTop - 1] = frame;  // write back (CallInfo is a struct)
 					}
 
+					// Erase this frame's register names.  A callee's frame base sits
+					// past the caller's *in-use* registers, not past its MaxRegs, so
+					// these registers commonly overlap the caller's frame (and, more
+					// often still, a grandparent's).  Any name left behind here would
+					// be picked up by the enclosing frame's VarMapBacking -- which
+					// scans names[] over the whole frame -- and bound to what is, for
+					// that frame, a scratch register.  The `import` intrinsic's SetVar
+					// hit this: a module's top-level `Foo` left names[] tagged inside
+					// the importer's temporaries, so binding the module map by name
+					// landed in a register the next expression overwrote.  Names must
+					// be cleared after the Gather above, which reads them to tell
+					// live entries from dead ones.
+					for (Int32 ni = 0; ni < curFunc.MaxRegs; ni++) { // CPP: for (Int32 ni = 0; ni < curFuncRaw->MaxRegs; ni++) {
+						names[baseIndex + ni] = Value.Null;
+					}
+
 					// Pop the current execution-context frame.
 					callStackTop--;
 

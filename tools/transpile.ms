@@ -1553,6 +1553,14 @@ Transpiler.updateStateMETHOD = function
 		end if
 	end if
 	
+	if self.inVmCase and self.line.trimmed.contains("break;") then
+		// This looks like a case that should have been converted to a VM_NEXT() call,
+		// but we only handle that (above) when it's the entire line, not part
+		// of some single-line `if` or whatever.  So this is an error that should
+		// be fixed in the C# code, by putting the `break;` on its own line.
+		print "ERROR: `break` detected in a VM_CASE block, not on its own line."
+		exit
+	end if
 	
 	// otherwise, apply standard transformations, then write out
 	cline = line.full

@@ -1529,39 +1529,39 @@ public class VM {
 					break;
 				}
 
-				case Opcode.POW_rA_rB_rC: { // CPP: VM_CASE(POW_rA_rB_rC) {
+				case Opcode.POW_rA_rB_rC: {
 					// R[A] = R[B] ^ R[C]
 					Byte a = BytecodeUtil.Au(instruction);
 					Byte b = BytecodeUtil.Bu(instruction);
 					Byte c = BytecodeUtil.Cu(instruction);
 					localStack[a] = localStack[b].Pow(localStack[c]);
-					break; // CPP: VM_NEXT();
+					break;
 				}
 
-				case Opcode.AND_rA_rB_rC: { // CPP: VM_CASE(AND_rA_rB_rC) {
+				case Opcode.AND_rA_rB_rC: {
 					// R[A] = R[B] and R[C] (fuzzy logic: AbsClamp01(a * b))
 					Byte a = BytecodeUtil.Au(instruction);
 					Byte b = BytecodeUtil.Bu(instruction);
 					Byte c = BytecodeUtil.Cu(instruction);
 					localStack[a] = localStack[b].And(localStack[c]);
-					break; // CPP: VM_NEXT();
+					break;
 				}
 
-				case Opcode.OR_rA_rB_rC: { // CPP: VM_CASE(OR_rA_rB_rC) {
+				case Opcode.OR_rA_rB_rC: {
 					// R[A] = R[B] or R[C] (fuzzy logic: AbsClamp01(a + b - a*b))
 					Byte a = BytecodeUtil.Au(instruction);
 					Byte b = BytecodeUtil.Bu(instruction);
 					Byte c = BytecodeUtil.Cu(instruction);
 					localStack[a] = localStack[b].Or(localStack[c]);
-					break; // CPP: VM_NEXT();
+					break;
 				}
 
-				case Opcode.NOT_rA_rB: { // CPP: VM_CASE(NOT_rA_rB) {
+				case Opcode.NOT_rA_rB: {
 					// R[A] = not R[B] (fuzzy logic: 1 - AbsClamp01(b))
 					Byte a = BytecodeUtil.Au(instruction);
 					Byte b = BytecodeUtil.Bu(instruction);
 					localStack[a] = !localStack[b];
-					break; // CPP: VM_NEXT();
+					break;
 				}
 
 				case Opcode.LIST_rA_iBC: {
@@ -1645,9 +1645,21 @@ public class VM {
 					valC = localStack[c];
 					valD = localStack[c + 1];
 
-					if (valB.IsError()) { RaiseUncaughtError(valB); localStack[a] = Value.Null; break; }
-					if (valC.IsError()) { RaiseUncaughtError(valC); localStack[a] = Value.Null; break; }
-					if (valD.IsError()) { RaiseUncaughtError(valD); localStack[a] = Value.Null; break; }
+					if (valB.IsError()) {
+						RaiseUncaughtError(valB);
+						localStack[a] = Value.Null;
+						break;
+					}
+					if (valC.IsError()) {
+						RaiseUncaughtError(valC);
+						localStack[a] = Value.Null;
+						break;
+					}
+					if (valD.IsError()) {
+						RaiseUncaughtError(valD);
+						localStack[a] = Value.Null;
+						break;
+					}
 
 					if (valB.IsString()) {
 						Int32 len = valB.Length();
@@ -1820,8 +1832,14 @@ public class VM {
 					Byte a = BytecodeUtil.Au(instruction);
 					Byte b = BytecodeUtil.Bu(instruction);
 					Byte c = BytecodeUtil.Cu(instruction);
-					if (localStack[b].IsError()) { localStack[a] = localStack[b]; break; }
-					if (localStack[c].IsError()) { localStack[a] = localStack[c]; break; }
+					if (localStack[b].IsError()) {
+						localStack[a] = localStack[b];
+						break;
+					}
+					if (localStack[c].IsError()) {
+						localStack[a] = localStack[c];
+						break;
+					}
 					localStack[a] = Value.Truth(localStack[b] < localStack[c]);
 					break;
 				}
@@ -1831,7 +1849,10 @@ public class VM {
 					Byte a = BytecodeUtil.Au(instruction);
 					Byte b = BytecodeUtil.Bu(instruction);
 					SByte c = BytecodeUtil.Cs(instruction);
-					if (localStack[b].IsError()) { localStack[a] = localStack[b]; break; }
+					if (localStack[b].IsError()) {
+						localStack[a] = localStack[b];
+						break;
+					}
 					localStack[a] = Value.Truth(localStack[b] < new Value(c));
 					break;
 				}
@@ -1841,8 +1862,14 @@ public class VM {
 					Byte a = BytecodeUtil.Au(instruction);
 					Byte b = BytecodeUtil.Bu(instruction);
 					Byte c = BytecodeUtil.Cu(instruction);
-					if (localStack[b].IsError()) { localStack[a] = localStack[b]; break; }
-					if (localStack[c].IsError()) { localStack[a] = localStack[c]; break; }
+					if (localStack[b].IsError()) {
+						localStack[a] = localStack[b];
+						break;
+					}
+					if (localStack[c].IsError()) {
+						localStack[a] = localStack[c];
+						break;
+					}
 					localStack[a] = Value.Truth(localStack[b] <= localStack[c]);
 					break;
 				}
@@ -1852,7 +1879,10 @@ public class VM {
 					Byte a = BytecodeUtil.Au(instruction);
 					Byte b = BytecodeUtil.Bu(instruction);
 					SByte c = BytecodeUtil.Cs(instruction);
-					if (localStack[b].IsError()) { localStack[a] = localStack[b]; break; }
+					if (localStack[b].IsError()) {
+						localStack[a] = localStack[b];
+						break;
+					}
 					localStack[a] = Value.Truth(localStack[b] <= new Value(c));
 					break;
 				}
@@ -2136,7 +2166,9 @@ public class VM {
 					Int32 calleeBase = baseIndex + b;
 					Int32 selfParam = SelfParamOffset(callee);
 					// Bounds-check the callee frame BEFORE writing into it.
-					if (!EnsureFrame(calleeBase, callee.MaxRegs)) break;
+					if (!EnsureFrame(calleeBase, callee.MaxRegs)) {
+						break;
+					}
 					SetupCallFrame(0, selfParam, calleeBase, callee);
 					if (selfParam > 0) {
 						stack[calleeBase + 1] = pendingSelf;
@@ -2185,7 +2217,10 @@ public class VM {
 					Byte a = BytecodeUtil.Au(instruction);
 					Byte b = BytecodeUtil.Bu(instruction);
 					valB = localStack[b];
-					if (valB.IsError()) { localStack[a] = valB; break; }
+					if (valB.IsError()) {
+						localStack[a] = valB;
+						break;
+					}
 					if (!valB.IsMap()) {
 						localStack[a] = MakeRuntimeError(StringUtils.Format(
 							"can only use `new` with a map (got {0})", valB.TypeName()));
@@ -2202,7 +2237,7 @@ public class VM {
 					break;
 				}
 
-				case Opcode.ISA_rA_rB_rC: { // CPP: VM_CASE(ISA_rA_rB_rC) {
+				case Opcode.ISA_rA_rB_rC: {
 					// R[A] = (R[B] isa R[C])
 					// True if:
 					//   1. both are null
@@ -2235,10 +2270,12 @@ public class VM {
 						if (valB.IsMap()) {
 							val = valB;  // val is "current"; valA (below) is "next" in the __isa chain
 							for (Int32 depth = 0; depth < 256; depth++) {
-								if (!val.TryGet(Value.magicIsA, out valA)) break;
+								if (!val.TryGet(Value.magicIsA, out valA)) {
+									break; // CPP: break; // (break from the loop; do NOT do VM_NEXT()
+								}
 								if (valA.RefEquals(valC)) {
 									isaResult = 1;
-									break;
+									break; // CPP: break; // (break from the loop; do NOT do VM_NEXT()
 								}
 								val = valA;
 							}
@@ -2259,7 +2296,7 @@ public class VM {
 						}
 					}
 					localStack[a] = Value.Truth(isaResult);
-					break; // CPP: VM_NEXT();
+					break;
 				}
 
 				case Opcode.METHFIND_rA_rB_rC: {
@@ -2304,23 +2341,33 @@ public class VM {
 
 					valB = localStack[b];  // container
 					valC = localStack[c];  // property name
-					if (!valB.IsMap() || !valC.IsString()) break;
+					if (!valB.IsMap() || !valC.IsString()) {
+						break;
+					}
 					// Frozen wins: leave it to the plain store to raise the usual
 					// error, so that `freeze` keeps its flat meaning and a setter
 					// can never run on an object that is supposed to be immutable.
-					if (valB.IsFrozen()) break;
+					if (valB.IsFrozen()) {
+						break;
+					}
 					// A key that already ends in "=" is never intercepted, so that
 					// installing a setter does not go looking for "x==".
-					if (valC.IsSetterKey()) break;
+					if (valC.IsSetterKey()) {
+						break;
+					}
 					// The whole chain is known to hold no setter: no key to build,
 					// no lookup to do.  This is the ordinary case for ordinary
 					// maps, and after the first assignment it is one compare.
-					if (!ChainHasSetter(valB)) break;
+					if (!ChainHasSetter(valB)) {
+						break;
+					}
 
 					// Only the __isa chain, deliberately not the type maps: an
 					// "x=" on the shared `map` type would intercept assignment to
 					// every map in the program.  See LANGUAGE_CHANGES.md.
-					if (!valB.LookupWithOrigin(valC.SetterKey(), out val, out valD)) break;
+					if (!valB.LookupWithOrigin(valC.SetterKey(), out val, out valD)) {
+						break;
+					}
 
 					if (val.IsNull()) {
 						// A null setter marks the property read-only.  The error is

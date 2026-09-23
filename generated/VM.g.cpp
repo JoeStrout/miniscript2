@@ -1310,9 +1310,21 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				valC = localStack[c];
 				valD = localStack[c + 1];
 
-				if (valB.IsError()) { RaiseUncaughtError(valB); localStack[a] = Value::Null; break; }
-				if (valC.IsError()) { RaiseUncaughtError(valC); localStack[a] = Value::Null; break; }
-				if (valD.IsError()) { RaiseUncaughtError(valD); localStack[a] = Value::Null; break; }
+				if (valB.IsError()) {
+					RaiseUncaughtError(valB);
+					localStack[a] = Value::Null;
+					VM_NEXT();
+				}
+				if (valC.IsError()) {
+					RaiseUncaughtError(valC);
+					localStack[a] = Value::Null;
+					VM_NEXT();
+				}
+				if (valD.IsError()) {
+					RaiseUncaughtError(valD);
+					localStack[a] = Value::Null;
+					VM_NEXT();
+				}
 
 				if (valB.IsString()) {
 					Int32 len = valB.Length();
@@ -1484,8 +1496,14 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				Byte c = BytecodeUtil::Cu(instruction);
-				if (localStack[b].IsError()) { localStack[a] = localStack[b]; break; }
-				if (localStack[c].IsError()) { localStack[a] = localStack[c]; break; }
+				if (localStack[b].IsError()) {
+					localStack[a] = localStack[b];
+					VM_NEXT();
+				}
+				if (localStack[c].IsError()) {
+					localStack[a] = localStack[c];
+					VM_NEXT();
+				}
 				localStack[a] = Value::Truth(localStack[b] < localStack[c]);
 				VM_NEXT();
 			}
@@ -1495,7 +1513,10 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				SByte c = BytecodeUtil::Cs(instruction);
-				if (localStack[b].IsError()) { localStack[a] = localStack[b]; break; }
+				if (localStack[b].IsError()) {
+					localStack[a] = localStack[b];
+					VM_NEXT();
+				}
 				localStack[a] = Value::Truth(localStack[b] < Value(c));
 				VM_NEXT();
 			}
@@ -1505,8 +1526,14 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				Byte c = BytecodeUtil::Cu(instruction);
-				if (localStack[b].IsError()) { localStack[a] = localStack[b]; break; }
-				if (localStack[c].IsError()) { localStack[a] = localStack[c]; break; }
+				if (localStack[b].IsError()) {
+					localStack[a] = localStack[b];
+					VM_NEXT();
+				}
+				if (localStack[c].IsError()) {
+					localStack[a] = localStack[c];
+					VM_NEXT();
+				}
 				localStack[a] = Value::Truth(localStack[b] <= localStack[c]);
 				VM_NEXT();
 			}
@@ -1516,7 +1543,10 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				SByte c = BytecodeUtil::Cs(instruction);
-				if (localStack[b].IsError()) { localStack[a] = localStack[b]; break; }
+				if (localStack[b].IsError()) {
+					localStack[a] = localStack[b];
+					VM_NEXT();
+				}
 				localStack[a] = Value::Truth(localStack[b] <= Value(c));
 				VM_NEXT();
 			}
@@ -1797,7 +1827,9 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Int32 calleeBase = baseIndex + b;
 				Int32 selfParam = SelfParamOffset(callee);
 				// Bounds-check the callee frame BEFORE writing into it.
-				if (!EnsureFrame(calleeBase, callee.MaxRegs())) break;
+				if (!EnsureFrame(calleeBase, callee.MaxRegs())) {
+					VM_NEXT();
+				}
 				SetupCallFrame(0, selfParam, calleeBase, callee);
 				if (selfParam > 0) {
 					stack[calleeBase + 1] = pendingSelf;
@@ -1844,7 +1876,10 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				valB = localStack[b];
-				if (valB.IsError()) { localStack[a] = valB; break; }
+				if (valB.IsError()) {
+					localStack[a] = valB;
+					VM_NEXT();
+				}
 				if (!valB.IsMap()) {
 					localStack[a] = MakeRuntimeError(StringUtils::Format(
 						"can only use `new` with a map (got {0})", valB.TypeName()));
@@ -1888,16 +1923,18 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 						isaResult = 1;
 					}
 					localStack[a] = Value::Truth(isaResult);
-					break;
+					VM_NEXT();
 				} else if (valC.IsMap()) {
 					// Walk valB's __isa chain looking for valC
 					if (valB.IsMap()) {
 						val = valB;  // val is "current"; valA (below) is "next" in the __isa chain
 						for (Int32 depth = 0; depth < 256; depth++) {
-							if (!val.TryGet(Value::magicIsA, &valA)) break;
+							if (!val.TryGet(Value::magicIsA, &valA)) {
+								break; // (break from the loop; do NOT do VM_NEXT()
+							}
 							if (valA.RefEquals(valC)) {
 								isaResult = 1;
-								break;
+								break; // (break from the loop; do NOT do VM_NEXT()
 							}
 							val = valA;
 						}
@@ -1963,23 +2000,33 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 
 				valB = localStack[b];  // container
 				valC = localStack[c];  // property name
-				if (!valB.IsMap() || !valC.IsString()) break;
+				if (!valB.IsMap() || !valC.IsString()) {
+					VM_NEXT();
+				}
 				// Frozen wins: leave it to the plain store to raise the usual
 				// error, so that `freeze` keeps its flat meaning and a setter
 				// can never run on an object that is supposed to be immutable.
-				if (valB.IsFrozen()) break;
+				if (valB.IsFrozen()) {
+					VM_NEXT();
+				}
 				// A key that already ends in "=" is never intercepted, so that
 				// installing a setter does not go looking for "x==".
-				if (valC.IsSetterKey()) break;
+				if (valC.IsSetterKey()) {
+					VM_NEXT();
+				}
 				// The whole chain is known to hold no setter: no key to build,
 				// no lookup to do.  This is the ordinary case for ordinary
 				// maps, and after the first assignment it is one compare.
-				if (!ChainHasSetter(valB)) break;
+				if (!ChainHasSetter(valB)) {
+					VM_NEXT();
+				}
 
 				// Only the __isa chain, deliberately not the type maps: an
 				// "x=" on the shared `map` type would intercept assignment to
 				// every map in the program.  See LANGUAGE_CHANGES.md.
-				if (!valB.LookupWithOrigin(valC.SetterKey(), &val, &valD)) break;
+				if (!valB.LookupWithOrigin(valC.SetterKey(), &val, &valD)) {
+					VM_NEXT();
+				}
 
 				if (val.IsNull()) {
 					// A null setter marks the property read-only.  The error is

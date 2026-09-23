@@ -144,6 +144,11 @@ Value Value::Isa() const {
     return GCManager::Errors.Get(v.ItemIndex()).Isa;
 }
 
+// True if `base` is this value or anywhere along its error __isa chain.
+// The walk starts at this value rather than at its Isa, so the relation is
+// reflexive -- matching the `isa` operator, which answers true for `x isa x`
+// (see ISA_rA_rB_rC) before it ever walks a chain.  Keep this in step with
+// Value.IsaContains in cs/Value.cs, which is hand-mirrored, not generated.
 bool Value::IsaContains(Value base) const {
     Value current = *this;
     for (int depth = 0; depth < 256; depth++) {

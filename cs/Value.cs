@@ -289,9 +289,14 @@ public readonly struct Value {
 		return GCManager.Errors.Get(ItemIndex()).Isa;
 	}
 
+	// True if `target` is this value or anywhere along its error __isa chain.
+	// The walk starts at this value rather than at its Isa, so the relation is
+	// reflexive -- matching the `isa` operator, which answers true for
+	// `x isa x` (see ISA_rA_rB_rC) before it ever walks a chain.  Keep this in
+	// step with Value::IsaContains in cpp/core/value.cpp, which is not
+	// generated from this file.
 	public bool IsaContains(Value target) {
-		if (!IsError()) return false;
-		Value current = GCManager.Errors.Get(ItemIndex()).Isa;
+		Value current = this;
 		for (int depth = 0; depth < 256; depth++) {
 			if (current.IsNull()) return false;
 			if (current.RefEquals(target)) return true;

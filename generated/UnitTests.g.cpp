@@ -1623,6 +1623,26 @@ Boolean UnitTests::TestHostMapSetters() {
 		&& Assert(GCManager::Maps.Get(anotherMap.ItemIndex())._setterStatus == -1,
 			"...and should still be stamped itself");
 }
+Boolean UnitTests::TestIsaContains() {
+	ErrorTypes::Init();
+	Value err = ErrorTypes::RuntimeError("boom");
+	Value other = ErrorTypes::CompilerError("nope");
+
+	return Assert(err.IsaContains(err),
+			"an error should be isa itself")
+		&& Assert(ErrorTypes::runtime.IsaContains(ErrorTypes::runtime),
+			"a prototype error should be isa itself")
+		&& Assert(err.IsaContains(ErrorTypes::runtime),
+			"a runtime error should be isa the runtime prototype")
+		&& Assert(!err.IsaContains(ErrorTypes::compiler),
+			"a runtime error should not be isa the compiler prototype")
+		&& Assert(other.IsaContains(ErrorTypes::compiler),
+			"a compiler error should be isa the compiler prototype")
+		&& Assert(!err.IsaContains(other),
+			"unrelated errors should not be isa one another")
+		&& Assert(!Value::Null.IsaContains(Value::Null),
+			"null is not isa anything, itself included");
+}
 Boolean UnitTests::RunAll() {
 	return TestIntrinsicDefaults()   // first: wants to run before any VM builds the funcrefs
 		&& TestStringUtils()
@@ -1630,6 +1650,7 @@ Boolean UnitTests::RunAll() {
 		&& TestAssembler()
 		&& TestValueMap()
 		&& TestHostMapSetters()
+		&& TestIsaContains()
 		&& TestGlobals()
 		&& TestLexer()
 		&& TestParser()

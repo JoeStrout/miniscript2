@@ -152,6 +152,12 @@ class UnitTests {
 	// would simply never fire, with no error to say why.
 	public: static Boolean TestHostMapSetters();
 
+	// Value.IsaContains has a hand-written twin in cpp/core/value.cpp rather
+	// than a generated one, so the two can drift apart without anything
+	// noticing -- and once did, over exactly the reflexive case below.  These
+	// assertions run on both sides and hold them together.
+	public: static Boolean TestIsaContains();
+
 	public: static Boolean RunAll();
 }; // end of struct UnitTests
 

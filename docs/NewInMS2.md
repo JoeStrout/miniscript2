@@ -98,11 +98,15 @@ emoji differently.  2.0 commits to the C++ reading on both sides.
 > A code point is not always a user-perceived character.  A combining accent or
 > an emoji with a skin-tone modifier counts as more than one code point.
 
-### NaN and infinity print differently
+### More consistent numeric formatting.
 
-2.0 prints `NaN`, `Inf` and `-Inf`.  1.x printed these inconsistently, and
-differently between its C# and C++ builds.  Only cosmetic, but it can show up
-in expected-output tests.
+MiniScript 1.x was inconsistent in its formatting of numbers (and non-numbers such as NaN and infinity) between the C# and C++ versions.  MiniScript 2.0 is consistent, and prints numbers according to these rules:
+- `NaN`, `Inf` and `-Inf` are printed exactly as shown here.
+- Numbers > 2^53 are printed in scientific notation.
+- Whole numbers ≤ 2^53 are printed as plain integers, no decimal point.
+- `-0` is printed as just `0`.
+- Non-integers with magnitude > 1E10 or < 1E-6 are printed in scientific notation.
+- All other non-integers are printed in decimal form with at least one and at most six decimal places (trailing zeros trimmed).
 
 ---
 

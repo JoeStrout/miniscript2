@@ -104,6 +104,37 @@ Value CoreIntrinsics::RequireNumber(Value v,double* result) {
 	*result = 0.0;
 	return ErrorTypes::TypeError("number", v);
 }
+Double CoreIntrinsics::ParseNumericPrefix(String s) {
+	Int32 len = s.Length();
+	Int32 start = 0;
+	while (start < len && (s[start] == ' ' || s[start] == '\t'
+		|| s[start] == '\n' || s[start] == '\r')) start++;
+	Int32 pos = start;
+	if (pos < len && (s[pos] == '+' || s[pos] == '-')) pos++;
+	Int32 digits = 0;
+	while (pos < len && s[pos] >= '0' && s[pos] <= '9') { pos++; digits++; }
+	if (pos < len && s[pos] == '.') {
+		Int32 afterDot = pos + 1;
+		Int32 fracDigits = 0;
+		while (afterDot < len && s[afterDot] >= '0' && s[afterDot] <= '9') { afterDot++; fracDigits++; }
+		if (digits + fracDigits > 0) { pos = afterDot; digits += fracDigits; }
+	}
+	if (digits == 0) return 0;
+	if (pos < len && (s[pos] == 'e' || s[pos] == 'E')) {
+		Int32 expPos = pos + 1;
+		if (expPos < len && (s[expPos] == '+' || s[expPos] == '-')) expPos++;
+		if (expPos < len && s[expPos] >= '0' && s[expPos] <= '9') {
+			while (expPos < len && s[expPos] >= '0' && s[expPos] <= '9') expPos++;
+			pos = expPos;
+		}
+	}
+	return StringUtils::ParseDouble(s.Substring(start, pos - start));
+}
+Value CoreIntrinsics::ArgAsString(Value v,Context ctx) {
+	if (v.IsString()) return v;
+	if (v.IsNull()) return Value::make_string("");
+	return v.ToStringValue(ctx.vm);
+}
 void CoreIntrinsics::AddIntrinsicToMap(Value map,String methodName) {
 	Intrinsic intr = Intrinsic::GetByName(methodName);
 	if (!IsNull(intr)) {
@@ -367,7 +398,7 @@ void CoreIntrinsics::Init() {
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
 		Value v = ctx.GetArg(0);
 		if (v.IsNumber()) return IntrinsicResult(v);
-		if (v.IsString()) return IntrinsicResult(v.ToNumber());
+		if (v.IsString()) return IntrinsicResult(Value(ParseNumericPrefix(v.AsCString())));
 		return IntrinsicResult(Value::Null);
 	});
 
@@ -404,6 +435,11 @@ void CoreIntrinsics::Init() {
 		double cp;
 		Value e = RequireNumber(v, &cp);
 		if (!e.IsNull()) return IntrinsicResult(e);
+		// Reject anything that isn't a Unicode scalar value (this also catches NaN).
+		if (!(cp >= 0 && cp < 0x110000) || (cp >= 0xD800 && cp < 0xE000)) {
+			return IntrinsicResult(ErrorTypes::RuntimeError(StringUtils::Format(
+				"char: {0} is not a valid code point", v)));
+		}
 		return IntrinsicResult(Value::string_from_code_point((int)cp));
 	});
 
@@ -443,15 +479,28 @@ void CoreIntrinsics::Init() {
 		int result = 0;
 		if (container.IsList()) {
 			if (index.IsError()) return ctx.vm.RaiseUncaughtError(index);
-			result = container.ListRemove(index.IntValue()) ? 1 : 0;
+			int i = index.IntValue();
+			int count = container.ListCount();
+			if (i < -count || i >= count) {
+				ctx.vm.RaiseRuntimeError("Index Error: list index {0} out of range", Value(i));
+				return IntrinsicResult::Null;
+			}
+			result = container.ListRemove(i) ? 1 : 0;
 		} else if (container.IsMap()) {
 			// An error is a legitimate map key; but if it is not one here,
 			// terminate rather than quietly answer 0.
 			result = container.MapRemove(index) ? 1 : 0;
 			if (result == 1) ctx.vm.NoteKeyRemoved(index);
 			if (result == 0 && index.IsError()) return ctx.vm.RaiseUncaughtError(index);
+		} else if (container.IsString()) {
+			// Remove the first occurrence of the given substring.
+			if (index.IsError()) return IntrinsicResult(index);
+			if (index.IsNull()) {
+				return IntrinsicResult(ErrorTypes::RuntimeError("remove: argument must not be null"));
+			}
+			return IntrinsicResult(container.ReplaceMax(ArgAsString(index, ctx), Value::make_string(""), 1));
 		} else {
-			return IntrinsicResult(ErrorTypes::TypeError("list or map", container));
+			return IntrinsicResult(ErrorTypes::TypeError("list, map, or string", container));
 		}
 		return IntrinsicResult(Value(result));
 	});
@@ -748,11 +797,22 @@ void CoreIntrinsics::Init() {
 		Value self = ctx.GetArg(0);
 		int index = (int)ctx.GetArg(1).NumericVal();
 		Value value = ctx.GetArg(2);
+		// Valid indexes run from -(count+1) to count, inclusive.
 		if (self.IsList()) {
+			int count = self.ListCount();
+			if (index < -count - 1 || index > count) {
+				ctx.vm.RaiseRuntimeError("Index Error: list index {0} out of range", Value(index));
+				return IntrinsicResult::Null;
+			}
 			self.ListInsert(index, value);
 			return IntrinsicResult(self);
 		} else if (self.IsString()) {
 			if (value.IsError()) return IntrinsicResult(value);
+			int len = self.Length();
+			if (index < -len - 1 || index > len) {
+				ctx.vm.RaiseRuntimeError("Index Error: string index {0} out of range", Value(index));
+				return IntrinsicResult::Null;
+			}
 			return IntrinsicResult(self.StringInsert(index, value, ctx.vm));
 		}
 		return IntrinsicResult(ErrorTypes::TypeError("list or string", self));
@@ -952,7 +1012,11 @@ void CoreIntrinsics::Init() {
 			// A string can hold no error, so one given here comes straight back.
 			if (oldVal.IsError()) return IntrinsicResult(oldVal);
 			if (newVal.IsError()) return IntrinsicResult(newVal);
-			return IntrinsicResult(self.ReplaceMax(oldVal, newVal, maxCount));
+			oldVal = ArgAsString(oldVal, ctx);
+			if (oldVal.Length() == 0) {
+				return IntrinsicResult(ErrorTypes::RuntimeError("replace: oldval argument is empty"));
+			}
+			return IntrinsicResult(self.ReplaceMax(oldVal, ArgAsString(newVal, ctx), maxCount));
 		}
 		return IntrinsicResult(ErrorTypes::TypeError("list, map, or string", self));
 	});

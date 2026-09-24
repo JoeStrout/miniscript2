@@ -674,6 +674,23 @@ Boolean UnitTests::TestLexer() {
 	tok = lexer.NextToken();
 	ok = ok && Assert(tok.Type == TokenType::STRING, "Expected STRING token");
 	ok = ok && AssertEqual(tok.Text, "hello");
+	ok = ok && Assert(!lexer.HadError(), "Expected no lexer error for closed string");
+
+	// Test unterminated strings (at end of input, and at a line break)
+	lexer = Lexer("\"hello");
+	tok = lexer.NextToken();
+	ok = ok && Assert(tok.Type == TokenType::STRING, "Expected STRING token for unterminated string");
+	ok = ok && Assert(lexer.HadError(), "Expected lexer error for string at end of input");
+	lexer = Lexer("\"hello\nworld\"");
+	tok = lexer.NextToken();
+	ok = ok && AssertEqual(tok.Text, "hello");
+	ok = ok && Assert(lexer.HadError(), "Expected lexer error for string spanning lines");
+
+	// Test leading-dot number
+	lexer = Lexer(".5");
+	tok = lexer.NextToken();
+	ok = ok && Assert(tok.Type == TokenType::NUMBER, "Expected NUMBER token for .5");
+	ok = ok && AssertEqual(tok.DoubleValue, 0.5);
 
 	// Test identifier
 	lexer = Lexer("myVar");

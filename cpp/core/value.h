@@ -536,6 +536,10 @@ typedef Value (*RuntimeErrorMakerFn)(const char* message);
 void set_runtime_error_maker(RuntimeErrorMakerFn fn);
 Value value_make_runtime_error(const char* message);
 
+// The error returned by an operator applied to types it doesn't support,
+// e.g. `[1,2] + 3` or `1 + null`.  Twin of Value.value_operator_type_error.
+Value value_operator_type_error(const char* op, Value a, Value b);
+
 // Stack-trace hook: returns the active VM's current call stack as a Value (a
 // frozen list of strings), or Value::null if there is no running VM.  Registered
 // by the VM at init so layers below it (ErrorTypes, value ops) can attach an
@@ -576,7 +580,7 @@ inline Value Value::Add(Value b, void* vm) const {
         return list_concat(a, b);
     }
     if (a.IsMap()  && b.IsMap())  return map_concat(a, b);
-    return Value::null;
+    return value_operator_type_error("+", a, b);
 }
 
 inline Value operator-(Value a, Value b) {
@@ -586,7 +590,7 @@ inline Value operator-(Value a, Value b) {
         return Value(a.AsDouble() - b.AsDouble());
     }
     if (a.IsString() && b.IsString()) return string_sub(a, b);
-    return Value::null;
+    return value_operator_type_error("-", a, b);
 }
 
 inline bool operator<(Value a, Value b) {
@@ -617,16 +621,16 @@ inline Value operator/(Value a, Value b) {
     if (b.IsError()) return b;
     if (b.IsNumber()) {
         if (a.IsNumber()) return Value(a.AsDouble() / b.AsDouble());
-        return value_mult_nonnumeric(a, Value(1.0) / b);
+        if (a.IsString() || a.IsList()) return value_mult_nonnumeric(a, Value(1.0) / b);
     }
-    return Value::null;
+    return value_operator_type_error("/", a, b);
 }
 
 inline Value operator%(Value a, Value b) {
     if (a.IsError()) return a;
     if (b.IsError()) return b;
     if (a.IsNumber() && b.IsNumber()) return Value(fmod(a.AsDouble(), b.AsDouble()));
-    return Value::null;
+    return value_operator_type_error("%", a, b);
 }
 
 inline Value Value::Pow(Value b) const {
@@ -634,7 +638,7 @@ inline Value Value::Pow(Value b) const {
     if (a.IsError()) return a;
     if (b.IsError()) return b;
     if (a.IsNumber() && b.IsNumber()) return Value(pow(a.AsDouble(), b.AsDouble()));
-    return Value::null;
+    return value_operator_type_error("^", a, b);
 }
 
 int  value_compare(Value a, Value b);

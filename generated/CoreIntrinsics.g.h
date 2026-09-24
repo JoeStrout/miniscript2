@@ -34,6 +34,16 @@ class CoreIntrinsics {
 	// refuses error arguments before an intrinsic runs; see VM.RefusedErrorArg.)
 	private: static Value RequireNumber(Value v, double* result);
 
+	// Parse the longest prefix of s (after leading whitespace) that forms a
+	// decimal number, as MiniScript 1.x's val did: "12abc" gives 12, and "abc"
+	// gives 0.  Written out here, rather than leaning on a platform parser, so
+	// that C# and C++ agree exactly.
+	private: static Double ParseNumericPrefix(String s);
+
+	// Convert an argument used as a substring (by remove, replace, etc.) to a
+	// string, as `str` would; but null becomes the empty string.
+	private: static Value ArgAsString(Value v, Context ctx);
+
 	private: static void AddIntrinsicToMap(Value map, String methodName);
 
 	// 

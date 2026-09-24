@@ -33,7 +33,7 @@ void GCList::Insert(Int32 index,Value v) {
 	if (Computed) Materialize();
 	if (IsNull(Items)) Init();
 	if (index < 0) index += Items.Count() + 1;
-	if (index < 0) index = 0;  // ToDo: this should raise a runtime error
+	if (index < 0) index = 0;  // (the insert intrinsic checks the range first)
 	if (index > Items.Count()) index = Items.Count();
 	Items.Insert(index, v);
 }

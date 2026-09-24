@@ -425,6 +425,12 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	// depth, lookups no longer see the whole chain anyway.
 	private: static Boolean WouldFormIsaCycle(Value target, Value newIsa);
 
+	// Ordering comparisons (<, <=, >, >=) are defined only between two numbers
+	// or two strings; anything else yields a type error value.
+	private: static Boolean CanOrder(Value a, Value b);
+
+	private: Value OrderTypeError(Value a, Value b);
+
 	// Check a numeric index into a list or string, which may count back from
 	// the end.  An index outside it raises an Index Error (terminating, like Key
 	// Not Found in a map: hasIndex can always prevent it) and returns false.
@@ -903,6 +909,12 @@ struct VM {
 	// depth, lookups no longer see the whole chain anyway.
 	private: static Boolean WouldFormIsaCycle(Value target, Value newIsa) { return VMStorage::WouldFormIsaCycle(target, newIsa); }
 
+	// Ordering comparisons (<, <=, >, >=) are defined only between two numbers
+	// or two strings; anything else yields a type error value.
+	private: static Boolean CanOrder(Value a, Value b) { return VMStorage::CanOrder(a, b); }
+
+	private: inline Value OrderTypeError(Value a, Value b);
+
 	// Check a numeric index into a list or string, which may count back from
 	// the end.  An index outside it raises an Index Error (terminating, like Key
 	// Not Found in a map: hasIndex can always prevent it) and returns false.
@@ -1101,6 +1113,10 @@ inline Boolean VMStorage::IsIsaKey(Value key) {
 	if (key.IsTinyString() || !key.IsString()) return Boolean(false);
 	return key == Value::magicIsA;
 }
+inline Boolean VMStorage::CanOrder(Value a,Value b) {
+	return (a.IsNumber() && b.IsNumber()) || (a.IsString() && b.IsString());
+}
+inline Value VM::OrderTypeError(Value a,Value b) { return get()->OrderTypeError(a, b); }
 inline Boolean VM::CheckListIndex(Value list,Value key) { return get()->CheckListIndex(list, key); }
 inline Boolean VMStorage::CheckListIndex(Value list,Value key) {
 	Int32 index = key.IntValue();

@@ -291,8 +291,8 @@ public readonly struct Value {
 
 	// True if `target` is this value or anywhere along its error __isa chain.
 	// The walk starts at this value rather than at its Isa, so the relation is
-	// reflexive -- matching the `isa` operator, which answers true for
-	// `x isa x` (see ISA_rA_rB_rC) before it ever walks a chain.  Keep this in
+	// reflexive.  (The `isa` operator is not, so ISA_rA_rB_rC starts from
+	// the left operand's Isa instead.)  Keep this in
 	// step with Value::IsaContains in cpp/core/value.cpp, which is not
 	// generated from this file.
 	public bool IsaContains(Value target) {
@@ -548,6 +548,14 @@ public readonly struct Value {
 		return vm.CurrentStackTrace();
 	}
 
+	// Make the error returned by an operator applied to types it doesn't
+	// support, e.g. `[1,2] + 3` or `1 + null`.  (Hand-mirrored as
+	// value_operator_type_error in cpp/core/value.cpp.)
+	public static Value value_operator_type_error(String op, Value a, Value b) { // CPP: // (defined in value.cpp)
+		return value_make_runtime_error("Type error: can't apply '" + op + "' to "
+			+ a.TypeName() + " and " + b.TypeName());
+	}
+
 	// ==== ARITHMETIC =========================================================
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public Value Add(Value b, VM vm = null) {
@@ -578,7 +586,7 @@ public readonly struct Value {
 			return a.ListConcat(b);
 		}
 		if (a.IsMap()  && b.IsMap())  return a.MapConcat(b);
-		return Value.Null;
+		return value_operator_type_error("+", a, b);
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -588,7 +596,9 @@ public readonly struct Value {
 		if (a.IsNumber() && b.IsNumber()) return new Value(a.AsDouble() * b.AsDouble());
 		if (a.IsString() && b.IsNumber()) {
 			double factor = b.AsDouble();
-			if (double.IsNaN(factor) || double.IsInfinity(factor)) return Value.Null;
+			if (double.IsNaN(factor) || double.IsInfinity(factor)) {
+				return value_make_runtime_error("can't repeat a string a non-finite number of times");
+			}
 			if (factor <= 0) return Value.emptyString;
 			if (a.Length() * factor > MAX_COLLECTION_SIZE) {
 				return value_make_runtime_error("string too large (exceeds maximum size)");
@@ -602,7 +612,9 @@ public readonly struct Value {
 		}
 		if (a.IsList() && b.IsNumber()) {
 			double factor = b.AsDouble();
-			if (double.IsNaN(factor) || double.IsInfinity(factor)) return Value.Null;
+			if (double.IsNaN(factor) || double.IsInfinity(factor)) {
+				return value_make_runtime_error("can't repeat a list a non-finite number of times");
+			}
 			int len = a.ListCount();
 			if (factor <= 0 || len == 0) return make_list(0);
 			if (len * factor > MAX_COLLECTION_SIZE) {
@@ -624,7 +636,7 @@ public readonly struct Value {
 			for (int i = 0; i < extraItems; i++) result.Push(a.ListGet(i));
 			return result;
 		}
-		return Value.Null;
+		return value_operator_type_error("*", a, b);
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -632,13 +644,8 @@ public readonly struct Value {
 		if (a.IsError()) return a;
 		if (b.IsError()) return b;
 		if (a.IsNumber() && b.IsNumber()) return new Value(a.AsDouble() / b.AsDouble());
-		if (a.IsString() && b.IsNumber()) return a * (new Value(1.0) / b);
-		if (a.IsList() && b.IsNumber()) {
-			double db = b.AsDouble();
-			if (db == 0 || double.IsNaN(db) || double.IsInfinity(db)) return Value.Null;
-			return a * (new Value(1.0) / b);
-		}
-		return Value.Null;
+		if ((a.IsString() || a.IsList()) && b.IsNumber()) return a * (new Value(1.0) / b);
+		return value_operator_type_error("/", a, b);
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -646,7 +653,7 @@ public readonly struct Value {
 		if (a.IsError()) return a;
 		if (b.IsError()) return b;
 		if (a.IsNumber() && b.IsNumber()) return new Value(a.AsDouble() % b.AsDouble());
-		return Value.Null;
+		return value_operator_type_error("%", a, b);
 	}
 
 	public Value Pow(Value b) {
@@ -654,7 +661,7 @@ public readonly struct Value {
 		if (a.IsError()) return a;
 		if (b.IsError()) return b;
 		if (a.IsNumber() && b.IsNumber()) return new Value(Math.Pow(a.AsDouble(), b.AsDouble()));
-		return Value.Null;
+		return value_operator_type_error("^", a, b);
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -665,11 +672,11 @@ public readonly struct Value {
 		if (a.IsString() && b.IsString()) {
 			string sa = a.AsCString();
 			string sb = b.AsCString();
-			if (sb.Length > 0 && sa.EndsWith(sb))
+			if (sb.Length > 0 && sa.EndsWith(sb, StringComparison.Ordinal))
 				return make_string(sa.Substring(0, sa.Length - sb.Length));
 			return a;
 		}
-		return Value.Null;
+		return value_operator_type_error("-", a, b);
 	}
 
 	// ==== FUZZY LOGIC ========================================================

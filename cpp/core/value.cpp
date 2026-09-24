@@ -146,8 +146,8 @@ Value Value::Isa() const {
 
 // True if `base` is this value or anywhere along its error __isa chain.
 // The walk starts at this value rather than at its Isa, so the relation is
-// reflexive -- matching the `isa` operator, which answers true for `x isa x`
-// (see ISA_rA_rB_rC) before it ever walks a chain.  Keep this in step with
+// reflexive.  (The `isa` operator is not, so ISA_rA_rB_rC starts from the
+// left operand's Isa instead.)  Keep this in step with
 // Value.IsaContains in cs/Value.cs, which is hand-mirrored, not generated.
 bool Value::IsaContains(Value base) const {
     Value current = *this;
@@ -186,7 +186,9 @@ Value value_mult_nonnumeric(Value a, Value b) {
     if (a.IsString() && b.IsNumber()) {
         double factor = b.AsDouble();
         int factorClass = std::fpclassify(factor);
-        if (factorClass == FP_NAN || factorClass == FP_INFINITE) return Value::null;
+        if (factorClass == FP_NAN || factorClass == FP_INFINITE) {
+            return value_make_runtime_error("can't repeat a string a non-finite number of times");
+        }
         if (factor <= 0) return Value::emptyString;
         if (a.Length() * factor > Value::MAX_COLLECTION_SIZE) {
             return value_make_runtime_error("string too large (exceeds maximum size)");
@@ -201,7 +203,9 @@ Value value_mult_nonnumeric(Value a, Value b) {
     if (a.IsList() && b.IsNumber()) {
         double factor = b.AsDouble();
         int factorClass = std::fpclassify(factor);
-        if (factorClass == FP_NAN || factorClass == FP_INFINITE) return Value::null;
+        if (factorClass == FP_NAN || factorClass == FP_INFINITE) {
+            return value_make_runtime_error("can't repeat a list a non-finite number of times");
+        }
         int len = a.ListCount();
         if (factor <= 0 || len == 0) return Value::make_list(0);
         if (len * factor > Value::MAX_COLLECTION_SIZE) {
@@ -223,7 +227,7 @@ Value value_mult_nonnumeric(Value a, Value b) {
         for (int i = 0; i < extraItems; i++) result.Push(a.ListGet(i));
         return result;
     }
-    return Value::null;
+    return value_operator_type_error("*", a, b);
 }
 
 // Scalar (non-collection) equality: numbers by value, strings by content,
@@ -645,6 +649,12 @@ void set_runtime_error_maker(RuntimeErrorMakerFn fn) {
 Value value_make_runtime_error(const char* message) {
     if (g_runtime_error_maker) return g_runtime_error_maker(message);
     return Value::make_error(Value::make_string(message), Value::null, Value::null, Value::null);
+}
+
+Value value_operator_type_error(const char* op, Value a, Value b) {
+    String msg = String("Type error: can't apply '") + op + "' to "
+        + a.TypeName() + " and " + b.TypeName();
+    return value_make_runtime_error(msg.c_str());
 }
 
 void set_stack_trace_hook(StackTraceFn fn) {

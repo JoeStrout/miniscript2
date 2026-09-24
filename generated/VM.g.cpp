@@ -1504,6 +1504,10 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 					localStack[a] = localStack[c];
 					VM_NEXT();
 				}
+				if (!CanOrder(localStack[b], localStack[c])) {
+					localStack[a] = OrderTypeError(localStack[b], localStack[c]);
+					VM_NEXT();
+				}
 				localStack[a] = Value::Truth(localStack[b] < localStack[c]);
 				VM_NEXT();
 			}
@@ -1515,6 +1519,10 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				SByte c = BytecodeUtil::Cs(instruction);
 				if (localStack[b].IsError()) {
 					localStack[a] = localStack[b];
+					VM_NEXT();
+				}
+				if (!localStack[b].IsNumber()) {
+					localStack[a] = OrderTypeError(localStack[b], Value(c));
 					VM_NEXT();
 				}
 				localStack[a] = Value::Truth(localStack[b] < Value(c));
@@ -1534,6 +1542,10 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 					localStack[a] = localStack[c];
 					VM_NEXT();
 				}
+				if (!CanOrder(localStack[b], localStack[c])) {
+					localStack[a] = OrderTypeError(localStack[b], localStack[c]);
+					VM_NEXT();
+				}
 				localStack[a] = Value::Truth(localStack[b] <= localStack[c]);
 				VM_NEXT();
 			}
@@ -1545,6 +1557,10 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				SByte c = BytecodeUtil::Cs(instruction);
 				if (localStack[b].IsError()) {
 					localStack[a] = localStack[b];
+					VM_NEXT();
+				}
+				if (!localStack[b].IsNumber()) {
+					localStack[a] = OrderTypeError(localStack[b], Value(c));
 					VM_NEXT();
 				}
 				localStack[a] = Value::Truth(localStack[b] <= Value(c));
@@ -1683,8 +1699,20 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 
 				valC = localStack[c];  // func ref
 				if (!valC.IsFuncRef()) {
-					RaiseRuntimeError("ARGBLK/CALL: Not a function reference");
-					return Value::Null;
+					// As in MiniScript 1.x, calling a non-function with no
+					// arguments just yields the value; with arguments, it's
+					// an error, since only a function can take them.
+					if (argCount > 0) {
+						RaiseRuntimeError(StringUtils::Format("Can't invoke type '{0}' as a function with arguments",
+										  valC.TypeName()));
+						return Value::Null;
+					}
+					localStack[a] = valC;
+					hasPendingContext = Boolean(false);
+					pendingSelf = Value::Null;
+					pendingSuper = Value::Null;
+					pc = callPC + 1;
+					VM_NEXT();
 				}
 
 				FuncDef callee = valC.FunctionDef();
@@ -1812,7 +1840,11 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 
 				valC = localStack[c];  // func reference
 				if (!valC.IsFuncRef()) {
-					RaiseRuntimeError("CALL: Value in register is not a function reference");
+					// Calling a non-function with no arguments yields the value.
+					localStack[a] = valC;
+					hasPendingContext = Boolean(false);
+					pendingSelf = Value::Null;
+					pendingSuper = Value::Null;
 					VM_NEXT();
 				}
 
@@ -1901,8 +1933,10 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				// True if:
 				//   1. both are null
 				//   2. R[C] is a built-in type map matching the type of R[B]
-				//   3. R[B] and R[C] are the same map reference, or R[C]
-				//      appears anywhere in R[B]'s __isa chain
+				//   3. R[C] appears anywhere in R[B]'s __isa chain
+				// A value is not isa itself (as in MiniScript 1.x): a class is
+				// not an instance of itself, though `map isa map` is still true
+				// by rule 2, since the map type is itself a map.
 				Byte a = BytecodeUtil::Au(instruction);
 				Byte b = BytecodeUtil::Bu(instruction);
 				Byte c = BytecodeUtil::Cu(instruction);
@@ -1911,15 +1945,13 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				Int32 isaResult = 0;
 				if (valB.IsNull() && valC.IsNull()) {
 					isaResult = 1;
-				} else if (valB.RefEquals(valC)) {
-					isaResult = 1;
 				} else if (valB.IsError()) {
 					// Error-specific isa rules:
 					//   e isa error   -> 1
-					//   e1 isa e2     -> 1 if e2 is in e1's __isa chain
+					//   e1 isa e2     -> 1 if e2 is in e1's __isa chain (not e1 itself)
 					if (valC.RefEquals(CoreIntrinsics::ErrorType())) {
 						isaResult = 1;
-					} else if (valC.IsError() && valB.IsaContains(valC)) {
+					} else if (valC.IsError() && valB.Isa().IsaContains(valC)) {
 						isaResult = 1;
 					}
 					localStack[a] = Value::Truth(isaResult);
@@ -2289,6 +2321,10 @@ Boolean VMStorage::WouldFormIsaCycle(Value target,Value newIsa) {
 		current = next;
 	}
 	return Boolean(true);
+}
+Value VMStorage::OrderTypeError(Value a,Value b) {
+	return ErrorTypes::RuntimeError(StringUtils::Format("Type error: can't compare {0} and {1}",
+		a.TypeName(), b.TypeName()));
 }
 const Int32 VMStorage::MemberMissing = 0; // not found; a runtime error was raised
 const Int32 VMStorage::MemberMethod = 1; // from the container or its type; self = container

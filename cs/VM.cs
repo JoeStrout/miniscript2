@@ -1840,6 +1840,10 @@ public class VM {
 						localStack[a] = localStack[c];
 						break;
 					}
+					if (!CanOrder(localStack[b], localStack[c])) {
+						localStack[a] = OrderTypeError(localStack[b], localStack[c]);
+						break;
+					}
 					localStack[a] = Value.Truth(localStack[b] < localStack[c]);
 					break;
 				}
@@ -1851,6 +1855,10 @@ public class VM {
 					SByte c = BytecodeUtil.Cs(instruction);
 					if (localStack[b].IsError()) {
 						localStack[a] = localStack[b];
+						break;
+					}
+					if (!localStack[b].IsNumber()) {
+						localStack[a] = OrderTypeError(localStack[b], new Value(c));
 						break;
 					}
 					localStack[a] = Value.Truth(localStack[b] < new Value(c));
@@ -1870,6 +1878,10 @@ public class VM {
 						localStack[a] = localStack[c];
 						break;
 					}
+					if (!CanOrder(localStack[b], localStack[c])) {
+						localStack[a] = OrderTypeError(localStack[b], localStack[c]);
+						break;
+					}
 					localStack[a] = Value.Truth(localStack[b] <= localStack[c]);
 					break;
 				}
@@ -1881,6 +1893,10 @@ public class VM {
 					SByte c = BytecodeUtil.Cs(instruction);
 					if (localStack[b].IsError()) {
 						localStack[a] = localStack[b];
+						break;
+					}
+					if (!localStack[b].IsNumber()) {
+						localStack[a] = OrderTypeError(localStack[b], new Value(c));
 						break;
 					}
 					localStack[a] = Value.Truth(localStack[b] <= new Value(c));
@@ -2019,8 +2035,20 @@ public class VM {
 
 					valC = localStack[c];  // func ref
 					if (!valC.IsFuncRef()) {
-						RaiseRuntimeError("ARGBLK/CALL: Not a function reference");
-						return Value.Null;
+						// As in MiniScript 1.x, calling a non-function with no
+						// arguments just yields the value; with arguments, it's
+						// an error, since only a function can take them.
+						if (argCount > 0) {
+							RaiseRuntimeError(StringUtils.Format("Can't invoke type '{0}' as a function with arguments",
+											  valC.TypeName()));
+							return Value.Null;
+						}
+						localStack[a] = valC;
+						hasPendingContext = false;
+						pendingSelf = Value.Null;
+						pendingSuper = Value.Null;
+						pc = callPC + 1;
+						break;
 					}
 
 					FuncDef callee = valC.FunctionDef();
@@ -2151,7 +2179,11 @@ public class VM {
 
 					valC = localStack[c];  // func reference
 					if (!valC.IsFuncRef()) {
-						RaiseRuntimeError("CALL: Value in register is not a function reference");
+						// Calling a non-function with no arguments yields the value.
+						localStack[a] = valC;
+						hasPendingContext = false;
+						pendingSelf = Value.Null;
+						pendingSuper = Value.Null;
 						break;
 					}
 
@@ -2242,8 +2274,10 @@ public class VM {
 					// True if:
 					//   1. both are null
 					//   2. R[C] is a built-in type map matching the type of R[B]
-					//   3. R[B] and R[C] are the same map reference, or R[C]
-					//      appears anywhere in R[B]'s __isa chain
+					//   3. R[C] appears anywhere in R[B]'s __isa chain
+					// A value is not isa itself (as in MiniScript 1.x): a class is
+					// not an instance of itself, though `map isa map` is still true
+					// by rule 2, since the map type is itself a map.
 					Byte a = BytecodeUtil.Au(instruction);
 					Byte b = BytecodeUtil.Bu(instruction);
 					Byte c = BytecodeUtil.Cu(instruction);
@@ -2252,15 +2286,13 @@ public class VM {
 					Int32 isaResult = 0;
 					if (valB.IsNull() && valC.IsNull()) {
 						isaResult = 1;
-					} else if (valB.RefEquals(valC)) {
-						isaResult = 1;
 					} else if (valB.IsError()) {
 						// Error-specific isa rules:
 						//   e isa error   -> 1
-						//   e1 isa e2     -> 1 if e2 is in e1's __isa chain
+						//   e1 isa e2     -> 1 if e2 is in e1's __isa chain (not e1 itself)
 						if (valC.RefEquals(CoreIntrinsics.ErrorType())) {
 							isaResult = 1;
-						} else if (valC.IsError() && valB.IsaContains(valC)) {
+						} else if (valC.IsError() && valB.Isa().IsaContains(valC)) {
 							isaResult = 1;
 						}
 						localStack[a] = Value.Truth(isaResult);
@@ -2697,6 +2729,18 @@ public class VM {
 			current = next;
 		}
 		return true;
+	}
+
+	// Ordering comparisons (<, <=, >, >=) are defined only between two numbers
+	// or two strings; anything else yields a type error value.
+	[MethodImpl(AggressiveInlining)]
+	private static Boolean CanOrder(Value a, Value b) {
+		return (a.IsNumber() && b.IsNumber()) || (a.IsString() && b.IsString());
+	}
+
+	private Value OrderTypeError(Value a, Value b) {
+		return ErrorTypes.RuntimeError(StringUtils.Format("Type error: can't compare {0} and {1}",
+			a.TypeName(), b.TypeName()));
 	}
 
 	// Check a numeric index into a list or string, which may count back from

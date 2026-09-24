@@ -141,6 +141,45 @@ public static class CoreIntrinsics {
 		return ErrorTypes.TypeError("number", v);
 	}
 
+	// Parse the longest prefix of s (after leading whitespace) that forms a
+	// decimal number, as MiniScript 1.x's val did: "12abc" gives 12, and "abc"
+	// gives 0.  Written out here, rather than leaning on a platform parser, so
+	// that C# and C++ agree exactly.
+	private static Double ParseNumericPrefix(String s) {
+		Int32 len = s.Length;
+		Int32 start = 0;
+		while (start < len && (s[start] == ' ' || s[start] == '\t'
+			|| s[start] == '\n' || s[start] == '\r')) start++;
+		Int32 pos = start;
+		if (pos < len && (s[pos] == '+' || s[pos] == '-')) pos++;
+		Int32 digits = 0;
+		while (pos < len && s[pos] >= '0' && s[pos] <= '9') { pos++; digits++; }
+		if (pos < len && s[pos] == '.') {
+			Int32 afterDot = pos + 1;
+			Int32 fracDigits = 0;
+			while (afterDot < len && s[afterDot] >= '0' && s[afterDot] <= '9') { afterDot++; fracDigits++; }
+			if (digits + fracDigits > 0) { pos = afterDot; digits += fracDigits; }
+		}
+		if (digits == 0) return 0;
+		if (pos < len && (s[pos] == 'e' || s[pos] == 'E')) {
+			Int32 expPos = pos + 1;
+			if (expPos < len && (s[expPos] == '+' || s[expPos] == '-')) expPos++;
+			if (expPos < len && s[expPos] >= '0' && s[expPos] <= '9') {
+				while (expPos < len && s[expPos] >= '0' && s[expPos] <= '9') expPos++;
+				pos = expPos;
+			}
+		}
+		return StringUtils.ParseDouble(s.Substring(start, pos - start));
+	}
+
+	// Convert an argument used as a substring (by remove, replace, etc.) to a
+	// string, as `str` would; but null becomes the empty string.
+	private static Value ArgAsString(Value v, Context ctx) {
+		if (v.IsString()) return v;
+		if (v.IsNull()) return Value.make_string("");
+		return v.ToStringValue(ctx.vm);
+	}
+
 	private static void AddIntrinsicToMap(Value map, String methodName) {
 		Intrinsic intr = Intrinsic.GetByName(methodName);
 		if (intr != null) {
@@ -438,7 +477,7 @@ public static class CoreIntrinsics {
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value v = ctx.GetArg(0);
 			if (v.IsNumber()) return new IntrinsicResult(v);
-			if (v.IsString()) return new IntrinsicResult(v.ToNumber());
+			if (v.IsString()) return new IntrinsicResult(new Value(ParseNumericPrefix(v.AsCString())));
 			return new IntrinsicResult(Value.Null);
 		};
 
@@ -475,6 +514,11 @@ public static class CoreIntrinsics {
 			double cp;
 			Value e = RequireNumber(v, out cp);
 			if (!e.IsNull()) return new IntrinsicResult(e);
+			// Reject anything that isn't a Unicode scalar value (this also catches NaN).
+			if (!(cp >= 0 && cp < 0x110000) || (cp >= 0xD800 && cp < 0xE000)) {
+				return new IntrinsicResult(ErrorTypes.RuntimeError(StringUtils.Format(
+					"char: {0} is not a valid code point", v)));
+			}
 			return new IntrinsicResult(Value.string_from_code_point((int)cp));
 		};
 
@@ -514,15 +558,28 @@ public static class CoreIntrinsics {
 			int result = 0;
 			if (container.IsList()) {
 				if (index.IsError()) return ctx.vm.RaiseUncaughtError(index);
-				result = container.ListRemove(index.IntValue()) ? 1 : 0;
+				int i = index.IntValue();
+				int count = container.ListCount();
+				if (i < -count || i >= count) {
+					ctx.vm.RaiseRuntimeError("Index Error: list index {0} out of range", new Value(i));
+					return IntrinsicResult.Null;
+				}
+				result = container.ListRemove(i) ? 1 : 0;
 			} else if (container.IsMap()) {
 				// An error is a legitimate map key; but if it is not one here,
 				// terminate rather than quietly answer 0.
 				result = container.MapRemove(index) ? 1 : 0;
 				if (result == 1) ctx.vm.NoteKeyRemoved(index);
 				if (result == 0 && index.IsError()) return ctx.vm.RaiseUncaughtError(index);
+			} else if (container.IsString()) {
+				// Remove the first occurrence of the given substring.
+				if (index.IsError()) return new IntrinsicResult(index);
+				if (index.IsNull()) {
+					return new IntrinsicResult(ErrorTypes.RuntimeError("remove: argument must not be null"));
+				}
+				return new IntrinsicResult(container.ReplaceMax(ArgAsString(index, ctx), Value.make_string(""), 1));
 			} else {
-				return new IntrinsicResult(ErrorTypes.TypeError("list or map", container));
+				return new IntrinsicResult(ErrorTypes.TypeError("list, map, or string", container));
 			}
 			return new IntrinsicResult(new Value(result));
 		};
@@ -819,11 +876,22 @@ public static class CoreIntrinsics {
 			Value self = ctx.GetArg(0);
 			int index = (int)ctx.GetArg(1).NumericVal();
 			Value value = ctx.GetArg(2);
+			// Valid indexes run from -(count+1) to count, inclusive.
 			if (self.IsList()) {
+				int count = self.ListCount();
+				if (index < -count - 1 || index > count) {
+					ctx.vm.RaiseRuntimeError("Index Error: list index {0} out of range", new Value(index));
+					return IntrinsicResult.Null;
+				}
 				self.ListInsert(index, value);
 				return new IntrinsicResult(self);
 			} else if (self.IsString()) {
 				if (value.IsError()) return new IntrinsicResult(value);
+				int len = self.Length();
+				if (index < -len - 1 || index > len) {
+					ctx.vm.RaiseRuntimeError("Index Error: string index {0} out of range", new Value(index));
+					return IntrinsicResult.Null;
+				}
 				return new IntrinsicResult(self.StringInsert(index, value, ctx.vm));
 			}
 			return new IntrinsicResult(ErrorTypes.TypeError("list or string", self));
@@ -1023,7 +1091,11 @@ public static class CoreIntrinsics {
 				// A string can hold no error, so one given here comes straight back.
 				if (oldVal.IsError()) return new IntrinsicResult(oldVal);
 				if (newVal.IsError()) return new IntrinsicResult(newVal);
-				return new IntrinsicResult(self.ReplaceMax(oldVal, newVal, maxCount));
+				oldVal = ArgAsString(oldVal, ctx);
+				if (oldVal.Length() == 0) {
+					return new IntrinsicResult(ErrorTypes.RuntimeError("replace: oldval argument is empty"));
+				}
+				return new IntrinsicResult(self.ReplaceMax(oldVal, ArgAsString(newVal, ctx), maxCount));
 			}
 			return new IntrinsicResult(ErrorTypes.TypeError("list, map, or string", self));
 		};

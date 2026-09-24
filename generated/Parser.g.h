@@ -112,9 +112,11 @@ class ParserStorage : public std::enable_shared_from_this<ParserStorage>, public
 
 	// Check whether the current token can begin the argument list of a call
 	// statement written without parentheses, as in `print 42`.
-	// Whitespace before the token is required, so that `list[0]` reads as an
-	// index rather than a call taking a list argument.  A plain MINUS is
-	// excluded, because `f - 5` is a subtraction; the call form `f -5` yields a
+	// Whitespace before the token is required when the token could also
+	// continue the expression, so that `list[0]` reads as an index rather than
+	// a call taking a list argument.  Other tokens need no whitespace, so
+	// `print"hi"` works as in MiniScript 1.x.  A plain MINUS is excluded,
+	// because `f - 5` is a subtraction; the call form `f -5` yields a
 	// STRONG_NEGATE instead (see notes/UNARY_MINUS_QUIRK.md).
 	private: Boolean AtCallArgument();
 
@@ -321,9 +323,11 @@ struct Parser : public IParser {
 
 	// Check whether the current token can begin the argument list of a call
 	// statement written without parentheses, as in `print 42`.
-	// Whitespace before the token is required, so that `list[0]` reads as an
-	// index rather than a call taking a list argument.  A plain MINUS is
-	// excluded, because `f - 5` is a subtraction; the call form `f -5` yields a
+	// Whitespace before the token is required when the token could also
+	// continue the expression, so that `list[0]` reads as an index rather than
+	// a call taking a list argument.  Other tokens need no whitespace, so
+	// `print"hi"` works as in MiniScript 1.x.  A plain MINUS is excluded,
+	// because `f - 5` is a subtraction; the call form `f -5` yields a
 	// STRONG_NEGATE instead (see notes/UNARY_MINUS_QUIRK.md).
 	private: inline Boolean AtCallArgument();
 

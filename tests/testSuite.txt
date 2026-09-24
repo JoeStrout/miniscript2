@@ -16,6 +16,26 @@ print 42
 --------------------------------
 42
 ================================
+==== A call statement's argument needs no space before it, unless it
+==== begins with '[' or '(' (which would index or call instead)
+================================
+print"nay"
+print"a"+"b"
+print{"a":1}
+x = 5; print@x
+m = {}; m.f = function(s); print "f:" + s; end function
+m.f"hi"
+print.5
+l = [10, 20]; print l[1]
+--------------------------------
+nay
+ab
+{"a": 1}
+5
+f:hi
+0.5
+20
+================================
 // Here is a comment all on its own line.
 print 123  // and here is a comment after a statement
 // Followed by another full-line comment.
@@ -107,6 +127,22 @@ print 7/2
 print 10/4
 --------------------------------
 2.5
+================================
+==== Number literals may begin with a decimal point
+================================
+print .5
+print 2 + .25
+print -.5
+x = 4; print x-.5
+print [.5, .1e1]
+print {.5: "half"}[.5]
+--------------------------------
+0.5
+2.25
+-0.5
+3.5
+[0.5, 1]
+half
 ================================
 ==== Float arithmetic
 ================================
@@ -361,6 +397,21 @@ hello
 print "Hello World"
 --------------------------------
 Hello World
+================================
+==== A string literal may not span lines
+================================
+x = 1
+print "abc
+def"
+--------------------------------
+Compiler Error: missing closing quote (") [line 2]
+================================
+==== A string literal must be closed before the end of input
+================================
+x = 1
+print "abc
+--------------------------------
+Compiler Error: missing closing quote (") [line 2]
 ================================
 print ""
 --------------------------------
@@ -996,6 +1047,47 @@ b = 0.5
 print a or b
 --------------------------------
 0.75
+================================
+==== constant-folded 'and'/'or' short-circuit just as at runtime
+================================
+print 0 and (1/0)
+print 1 or (1/0)
+print -1 or (0/0)
+a = 0; b = 1/0; print a and b
+a = 1; b = 1/0; print a or b
+--------------------------------
+0
+1
+1
+0
+1
+================================
+==== constant-folded string - string matches the runtime result
+================================
+print ("hello" - "lo") + "|" + ("hello" - "x") + "|" + ("hello" - "") + "|" + ("a😀" - "😀")
+a = "hello"; b = "lo"; c = "x"; d = ""; e = "a😀"; f = "😀"
+print (a - b) + "|" + (a - c) + "|" + (a - d) + "|" + (e - f)
+--------------------------------
+hel|hello|hello|a
+hel|hello|hello|a
+================================
+==== constant-folded string * number matches the runtime result
+================================
+print ("ab" * (0/0)) isa error
+print ("ab" * (1/0)) isa error
+print ("ab" * (-1/0)) isa error
+print "ab" * 2 + "|" + "ab" * -1 + "|"
+s = "😀é" * 1.5
+print s + " " + s.len
+x = 1.5; t = "😀é" * x
+print t == s
+--------------------------------
+1
+1
+1
+abab||
+😀é😀 3
+1
 ================================
 ==== 'or' with a partial-truth left evaluates the right operand
 ================================
@@ -3129,6 +3221,89 @@ print s[0]
 --------------------------------
 Runtime Error: Index Error: string index 0 out of range [line 2]
 ================================
+==== Runtime error: list remove index out of range
+================================
+l = [10, 20, 30]
+l.remove -3
+print l
+l.remove 2
+print "not reached"
+--------------------------------
+[20, 30]
+Runtime Error: Index Error: list index 2 out of range [line 4]
+================================
+==== Runtime error: negative list remove index out of range
+================================
+l = [10, 20, 30]
+l.remove -4
+--------------------------------
+Runtime Error: Index Error: list index -4 out of range [line 2]
+================================
+==== list insert: valid indexes run from -(len+1) to len
+================================
+l = [1, 2, 3]
+l.insert 3, "end"
+l.insert -5, "start"
+print l
+--------------------------------
+["start", 1, 2, 3, "end"]
+================================
+==== Runtime error: list insert index out of range
+================================
+l = [1, 2, 3]
+l.insert 4, 9
+--------------------------------
+Runtime Error: Index Error: list index 4 out of range [line 2]
+================================
+==== Runtime error: negative list insert index out of range
+================================
+l = [1, 2, 3]
+l.insert -5, 9
+--------------------------------
+Runtime Error: Index Error: list index -5 out of range [line 2]
+================================
+==== string insert: valid indexes run from -(len+1) to len
+================================
+print "héy".insert(3, "!") + " " + "héy".insert(-4, "!")
+--------------------------------
+héy! !héy
+================================
+==== Runtime error: string insert index out of range
+================================
+x = "héy".insert(4, "!")
+--------------------------------
+Runtime Error: Index Error: string index 4 out of range [line 1]
+================================
+==== Runtime error: negative string insert index out of range
+================================
+x = "héy".insert(-5, "!")
+--------------------------------
+Runtime Error: Index Error: string index -5 out of range [line 1]
+================================
+==== Calling a non-function with no arguments yields the value
+================================
+x = 42
+print x()
+m = {"x": 5}
+print m.x()
+--------------------------------
+42
+5
+================================
+==== Runtime error: calling a non-function with arguments
+================================
+x = 42
+x(1)
+--------------------------------
+Runtime Error: Can't invoke type 'number' as a function with arguments [line 2]
+================================
+==== Runtime error: no-parens call of a non-function with arguments
+================================
+x = "a"
+x "b", "c"
+--------------------------------
+Runtime Error: Can't invoke type 'string' as a function with arguments [line 2]
+================================
 ==== Runtime error: index into non-collection
 ================================
 x = 42
@@ -3733,12 +3908,31 @@ print duck.legs
 4
 2
 ================================
-==== isa operator: identity
+==== isa operator: a value is not isa itself (a class is not its own instance)
 ================================
 Animal = {"legs": 4}
 print Animal isa Animal
+l = [1]
+print l isa l
+print 5 isa 5
+print "a" isa "a"
+f = @print
+print @f isa @f
+print number isa number
+print map isa map
+print null isa null
+e = err("x")
+print e isa e
 --------------------------------
+0
+0
+0
+0
+0
+0
 1
+1
+0
 ================================
 ==== isa operator: direct parent
 ================================
@@ -4718,6 +4912,28 @@ print val("hello")
 --------------------------------
 0
 ================================
+==== val: parses the longest numeric prefix, as in MiniScript 1.x
+================================
+print val("12abc")
+print val("  -3.5e2x")
+print val("12.5.6")
+print val("1,000")
+print val("1e")
+print val(".5%")
+print val("5.")
+print val("-")
+print val("--5")
+--------------------------------
+12
+-350
+12.5
+1
+1
+0.5
+5
+0
+0
+================================
 ==== val: list/map returns null
 ================================
 print val([1,2,3])
@@ -4979,6 +5195,22 @@ print code("😀")
 print char(128512)
 --------------------------------
 😀
+================================
+==== char: invalid code points return an error
+================================
+for cp in [-1, 55296, 57343, 1114112, 1e20, 0/0]
+	e = char(cp)
+	print (e isa error) + " " + e.message
+end for
+print code(char(55295)) + " " + code(char(57344)) + " " + code(char(1114111))
+--------------------------------
+1 char: -1 is not a valid code point
+1 char: 55296 is not a valid code point
+1 char: 57343 is not a valid code point
+1 char: 1114112 is not a valid code point
+1 char: 1E+20 is not a valid code point
+1 char: NaN is not a valid code point
+55295 57344 1114111
 ================================
 ==== String comparison with non-ASCII
 ================================
@@ -5411,6 +5643,54 @@ print code(t[1])
 3
 0
 ================================
+==== replace: empty or null search string is an error
+================================
+e = "abc".replace("", "x")
+print (e isa error) + " " + e.message
+e = "abc".replace(null, "x")
+print (e isa error) + " " + e.message
+--------------------------------
+1 replace: oldval argument is empty
+1 replace: oldval argument is empty
+================================
+==== replace: non-string arguments are converted to strings
+================================
+print "a1b".replace(1, "x")
+print "a1b".replace("1", 2)
+print "abc".replace("b", null)
+--------------------------------
+axb
+a2b
+ac
+================================
+==== remove: on a string, removes the first occurrence of a substring
+================================
+print "Hello Bob!".remove("ell")
+print "abcabc".remove("b")
+print "abc".remove("z")
+print "abc".remove("")
+print "a1b".remove(1)
+print remove("😀é😀", "é")
+s = "hello world"
+print s.remove("l").indexOf("r")
+print s
+--------------------------------
+Ho Bob!
+acabc
+abc
+abc
+ab
+😀😀
+7
+hello world
+================================
+==== remove: on a string, a null argument is an error
+================================
+e = "abc".remove(null)
+print (e isa error) + " " + e.message
+--------------------------------
+1 remove: argument must not be null
+================================
 ==== replace: in map (replaces values)
 ================================
 m = {"a": 1, "b": 2, "c": 1}
@@ -5708,23 +5988,117 @@ FuncRef(@f1, closure)
 ================================================================================
 ==== SECTION 27: NULL IN EXPRESSIONS
 ================================================================================
-==== Null arithmetic returns null
+==== Null arithmetic is a type error (on either side of the operator)
 ================================
 print null + 1
---------------------------------
-null
-================================
 print null - 5
---------------------------------
-null
-================================
 print null * 3
---------------------------------
-null
-================================
 print null / 2
+print 1 + null
+print 1 - null
+print 1 * null
+print 1 / null
+print 2 % null
+print 2 ^ null
 --------------------------------
-null
+error: Type error: can't apply '+' to null and number
+error: Type error: can't apply '-' to null and number
+error: Type error: can't apply '*' to null and number
+error: Type error: can't apply '/' to null and number
+error: Type error: can't apply '+' to number and null
+error: Type error: can't apply '-' to number and null
+error: Type error: can't apply '*' to number and null
+error: Type error: can't apply '/' to number and null
+error: Type error: can't apply '%' to number and null
+error: Type error: can't apply '^' to number and null
+================================
+==== Null arithmetic error terminates when misused
+================================
+x = null
+y = x + 1
+print "y is error: " + (y isa error)
+if x + 1 then print "yes"
+--------------------------------
+y is error: 1
+Runtime Error: Error used in conditional: error: Type error: can't apply '+' to null and number [line 4]
+================================
+==== Unsupported operand types give a type error
+================================
+print [1,2] + 3
+print {"a":1} + 5
+print "x" / "y"
+print [1] - [1]
+print {"a":1} * 2
+print "ab" % 2
+print [1,2] + {"a":1}
+f = function; end function
+print @f + 1
+--------------------------------
+error: Type error: can't apply '+' to list and number
+error: Type error: can't apply '+' to map and number
+error: Type error: can't apply '/' to string and string
+error: Type error: can't apply '-' to list and list
+error: Type error: can't apply '*' to map and number
+error: Type error: can't apply '%' to string and number
+error: Type error: can't apply '+' to list and map
+error: Type error: can't apply '+' to funcRef and number
+================================
+==== Supported mixed-type operators still work
+================================
+print "a" + 1 + "|" + (1 + "a") + "|" + ("a" + null) + "|" + (null + "a")
+print "a" + [1, 2]
+print [1, 2] + [3]
+print "ab" * 2 + "|" + "abcd" / 2
+print [1, 2] * 1.5
+--------------------------------
+a1|1a|a|a
+a[1, 2]
+[1, 2, 3]
+abab|ab
+[1, 2, 1]
+================================
+==== Repeating or dividing a string or list by a non-finite or zero value is an error
+================================
+print "ab" * (1/0)
+print [1] * (0/0)
+print "ab" / 0
+print [1, 2] / 0
+--------------------------------
+error: can't repeat a string a non-finite number of times
+error: can't repeat a list a non-finite number of times
+error: can't repeat a string a non-finite number of times
+error: can't repeat a list a non-finite number of times
+================================
+==== Ordering comparisons need two numbers or two strings
+================================
+print 1 < "42"
+print [1,2] < [1,3]
+print null < 1
+print 1 > null
+print {} <= {}
+print "a" >= 1
+print 1 < 2 < "x"
+print "a" < "b"
+print 1 == "1"
+print null == null
+--------------------------------
+error: Type error: can't compare number and string
+error: Type error: can't compare list and list
+error: Type error: can't compare null and number
+error: Type error: can't compare null and number
+error: Type error: can't compare map and map
+error: Type error: can't compare number and string
+error: Type error: can't compare number and string
+1
+0
+1
+================================
+==== Ordering comparison error terminates when used as a condition
+================================
+x = null
+if x < 5 then print "small"
+--------------------------------
+Runtime Error: Error used in conditional: error: Type error: can't compare null and number [line 2]
 ================================
 ==== Null comparisons
 ================================

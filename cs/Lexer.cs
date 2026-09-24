@@ -131,8 +131,8 @@ public struct Lexer {
 
 		Char c = Peek();
 
-		// Numbers
-		if (IsDigit(c)) {
+		// Numbers (which may begin with a decimal point, as in .5)
+		if (IsDigit(c) || (c == '.' && _position + 1 < _input.Length && IsDigit(_input[_position + 1]))) {
 			Int32 start = _position;
 			while (_position < _input.Length && IsDigit(_input[_position])) {
 				Advance();
@@ -245,6 +245,9 @@ public struct Lexer {
 					}
 					break; // closing quote
 				}
+				// A string literal may not span lines; a line break (or the end
+				// of input) before the closing quote means the quote is missing.
+				if (_input[_position] == '\n' || _input[_position] == '\r') break;
 				Advance();
 			}
 			String text;
@@ -254,7 +257,11 @@ public struct Lexer {
 				parts.Add(_input.Substring(start, _position - start));
 				text = String.Join("", parts);
 			}
-			if (Peek() == '"') Advance(); // consume closing quote
+			if (Peek() == '"') {
+				Advance(); // consume closing quote
+			} else {
+				ReportError("missing closing quote (\")");
+			}
 			Token tok = new Token(TokenType.STRING, text, startLine, startColumn);
 			tok.AfterSpace = hadWhitespace;
 			return tok;

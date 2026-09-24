@@ -318,13 +318,16 @@ public class Parser : IParser {
 	// Check whether the current token can begin the argument list of a call
 	// statement written without parentheses, as in `print 42`.
 	//
-	// Whitespace before the token is required, so that `list[0]` reads as an
-	// index rather than a call taking a list argument.  A plain MINUS is
-	// excluded, because `f - 5` is a subtraction; the call form `f -5` yields a
+	// Whitespace before the token is required when the token could also
+	// continue the expression, so that `list[0]` reads as an index rather than
+	// a call taking a list argument.  Other tokens need no whitespace, so
+	// `print"hi"` works as in MiniScript 1.x.  A plain MINUS is excluded,
+	// because `f - 5` is a subtraction; the call form `f -5` yields a
 	// STRONG_NEGATE instead (see notes/UNARY_MINUS_QUIRK.md).
 	private Boolean AtCallArgument() {
-		if (!_current.AfterSpace) return false;
 		if (_current.Type == TokenType.MINUS) return false;
+		if (!_current.AfterSpace && (_current.Type == TokenType.LBRACKET
+				|| _current.Type == TokenType.LPAREN)) return false;
 		return CanStartExpression(_current.Type);
 	}
 
@@ -451,8 +454,8 @@ public class Parser : IParser {
 			// Check for no-parens call statement: identifier argList
 			// where argList starts with a token that can begin an expression
 			// (but NOT '(' which would be handled as func(args) by expression parsing).
-			// IMPORTANT: Whitespace is required between identifier and argument to
-			// distinguish "print [1,2,3]" (call) from "list[0]" (index expression).
+			// IMPORTANT: Whitespace is required between identifier and a '[' argument
+			// to distinguish "print [1,2,3]" (call) from "list[0]" (index expression).
 			if (AtCallArgument()) {
 				// This is a call statement like "print 42" or "print x, y"
 				List<ASTNode> args = new List<ASTNode>();

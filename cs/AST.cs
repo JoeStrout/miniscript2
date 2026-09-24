@@ -376,14 +376,18 @@ public class BinaryOpNode : ASTNode {
 			} else if (Op == MiniScript.Op.GREATER_EQUAL) {
 				return new NumberNode(leftNum.Value >= rightNum.Value ? 1 : 0);
 			} else if (Op == MiniScript.Op.AND) {
-				// Fuzzy logic AND: AbsClamp01(a * b)
+				// Fuzzy logic AND: AbsClamp01(a * b), but short-circuiting as
+				// CompileShortCircuit does: a false left operand gives 0.
 				Double a = leftNum.Value;
 				Double b = rightNum.Value;
+				if (a == 0) return new NumberNode(0);
 				return new NumberNode(Value.AbsClamp01(a * b));
 			} else if (Op == MiniScript.Op.OR) {
-				// Fuzzy logic OR: AbsClamp01(a + b - a*b)
+				// Fuzzy logic OR: AbsClamp01(a + b - a*b), but short-circuiting
+				// as CompileShortCircuit does: a fully true left operand gives 1.
 				Double a = leftNum.Value;
 				Double b = rightNum.Value;
+				if (Value.AbsClamp01(a) == 1) return new NumberNode(1);
 				return new NumberNode(Value.AbsClamp01(a + b - a * b));
 			}
 		}
@@ -395,25 +399,29 @@ public class BinaryOpNode : ASTNode {
 			return new StringNode(leftStr.Value + rightStr.Value);
 		}
 		if (leftStr != null && rightStr != null && Op == MiniScript.Op.MINUS) {
-			if (rightStr.Value.Length > 0 && leftStr.Value.EndsWith(rightStr.Value)) {
-				return new StringNode(leftStr.Value.Substring(0, leftStr.Value.Length - rightStr.Value.Length));
-			}
-			return leftStr;
+			// Use the runtime operator itself, so the folded result can't differ.
+			Value diff = Value.make_string(leftStr.Value) - Value.make_string(rightStr.Value);
+			return new StringNode(diff.AsCString());
 		}
-		// string * number: repeat the string (mirrors Value.Multiply logic)
+		// string * number: repeat the string (mirrors Value.Multiply logic).
+		// We fold only a whole number of repeats; a NaN, infinite, or fractional
+		// factor is left for the runtime op, which alone gets those exactly right
+		// (null for NaN/infinity, and partial copies counted in code points).
 		if (leftStr != null && rightNum != null && Op == MiniScript.Op.TIMES) {
 			double factor = rightNum.Value;
-			if (StringUtils.IsNaN(factor) || StringUtils.IsInfinity(factor) || factor <= 0) return new StringNode("");
-			// If the result would exceed the maximum size, don't fold; leave it as
-			// a runtime op so operator* raises the "string too large" error.
-			if (leftStr.Value.Length * factor > Value.MAX_COLLECTION_SIZE) {
+			// (Likewise, if the result would exceed the maximum size, don't fold;
+			// leave it so operator* raises the "string too large" error.)
+			if (StringUtils.IsNaN(factor) || StringUtils.IsInfinity(factor)) {
+				return CopyLine(new BinaryOpNode(Op, simplifiedLeft, simplifiedRight));
+			}
+			if (factor <= 0) return new StringNode("");
+			if (factor != Math.Floor(factor)
+					|| leftStr.Value.Length * factor > Value.MAX_COLLECTION_SIZE) {
 				return CopyLine(new BinaryOpNode(Op, simplifiedLeft, simplifiedRight));
 			}
 			int repeats = (int)factor;
-			int extraChars = (int)(leftStr.Value.Length * (factor - repeats));
 			String result = "";
 			for (int i = 0; i < repeats; i++) result = result + leftStr.Value;
-			if (extraChars > 0) result = result + leftStr.Value.Substring(0, extraChars);
 			return new StringNode(result);
 		}
 

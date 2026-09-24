@@ -108,6 +108,31 @@ MiniScript 1.x was inconsistent in its formatting of numbers (and non-numbers su
 - Non-integers with magnitude > 1E10 or < 1E-6 are printed in scientific notation.
 - All other non-integers are printed in decimal form with at least one and at most six decimal places (trailing zeros trimmed).
 
+### Operators on unsupported types return an error
+
+An operator applied to types it doesn't support now returns an
+[`error`](#errors-are-values) value, where 1.x returned `null`, quietly
+treated `null` as 0, or sometimes halted.
+
+```
+print 1 + null
+print [1, 2] + 3
+print 1 < "42"
+```
+```
+error: Type error: can't apply '+' to number and null
+error: Type error: can't apply '+' to list and number
+error: Type error: can't compare number and string
+```
+
+In particular:
+- `null` in arithmetic is an error on either side: `1 + null`, `null * 3`, and
+  so on.  (Joining `null` to a string still works: `"a" + null` is `"a"`.)
+- `<`, `<=`, `>` and `>=` work only between two numbers or two strings.
+  (`==` and `!=` still compare any two values.)
+- Repeating a string or list a non-finite number of times, as in `"ab" * (1/0)`,
+  or dividing one by 0, is an error.
+
 ---
 
 ## New features

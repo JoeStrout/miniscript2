@@ -232,8 +232,9 @@ Boolean ParserStorage::CanStartExpression(TokenType type) {
 		|| type == TokenType::FUNCTION;
 }
 Boolean ParserStorage::AtCallArgument() {
-	if (!_current.AfterSpace) return Boolean(false);
 	if (_current.Type == TokenType::MINUS) return Boolean(false);
+	if (!_current.AfterSpace && (_current.Type == TokenType::LBRACKET
+			|| _current.Type == TokenType::LPAREN)) return Boolean(false);
 	return CanStartExpression(_current.Type);
 }
 ASTNode ParserStorage::ParseExpression(Precedence minPrecedence) {
@@ -344,8 +345,8 @@ ASTNode ParserStorage::ParseSimpleStatement() {
 		// Check for no-parens call statement: identifier argList
 		// where argList starts with a token that can begin an expression
 		// (but NOT '(' which would be handled as func(args) by expression parsing).
-		// IMPORTANT: Whitespace is required between identifier and argument to
-		// distinguish "print [1,2,3]" (call) from "list[0]" (index expression).
+		// IMPORTANT: Whitespace is required between identifier and a '[' argument
+		// to distinguish "print [1,2,3]" (call) from "list[0]" (index expression).
 		if (AtCallArgument()) {
 			// This is a call statement like "print 42" or "print x, y"
 			List<ASTNode> args =  List<ASTNode>::New();

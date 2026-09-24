@@ -248,10 +248,15 @@ class IndexedAssignmentNodeStorage : public ASTNodeStorage {
 	friend struct IndexedAssignmentNode;
 	public: ASTNode Target; // the container (list/map) being assigned into
 	public: ASTNode Index; // the index/key expression
-	public: ASTNode Value; // the value being assigned
+	public: ASTNode Value; // the value being assigned (for compound assignment, just the RHS)
 	public: String LHSName; // human-readable LHS (e.g. "foo.bar"), used for function naming
+	public: String CompoundOp; // Op.PLUS etc. for `+=` and friends; null for plain `=`
+	public: Boolean IsDotAccess; // LHS was written `foo.bar` (so a compound read calls a getter)
 
-	public: IndexedAssignmentNodeStorage(ASTNode target, ASTNode index, ASTNode value, String lhsName);
+	// Compound assignment (`a[i] += v`) is kept as a single node rather than
+	// expanded into `a[i] = a[i] + v`, so that Target and Index are evaluated
+	// only once: the code generator reads and writes through the same registers.
+	public: IndexedAssignmentNodeStorage(ASTNode target, ASTNode index, ASTNode value, String lhsName, String compoundOp, Boolean isDotAccess);
 
 	public: Boolean IsStatement();
 
@@ -764,13 +769,20 @@ struct IndexedAssignmentNode : public ASTNode {
 	public: void set_Target(ASTNode _v); // the container (list/map) being assigned into
 	public: ASTNode Index(); // the index/key expression
 	public: void set_Index(ASTNode _v); // the index/key expression
-	public: ASTNode Value(); // the value being assigned
-	public: void set_Value(ASTNode _v); // the value being assigned
+	public: ASTNode Value(); // the value being assigned (for compound assignment, just the RHS)
+	public: void set_Value(ASTNode _v); // the value being assigned (for compound assignment, just the RHS)
 	public: String LHSName(); // human-readable LHS (e.g. "foo.bar"), used for function naming
 	public: void set_LHSName(String _v); // human-readable LHS (e.g. "foo.bar"), used for function naming
+	public: String CompoundOp(); // Op.PLUS etc. for `+=` and friends; null for plain `=`
+	public: void set_CompoundOp(String _v); // Op.PLUS etc. for `+=` and friends; null for plain `=`
+	public: Boolean IsDotAccess(); // LHS was written `foo.bar` (so a compound read calls a getter)
+	public: void set_IsDotAccess(Boolean _v); // LHS was written `foo.bar` (so a compound read calls a getter)
 
-	public: static IndexedAssignmentNode New(ASTNode target, ASTNode index, ASTNode value, String lhsName) {
-		return IndexedAssignmentNode(std::make_shared<IndexedAssignmentNodeStorage>(target, index, value, lhsName));
+	// Compound assignment (`a[i] += v`) is kept as a single node rather than
+	// expanded into `a[i] = a[i] + v`, so that Target and Index are evaluated
+	// only once: the code generator reads and writes through the same registers.
+	public: static IndexedAssignmentNode New(ASTNode target, ASTNode index, ASTNode value, String lhsName, String compoundOp, Boolean isDotAccess) {
+		return IndexedAssignmentNode(std::make_shared<IndexedAssignmentNodeStorage>(target, index, value, lhsName, compoundOp, isDotAccess));
 	}
 
 	public: Boolean IsStatement() { return get()->IsStatement(); }
@@ -1433,10 +1445,14 @@ inline ASTNode IndexedAssignmentNode::Target() { return get()->Target; } // the 
 inline void IndexedAssignmentNode::set_Target(ASTNode _v) { get()->Target = _v; } // the container (list/map) being assigned into
 inline ASTNode IndexedAssignmentNode::Index() { return get()->Index; } // the index/key expression
 inline void IndexedAssignmentNode::set_Index(ASTNode _v) { get()->Index = _v; } // the index/key expression
-inline ASTNode IndexedAssignmentNode::Value() { return get()->Value; } // the value being assigned
-inline void IndexedAssignmentNode::set_Value(ASTNode _v) { get()->Value = _v; } // the value being assigned
+inline ASTNode IndexedAssignmentNode::Value() { return get()->Value; } // the value being assigned (for compound assignment, just the RHS)
+inline void IndexedAssignmentNode::set_Value(ASTNode _v) { get()->Value = _v; } // the value being assigned (for compound assignment, just the RHS)
 inline String IndexedAssignmentNode::LHSName() { return get()->LHSName; } // human-readable LHS (e.g. "foo.bar"), used for function naming
 inline void IndexedAssignmentNode::set_LHSName(String _v) { get()->LHSName = _v; } // human-readable LHS (e.g. "foo.bar"), used for function naming
+inline String IndexedAssignmentNode::CompoundOp() { return get()->CompoundOp; } // Op.PLUS etc. for `+=` and friends; null for plain `=`
+inline void IndexedAssignmentNode::set_CompoundOp(String _v) { get()->CompoundOp = _v; } // Op.PLUS etc. for `+=` and friends; null for plain `=`
+inline Boolean IndexedAssignmentNode::IsDotAccess() { return get()->IsDotAccess; } // LHS was written `foo.bar` (so a compound read calls a getter)
+inline void IndexedAssignmentNode::set_IsDotAccess(Boolean _v) { get()->IsDotAccess = _v; } // LHS was written `foo.bar` (so a compound read calls a getter)
 
 inline UnaryOpNode::UnaryOpNode(std::shared_ptr<UnaryOpNodeStorage> stor) : ASTNode(stor) {}
 inline UnaryOpNodeStorage* UnaryOpNode::get() const { return static_cast<UnaryOpNodeStorage*>(storage.get()); }

@@ -153,6 +153,12 @@ String ParserStorage::CompoundAssignOp(TokenType type) {
 	if (type == TokenType::POWER_ASSIGN) return Op::POWER;
 	return nullptr;
 }
+ASTNode ParserStorage::ParseIndexedAssignment(ASTNode target,ASTNode index,Boolean isDotAccess,String lhsName) {
+	String compoundOp = CompoundAssignOp(_current.Type);
+	Advance(); // consume '=' or '+=' etc.
+	ASTNode value = ParseExpression();
+	return  IndexedAssignmentNode::New(target, index, value, lhsName, compoundOp, isDotAccess);
+}
 Boolean ParserStorage::Check(TokenType type) {
 	return _current.Type == type;
 }
@@ -361,28 +367,15 @@ ASTNode ParserStorage::ParseSimpleStatement() {
 		// Check for indexed assignment: expr[index] = value (or compound: expr[index] += value)
 		IndexNode idxNode = As<IndexNode, IndexNodeStorage>(expr);
 		if (!IsNull(idxNode) && IsAssignOp(_current.Type)) {
-			String compoundOp = CompoundAssignOp(_current.Type);
-			Advance(); // consume '=' or '+=' etc.
-			ASTNode value = ParseExpression();
-			if (!IsNull(compoundOp)) {
-				value =  BinaryOpNode::New(compoundOp,  IndexNode::New(idxNode.Target(), idxNode.Index()), value);
-			}
 			String lhsName = idxNode.Target().ToStr() + "[" + idxNode.Index().ToStr() + "]";
-			return  IndexedAssignmentNode::New(idxNode.Target(), idxNode.Index(), value, lhsName);
+			return ParseIndexedAssignment(idxNode.Target(), idxNode.Index(), Boolean(false), lhsName);
 		}
 
 		// Check for member assignment: expr.member = value (or compound: expr.member += value)
 		MemberNode memNode = As<MemberNode, MemberNodeStorage>(expr);
 		if (!IsNull(memNode) && IsAssignOp(_current.Type)) {
-			String compoundOp = CompoundAssignOp(_current.Type);
-			Advance(); // consume '=' or '+=' etc.
-			ASTNode value = ParseExpression();
-			ASTNode index =  StringNode::New(memNode.Member());
-			if (!IsNull(compoundOp)) {
-				value =  BinaryOpNode::New(compoundOp,  IndexNode::New(memNode.Target(), index), value);
-			}
 			String lhsName = memNode.Target().ToStr() + "." + memNode.Member();
-			return  IndexedAssignmentNode::New(memNode.Target(), index, value, lhsName);
+			return ParseIndexedAssignment(memNode.Target(),  StringNode::New(memNode.Member()), Boolean(true), lhsName);
 		}
 
 		// Check for no-parens call on an expression result, e.g. funcs[0] 10
@@ -403,26 +396,13 @@ ASTNode ParserStorage::ParseSimpleStatement() {
 	ASTNode expr2 = ParseExpressionAt(Precedence::NONE, Boolean(true));
 	IndexNode idxNode2 = As<IndexNode, IndexNodeStorage>(expr2);
 	if (!IsNull(idxNode2) && IsAssignOp(_current.Type)) {
-		String compoundOp2 = CompoundAssignOp(_current.Type);
-		Advance(); // consume '=' or '+=' etc.
-		ASTNode value = ParseExpression();
-		if (!IsNull(compoundOp2)) {
-			value =  BinaryOpNode::New(compoundOp2,  IndexNode::New(idxNode2.Target(), idxNode2.Index()), value);
-		}
 		String lhsName2 = idxNode2.Target().ToStr() + "[" + idxNode2.Index().ToStr() + "]";
-		return  IndexedAssignmentNode::New(idxNode2.Target(), idxNode2.Index(), value, lhsName2);
+		return ParseIndexedAssignment(idxNode2.Target(), idxNode2.Index(), Boolean(false), lhsName2);
 	}
 	MemberNode memNode2 = As<MemberNode, MemberNodeStorage>(expr2);
 	if (!IsNull(memNode2) && IsAssignOp(_current.Type)) {
-		String compoundOp2 = CompoundAssignOp(_current.Type);
-		Advance(); // consume '=' or '+=' etc.
-		ASTNode value = ParseExpression();
-		ASTNode index =  StringNode::New(memNode2.Member());
-		if (!IsNull(compoundOp2)) {
-			value =  BinaryOpNode::New(compoundOp2,  IndexNode::New(memNode2.Target(), index), value);
-		}
 		String lhsName2 = memNode2.Target().ToStr() + "." + memNode2.Member();
-		return  IndexedAssignmentNode::New(memNode2.Target(), index, value, lhsName2);
+		return ParseIndexedAssignment(memNode2.Target(),  StringNode::New(memNode2.Member()), Boolean(true), lhsName2);
 	}
 
 	// Check for no-parens call on an expression result, e.g. super.speak msg

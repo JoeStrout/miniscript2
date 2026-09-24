@@ -472,6 +472,10 @@ class CodeGeneratorStorage : public std::enable_shared_from_this<CodeGeneratorSt
 	// the program has defined no setters at all) and one not-taken branch.
 	private: void EmitPropertyStore(IndexedAssignmentNode node, Int32 containerReg, Int32 indexReg, Int32 valueReg);
 
+	// The opcode for an arithmetic operator (as used by compound assignment),
+	// or NOOP if the operator is not one of those.
+	private: Opcode ArithOpcode(String op);
+
 	public: Int32 Visit(UnaryOpNode node);
 
 	public: Int32 Visit(BinaryOpNode node);
@@ -1076,6 +1080,10 @@ struct CodeGenerator : public IASTVisitor {
 	// the program has defined no setters at all) and one not-taken branch.
 	private: inline void EmitPropertyStore(IndexedAssignmentNode node, Int32 containerReg, Int32 indexReg, Int32 valueReg);
 
+	// The opcode for an arithmetic operator (as used by compound assignment),
+	// or NOOP if the operator is not one of those.
+	private: inline Opcode ArithOpcode(String op);
+
 	public: inline Int32 Visit(UnaryOpNode node);
 
 	public: inline Int32 Visit(BinaryOpNode node);
@@ -1298,6 +1306,7 @@ inline Int32 CodeGenerator::VisitGlobalAssignment(AssignmentNode node) { return 
 inline Int32 CodeGenerator::VisitSpilledAssignment(AssignmentNode node) { return get()->VisitSpilledAssignment(node); }
 inline Int32 CodeGenerator::Visit(IndexedAssignmentNode node) { return get()->Visit(node); }
 inline void CodeGenerator::EmitPropertyStore(IndexedAssignmentNode node,Int32 containerReg,Int32 indexReg,Int32 valueReg) { return get()->EmitPropertyStore(node, containerReg, indexReg, valueReg); }
+inline Opcode CodeGenerator::ArithOpcode(String op) { return get()->ArithOpcode(op); }
 inline Int32 CodeGenerator::Visit(UnaryOpNode node) { return get()->Visit(node); }
 inline Int32 CodeGenerator::Visit(BinaryOpNode node) { return get()->Visit(node); }
 inline Int32 CodeGenerator::CompileShortCircuit(BinaryOpNode node) { return get()->CompileShortCircuit(node); }

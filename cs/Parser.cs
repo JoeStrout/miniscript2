@@ -217,6 +217,17 @@ public class Parser : IParser {
 		return null;
 	}
 
+	// Parse the rest of an indexed or member assignment, with the current token
+	// being '=' or a compound operator like '+='.  Compound assignment is not
+	// expanded here into `a[i] = a[i] + v`; the node carries the operator, so
+	// that the code generator can evaluate the target and index only once.
+	private ASTNode ParseIndexedAssignment(ASTNode target, ASTNode index, Boolean isDotAccess, String lhsName) {
+		String compoundOp = CompoundAssignOp(_current.Type);
+		Advance(); // consume '=' or '+=' etc.
+		ASTNode value = ParseExpression();
+		return new IndexedAssignmentNode(target, index, value, lhsName, compoundOp, isDotAccess);
+	}
+
 	// Check if current token matches the given type (without consuming)
 	public Boolean Check(TokenType type) {
 		return _current.Type == type;
@@ -463,28 +474,15 @@ public class Parser : IParser {
 			// Check for indexed assignment: expr[index] = value (or compound: expr[index] += value)
 			IndexNode idxNode = expr as IndexNode;
 			if (idxNode != null && IsAssignOp(_current.Type)) {
-				String compoundOp = CompoundAssignOp(_current.Type);
-				Advance(); // consume '=' or '+=' etc.
-				ASTNode value = ParseExpression();
-				if (compoundOp != null) {
-					value = new BinaryOpNode(compoundOp, new IndexNode(idxNode.Target, idxNode.Index), value);
-				}
 				String lhsName = idxNode.Target.ToStr() + "[" + idxNode.Index.ToStr() + "]";
-				return new IndexedAssignmentNode(idxNode.Target, idxNode.Index, value, lhsName);
+				return ParseIndexedAssignment(idxNode.Target, idxNode.Index, false, lhsName);
 			}
 
 			// Check for member assignment: expr.member = value (or compound: expr.member += value)
 			MemberNode memNode = expr as MemberNode;
 			if (memNode != null && IsAssignOp(_current.Type)) {
-				String compoundOp = CompoundAssignOp(_current.Type);
-				Advance(); // consume '=' or '+=' etc.
-				ASTNode value = ParseExpression();
-				ASTNode index = new StringNode(memNode.Member);
-				if (compoundOp != null) {
-					value = new BinaryOpNode(compoundOp, new IndexNode(memNode.Target, index), value);
-				}
 				String lhsName = memNode.Target.ToStr() + "." + memNode.Member;
-				return new IndexedAssignmentNode(memNode.Target, index, value, lhsName);
+				return ParseIndexedAssignment(memNode.Target, new StringNode(memNode.Member), true, lhsName);
 			}
 
 			// Check for no-parens call on an expression result, e.g. funcs[0] 10
@@ -505,26 +503,13 @@ public class Parser : IParser {
 		ASTNode expr2 = ParseExpressionAt(Precedence.NONE, true);
 		IndexNode idxNode2 = expr2 as IndexNode;
 		if (idxNode2 != null && IsAssignOp(_current.Type)) {
-			String compoundOp2 = CompoundAssignOp(_current.Type);
-			Advance(); // consume '=' or '+=' etc.
-			ASTNode value = ParseExpression();
-			if (compoundOp2 != null) {
-				value = new BinaryOpNode(compoundOp2, new IndexNode(idxNode2.Target, idxNode2.Index), value);
-			}
 			String lhsName2 = idxNode2.Target.ToStr() + "[" + idxNode2.Index.ToStr() + "]";
-			return new IndexedAssignmentNode(idxNode2.Target, idxNode2.Index, value, lhsName2);
+			return ParseIndexedAssignment(idxNode2.Target, idxNode2.Index, false, lhsName2);
 		}
 		MemberNode memNode2 = expr2 as MemberNode;
 		if (memNode2 != null && IsAssignOp(_current.Type)) {
-			String compoundOp2 = CompoundAssignOp(_current.Type);
-			Advance(); // consume '=' or '+=' etc.
-			ASTNode value = ParseExpression();
-			ASTNode index = new StringNode(memNode2.Member);
-			if (compoundOp2 != null) {
-				value = new BinaryOpNode(compoundOp2, new IndexNode(memNode2.Target, index), value);
-			}
 			String lhsName2 = memNode2.Target.ToStr() + "." + memNode2.Member;
-			return new IndexedAssignmentNode(memNode2.Target, index, value, lhsName2);
+			return ParseIndexedAssignment(memNode2.Target, new StringNode(memNode2.Member), true, lhsName2);
 		}
 
 		// Check for no-parens call on an expression result, e.g. super.speak msg

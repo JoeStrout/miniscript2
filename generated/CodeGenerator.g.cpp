@@ -911,18 +911,38 @@ Int32 CodeGeneratorStorage::Visit(IndexedAssignmentNode node) {
 	Int32 containerReg = node.Target().Accept(_this);
 	Int32 indexReg = node.Index().Accept(_this);
 
-	// If the RHS is a function expression, note the current function count so we
-	// can assign a name to the resulting FuncDef afterward.
-	FunctionNode rhsFunc = As<FunctionNode, FunctionNodeStorage>(node.Value());
-	Int32 funcIndexBeforeRHS = _functions.Count();
+	Int32 valueReg;
+	if (!IsNull(node.CompoundOp())) {
+		// Compound assignment, e.g. `a[i] += v`: read through the registers
+		// already holding the container and index, so that those expressions
+		// are evaluated only once.  The read is the same one `a[i]` or `a.x`
+		// would do on its own, so a getter is called when present.
+		valueReg = AllocReg();
+		String readDesc = Interp("{}[{}]", node.Target().ToStr(), node.Index().ToStr());
+		EmitAccessOrInvoke(valueReg, containerReg, indexReg, Boolean(false), node.IsDotAccess(), node.Target(), readDesc);
+		Int32 rhsReg = node.Value().Accept(_this);
+		Opcode op = ArithOpcode(node.CompoundOp());
+		if (op == Opcode::NOOP) {
+			if (Error.IsNull()) Error = ErrorTypes::CompilerError("unknown compound assignment operator", FileName, _emitter.CurrentLine());
+		} else {
+			_emitter.EmitABC(op, valueReg, valueReg, rhsReg,
+				Interp("r{} = {} {} {}", valueReg, readDesc, node.CompoundOp(), node.Value().ToStr()));
+		}
+		FreeReg(rhsReg);
+	} else {
+		// If the RHS is a function expression, note the current function count so we
+		// can assign a name to the resulting FuncDef afterward.
+		FunctionNode rhsFunc = As<FunctionNode, FunctionNodeStorage>(node.Value());
+		Int32 funcIndexBeforeRHS = _functions.Count();
 
-	Int32 valueReg = node.Value().Accept(_this);
+		valueReg = node.Value().Accept(_this);
 
-	// If the RHS was a function expression, give it the LHS name.
-	if (!IsNull(rhsFunc) && funcIndexBeforeRHS < _functions.Count()) {
-		FuncDef rhsFuncDef = _functions[funcIndexBeforeRHS];
-		if (!IsNull(rhsFuncDef) && !IsNull(node.LHSName())) {
-			rhsFuncDef.set_Name(node.LHSName());
+		// If the RHS was a function expression, give it the LHS name.
+		if (!IsNull(rhsFunc) && funcIndexBeforeRHS < _functions.Count()) {
+			FuncDef rhsFuncDef = _functions[funcIndexBeforeRHS];
+			if (!IsNull(rhsFuncDef) && !IsNull(node.LHSName())) {
+				rhsFuncDef.set_Name(node.LHSName());
+			}
 		}
 	}
 
@@ -947,7 +967,7 @@ Int32 CodeGeneratorStorage::Visit(IndexedAssignmentNode node) {
 	return containerReg;
 }
 void CodeGeneratorStorage::EmitPropertyStore(IndexedAssignmentNode node,Int32 containerReg,Int32 indexReg,Int32 valueReg) {
-	String desc = Interp("{}[{}] = {}", node.Target().ToStr(), node.Index().ToStr(), node.Value().ToStr());
+	String desc = node.ToStr();
 
 	// `super.x = v` splits the two halves of the operation apart: the setter
 	// is looked up starting at super (so it finds the *parent's* setter, or
@@ -973,7 +993,7 @@ void CodeGeneratorStorage::EmitPropertyStore(IndexedAssignmentNode node,Int32 co
 	// EmitCallSequence frees the argument registers it is given and the
 	// plain-store path below still needs valueReg.
 	Int32 argReg = AllocReg();
-	_emitter.EmitABC(Opcode::LOAD_rA_rB, argReg, valueReg, 0, Interp("r{} = {}", argReg, node.Value().ToStr()));
+	_emitter.EmitABC(Opcode::LOAD_rA_rB, argReg, valueReg, 0, Interp("r{} = setter argument", argReg));
 	List<Int32> argRegs =  List<Int32>::New();
 	argRegs.Add(argReg);
 	Int32 resultReg = EmitCallSequence(setterReg, argRegs, -1, Interp("setter {}=", node.Index().ToStr()));
@@ -989,6 +1009,15 @@ void CodeGeneratorStorage::EmitPropertyStore(IndexedAssignmentNode node,Int32 co
 	_emitter.PlaceLabel(plainStore);
 	_emitter.EmitABC(Opcode::IDXSET_rA_rB_rC, storeReg, indexReg, valueReg, desc);
 	_emitter.PlaceLabel(afterStore);
+}
+Opcode CodeGeneratorStorage::ArithOpcode(String op) {
+	if (op == Op::PLUS) return Opcode::ADD_rA_rB_rC;
+	if (op == Op::MINUS) return Opcode::SUB_rA_rB_rC;
+	if (op == Op::TIMES) return Opcode::MUL_rA_rB_rC;
+	if (op == Op::DIVIDE) return Opcode::DIV_rA_rB_rC;
+	if (op == Op::MOD) return Opcode::MOD_rA_rB_rC;
+	if (op == Op::POWER) return Opcode::POW_rA_rB_rC;
+	return Opcode::NOOP;
 }
 Int32 CodeGeneratorStorage::Visit(UnaryOpNode node) {
 	CodeGenerator _this(std::static_pointer_cast<CodeGeneratorStorage>(shared_from_this()));

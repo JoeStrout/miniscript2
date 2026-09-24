@@ -225,6 +225,55 @@ score ^= 3; print score
 2
 8
 ================================
+==== math-assignment on an index or member evaluates the target only once
+================================
+xget = function; print "xget called"; return 42; end function
+m = {}
+m[xget] = 0
+m[xget] += 1
+print m
+f = function; print "f called"; return [1,2]; end function
+f[0] += 5
+lst = [10, 20, 30]
+counter = 0
+next = function; outer.counter += 1; return counter - 1; end function
+lst[next] += 100
+lst[next] *= 2
+print lst
+print counter
+g = function; outer.a = {"k": 1}; print "g called"; return a; end function
+g.k += 9
+print a
+obj = {"n": 3}
+obj.n -= 1
+obj.n ^= 3
+obj.n /= 2
+obj.n %= 3
+print obj.n
+----------------------------------------------------------------------
+xget called
+xget called
+{42: 1}
+f called
+[110, 40, 30]
+2
+g called
+{"k": 10}
+1
+================================
+==== math-assignment on a property calls its getter and setter
+================================
+obj = {}
+obj._x = 10
+obj.x = function; print "getter"; return self._x; end function
+obj["x="] = function(v); print "setter " + v; self._x = v; end function
+obj.x += 1
+print obj._x
+----------------------------------------------------------------------
+getter
+setter 11
+11
+================================
 ==== Number formatting
 ==== (Matching MiniScript 1.x: 1-6 digits after decimal, exponential for very large/small)
 ================================

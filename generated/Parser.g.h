@@ -83,6 +83,12 @@ class ParserStorage : public std::enable_shared_from_this<ParserStorage>, public
 	// Return the binary Op string for a compound assignment token, or null for plain ASSIGN
 	private: String CompoundAssignOp(TokenType type);
 
+	// Parse the rest of an indexed or member assignment, with the current token
+	// being '=' or a compound operator like '+='.  Compound assignment is not
+	// expanded here into `a[i] = a[i] + v`; the node carries the operator, so
+	// that the code generator can evaluate the target and index only once.
+	private: ASTNode ParseIndexedAssignment(ASTNode target, ASTNode index, Boolean isDotAccess, String lhsName);
+
 	// Check if current token matches the given type (without consuming)
 	public: Boolean Check(TokenType type);
 
@@ -286,6 +292,12 @@ struct Parser : public IParser {
 	// Return the binary Op string for a compound assignment token, or null for plain ASSIGN
 	private: inline String CompoundAssignOp(TokenType type);
 
+	// Parse the rest of an indexed or member assignment, with the current token
+	// being '=' or a compound operator like '+='.  Compound assignment is not
+	// expanded here into `a[i] = a[i] + v`; the node carries the operator, so
+	// that the code generator can evaluate the target and index only once.
+	private: inline ASTNode ParseIndexedAssignment(ASTNode target, ASTNode index, Boolean isDotAccess, String lhsName);
+
 	// Check if current token matches the given type (without consuming)
 	public: inline Boolean Check(TokenType type);
 
@@ -437,6 +449,7 @@ inline void Parser::RequireComplete() { return get()->RequireComplete(); }
 inline void Parser::Advance() { return get()->Advance(); }
 inline Boolean Parser::IsAssignOp(TokenType type) { return get()->IsAssignOp(type); }
 inline String Parser::CompoundAssignOp(TokenType type) { return get()->CompoundAssignOp(type); }
+inline ASTNode Parser::ParseIndexedAssignment(ASTNode target,ASTNode index,Boolean isDotAccess,String lhsName) { return get()->ParseIndexedAssignment(target, index, isDotAccess, lhsName); }
 inline Boolean Parser::Check(TokenType type) { return get()->Check(type); }
 inline Boolean Parser::Match(TokenType type) { return get()->Match(type); }
 inline Token Parser::Consume() { return get()->Consume(); }

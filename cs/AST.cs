@@ -234,14 +234,21 @@ public class AssignmentNode : ASTNode {
 public class IndexedAssignmentNode : ASTNode {
 	public ASTNode Target;      // the container (list/map) being assigned into
 	public ASTNode Index;       // the index/key expression
-	public ASTNode Value;       // the value being assigned
+	public ASTNode Value;       // the value being assigned (for compound assignment, just the RHS)
 	public String LHSName;      // human-readable LHS (e.g. "foo.bar"), used for function naming
+	public String CompoundOp;   // Op.PLUS etc. for `+=` and friends; null for plain `=`
+	public Boolean IsDotAccess; // LHS was written `foo.bar` (so a compound read calls a getter)
 
-	public IndexedAssignmentNode(ASTNode target, ASTNode index, ASTNode value, String lhsName) {
+	// Compound assignment (`a[i] += v`) is kept as a single node rather than
+	// expanded into `a[i] = a[i] + v`, so that Target and Index are evaluated
+	// only once: the code generator reads and writes through the same registers.
+	public IndexedAssignmentNode(ASTNode target, ASTNode index, ASTNode value, String lhsName, String compoundOp, Boolean isDotAccess) {
 		Target = target;
 		Index = index;
 		Value = value;
 		LHSName = lhsName;
+		CompoundOp = compoundOp;
+		IsDotAccess = isDotAccess;
 	}
 
 	public override Boolean IsStatement() {
@@ -249,11 +256,14 @@ public class IndexedAssignmentNode : ASTNode {
 	}
 
 	public override String ToStr() {
-		return Target.ToStr() + "[" + Index.ToStr() + "] = " + Value.ToStr();
+		String assignOp = " = ";
+		if (CompoundOp != null) assignOp = " " + CompoundOp + "= ";
+		return Target.ToStr() + "[" + Index.ToStr() + "]" + assignOp + Value.ToStr();
 	}
 
 	public override ASTNode Simplify() {
-		return CopyLine(new IndexedAssignmentNode(Target.Simplify(), Index.Simplify(), Value.Simplify(), LHSName));
+		return CopyLine(new IndexedAssignmentNode(Target.Simplify(), Index.Simplify(), Value.Simplify(),
+			LHSName, CompoundOp, IsDotAccess));
 	}
 
 	public override Boolean MayReadVar(String varName) {

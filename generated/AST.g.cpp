@@ -117,20 +117,25 @@ Int32 AssignmentNodeStorage::Accept(IASTVisitor& visitor) {
 	return visitor.Visit(_this);
 }
 
-IndexedAssignmentNodeStorage::IndexedAssignmentNodeStorage(ASTNode target,ASTNode index,ASTNode value,String lhsName) {
+IndexedAssignmentNodeStorage::IndexedAssignmentNodeStorage(ASTNode target,ASTNode index,ASTNode value,String lhsName,String compoundOp,Boolean isDotAccess) {
 	Target = target;
 	Index = index;
 	Value = value;
 	LHSName = lhsName;
+	CompoundOp = compoundOp;
+	IsDotAccess = isDotAccess;
 }
 Boolean IndexedAssignmentNodeStorage::IsStatement() {
 	return Boolean(true);
 }
 String IndexedAssignmentNodeStorage::ToStr() {
-	return Target.ToStr() + "[" + Index.ToStr() + "] = " + Value.ToStr();
+	String assignOp = " = ";
+	if (!IsNull(CompoundOp)) assignOp = " " + CompoundOp + "= ";
+	return Target.ToStr() + "[" + Index.ToStr() + "]" + assignOp + Value.ToStr();
 }
 ASTNode IndexedAssignmentNodeStorage::Simplify() {
-	return CopyLine( IndexedAssignmentNode::New(Target.Simplify(), Index.Simplify(), Value.Simplify(), LHSName));
+	return CopyLine( IndexedAssignmentNode::New(Target.Simplify(), Index.Simplify(), Value.Simplify(),
+		LHSName, CompoundOp, IsDotAccess));
 }
 Boolean IndexedAssignmentNodeStorage::MayReadVar(String varName) {
 	return Target.MayReadVar(varName)

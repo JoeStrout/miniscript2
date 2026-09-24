@@ -1321,18 +1321,38 @@ public class CodeGenerator : IASTVisitor {
 		Int32 containerReg = node.Target.Accept(this);
 		Int32 indexReg = node.Index.Accept(this);
 
-		// If the RHS is a function expression, note the current function count so we
-		// can assign a name to the resulting FuncDef afterward.
-		FunctionNode rhsFunc = node.Value as FunctionNode;
-		Int32 funcIndexBeforeRHS = _functions.Count;
+		Int32 valueReg;
+		if (node.CompoundOp != null) {
+			// Compound assignment, e.g. `a[i] += v`: read through the registers
+			// already holding the container and index, so that those expressions
+			// are evaluated only once.  The read is the same one `a[i]` or `a.x`
+			// would do on its own, so a getter is called when present.
+			valueReg = AllocReg();
+			String readDesc = $"{node.Target.ToStr()}[{node.Index.ToStr()}]";
+			EmitAccessOrInvoke(valueReg, containerReg, indexReg, false, node.IsDotAccess, node.Target, readDesc);
+			Int32 rhsReg = node.Value.Accept(this);
+			Opcode op = ArithOpcode(node.CompoundOp);
+			if (op == Opcode.NOOP) {
+				if (Error.IsNull()) Error = ErrorTypes.CompilerError("unknown compound assignment operator", FileName, _emitter.CurrentLine);
+			} else {
+				_emitter.EmitABC(op, valueReg, valueReg, rhsReg,
+					$"r{valueReg} = {readDesc} {node.CompoundOp} {node.Value.ToStr()}");
+			}
+			FreeReg(rhsReg);
+		} else {
+			// If the RHS is a function expression, note the current function count so we
+			// can assign a name to the resulting FuncDef afterward.
+			FunctionNode rhsFunc = node.Value as FunctionNode;
+			Int32 funcIndexBeforeRHS = _functions.Count;
 
-		Int32 valueReg = node.Value.Accept(this);
+			valueReg = node.Value.Accept(this);
 
-		// If the RHS was a function expression, give it the LHS name.
-		if (rhsFunc != null && funcIndexBeforeRHS < _functions.Count) {
-			FuncDef rhsFuncDef = _functions[funcIndexBeforeRHS];
-			if (rhsFuncDef != null && node.LHSName != null) {
-				rhsFuncDef.Name = node.LHSName;
+			// If the RHS was a function expression, give it the LHS name.
+			if (rhsFunc != null && funcIndexBeforeRHS < _functions.Count) {
+				FuncDef rhsFuncDef = _functions[funcIndexBeforeRHS];
+				if (rhsFuncDef != null && node.LHSName != null) {
+					rhsFuncDef.Name = node.LHSName;
+				}
 			}
 		}
 
@@ -1375,7 +1395,7 @@ public class CodeGenerator : IASTVisitor {
 	// to a map with no setter pays one SETRFIND (which returns immediately when
 	// the program has defined no setters at all) and one not-taken branch.
 	private void EmitPropertyStore(IndexedAssignmentNode node, Int32 containerReg, Int32 indexReg, Int32 valueReg) {
-		String desc = $"{node.Target.ToStr()}[{node.Index.ToStr()}] = {node.Value.ToStr()}";
+		String desc = node.ToStr();
 
 		// `super.x = v` splits the two halves of the operation apart: the setter
 		// is looked up starting at super (so it finds the *parent's* setter, or
@@ -1401,7 +1421,7 @@ public class CodeGenerator : IASTVisitor {
 		// EmitCallSequence frees the argument registers it is given and the
 		// plain-store path below still needs valueReg.
 		Int32 argReg = AllocReg();
-		_emitter.EmitABC(Opcode.LOAD_rA_rB, argReg, valueReg, 0, $"r{argReg} = {node.Value.ToStr()}");
+		_emitter.EmitABC(Opcode.LOAD_rA_rB, argReg, valueReg, 0, $"r{argReg} = setter argument");
 		List<Int32> argRegs = new List<Int32>();
 		argRegs.Add(argReg);
 		Int32 resultReg = EmitCallSequence(setterReg, argRegs, -1, $"setter {node.Index.ToStr()}=");
@@ -1417,6 +1437,18 @@ public class CodeGenerator : IASTVisitor {
 		_emitter.PlaceLabel(plainStore);
 		_emitter.EmitABC(Opcode.IDXSET_rA_rB_rC, storeReg, indexReg, valueReg, desc);
 		_emitter.PlaceLabel(afterStore);
+	}
+
+	// The opcode for an arithmetic operator (as used by compound assignment),
+	// or NOOP if the operator is not one of those.
+	private Opcode ArithOpcode(String op) {
+		if (op == Op.PLUS) return Opcode.ADD_rA_rB_rC;
+		if (op == Op.MINUS) return Opcode.SUB_rA_rB_rC;
+		if (op == Op.TIMES) return Opcode.MUL_rA_rB_rC;
+		if (op == Op.DIVIDE) return Opcode.DIV_rA_rB_rC;
+		if (op == Op.MOD) return Opcode.MOD_rA_rB_rC;
+		if (op == Op.POWER) return Opcode.POW_rA_rB_rC;
+		return Opcode.NOOP;
 	}
 
 	public Int32 Visit(UnaryOpNode node) {

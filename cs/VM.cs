@@ -1614,7 +1614,7 @@ public class VM {
 						break;
 					}
 					if (valA.IsList()) {
-						valA.ListSet(valB.IntValue(), valC);
+						if (CheckListIndex(valA, valB)) valA.ListSet(valB.IntValue(), valC);
 					} else if (valA.IsMap()) {
 						// An __isa assignment that closes a loop in the chain is
 						// refused outright.  This is the only way a cycle can be
@@ -2426,9 +2426,9 @@ public class VM {
 					} else if (valC.IsNumber()) {
 						int index = valC.IntValue();
 						if (valB.IsList()) {
-							localStack[a] = valB.ListGet(index);
+							localStack[a] = CheckListIndex(valB, valC) ? valB.ListGet(index) : Value.Null;
 						} else if (valB.IsString()) {
-							localStack[a] = valB.Substring(index, 1);
+							localStack[a] = CheckStringIndex(valB, valC) ? valB.Substring(index, 1) : Value.Null;
 						} else {
 							RaiseRuntimeError("Can't index into {0}", valB);
 							localStack[a] = Value.Null;
@@ -2699,6 +2699,27 @@ public class VM {
 		return true;
 	}
 
+	// Check a numeric index into a list or string, which may count back from
+	// the end.  An index outside it raises an Index Error (terminating, like Key
+	// Not Found in a map: hasIndex can always prevent it) and returns false.
+	[MethodImpl(AggressiveInlining)]
+	private Boolean CheckListIndex(Value list, Value key) {
+		Int32 index = key.IntValue();
+		Int32 count = list.ListCount();
+		if (index >= -count && index < count) return true;
+		RaiseRuntimeError("Index Error: list index {0} out of range", key);
+		return false;
+	}
+
+	[MethodImpl(AggressiveInlining)]
+	private Boolean CheckStringIndex(Value str, Value key) {
+		Int32 index = key.IntValue();
+		Int32 count = str.Length();
+		if (index >= -count && index < count) return true;
+		RaiseRuntimeError("Index Error: string index {0} out of range", key);
+		return false;
+	}
+
 	// Results of LookupMember, saying what call context the value found implies.
 	private const Int32 MemberMissing = 0;  // not found; a runtime error was raised
 	private const Int32 MemberMethod = 1;   // from the container or its type; self = container
@@ -2757,10 +2778,12 @@ public class VM {
 		}
 		if (key.IsNumber()) {
 			if (container.IsList()) {
+				if (!CheckListIndex(container, key)) return MemberMissing;
 				result = container.ListGet(key.IntValue());
 				return MemberElement;
 			}
 			if (container.IsString()) {
+				if (!CheckStringIndex(container, key)) return MemberMissing;
 				result = container.Substring(key.IntValue(), 1);
 				return MemberElement;
 			}

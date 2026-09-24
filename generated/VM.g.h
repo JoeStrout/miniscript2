@@ -424,6 +424,13 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	// deeper than the limit counts as a cycle for the same reason: past that
 	// depth, lookups no longer see the whole chain anyway.
 	private: static Boolean WouldFormIsaCycle(Value target, Value newIsa);
+
+	// Check a numeric index into a list or string, which may count back from
+	// the end.  An index outside it raises an Index Error (terminating, like Key
+	// Not Found in a map: hasIndex can always prevent it) and returns false.
+	private: Boolean CheckListIndex(Value list, Value key);
+
+	private: Boolean CheckStringIndex(Value str, Value key);
 	private: static const Int32 MemberMissing; // not found; a runtime error was raised
 	private: static const Int32 MemberMethod; // from the container or its type; self = container
 	private: static const Int32 MemberField; // an error's own field; no call context
@@ -895,6 +902,13 @@ struct VM {
 	// deeper than the limit counts as a cycle for the same reason: past that
 	// depth, lookups no longer see the whole chain anyway.
 	private: static Boolean WouldFormIsaCycle(Value target, Value newIsa) { return VMStorage::WouldFormIsaCycle(target, newIsa); }
+
+	// Check a numeric index into a list or string, which may count back from
+	// the end.  An index outside it raises an Index Error (terminating, like Key
+	// Not Found in a map: hasIndex can always prevent it) and returns false.
+	private: inline Boolean CheckListIndex(Value list, Value key);
+
+	private: inline Boolean CheckStringIndex(Value str, Value key);
 	private: Int32 MemberMissing(); // not found; a runtime error was raised
 	private: Int32 MemberMethod(); // from the container or its type; self = container
 	private: Int32 MemberField(); // an error's own field; no call context
@@ -1087,6 +1101,22 @@ inline Boolean VMStorage::IsIsaKey(Value key) {
 	if (key.IsTinyString() || !key.IsString()) return Boolean(false);
 	return key == Value::magicIsA;
 }
+inline Boolean VM::CheckListIndex(Value list,Value key) { return get()->CheckListIndex(list, key); }
+inline Boolean VMStorage::CheckListIndex(Value list,Value key) {
+	Int32 index = key.IntValue();
+	Int32 count = list.ListCount();
+	if (index >= -count && index < count) return Boolean(true);
+	RaiseRuntimeError("Index Error: list index {0} out of range", key);
+	return Boolean(false);
+}
+inline Boolean VM::CheckStringIndex(Value str,Value key) { return get()->CheckStringIndex(str, key); }
+inline Boolean VMStorage::CheckStringIndex(Value str,Value key) {
+	Int32 index = key.IntValue();
+	Int32 count = str.Length();
+	if (index >= -count && index < count) return Boolean(true);
+	RaiseRuntimeError("Index Error: string index {0} out of range", key);
+	return Boolean(false);
+}
 inline Int32 VM::MemberMissing() { return get()->MemberMissing; } // not found; a runtime error was raised
 inline Int32 VM::MemberMethod() { return get()->MemberMethod; } // from the container or its type; self = container
 inline Int32 VM::MemberField() { return get()->MemberField; } // an error's own field; no call context
@@ -1138,10 +1168,12 @@ inline Int32 VMStorage::LookupMember(Value container,Value key,Value* result,Val
 	}
 	if (key.IsNumber()) {
 		if (container.IsList()) {
+			if (!CheckListIndex(container, key)) return MemberMissing;
 			*result = container.ListGet(key.IntValue());
 			return MemberElement;
 		}
 		if (container.IsString()) {
+			if (!CheckStringIndex(container, key)) return MemberMissing;
 			*result = container.Substring(key.IntValue(), 1);
 			return MemberElement;
 		}

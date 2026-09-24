@@ -1279,7 +1279,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 					VM_NEXT();
 				}
 				if (valA.IsList()) {
-					valA.ListSet(valB.IntValue(), valC);
+					if (CheckListIndex(valA, valB)) valA.ListSet(valB.IntValue(), valC);
 				} else if (valA.IsMap()) {
 					// An __isa assignment that closes a loop in the chain is
 					// refused outright.  This is the only way a cycle can be
@@ -2085,9 +2085,9 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				} else if (valC.IsNumber()) {
 					int index = valC.IntValue();
 					if (valB.IsList()) {
-						localStack[a] = valB.ListGet(index);
+						localStack[a] = CheckListIndex(valB, valC) ? valB.ListGet(index) : Value::Null;
 					} else if (valB.IsString()) {
-						localStack[a] = valB.Substring(index, 1);
+						localStack[a] = CheckStringIndex(valB, valC) ? valB.Substring(index, 1) : Value::Null;
 					} else {
 						RaiseRuntimeError("Can't index into {0}", valB);
 						localStack[a] = Value::Null;

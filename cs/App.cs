@@ -543,6 +543,7 @@ public struct App {
 				if (String.IsNullOrEmpty(cmd)) cmd = "step";
 				if (cmd[0] == 'q') return;
 				if (cmd[0] == 's') {
+					vm.yielding = false;
 					result = vm.Run(1);
 					continue;
 				} else {
@@ -557,12 +558,16 @@ public struct App {
 			}
 		} else {
 			vm.DebugMode = debugMode;
+			// RunUntilDone clears vm.yielding on each call, returns early when the
+			// script yields (so we can sleep a moment), and reports any runtime
+			// error through interp.errorOutput.
 			while (vm.IsRunning) {
-				result = vm.Run();
+				interp.RunUntilDone();
 				if (vm.IsRunning) {
 					Thread.Sleep(1);	// CPP: std::this_thread::sleep_for(std::chrono::milliseconds(1));
 				}
 			}
+			result = vm.GetStackValue(0);	// @main's r0
 		}
 
 		if (vm.Error.IsNull()) {
@@ -572,8 +577,8 @@ public struct App {
 				IOHelper.Print("\nVM execution complete. Result in r0:");
 				IOHelper.Print(StringUtils.Format("\x1b[1;93m{0}\x1b[0m", result)); // (bold bright yellow)
 			}
-		} else {
-			vm.ReportRuntimeError();
+		} else if (visMode) {
+			vm.ReportRuntimeError();	// (otherwise, RunUntilDone already reported it)
 		}
 	}
 

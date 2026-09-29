@@ -1832,6 +1832,12 @@ public class VM {
 					Byte a = BytecodeUtil.Au(instruction);
 					Byte b = BytecodeUtil.Bu(instruction);
 					Byte c = BytecodeUtil.Cu(instruction);
+					// Fast path first: every loop test runs through here, and the
+					// error and type checks below measurably slow tight loops.
+					if (localStack[b].IsNumber() && localStack[c].IsNumber()) {
+						localStack[a] = Value.Truth(localStack[b].AsDouble() < localStack[c].AsDouble());
+						break;
+					}
 					if (localStack[b].IsError()) {
 						localStack[a] = localStack[b];
 						break;
@@ -1853,6 +1859,10 @@ public class VM {
 					Byte a = BytecodeUtil.Au(instruction);
 					Byte b = BytecodeUtil.Bu(instruction);
 					SByte c = BytecodeUtil.Cs(instruction);
+					if (localStack[b].IsNumber()) {
+						localStack[a] = Value.Truth(localStack[b].AsDouble() < c);
+						break;
+					}
 					if (localStack[b].IsError()) {
 						localStack[a] = localStack[b];
 						break;
@@ -1870,6 +1880,11 @@ public class VM {
 					Byte a = BytecodeUtil.Au(instruction);
 					Byte b = BytecodeUtil.Bu(instruction);
 					Byte c = BytecodeUtil.Cu(instruction);
+					// Fast path first (see LT_rA_rB_rC).
+					if (localStack[b].IsNumber() && localStack[c].IsNumber()) {
+						localStack[a] = Value.Truth(localStack[b].AsDouble() <= localStack[c].AsDouble());
+						break;
+					}
 					if (localStack[b].IsError()) {
 						localStack[a] = localStack[b];
 						break;
@@ -1891,6 +1906,10 @@ public class VM {
 					Byte a = BytecodeUtil.Au(instruction);
 					Byte b = BytecodeUtil.Bu(instruction);
 					SByte c = BytecodeUtil.Cs(instruction);
+					if (localStack[b].IsNumber()) {
+						localStack[a] = Value.Truth(localStack[b].AsDouble() <= c);
+						break;
+					}
 					if (localStack[b].IsError()) {
 						localStack[a] = localStack[b];
 						break;

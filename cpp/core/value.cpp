@@ -666,4 +666,70 @@ Value Value::value_current_stack_trace() {
     return Value::null;
 }
 
+// ── Arithmetic slow paths (see the fast paths in value.h) ───────────────
+// Reached only when the operands are not both numbers.
+
+Value value_add_slow(Value a, Value b, void* vm) {
+    if (a.IsError()) return a;
+    if (b.IsError()) return b;
+    if (a.IsString()) {
+        if (b.IsNull()) return a;
+        Value bStr = b.IsString() ? b : b.ToStringValue(vm);
+        // Overflow-safe check that the concatenation won't exceed the limit.
+        if (a.Length() > Value::MAX_COLLECTION_SIZE - bStr.Length()) {
+            return value_make_runtime_error("string too large (exceeds maximum size)");
+        }
+        return string_concat(a, bStr);
+    } else if (b.IsString()) {
+        if (a.IsNull()) return b;
+        Value aStr = a.ToStringValue(vm);
+        if (aStr.Length() > Value::MAX_COLLECTION_SIZE - b.Length()) {
+            return value_make_runtime_error("string too large (exceeds maximum size)");
+        }
+        return string_concat(aStr, b);
+    }
+    if (a.IsList() && b.IsList()) {
+        if (a.ListCount() > Value::MAX_COLLECTION_SIZE - b.ListCount()) {
+            return value_make_runtime_error("list too large (exceeds maximum size)");
+        }
+        return list_concat(a, b);
+    }
+    if (a.IsMap()  && b.IsMap())  return map_concat(a, b);
+    return value_operator_type_error("+", a, b);
+}
+
+Value value_sub_slow(Value a, Value b) {
+    if (a.IsError()) return a;
+    if (b.IsError()) return b;
+    if (a.IsString() && b.IsString()) return string_sub(a, b);
+    return value_operator_type_error("-", a, b);
+}
+
+Value value_mult_slow(Value a, Value b) {
+    if (a.IsError()) return a;
+    if (b.IsError()) return b;
+    return value_mult_nonnumeric(a, b);
+}
+
+Value value_div_slow(Value a, Value b) {
+    if (a.IsError()) return a;
+    if (b.IsError()) return b;
+    if (b.IsNumber() && (a.IsString() || a.IsList())) {
+        return value_mult_nonnumeric(a, Value(1.0) / b);
+    }
+    return value_operator_type_error("/", a, b);
+}
+
+Value value_mod_slow(Value a, Value b) {
+    if (a.IsError()) return a;
+    if (b.IsError()) return b;
+    return value_operator_type_error("%", a, b);
+}
+
+Value value_pow_slow(Value a, Value b) {
+    if (a.IsError()) return a;
+    if (b.IsError()) return b;
+    return value_operator_type_error("^", a, b);
+}
+
 }  // namespace MiniScript

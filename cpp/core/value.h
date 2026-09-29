@@ -550,47 +550,28 @@ void set_stack_trace_hook(StackTraceFn fn);
 // (value_current_stack_trace is now a Value:: static method.)
 
 // ── Arithmetic ──────────────────────────────────────────────────────────
+// Each operator is an inline fast path for the common number-number case,
+// with everything else (errors, strings, lists, maps, type errors) in an
+// out-of-line *_slow function in value.cpp.  This keeps the code inlined into
+// every VM arithmetic handler small, which matters: RunInner is one huge
+// function, and inlined cold paths there cost register allocation and code
+// layout in every hot handler.  A number is never an error, so testing for
+// numbers first gives the same results as testing for errors first.
+Value value_add_slow(Value a, Value b, void* vm);
+Value value_sub_slow(Value a, Value b);
+Value value_mult_slow(Value a, Value b);
+Value value_div_slow(Value a, Value b);
+Value value_mod_slow(Value a, Value b);
+Value value_pow_slow(Value a, Value b);
+
 inline Value Value::Add(Value b, void* vm) const {
-    Value a = *this;
-    if (a.IsError()) return a;
-    if (b.IsError()) return b;
-    if (a.IsNumber() && b.IsNumber()) {
-        return Value(a.AsDouble() + b.AsDouble());
-    }
-    if (a.IsString()) {
-        if (b.IsNull()) return a;
-        Value bStr = b.IsString() ? b : b.ToStringValue(vm);
-        // Overflow-safe check that the concatenation won't exceed the limit.
-        if (a.Length() > Value::MAX_COLLECTION_SIZE - bStr.Length()) {
-            return value_make_runtime_error("string too large (exceeds maximum size)");
-        }
-        return string_concat(a, bStr);
-    } else if (b.IsString()) {
-        if (a.IsNull()) return b;
-        Value aStr = a.ToStringValue(vm);
-        if (aStr.Length() > Value::MAX_COLLECTION_SIZE - b.Length()) {
-            return value_make_runtime_error("string too large (exceeds maximum size)");
-        }
-        return string_concat(aStr, b);
-    }
-    if (a.IsList() && b.IsList()) {
-        if (a.ListCount() > Value::MAX_COLLECTION_SIZE - b.ListCount()) {
-            return value_make_runtime_error("list too large (exceeds maximum size)");
-        }
-        return list_concat(a, b);
-    }
-    if (a.IsMap()  && b.IsMap())  return map_concat(a, b);
-    return value_operator_type_error("+", a, b);
+    if (IsNumber() && b.IsNumber()) return Value(AsDouble() + b.AsDouble());
+    return value_add_slow(*this, b, vm);
 }
 
 inline Value operator-(Value a, Value b) {
-    if (a.IsError()) return a;
-    if (b.IsError()) return b;
-    if (a.IsNumber() && b.IsNumber()) {
-        return Value(a.AsDouble() - b.AsDouble());
-    }
-    if (a.IsString() && b.IsString()) return string_sub(a, b);
-    return value_operator_type_error("-", a, b);
+    if (a.IsNumber() && b.IsNumber()) return Value(a.AsDouble() - b.AsDouble());
+    return value_sub_slow(a, b);
 }
 
 inline bool operator<(Value a, Value b) {
@@ -608,37 +589,23 @@ inline bool operator>=(Value a, Value b) { return !(a < b); }
 
 extern Value value_mult_nonnumeric(Value a, Value b);
 inline Value operator*(Value a, Value b) {
-    if (a.IsError()) return a;
-    if (b.IsError()) return b;
-    if (a.IsNumber() && b.IsNumber()) {
-        return Value(a.AsDouble() * b.AsDouble());
-    }
-    return value_mult_nonnumeric(a, b);
+    if (a.IsNumber() && b.IsNumber()) return Value(a.AsDouble() * b.AsDouble());
+    return value_mult_slow(a, b);
 }
 
 inline Value operator/(Value a, Value b) {
-    if (a.IsError()) return a;
-    if (b.IsError()) return b;
-    if (b.IsNumber()) {
-        if (a.IsNumber()) return Value(a.AsDouble() / b.AsDouble());
-        if (a.IsString() || a.IsList()) return value_mult_nonnumeric(a, Value(1.0) / b);
-    }
-    return value_operator_type_error("/", a, b);
+    if (a.IsNumber() && b.IsNumber()) return Value(a.AsDouble() / b.AsDouble());
+    return value_div_slow(a, b);
 }
 
 inline Value operator%(Value a, Value b) {
-    if (a.IsError()) return a;
-    if (b.IsError()) return b;
     if (a.IsNumber() && b.IsNumber()) return Value(fmod(a.AsDouble(), b.AsDouble()));
-    return value_operator_type_error("%", a, b);
+    return value_mod_slow(a, b);
 }
 
 inline Value Value::Pow(Value b) const {
-    Value a = *this;
-    if (a.IsError()) return a;
-    if (b.IsError()) return b;
-    if (a.IsNumber() && b.IsNumber()) return Value(pow(a.AsDouble(), b.AsDouble()));
-    return value_operator_type_error("^", a, b);
+    if (IsNumber() && b.IsNumber()) return Value(pow(AsDouble(), b.AsDouble()));
+    return value_pow_slow(*this, b);
 }
 
 int  value_compare(Value a, Value b);

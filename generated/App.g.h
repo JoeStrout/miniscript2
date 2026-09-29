@@ -14,8 +14,12 @@ struct App {
 	public: static bool visMode;
 	public: static bool quietMode;
 	public: static bool testMode;
+	public: static bool interactiveMode;
 
 	public: static void MainProgram(List<String> args);
+
+	// Print the startup banner shown on entering the REPL.
+	private: static void PrintBanner();
 
 	// Print usage/help text to standard output.
 	private: static void PrintUsage(String progName);
@@ -62,7 +66,10 @@ struct App {
 	// Returns the source string, or null if the index is out of range.
 	private: static String RecallInput(String indexStr);
 
-	private: static void RunREPL();
+	// Run the interactive REPL.  Pass an Interpreter that has already run a
+	// script (for -i) to continue in that script's namespace, or null to start
+	// fresh.
+	private: static void RunREPL(Interpreter interp);
 
 }; // end of struct App
 

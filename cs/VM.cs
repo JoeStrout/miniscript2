@@ -758,6 +758,13 @@ public class VM {
 		IsRunning = false;
 	}
 
+	// Forget a previous exit request, so a host that carries on after the
+	// program exited (e.g. into a REPL, with -i) isn't told to exit again.
+	public void ClearExitRequest() {
+		ExitRequested = false;
+		ExitCode = 0;
+	}
+
 	// Stop the VM with a runtime error described by a string message.
 	// Creates an error Value and stores it in Error.  The stack trace is
 	// attached later (see FinalizeErrorStackTrace), once VM state has been

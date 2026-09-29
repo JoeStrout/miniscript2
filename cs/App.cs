@@ -47,6 +47,7 @@ public struct App {
 	public static bool visMode = false;
 	public static bool quietMode = false;
 	public static bool testMode = false;
+	public static bool interactiveMode = false;
 
 	public static void MainProgram(List<String> args) {
 		// CPP: value_init_constants();
@@ -92,6 +93,7 @@ public struct App {
 				else if (arg == "--test") testMode = true;
 				else if (arg == "--vis") visMode = true;
 				else if (arg == "--quiet") quietMode = true;
+				else if (arg == "--interactive") interactiveMode = true;
 				else { UsageError(progName, StringUtils.Format("unknown option: {0}", arg)); return; }
 				argIdx++;
 			} else {
@@ -104,6 +106,7 @@ public struct App {
 					else if (ch == "v") { PrintVersion(); return; }
 					else if (ch == "d") debugMode = true;
 					else if (ch == "q") quietMode = true;
+					else if (ch == "i") interactiveMode = true;
 					else if (ch == "c") {
 						// The rest of this argument is the code; if there is no
 						// rest, the code is the next argument.
@@ -141,24 +144,11 @@ public struct App {
 		}
 		ShellIntrinsics.SetShellArgs(args, shellArgsStart);
 
-		/*** BEGIN CPP_ONLY ***
-		#if VM_USE_COMPUTED_GOTO
-		#define VARIANT "(goto)"
-		#else
-		#define VARIANT "(switch)"
-		#endif
-		*** END CPP_ONLY ***/
 		// The startup banner is for interactive use only: it appears when we're
 		// about to enter the REPL, and not when running a script or -c code.
+		// (With -i, it appears later, after the script and before the REPL.)
 		bool enteringREPL = (inlineCode == null && fileArgIndex == -1 && !testMode);
-		if (enteringREPL && !quietMode) {
-			IOHelper.Print("MiniScript 2.0", TextStyle.Strong);
-			IOHelper.Print(
-				"Build: C# version", // CPP: "Build: C++ " VARIANT " version, built " __DATE__ " " __TIME__,
-				TextStyle.Subdued
-			);
-			IOHelper.Print("Enter !help for REPL help.", TextStyle.Subdued);
-		}
+		if (enteringREPL && !quietMode) PrintBanner();
 
 		if (testMode) {
 			IOHelper.Print("Running unit tests...");
@@ -207,13 +197,15 @@ public struct App {
 		setenv("MS_SCRIPT_DIR", ".", 1);
 		*** END CPP_ONLY ***/
 
-		// Handle inline code (-c), file argument, or REPL
+		// Handle inline code (-c), file argument, or REPL.  With -i, the
+		// interpreter that ran the script (or -c code) is kept and handed to the
+		// REPL, so the script's globals are still there to inspect.
+		Interpreter interp = null;
 		if (inlineCode != null) {
 			if (debugMode) IOHelper.Print(StringUtils.Format("Compiling: {0}", inlineCode));
-			Interpreter interp = CreateInterpreter();
+			interp = CreateInterpreter();
 			interp.Reset(inlineCode);
 			RunInterpreter(interp);
-			if (interp.ExitRequested()) DoExit(interp.ExitCode());
 		} else if (fileArgIndex != -1) {
 			String filePath = args[fileArgIndex];
 			//*** BEGIN CS_ONLY ***
@@ -230,7 +222,7 @@ public struct App {
 				setenv("MS_SCRIPT_DIR", scriptDir.c_str(), 1);
 			}
 			*** END CPP_ONLY ***/
-			Interpreter interp = CreateInterpreter();
+			interp = CreateInterpreter();
 			if (filePath.EndsWith(".ms")) {
 				// Source file: read, join, and compile via Interpreter
 				if (debugMode) IOHelper.Print(StringUtils.Format("Reading source file: {0}", filePath));
@@ -247,7 +239,6 @@ public struct App {
 					interp.SourceFile = GetPathFilename(filePath);
 					interp.Reset(source);
 					RunInterpreter(interp);
-					if (interp.ExitRequested()) DoExit(interp.ExitCode());
 				}
 			} else {
 				// Assembly file (.msa or any other extension)
@@ -255,13 +246,43 @@ public struct App {
 				if (functions != null) {
 					interp.Reset(functions);
 					RunInterpreter(interp);
-					if (interp.ExitRequested()) DoExit(interp.ExitCode());
 				}
+			}
+		}
+
+		if (interp != null) {
+			// We ran a script or -c code; continue into the REPL only with -i.
+			// There, `exit` ends just the script (as in Python), so clear the
+			// request before the REPL starts polling for one of its own.
+			if (interactiveMode) {
+				if (interp.vm != null) interp.vm.ClearExitRequest();
+				IOHelper.Print("");	// separate the script's output from the REPL
+				if (!quietMode) PrintBanner();
+				RunREPL(interp);
+			} else if (interp.ExitRequested()) {
+				DoExit(interp.ExitCode());
 			}
 		} else if (!testMode) {
 			// No file or inline code: enter REPL mode
-			RunREPL();
+			RunREPL(null);
 		}
+	}
+
+	// Print the startup banner shown on entering the REPL.
+	private static void PrintBanner() {
+		/*** BEGIN CPP_ONLY ***
+		#if VM_USE_COMPUTED_GOTO
+		#define VARIANT "(goto)"
+		#else
+		#define VARIANT "(switch)"
+		#endif
+		*** END CPP_ONLY ***/
+		IOHelper.Print("MiniScript 2.0", TextStyle.Strong);
+		IOHelper.Print(
+			"Build: C# version", // CPP: "Build: C++ " VARIANT " version, built " __DATE__ " " __TIME__,
+			TextStyle.Subdued
+		);
+		IOHelper.Print("Enter !help for REPL help.", TextStyle.Subdued);
 	}
 
 	// Print usage/help text to standard output.
@@ -273,6 +294,8 @@ public struct App {
 		IOHelper.Print("Options:");
 		IOHelper.Print("  -c CODE        run CODE directly instead of a script file");
 		IOHelper.Print("  -d, --debug    print diagnostic detail while compiling and running");
+		IOHelper.Print("  -i, --interactive");
+		IOHelper.Print("                 enter the REPL after running the script or -c code");
 		IOHelper.Print("  -q, --quiet    suppress the startup banner in the REPL");
 		IOHelper.Print("      --vis      run with VM visualization");
 		IOHelper.Print("      --test     run the unit and integration test suites");
@@ -693,11 +716,14 @@ public struct App {
 		return CoreIntrinsics.replInList.ListGet(idx).AsCString();
 	}
 
-	private static void RunREPL() {
+	// Run the interactive REPL.  Pass an Interpreter that has already run a
+	// script (for -i) to continue in that script's namespace, or null to start
+	// fresh.
+	private static void RunREPL(Interpreter interp) {
 		CoreIntrinsics.replInList = Value.make_list(0);
 		CoreIntrinsics.replOutList = Value.make_list(0);
 
-		Interpreter interp = new Interpreter();
+		if (interp == null) interp = new Interpreter();
 		//*** BEGIN CS_ONLY ***
 		interp.standardOutput = (String s, bool eol) => { IOHelper.Print(s, TextStyle.Strong); };
 		interp.errorOutput = (String s, bool eol) => { IOHelper.Print(s, TextStyle.Error); };

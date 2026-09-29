@@ -292,6 +292,7 @@ initField
 drawField
 done = false
 nextDownTime = time
+
 while not done
 	yield
 	

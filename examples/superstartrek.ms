@@ -30,7 +30,7 @@ printMark = function(s)
 	pos = -1
 	while pos+1 < s.len
 		nextPos = s.indexOf("\", pos)
-		if nextPos < 0 then nextPos = pos.len
+		if nextPos == null then nextPos = s.len
 		if boldOn then code = vt.bold + vt.textColor(color.yellow) else code = vt.normal
 		boldOn = not boldOn
 		print code + s[pos+1:nextPos], ""
@@ -965,7 +965,6 @@ Game.shieldControl = function
 end function
 
 Game.computer = function
-	print stackTrace
 	galaxy = self.galaxy
 	ship = galaxy.ship
 	if ship.deviceStatus[7] < 0 then

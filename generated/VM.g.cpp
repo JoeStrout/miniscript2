@@ -515,6 +515,10 @@ void VMStorage::RequestExit(Int32 resultCode) {
 	ExitCode = resultCode;
 	IsRunning = Boolean(false);
 }
+void VMStorage::ClearExitRequest() {
+	ExitRequested = Boolean(false);
+	ExitCode = 0;
+}
 void VMStorage::RaiseRuntimeError(String message) {
 	Error = ErrorTypes::RuntimeError(message);
 	_errorStackPending = Boolean(true);

@@ -269,6 +269,10 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	// above for why the state belongs to the VM rather than to the host.
 	public: void RequestExit(Int32 resultCode);
 
+	// Forget a previous exit request, so a host that carries on after the
+	// program exited (e.g. into a REPL, with -i) isn't told to exit again.
+	public: void ClearExitRequest();
+
 	// Stop the VM with a runtime error described by a string message.
 	// Creates an error Value and stores it in Error.  The stack trace is
 	// attached later (see FinalizeErrorStackTrace), once VM state has been
@@ -761,6 +765,10 @@ struct VM {
 	// above for why the state belongs to the VM rather than to the host.
 	public: inline void RequestExit(Int32 resultCode);
 
+	// Forget a previous exit request, so a host that carries on after the
+	// program exited (e.g. into a REPL, with -i) isn't told to exit again.
+	public: inline void ClearExitRequest();
+
 	// Stop the VM with a runtime error described by a string message.
 	// Creates an error Value and stores it in Error.  The stack trace is
 	// attached later (see FinalizeErrorStackTrace), once VM state has been
@@ -1077,6 +1085,7 @@ inline void VM::Reset(List<FuncDef> allFunctions) { return get()->Reset(allFunct
 inline void VM::Reset(List<FuncDef> allFunctions,Globals globals) { return get()->Reset(allFunctions, globals); }
 inline void VM::Stop() { return get()->Stop(); }
 inline void VM::RequestExit(Int32 resultCode) { return get()->RequestExit(resultCode); }
+inline void VM::ClearExitRequest() { return get()->ClearExitRequest(); }
 inline void VM::RaiseRuntimeError(String message) { return get()->RaiseRuntimeError(message); }
 inline void VM::RaiseRuntimeError(String format,Value arg) { return get()->RaiseRuntimeError(format, arg); }
 inline void VM::FinalizeErrorStackTrace() { return get()->FinalizeErrorStackTrace(); }

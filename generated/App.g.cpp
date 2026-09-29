@@ -48,6 +48,7 @@ bool App::debugMode = Boolean(false);
 bool App::visMode = Boolean(false);
 bool App::quietMode = Boolean(false);
 bool App::testMode = Boolean(false);
+bool App::interactiveMode = Boolean(false);
 void App::MainProgram(List<String> args) {
 	value_init_constants();
 	CoreIntrinsics::hostVersion = "2.0 FC2";
@@ -90,6 +91,7 @@ void App::MainProgram(List<String> args) {
 			else if (arg == "--test") testMode = Boolean(true);
 			else if (arg == "--vis") visMode = Boolean(true);
 			else if (arg == "--quiet") quietMode = Boolean(true);
+			else if (arg == "--interactive") interactiveMode = Boolean(true);
 			else { UsageError(progName, StringUtils::Format("unknown option: {0}", arg)); return; }
 			argIdx++;
 		} else {
@@ -102,6 +104,7 @@ void App::MainProgram(List<String> args) {
 				else if (ch == "v") { PrintVersion(); return; }
 				else if (ch == "d") debugMode = Boolean(true);
 				else if (ch == "q") quietMode = Boolean(true);
+				else if (ch == "i") interactiveMode = Boolean(true);
 				else if (ch == "c") {
 					// The rest of this argument is the code; if there is no
 					// rest, the code is the next argument.
@@ -139,22 +142,11 @@ void App::MainProgram(List<String> args) {
 	}
 	ShellIntrinsics::SetShellArgs(args, shellArgsStart);
 
-	#if VM_USE_COMPUTED_GOTO
-	#define VARIANT "(goto)"
-	#else
-	#define VARIANT "(switch)"
-	#endif
 	// The startup banner is for interactive use only: it appears when we're
 	// about to enter the REPL, and not when running a script or -c code.
+	// (With -i, it appears later, after the script and before the REPL.)
 	bool enteringREPL = (IsNull(inlineCode) && fileArgIndex == -1 && !testMode);
-	if (enteringREPL && !quietMode) {
-		IOHelper::Print("MiniScript 2.0", TextStyle::Strong);
-		IOHelper::Print(
-			"Build: C++ " VARIANT " version, built " __DATE__ " " __TIME__,
-			TextStyle::Subdued
-		);
-		IOHelper::Print("Enter !help for REPL help.", TextStyle::Subdued);
-	}
+	if (enteringREPL && !quietMode) PrintBanner();
 
 	if (testMode) {
 		IOHelper::Print("Running unit tests...");
@@ -189,13 +181,15 @@ void App::MainProgram(List<String> args) {
 	// Default MS_SCRIPT_DIR to the current directory; overridden below for script files.
 	setenv("MS_SCRIPT_DIR", ".", 1);
 
-	// Handle inline code (-c), file argument, or REPL
+	// Handle inline code (-c), file argument, or REPL.  With -i, the
+	// interpreter that ran the script (or -c code) is kept and handed to the
+	// REPL, so the script's globals are still there to inspect.
+	Interpreter interp = nullptr;
 	if (!IsNull(inlineCode)) {
 		if (debugMode) IOHelper::Print(StringUtils::Format("Compiling: {0}", inlineCode));
-		Interpreter interp = CreateInterpreter();
+		interp = CreateInterpreter();
 		interp.Reset(inlineCode);
 		RunInterpreter(interp);
-		if (interp.ExitRequested()) DoExit(interp.ExitCode());
 	} else if (fileArgIndex != -1) {
 		String filePath = args[fileArgIndex];
 		{
@@ -206,7 +200,7 @@ void App::MainProgram(List<String> args) {
 			String scriptDir = (sep >= 0) ? fp.Substring(0, sep) : String(".");
 			setenv("MS_SCRIPT_DIR", scriptDir.c_str(), 1);
 		}
-		Interpreter interp = CreateInterpreter();
+		interp = CreateInterpreter();
 		if (filePath.EndsWith(".ms")) {
 			// Source file: read, join, and compile via Interpreter
 			if (debugMode) IOHelper::Print(StringUtils::Format("Reading source file: {0}", filePath));
@@ -223,7 +217,6 @@ void App::MainProgram(List<String> args) {
 				interp.set_SourceFile(GetPathFilename(filePath));
 				interp.Reset(source);
 				RunInterpreter(interp);
-				if (interp.ExitRequested()) DoExit(interp.ExitCode());
 			}
 		} else {
 			// Assembly file (.msa or any other extension)
@@ -231,13 +224,39 @@ void App::MainProgram(List<String> args) {
 			if (!IsNull(functions)) {
 				interp.Reset(functions);
 				RunInterpreter(interp);
-				if (interp.ExitRequested()) DoExit(interp.ExitCode());
 			}
+		}
+	}
+
+	if (!IsNull(interp)) {
+		// We ran a script or -c code; continue into the REPL only with -i.
+		// There, `exit` ends just the script (as in Python), so clear the
+		// request before the REPL starts polling for one of its own.
+		if (interactiveMode) {
+			if (!IsNull(interp.vm())) interp.vm().ClearExitRequest();
+			IOHelper::Print("");	// separate the script's output from the REPL
+			if (!quietMode) PrintBanner();
+			RunREPL(interp);
+		} else if (interp.ExitRequested()) {
+			DoExit(interp.ExitCode());
 		}
 	} else if (!testMode) {
 		// No file or inline code: enter REPL mode
-		RunREPL();
+		RunREPL(nullptr);
 	}
+}
+void App::PrintBanner() {
+	#if VM_USE_COMPUTED_GOTO
+	#define VARIANT "(goto)"
+	#else
+	#define VARIANT "(switch)"
+	#endif
+	IOHelper::Print("MiniScript 2.0", TextStyle::Strong);
+	IOHelper::Print(
+		"Build: C++ " VARIANT " version, built " __DATE__ " " __TIME__,
+		TextStyle::Subdued
+	);
+	IOHelper::Print("Enter !help for REPL help.", TextStyle::Subdued);
 }
 void App::PrintUsage(String progName) {
 	IOHelper::Print(StringUtils::Format("Usage: {0} [options] [script.ms [args...]]", progName));
@@ -247,6 +266,8 @@ void App::PrintUsage(String progName) {
 	IOHelper::Print("Options:");
 	IOHelper::Print("  -c CODE        run CODE directly instead of a script file");
 	IOHelper::Print("  -d, --debug    print diagnostic detail while compiling and running");
+	IOHelper::Print("  -i, --interactive");
+	IOHelper::Print("                 enter the REPL after running the script or -c code");
 	IOHelper::Print("  -q, --quiet    suppress the startup banner in the REPL");
 	IOHelper::Print("      --vis      run with VM visualization");
 	IOHelper::Print("      --test     run the unit and integration test suites");
@@ -623,11 +644,11 @@ String App::RecallInput(String indexStr) {
 	if (idx < 0 || idx >= total) return nullptr;
 	return CoreIntrinsics::replInList.ListGet(idx).AsCString();
 }
-void App::RunREPL() {
+void App::RunREPL(Interpreter interp) {
 	CoreIntrinsics::replInList = Value::make_list(0);
 	CoreIntrinsics::replOutList = Value::make_list(0);
 
-	Interpreter interp =  Interpreter::New();
+	if (IsNull(interp)) interp =  Interpreter::New();
 	interp.set_standardOutput([](String s, Boolean) { IOHelper::Print(s, TextStyle::Strong); });
 	interp.set_errorOutput([](String s, Boolean) { IOHelper::Print(s, TextStyle::Error); });
 

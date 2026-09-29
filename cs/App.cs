@@ -583,8 +583,12 @@ public struct App {
 	}
 
 	// Get one line of REPL input.  Builds the history-aware prompt, handles !
-	// metacommands, and returns the line to hand to the interpreter — or null on EOF.
-	private static String GetREPLInput(Interpreter interp) {
+	// metacommands, and sets `line` to the line to hand to the interpreter.
+	// Returns false on EOF.  (We can't signal EOF with a null line, because on
+	// the C++ side an empty line -- which is perfectly valid -- is also null.)
+	private static Boolean GetREPLInput(Interpreter interp, out String line) {
+		line = null;
+		String input;
 		while (true) {
 			// Build prompt: " _in[N]: " for a fresh line, or a matching-width
 			// continuation prompt whose spaces align with the _in prompt.
@@ -601,9 +605,8 @@ public struct App {
 			}
 
 			// Read one raw line.
-			String line;
 			//*** BEGIN CS_ONLY ***
-			line = IOHelper.Input(prompt, TextStyle.Subdued, TextStyle.Normal);
+			if (!IOHelper.TryInput(prompt, out input, TextStyle.Subdued, TextStyle.Normal)) return false;
 			//*** END CS_ONLY ***
 			/*** BEGIN CPP_ONLY ***
 			#if USE_EDITLINE
@@ -611,20 +614,18 @@ public struct App {
 			  IOHelper::GetStyleTermCode(TextStyle::Normal);
 			char* rawLine = readline(styledPrompt.c_str());
 			IOHelper::NoteStyleSet(TextStyle::Normal);
-			if (!rawLine) return String(nullptr);
-			line = rawLine;
+			if (!rawLine) return false;
+			input = rawLine;
 			if (rawLine[0] != '\0') add_history(rawLine);
 			free(rawLine);
 			#else
-			line = IOHelper::Input(prompt, TextStyle::Subdued, TextStyle::Normal);
+			if (!IOHelper::TryInput(prompt, &input, TextStyle::Subdued, TextStyle::Normal)) return false;
 			#endif
 			*** END CPP_ONLY ***/
 
-			if (line == null) return null; // CPP: if (IsNull(line)) return String(nullptr);
-
 			// Handle ! metacommands (only valid on the first line of an interaction).
-			if (!interp.NeedMoreInput() && line.Length > 0 && line[0] == '!') {
-				String meta = line.Substring(1).Trim();
+			if (!interp.NeedMoreInput() && input.Length > 0 && input[0] == '!') {
+				String meta = input.Substring(1).Trim();
 				// !help — show available metacommands
 				if (meta == "help" || meta == "") {
 					IOHelper.Print("REPL metacommands (prefix with !):", TextStyle.Subdued);
@@ -649,12 +650,14 @@ public struct App {
 					continue;
 				}
 				IOHelper.Print(recalled, TextStyle.Subdued); // show what we're replaying
-				return recalled;
+				line = recalled;
+				return true;
 			}
 
-			return line;
+			line = input;
+			return true;
 		}
-		// CPP: return String(nullptr);	// unreachable; silences compiler warning
+		// CPP: return false;	// unreachable; silences compiler warning
 	}
 
 	// Parse a non-negative integer from a string.  Returns -1 on failure.
@@ -743,8 +746,12 @@ public struct App {
 		Value implVal;
 		while (true) {
 			bool needingMoreBefore = interp.NeedMoreInput();
-			String line = GetREPLInput(interp);
-			if (line == null) break; // CPP: if (IsNull(line)) break;
+			String line;
+			if (!GetREPLInput(interp, out line)) break;
+
+			// A blank line at the start of an interaction does nothing; just
+			// prompt again.  (Within a multi-line block, it's passed along.)
+			if (!needingMoreBefore && String.IsNullOrEmpty(line.Trim())) continue;
 
 			// Accumulate multi-line input.
 			if (!needingMoreBefore) {

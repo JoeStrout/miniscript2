@@ -52,8 +52,10 @@ struct App {
 	private: static void RunInterpreter(Interpreter interp);
 
 	// Get one line of REPL input.  Builds the history-aware prompt, handles !
-	// metacommands, and returns the line to hand to the interpreter — or null on EOF.
-	private: static String GetREPLInput(Interpreter interp);
+	// metacommands, and sets `line` to the line to hand to the interpreter.
+	// Returns false on EOF.  (We can't signal EOF with a null line, because on
+	// the C++ side an empty line -- which is perfectly valid -- is also null.)
+	private: static Boolean GetREPLInput(Interpreter interp, String* line);
 
 	// Parse a non-negative integer from a string.  Returns -1 on failure.
 	private: static Int32 ParseInt(String s);

@@ -526,7 +526,9 @@ void App::RunInterpreter(Interpreter interp) {
 		vm.ReportRuntimeError();	// (otherwise, RunUntilDone already reported it)
 	}
 }
-String App::GetREPLInput(Interpreter interp) {
+Boolean App::GetREPLInput(Interpreter interp,String* line) {
+	*line = nullptr;
+	String input;
 	while (Boolean(true)) {
 		// Build prompt: " _in[N]: " for a fresh line, or a matching-width
 		// continuation prompt whose spaces align with the _in prompt.
@@ -543,25 +545,22 @@ String App::GetREPLInput(Interpreter interp) {
 		}
 
 		// Read one raw line.
-		String line;
 		#if USE_EDITLINE
 		String styledPrompt = IOHelper::GetStyleTermCode(TextStyle::Subdued) + prompt +
 		  IOHelper::GetStyleTermCode(TextStyle::Normal);
 		char* rawLine = readline(styledPrompt.c_str());
 		IOHelper::NoteStyleSet(TextStyle::Normal);
-		if (!rawLine) return String(nullptr);
-		line = rawLine;
+		if (!rawLine) return false;
+		input = rawLine;
 		if (rawLine[0] != '\0') add_history(rawLine);
 		free(rawLine);
 		#else
-		line = IOHelper::Input(prompt, TextStyle::Subdued, TextStyle::Normal);
+		if (!IOHelper::TryInput(prompt, &input, TextStyle::Subdued, TextStyle::Normal)) return false;
 		#endif
 
-		if (IsNull(line)) return String(nullptr);
-
 		// Handle ! metacommands (only valid on the first line of an interaction).
-		if (!interp.NeedMoreInput() && line.Length() > 0 && line[0] == '!') {
-			String meta = line.Substring(1).Trim();
+		if (!interp.NeedMoreInput() && input.Length() > 0 && input[0] == '!') {
+			String meta = input.Substring(1).Trim();
 			// !help — show available metacommands
 			if (meta == "help" || meta == "") {
 				IOHelper::Print("REPL metacommands (prefix with !):", TextStyle::Subdued);
@@ -586,12 +585,14 @@ String App::GetREPLInput(Interpreter interp) {
 				continue;
 			}
 			IOHelper::Print(recalled, TextStyle::Subdued); // show what we're replaying
-			return recalled;
+			*line = recalled;
+			return Boolean(true);
 		}
 
-		return line;
+		*line = input;
+		return Boolean(true);
 	}
-	return String(nullptr);	// unreachable; silences compiler warning
+	return false;	// unreachable; silences compiler warning
 }
 Int32 App::ParseInt(String s) {
 	if (s.Length() == 0) return -1;
@@ -662,8 +663,12 @@ void App::RunREPL(Interpreter interp) {
 	Value implVal;
 	while (Boolean(true)) {
 		bool needingMoreBefore = interp.NeedMoreInput();
-		String line = GetREPLInput(interp);
-		if (IsNull(line)) break;
+		String line;
+		if (!GetREPLInput(interp, &line)) break;
+
+		// A blank line at the start of an interaction does nothing; just
+		// prompt again.  (Within a multi-line block, it's passed along.)
+		if (!needingMoreBefore && String::IsNullOrEmpty(line.Trim())) continue;
 
 		// Accumulate multi-line input.
 		if (!needingMoreBefore) {

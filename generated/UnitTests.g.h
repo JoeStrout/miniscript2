@@ -146,6 +146,17 @@ class UnitTests {
 	// variable, and that they appear in `locals`.
 	public: static Boolean TestSpilledLocals();
 
+	// A single unlimited vm.Run() must carry an ordinary program (one that does
+	// nothing to yield) all the way to the end.  If it returns while the VM is
+	// still running, some opcode handler left the dispatch loop instead of
+	// continuing to the next instruction -- in the C++ computed-goto build, this
+	// is what a plain `break` in a VM_CASE (where VM_NEXT() was meant) does.
+	// Such a bug gives correct results, but the host sleeps between slices, so
+	// it shows up only as a drastic slowdown.  Keep this program touching a
+	// broad range of opcodes (calls/returns, map and list stores, loops, isa,
+	// comparisons) so that a stray exit in any of them is caught here.
+	public: static Boolean TestRunWithoutYield();
+
 	// A property setter that arrives in a host dictionary has to be noticed as
 	// the map is born (GCMap.SeedOrder): the host's stores never pass the VM's
 	// assignment path, so a setter nobody noticed would be silently dead -- it

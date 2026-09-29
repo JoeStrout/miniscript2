@@ -114,12 +114,21 @@
 	#define VM_DISPATCH_TOP() \
 		vm_dispatch_top: \
 		if (!IsRunning) goto vm_dispatch_bottom;
+	// The case labels sit inside a dummy `switch (0)`, so that a plain `break`
+	// left in a VM_CASE (where VM_NEXT() was meant) lands just past it, and so
+	// goes on to the next instruction, exactly as it does in the switch build.
+	// Without this, such a `break` would exit the whole dispatch loop -- making
+	// RunInner return after every execution of that opcode -- which gives
+	// correct results but a drastic, silent slowdown.  The compiler removes the
+	// dummy switch entirely.  (A `break` inside a loop within a case still
+	// exits only that loop.)
 	#define VM_DISPATCH_BEGIN() \
+		switch (0) { default: \
 		goto *vm_labels[(int)opcode];
 
 	#define VM_CASE(OP)     L_##OP:
 	#define VM_NEXT()       goto vm_dispatch_top
-	#define VM_DISPATCH_END()
+	#define VM_DISPATCH_END() } goto vm_dispatch_top;
 	#define VM_DISPATCH_BOTTOM() vm_dispatch_bottom:
 #else
 	#define VM_DISPATCH_TOP() /* unused */

@@ -1589,6 +1589,56 @@ Boolean UnitTests::TestSpilledLocals() {
 	if (!ok) IOHelper::Print("TestSpilledLocals FAILED");
 	return ok;
 }
+Boolean UnitTests::TestRunWithoutYield() {
+	Boolean ok = Boolean(true);
+	String source =  String::New("fib = function(n)\n");
+	source = source + "\tif n < 2 then return n\n";
+	source = source + "\treturn fib(n-1) + fib(n-2)\n";
+	source = source + "end function\n";
+	source = source + "m = {}\nlst = []\ntotal = 0\n";
+	source = source + "for i in range(1, 20)\n";
+	source = source + "\tm[i] = i * 2\n\tlst.push i\n\ttotal = total + m[i]\n";
+	source = source + "end for\n";
+	source = source + "Obj = {\"v\": 1}\no = new Obj\no.v = 5\nisObj = o isa Obj\n";
+	source = source + "s = \"abc\" + str(total)\n";
+	source = source + "while total > 100\n\ttotal = total - 7\nend while\n";
+	source = source + "result = [fib(10), total, lst[-1], isObj, s.len, o.v]\n";
+
+	Interpreter interp;
+	interp =  Interpreter::New(source);
+	interp.Compile();
+	ok = ok && Assert(!IsNull(interp.vm()) && interp.vm().IsRunning(),
+		"run-without-yield test program should compile and be ready to run");
+	if (!ok) {
+		IOHelper::Print("TestRunWithoutYield FAILED");
+		return Boolean(false);
+	}
+	interp.vm().Run();
+	ok = ok && Assert(!interp.vm().IsRunning(),
+		"a single vm.Run() should run the program to completion; it returned early, so some opcode handler exited the dispatch loop (e.g. a plain `break` in a VM_CASE)");
+	if (!ok) {
+		IOHelper::Print("TestRunWithoutYield FAILED");
+		return Boolean(false);
+	}
+	ok = ok && Assert(interp.vm().Error().IsNull(), "run-without-yield test program should not error");
+
+	Value result = interp.GetGlobalValue("result");
+	ok = ok && Assert(result.IsList() && result.ListCount() == 6,
+		"run-without-yield test should produce a list of 6");
+	if (!ok) {
+		IOHelper::Print("TestRunWithoutYield FAILED");
+		return Boolean(false);
+	}
+	ok = ok && Assert(result.ListGet(0) == Value(55), "fib(10) should be 55");
+	ok = ok && Assert(result.ListGet(1) == Value(98), "total should end at 98");
+	ok = ok && Assert(result.ListGet(2) == Value(20), "lst[-1] should be 20");
+	ok = ok && Assert(result.ListGet(3) == Value(1), "o isa Obj should be true");
+	ok = ok && Assert(result.ListGet(4) == Value(6), "s.len should be 6");
+	ok = ok && Assert(result.ListGet(5) == Value(5), "o.v should be 5");
+
+	if (!ok) IOHelper::Print("TestRunWithoutYield FAILED");
+	return ok;
+}
 Boolean UnitTests::TestHostMapSetters() {
 	Dictionary<Value, Value> plain =  Dictionary<Value, Value>::New();
 	plain[Value::make_string("x")] = Value(1.0);
@@ -1681,6 +1731,7 @@ Boolean UnitTests::RunAll() {
 	&& TestGlobalsSwitch()
 		&& TestRunFunction()
 		&& TestSpilledLocals()
+		&& TestRunWithoutYield()
 		&& TestGCHandle()
 		&& TestGCSlotTrim()
 		&& TestGCAllocTrigger();

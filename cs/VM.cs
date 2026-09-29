@@ -2538,7 +2538,11 @@ public class VM {
 					// landed in a register the next expression overwrote.  Names must
 					// be cleared after the Gather above, which reads them to tell
 					// live entries from dead ones.
-					for (Int32 ni = 0; ni < curFunc.MaxRegs; ni++) { // CPP: for (Int32 ni = 0; ni < curFuncRaw->MaxRegs; ni++) {
+					// (maxRegs is pulled out so that the `for` line itself needs no
+					// C++ override comment: the transpiler does not count the braces
+					// on such lines, which throws off its VM_CASE/VM_NEXT tracking.)
+					Int32 maxRegs = curFunc.MaxRegs; // CPP: Int32 maxRegs = curFuncRaw->MaxRegs;
+					for (Int32 ni = 0; ni < maxRegs; ni++) {
 						names[baseIndex + ni] = Value.Null;
 					}
 

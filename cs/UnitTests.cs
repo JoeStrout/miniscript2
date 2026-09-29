@@ -1709,6 +1709,66 @@ public static class UnitTests {
 		return ok;
 	}
 
+	// A single unlimited vm.Run() must carry an ordinary program (one that does
+	// nothing to yield) all the way to the end.  If it returns while the VM is
+	// still running, some opcode handler left the dispatch loop instead of
+	// continuing to the next instruction -- in the C++ computed-goto build, this
+	// is what a plain `break` in a VM_CASE (where VM_NEXT() was meant) does.
+	// Such a bug gives correct results, but the host sleeps between slices, so
+	// it shows up only as a drastic slowdown.  Keep this program touching a
+	// broad range of opcodes (calls/returns, map and list stores, loops, isa,
+	// comparisons) so that a stray exit in any of them is caught here.
+	public static Boolean TestRunWithoutYield() {
+		Boolean ok = true;
+		String source = new String("fib = function(n)\n");
+		source = source + "\tif n < 2 then return n\n";
+		source = source + "\treturn fib(n-1) + fib(n-2)\n";
+		source = source + "end function\n";
+		source = source + "m = {}\nlst = []\ntotal = 0\n";
+		source = source + "for i in range(1, 20)\n";
+		source = source + "\tm[i] = i * 2\n\tlst.push i\n\ttotal = total + m[i]\n";
+		source = source + "end for\n";
+		source = source + "Obj = {\"v\": 1}\no = new Obj\no.v = 5\nisObj = o isa Obj\n";
+		source = source + "s = \"abc\" + str(total)\n";
+		source = source + "while total > 100\n\ttotal = total - 7\nend while\n";
+		source = source + "result = [fib(10), total, lst[-1], isObj, s.len, o.v]\n";
+
+		Interpreter interp;
+		interp = new Interpreter(source);
+		interp.Compile();
+		ok = ok && Assert(interp.vm != null && interp.vm.IsRunning,
+			"run-without-yield test program should compile and be ready to run");
+		if (!ok) {
+			IOHelper.Print("TestRunWithoutYield FAILED");
+			return false;
+		}
+		interp.vm.Run();
+		ok = ok && Assert(!interp.vm.IsRunning,
+			"a single vm.Run() should run the program to completion; it returned early, so some opcode handler exited the dispatch loop (e.g. a plain `break` in a VM_CASE)");
+		if (!ok) {
+			IOHelper.Print("TestRunWithoutYield FAILED");
+			return false;
+		}
+		ok = ok && Assert(interp.vm.Error.IsNull(), "run-without-yield test program should not error");
+
+		Value result = interp.GetGlobalValue("result");
+		ok = ok && Assert(result.IsList() && result.ListCount() == 6,
+			"run-without-yield test should produce a list of 6");
+		if (!ok) {
+			IOHelper.Print("TestRunWithoutYield FAILED");
+			return false;
+		}
+		ok = ok && Assert(result.ListGet(0) == new Value(55), "fib(10) should be 55");
+		ok = ok && Assert(result.ListGet(1) == new Value(98), "total should end at 98");
+		ok = ok && Assert(result.ListGet(2) == new Value(20), "lst[-1] should be 20");
+		ok = ok && Assert(result.ListGet(3) == new Value(1), "o isa Obj should be true");
+		ok = ok && Assert(result.ListGet(4) == new Value(6), "s.len should be 6");
+		ok = ok && Assert(result.ListGet(5) == new Value(5), "o.v should be 5");
+
+		if (!ok) IOHelper.Print("TestRunWithoutYield FAILED");
+		return ok;
+	}
+
 	// A property setter that arrives in a host dictionary has to be noticed as
 	// the map is born (GCMap.SeedOrder): the host's stores never pass the VM's
 	// assignment path, so a setter nobody noticed would be silently dead -- it
@@ -1811,6 +1871,7 @@ public static class UnitTests {
 		&& TestGlobalsSwitch()
 			&& TestRunFunction()
 			&& TestSpilledLocals()
+			&& TestRunWithoutYield()
 			&& TestGCHandle()
 			&& TestGCSlotTrim()
 			&& TestGCAllocTrigger();

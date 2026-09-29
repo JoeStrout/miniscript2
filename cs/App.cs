@@ -51,7 +51,7 @@ public struct App {
 
 	public static void MainProgram(List<String> args) {
 		// CPP: value_init_constants();
-		CoreIntrinsics.hostVersion = "2.0 FC2";
+		CoreIntrinsics.hostVersion = "2.0 FC3";
 		CoreIntrinsics.hostName = "Command-Line";
 		/*** BEGIN CPP_ONLY ***
 		#if _WIN32 || _WIN64

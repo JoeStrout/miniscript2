@@ -3994,7 +3994,7 @@ cat.name = "Whiskers"
 f = "greet"
 print cat[f]
 --------------------------------
-FuncRef(Animal.greet, closure)
+Animal.greet=function()
 ================================
 ==== self: method inherited via __isa chain
 ================================
@@ -5981,9 +5981,9 @@ print funcs[0]
 print funcs[1]
 print funcs[2]
 --------------------------------
-FuncRef(@f1, closure)
-FuncRef(@f1, closure)
-FuncRef(@f1, closure)
+function()
+function()
+function()
 ================================
 ================================================================================
 ==== SECTION 27: NULL IN EXPRESSIONS
@@ -6579,7 +6579,7 @@ return globals
 end function
 print f
 ---------------------------------
-{"g": 99, "f": FuncRef(f, closure)}
+{"g": 99, "f": f=function()}
 ================================
 ==== outer from a nested function
 ================================
@@ -6593,7 +6593,7 @@ return inner
 end function
 print f
 ---------------------------------
-{"a": 10, "inner": FuncRef(inner, closure)}
+{"a": 10, "inner": inner=function()}
 ================================
 ==== outer at global scope equals globals
 ================================
@@ -6774,9 +6774,9 @@ print @"abc".upper
 m = {}
 print @m.hasIndex
 ---------------------------------
-FuncRef(len)
-FuncRef(upper)
-FuncRef(hasIndex)
+len=function(self)
+upper=function(self)
+hasIndex=function(self, index)
 ================================
 ==== address-of on bracket access is the same as bracket access
 ================================
@@ -7276,7 +7276,7 @@ foo = []
 foo.push ["random", @rnd]
 print foo
 --------------------------------
-[["random", FuncRef(rnd)]]
+[["random", rnd=function(seed)]]
 ================================
 ==== intrinsics() returns a map of named intrinsic functions (bracket syntax)
 ================================
@@ -7285,7 +7285,7 @@ print @m["abs"]
 fn = @m["abs"]
 print fn(-7)
 --------------------------------
-FuncRef(abs)
+abs=function(x=0)
 7
 ================================
 ==== intrinsics() returns a map of named intrinsic functions (dot syntax)
@@ -7294,7 +7294,7 @@ print @intrinsics.abs
 fn = @intrinsics.abs
 print fn(-7)
 --------------------------------
-FuncRef(abs)
+abs=function(x=0)
 7
 ==== bitAnd basic cases
 ================================

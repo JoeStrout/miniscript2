@@ -495,13 +495,28 @@ Value code_form(Value v, void* vm, int recursion_limit) {
     }
 
     if (v.IsFuncRef()) {
+        // Approximate the code that creates the function: its parameter list
+        // (with defaults), prefixed by "name=" unless it's anonymous (auto-
+        // named "@f..." by the compiler).
         MiniScript::FuncDef fn = v.FunctionDef();
-        Value outer = v.OuterVars();
-        if (!outer.IsNull())
-            std::snprintf(buf, sizeof buf, "FuncRef(%s, closure)", fn.Name().c_str());
-        else
-            std::snprintf(buf, sizeof buf, "FuncRef(%s)", fn.Name().c_str());
-        return Value::make_string(buf);
+        if (IsNull(fn)) return Value::make_string("<funcref?>");
+        List<Value> names = fn.ParamNames();
+        List<Value> defaults = fn.ParamDefaults();
+        String fname = fn.Name();
+        Value result = Value::make_string("function(");
+        if (!fname.Empty() && !fname.StartsWith("@")) {
+            result = Value::make_string((fname + "=function(").c_str());
+        }
+        for (int i = 0; i < names.Count(); i++) {
+            if (i > 0) result = string_concat(result, Value::make_string(", "));
+            result = string_concat(result, names[i]);
+            Value def = defaults[i];
+            if (!def.IsNull()) {
+                result = string_concat(result, Value::make_string("="));
+                result = string_concat(result, code_form(def, vm, recursion_limit - 1));
+            }
+        }
+        return string_concat(result, Value::make_string(")"));
     }
 
     if (v.IsError()) {

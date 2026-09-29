@@ -510,9 +510,19 @@ public readonly struct Value {
 		if (IsFuncRef()) {
 			GCFunction fr = GCManager.Functions.Get(ItemIndex());
 			if (fr.Func == null) return "<funcref?>";
-			return fr.OuterVars.IsNull()
-				? StringUtils.Format("FuncRef({0})", fr.Func.Name)
-				: StringUtils.Format("FuncRef({0}, closure)", fr.Func.Name);
+			// Approximate the code that creates the function: its parameter list
+			// (with defaults), prefixed by "name=" unless it's anonymous (auto-
+			// named "@f..." by the compiler).
+			List<string> parts = new List<string>(fr.Func.ParamNames.Count);
+			for (int i = 0; i < fr.Func.ParamNames.Count; i++) {
+				Value def = fr.Func.ParamDefaults[i];
+				string pname = fr.Func.ParamNames[i].ToString(vm);
+				parts.Add(def.IsNull() ? pname : pname + "=" + def.CodeForm(vm, recursionLimit - 1));
+			}
+			string sig = "function(" + String.Join(", ", parts) + ")";
+			string fname = fr.Func.Name;
+			if (String.IsNullOrEmpty(fname) || fname[0] == '@') return sig;
+			return fname + "=" + sig;
 		}
 		if (IsError()) {
 			GCError err = GCManager.Errors.Get(ItemIndex());

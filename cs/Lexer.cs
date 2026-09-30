@@ -86,7 +86,9 @@ public struct Lexer {
 	
 	[MethodImpl(AggressiveInlining)]
 	public static Boolean IsWhiteSpace(Char c) {
-		return Char.IsWhiteSpace(c); // CPP: return UnicodeCharIsWhitespace((long)c);
+		// Also treat zero-width space (U+200B) and BOM (U+FEFF) as whitespace;
+		// they are invisible, and some editors (e.g. Unity) insert them.
+		return Char.IsWhiteSpace(c) || c == '​' || c == '﻿'; // CPP: return UnicodeCharIsWhitespace((long)c) || c == 0x200B || c == 0xFEFF;
 	}
 		
 	[MethodImpl(AggressiveInlining)]

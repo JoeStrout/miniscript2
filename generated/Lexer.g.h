@@ -71,7 +71,9 @@ inline Boolean Lexer::IsDigit(Char c) {
 	return '0' <= c && c <= '9';
 }
 inline Boolean Lexer::IsWhiteSpace(Char c) {
-	return UnicodeCharIsWhitespace((long)c);
+	// Also treat zero-width space (U+200B) and BOM (U+FEFF) as whitespace;
+	// they are invisible, and some editors (e.g. Unity) insert them.
+	return UnicodeCharIsWhitespace((long)c) || c == 0x200B || c == 0xFEFF;
 }
 inline Boolean Lexer::IsIdentifierStartChar(Char c) {
 	return ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'

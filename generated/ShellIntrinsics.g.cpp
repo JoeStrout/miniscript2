@@ -36,6 +36,7 @@
     #define PATHSEP "\\"
 #else
     #include <sys/wait.h>
+    #include <signal.h>
     #include <fcntl.h>
     #include <unistd.h>
     #include <dirent.h>
@@ -62,12 +63,7 @@ List<String> ShellIntrinsics::_shellArgStrings = nullptr;
 Value ShellIntrinsics::_shellArgs = Value::Null;
 Value ShellIntrinsics::_envMap = Value::Null;
 const String ShellIntrinsics::kDefaultImportPath = "$MS_SCRIPT_DIR:$MS_SCRIPT_DIR/lib:$MS_EXE_DIR/lib";
-// C++ exec state: parallel arrays capped at 64 concurrent jobs.
-static FILE* _cppExecPipes[64];
-static String _cppExecOutputs[64];
-static Int32 _cppExecStatus[64];
-static bool _cppExecDone[64];
-static Int32 _execJobCount = 0;
+List<ExecJob> ShellIntrinsics::_execJobs = nullptr;
 Value ShellIntrinsics::_fileModuleMap = Value::Null;
 Value ShellIntrinsics::_fileHandleClassMap = Value::Null;
 Value ShellIntrinsics::_rawDataClassMap = Value::Null;
@@ -147,56 +143,196 @@ void ShellIntrinsics::SyncEnvMap() {
 		#endif
 	}
 }
-Value ShellIntrinsics::BeginExec(String cmd) {
-	Int32 idx = _execJobCount++;
-	_cppExecOutputs[idx] = "";
-	_cppExecStatus[idx] = 0;
-	_cppExecDone[idx] = false;
+Int32 ShellIntrinsics::StoreExecJob(ExecJob job) {
+	if (IsNull(_execJobs)) _execJobs =  List<ExecJob>::New();
+	for (Int32 i = 0; i < _execJobs.Count(); i++) {
+		if (!_execJobs[i].InUse) {
+			_execJobs[i] = job;
+			return i;
+		}
+	}
+	_execJobs.Add(job);
+	return _execJobs.Count() - 1;
+}
+Value ShellIntrinsics::BeginExec(String cmd,Double endTime) {
+	ExecJob job;
+	job.InUse = Boolean(true);
+	job.EndTime = endTime;
+	job.Output = "";
+	job.Errors = "";
 	// If the `key` module has the terminal in raw mode, drop to cooked first
-	// so the child process (which inherits this terminal on stdin/stderr)
-	// gets normal echo and line editing. Left cooked afterward; the next
-	// key operation re-enters raw mode.
+	// so the child process (which inherits this terminal on stdin) gets
+	// normal echo and line editing. Left cooked afterward; the next key
+	// operation re-enters raw mode.
 	Keyboard::EnterCookedMode();
 	#ifdef _WIN32
-		_cppExecPipes[idx] = _popen(cmd.c_str(), "r");
-	#else
-		_cppExecPipes[idx] = popen(cmd.c_str(), "r");
-		if (_cppExecPipes[idx]) {
-			fcntl(fileno(_cppExecPipes[idx]), F_SETFL, O_NONBLOCK);
+		// Create a pipe each for the child's stdout and stderr.  Only the write
+		// ends are inherited by the child.
+		SECURITY_ATTRIBUTES sa;
+		sa.nLength = sizeof(sa);
+		sa.bInheritHandle = TRUE;
+		sa.lpSecurityDescriptor = nullptr;
+		HANDLE outRd = nullptr, outWr = nullptr, errRd = nullptr, errWr = nullptr;
+		if (!CreatePipe(&outRd, &outWr, &sa, 0)) return Value::null;
+		if (!CreatePipe(&errRd, &errWr, &sa, 0)) {
+			CloseHandle(outRd); CloseHandle(outWr);
+			return Value::null;
 		}
+		SetHandleInformation(outRd, HANDLE_FLAG_INHERIT, 0);
+		SetHandleInformation(errRd, HANDLE_FLAG_INHERIT, 0);
+		STARTUPINFOA si;
+		ZeroMemory(&si, sizeof(si));
+		si.cb = sizeof(si);
+		si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+		si.hStdOutput = outWr;
+		si.hStdError = errWr;
+		si.dwFlags |= STARTF_USESTDHANDLES;
+		PROCESS_INFORMATION pi;
+		ZeroMemory(&pi, sizeof(pi));
+		// CreateProcessA may modify the command line, so give it a writable copy.
+		std::string cmdLine = std::string("cmd.exe /c ") + cmd.c_str();
+		std::vector<char> cmdBuf(cmdLine.begin(), cmdLine.end());
+		cmdBuf.push_back('\0');
+		BOOL ok = CreateProcessA(nullptr, cmdBuf.data(), nullptr, nullptr, TRUE,
+			0, nullptr, nullptr, &si, &pi);
+		// Close our copies of the write ends, so we see EOF when the child exits.
+		CloseHandle(outWr);
+		CloseHandle(errWr);
+		if (!ok) {
+			CloseHandle(outRd); CloseHandle(errRd);
+			return Value::null;
+		}
+		CloseHandle(pi.hThread);
+		job.ProcHandle = pi.hProcess;
+		job.OutPipe = outRd;
+		job.ErrPipe = errRd;
+	#else
+		// Create a pipe each for the child's stdout and stderr; element 0 is
+		// the read end, element 1 the write end.  Mark all four close-on-exec,
+		// so they don't leak into this or any later child process.
+		int outPipe[2], errPipe[2];
+		if (pipe(outPipe) != 0) return Value::null;
+		if (pipe(errPipe) != 0) {
+			close(outPipe[0]); close(outPipe[1]);
+			return Value::null;
+		}
+		fcntl(outPipe[0], F_SETFD, FD_CLOEXEC);
+		fcntl(outPipe[1], F_SETFD, FD_CLOEXEC);
+		fcntl(errPipe[0], F_SETFD, FD_CLOEXEC);
+		fcntl(errPipe[1], F_SETFD, FD_CLOEXEC);
+		const char* cmdC = cmd.c_str();
+		pid_t pid = fork();
+		if (pid < 0) {
+			close(outPipe[0]); close(outPipe[1]);
+			close(errPipe[0]); close(errPipe[1]);
+			return Value::null;
+		}
+		if (pid == 0) {
+			// Child process: send stdout and stderr into our pipes (dup2 clears
+			// close-on-exec on the new descriptors), then run the shell.
+			dup2(outPipe[1], STDOUT_FILENO);
+			dup2(errPipe[1], STDERR_FILENO);
+			execl("/bin/sh", "sh", "-c", cmdC, (char*)nullptr);
+			_exit(127);
+		}
+		// Parent process: close the write ends, so we see EOF when the child
+		// exits, and make the read ends non-blocking for polling.
+		close(outPipe[1]);
+		close(errPipe[1]);
+		fcntl(outPipe[0], F_SETFL, O_NONBLOCK);
+		fcntl(errPipe[0], F_SETFL, O_NONBLOCK);
+		job.Pid = pid;
+		job.OutFd = outPipe[0];
+		job.ErrFd = errPipe[0];
 	#endif
-	if (!_cppExecPipes[idx]) return Value::null;
-	return Value(idx);
+	return Value(StoreExecJob(job));
 }
-IntrinsicResult ShellIntrinsics::FinishExec(Value handle) {
+IntrinsicResult ShellIntrinsics::FinishExec(Value handle,Double now) {
 	Int32 idx = (Int32)handle.DoubleValue();
 	String output = "";
 	String errors = "";
 	Int32 status = 0;
-	if (!_cppExecDone[idx] && _cppExecPipes[idx]) {
-		char buf[256];
-		#ifdef _WIN32
-			int n = (int)fread(buf, 1, sizeof(buf) - 1, _cppExecPipes[idx]);
-			if (n > 0) { buf[n] = '\0'; _cppExecOutputs[idx] += buf; }
-			else if (feof(_cppExecPipes[idx])) {
-				_cppExecStatus[idx] = _pclose(_cppExecPipes[idx]);
-				_cppExecPipes[idx] = nullptr;
-				_cppExecDone[idx] = true;
+	Boolean timedOut = Boolean(false);
+	ExecJob& job = _execJobs[idx];
+	// Read whatever is available on a pipe, without blocking, and close it at EOF.
+	// (Capped per call, so a command producing output nonstop can't stall the VM.)
+	#ifdef _WIN32
+		auto drain = [](void*& pipe, String& dest) {
+			char buf[4096];
+			for (int i = 0; i < 256 && pipe; i++) {
+				DWORD avail = 0, n = 0;
+				if (!PeekNamedPipe((HANDLE)pipe, nullptr, 0, nullptr, &avail, nullptr)) {
+					CloseHandle((HANDLE)pipe);	// broken pipe: the writer has closed
+					pipe = nullptr;
+					break;
+				}
+				if (avail == 0) break;
+				DWORD toRead = avail < sizeof(buf) ? avail : (DWORD)sizeof(buf);
+				if (!ReadFile((HANDLE)pipe, buf, toRead, &n, nullptr) || n == 0) {
+					CloseHandle((HANDLE)pipe);
+					pipe = nullptr;
+					break;
+				}
+				dest += String(buf, (size_t)n);
 			}
-		#else
-			ssize_t n = read(fileno(_cppExecPipes[idx]), buf, sizeof(buf) - 1);
-			if (n > 0) { buf[n] = '\0'; _cppExecOutputs[idx] += buf; }
-			else if (n == 0 || (n < 0 && errno != EAGAIN)) {
-				int ws = pclose(_cppExecPipes[idx]);
-				_cppExecStatus[idx] = WIFEXITED(ws) ? WEXITSTATUS(ws) : -1;
-				_cppExecPipes[idx] = nullptr;
-				_cppExecDone[idx] = true;
+		};
+		DWORD waitResult = WaitForSingleObject((HANDLE)job.ProcHandle, 0);
+		drain(job.OutPipe, job.Output);
+		drain(job.ErrPipe, job.Errors);
+		if (waitResult == WAIT_TIMEOUT) {
+			if (now < job.EndTime) return IntrinsicResult(handle, false);
+			TerminateProcess((HANDLE)job.ProcHandle, 124);
+			WaitForSingleObject((HANDLE)job.ProcHandle, INFINITE);
+			timedOut = true;
+		} else {
+			DWORD code = 0;
+			status = GetExitCodeProcess((HANDLE)job.ProcHandle, &code) ? (Int32)code : -1;
+		}
+		CloseHandle((HANDLE)job.ProcHandle);
+		if (job.OutPipe) CloseHandle((HANDLE)job.OutPipe);
+		if (job.ErrPipe) CloseHandle((HANDLE)job.ErrPipe);
+	#else
+		auto drain = [](int& fd, String& dest) {
+			char buf[4096];
+			for (int i = 0; i < 256 && fd >= 0; i++) {
+				ssize_t n = read(fd, buf, sizeof(buf));
+				if (n > 0) dest += String(buf, (size_t)n);
+				else if (n < 0 && errno == EINTR) continue;
+				else if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) break;
+				else { close(fd); fd = -1; }	// EOF (or error)
 			}
-		#endif
+		};
+		// Check for exit before draining, so that once the child has exited,
+		// this drain picks up the last of its output.
+		int ws = 0;
+		pid_t waitResult = waitpid(job.Pid, &ws, WNOHANG);
+		drain(job.OutFd, job.Output);
+		drain(job.ErrFd, job.Errors);
+		if (waitResult == 0) {
+			if (now < job.EndTime) return IntrinsicResult(handle, false);
+			kill(job.Pid, SIGKILL);
+			waitpid(job.Pid, &ws, 0);
+			timedOut = true;
+		} else {
+			status = (waitResult > 0 && WIFEXITED(ws)) ? WEXITSTATUS(ws) : -1;
+		}
+		if (job.OutFd >= 0) close(job.OutFd);
+		if (job.ErrFd >= 0) close(job.ErrFd);
+	#endif
+	output = job.Output;
+	errors = job.Errors;
+	job.Output = "";
+	job.Errors = "";
+	job.InUse = false;		// free the slot for reuse
+	if (timedOut) {
+		// As in MS1, report "Timed out" and the status used by `timeout`.  Unlike
+		// MS1, keep whatever stdout and stderr were collected before the timeout,
+		// appending "Timed out" on its own line (C++ only; C# reads the streams
+		// to end in one go, so it has nothing to keep).
+		if (errors.Length() > 0 && !errors.EndsWith("\n")) errors = errors + "\n";
+		errors = errors + "Timed out";
+		status = 124;
 	}
-	if (!_cppExecDone[idx]) return IntrinsicResult(handle, false);
-	output = _cppExecOutputs[idx];
-	status = _cppExecStatus[idx];
 	// Trim one trailing \n or \r\n from output and errors (matching MS1 behavior).
 	if (output.EndsWith("\r\n")) output = output.Substring(0, output.Length() - 2);
 	else if (output.EndsWith("\n")) output = output.Substring(0, output.Length() - 1);
@@ -1614,27 +1750,34 @@ void ShellIntrinsics::Init() {
 		return IntrinsicResult(GetEnvMap());
 	});
 
-	// exec(cmd) — run a shell command, returning a map with:
+	// exec(cmd, timeout=30) — run a shell command, returning a map with:
 	//   "output"  — stdout captured as a string
-	//   "errors"  — stderr captured as a string (C# only; empty in C++)
+	//   "errors"  — stderr captured as a string
 	//   "status"  — exit code as a number
+	// If the command runs longer than `timeout` seconds, it is killed, and the
+	// result has status 124 (as in MS1), whatever stdout and stderr were
+	// collected before the timeout (C++ only; always "" in C#), and "Timed out"
+	// appended to errors on its own line.
 	// Uses the partialResult mechanism so the VM is not blocked while waiting.
 	f = Intrinsic::Create("exec");
 	f.AddParam("cmd", Value::emptyString);
+	f.AddParam("timeout", Value(30));
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
+		Double now = ctx.vm.ElapsedTime();
 		if (!partialResult.done) {
-			return FinishExec(partialResult.result);
+			return FinishExec(partialResult.result, now);
 		}
 		Value cmdArg = ctx.GetArg(0);
 		String cmd = cmdArg.ToString(nullptr);
+		Double timeout = ctx.GetArg(1).DoubleValue();
 		if (!_envMap.IsNull()) {
 			SyncEnvMap();
 		}
-		Value handle = BeginExec(cmd);
+		Value handle = BeginExec(cmd, now + timeout);
 		if (handle.IsNull()) {
 			return IntrinsicResult(ErrorTypes::RuntimeError(StringUtils::Format("exec: failed to start command: {0}", cmd)));
 		}
-		return FinishExec(handle);
+		return FinishExec(handle, now);
 	});
 
 	// _dateVal(dateStr) — convert to a numeric MiniScript date value (seconds

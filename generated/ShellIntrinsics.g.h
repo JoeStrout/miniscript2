@@ -10,16 +10,35 @@
 
 #include "value.h"
 #include "GCManager.g.h"
+#include <cstdio>
 
 namespace MiniScript {
 
 // DECLARATIONS
+
+// State of one `exec` subprocess job, stored in ShellIntrinsics._execJobs.
+struct ExecJob {
+	public: Boolean InUse; // true from BeginExec until FinishExec returns the result
+	public: Double EndTime; // VM elapsed time at which the job times out
+	public: String Output; // captured stdout (C++ only; accumulated as it is read)
+	public: String Errors; // captured stderr (C++ only; accumulated as it is read)
+	#ifdef _WIN32
+	public: void* ProcHandle;	// HANDLE of the child process
+	public: void* OutPipe;		// HANDLE: read end of child's stdout (null once closed)
+	public: void* ErrPipe;		// HANDLE: read end of child's stderr (null once closed)
+	#else
+	public: int Pid;			// child process ID
+	public: int OutFd;			// read end of child's stdout pipe (-1 once closed)
+	public: int ErrFd;			// read end of child's stderr pipe (-1 once closed)
+	#endif
+}; // end of struct ExecJob
 
 class ShellIntrinsics {
 	private: static List<String> _shellArgStrings;
 	private: static Value _shellArgs;
 	private: static Value _envMap;
 	private: static const String kDefaultImportPath;
+	private: static List<ExecJob> _execJobs;
 	private: static Value _fileModuleMap;
 	private: static Value _fileHandleClassMap;
 	private: static Value _rawDataClassMap;
@@ -33,6 +52,9 @@ class ShellIntrinsics {
 
 	// Default import search path, used when MS_IMPORT_PATH is not already set in
 	// the environment.  Variables are expanded at import time, not here.
+
+	// exec state: one slot per job, indexed by the job handle.  A slot is freed
+	// once FinishExec returns the job's result, and is then reused.
 
 	// ── File module static fields ─────────────────────────────────────────────
 
@@ -65,13 +87,20 @@ class ShellIntrinsics {
 	// Only called when _envMap is non-null (i.e., the user has accessed `env`).
 	private: static void SyncEnvMap();
 
-	// Launch a shell subprocess and return a job-index handle (as a double Value).
-	private: static Value BeginExec(String cmd);
+	// Store a newly started job in a free slot of _execJobs (adding a slot if
+	// none is free), and return its index, which serves as the job handle.
+	private: static Int32 StoreExecJob(ExecJob job);
 
-	// Poll the job identified by `handle`. Reads available output without blocking.
-	// Returns done=true with result map when the subprocess has exited, or
+	// Launch a shell subprocess, capturing its stdout and stderr, and return a
+	// job-index handle (as a double Value), or null if it could not be started.
+	// The job times out when the VM's elapsed time reaches endTime.
+	private: static Value BeginExec(String cmd, Double endTime);
+
+	// Poll the job identified by `handle`, at VM elapsed time `now`.  Reads any
+	// available output without blocking.  Returns done=true with the result map
+	// when the subprocess has exited or timed out (freeing the job's slot), or
 	// done=false with the same handle so the VM will call us again.
-	private: static IntrinsicResult FinishExec(Value handle);
+	private: static IntrinsicResult FinishExec(Value handle, Double now);
 
 	// Split a string on a single-character (string) delimiter, returning all parts
 	// (empty parts are skipped).

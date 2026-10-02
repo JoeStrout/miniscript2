@@ -12,6 +12,7 @@ struct IntrinsicResult;
 struct VMVis;
 struct Globals;
 class GlobalsStorage;
+struct ExecJob;
 struct CodeEmitterBase;
 class CodeEmitterBaseStorage;
 struct LabelReference;

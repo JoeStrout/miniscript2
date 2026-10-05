@@ -194,10 +194,11 @@ Value value_mult_nonnumeric(Value a, Value b) {
             return value_make_runtime_error("string too large (exceeds maximum size)");
         }
         int repeats = (int)factor;
-        Value result = Value::emptyString;
-        for (int i = 0; i < repeats; i++) result = string_concat(result, a);
         int extraChars = (int)(a.Length() * (factor - repeats));
-        if (extraChars > 0) result = string_concat(result, a.Substring(0, extraChars));
+        Value result = string_repeat(a, repeats, extraChars);
+        if (result.IsNull()) {
+            return value_make_runtime_error("string too large (exceeds maximum size)");
+        }
         return result;
     }
     if (a.IsList() && b.IsNumber()) {

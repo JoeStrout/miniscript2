@@ -435,6 +435,14 @@ public:
         return String(value ? trueString : falseString);
     }
 
+    // Whole copies of this string followed by its first extraChars characters,
+    // built with a single allocation.  (Supports StringUtils.Repeat.)
+    String Repeat(int repeats, int extraChars = 0) const {
+        StringStorage* result = ss_repeat(getStorageRaw(), repeats, extraChars, ::malloc);
+        if (!result) return String("");
+        return fromMallocStorage(result);
+    }
+
     String Left(int chars) const {
     	return Substring(0, chars);
     }

@@ -511,6 +511,44 @@ print "abcdef" * 0.5
 --------------------------------
 abc
 ================================
+==== String/list replication: whole + fractional copies, at run time and folded
+================================
+s = "abc"
+n = 2.5
+print s * n
+print s * 3
+print s * 3.34
+u = "héllo😀"
+print u * 2.5
+print (u * 1000).len
+print "é😀" * 3
+x = "ab" * 50000
+print x.len + " " + x[-2:] + " " + x.indexOf("ba")
+print [1, 2, 3] * n
+--------------------------------
+abcabca
+abcabcabc
+abcabcabca
+héllo😀héllo😀hél
+6000
+é😀é😀é😀
+100000 ab 1
+[1, 2, 3, 1, 2, 3, 1]
+================================
+==== Large replication counts are fast (one allocation, not repeated concat)
+================================
+print ("abcdefghij" * 1000000).len
+a = "abcdefghij"
+k = 1000000
+print (a * k).len
+print (a * (k + 0.5)).len
+print ([1, 2] * 500000).len
+--------------------------------
+10000000
+10000000
+10000005
+1000000
+================================
 ==== String division (same as * inverse)
 ================================
 print "abcd" / 2

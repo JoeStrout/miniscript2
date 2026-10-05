@@ -41,6 +41,7 @@ const char* get_string_data_nullterm(const Value* v_ptr, char* tiny_buffer);
 bool  string_equals(Value a, Value b);
 int   string_compare(Value a, Value b);
 Value string_concat(Value a, Value b);
+Value string_repeat(Value a, int repeats, int extraChars);
 Value string_replace(Value source, Value search, Value replacement);
 Value string_split(Value str, Value delimiter);
 Value string_sub(Value a, Value b);

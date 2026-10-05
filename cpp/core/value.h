@@ -476,6 +476,7 @@ inline bool Value::IsInternedString() const noexcept {
 // ── Forward declarations for runtime functions ──────────────────────────
 extern Value string_sub(Value a, Value b);
 extern Value string_concat(Value a, Value b);
+extern Value string_repeat(Value a, int repeats, int extraChars);
 extern const char* get_string_data_zerocopy(const Value* v_ptr, int* out_len);
 extern int  string_compare(Value a, Value b);
 extern bool string_equals(Value a, Value b);

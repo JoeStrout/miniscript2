@@ -255,6 +255,20 @@ Value string_concat(Value a, Value b) {
     return adopt_ss(result);
 }
 
+// Repeat a string `repeats` whole times, followed by its first `extraChars`
+// characters (code points), via ss_repeat (one allocation, one copy).
+// Returns null if the result would be too large.
+Value string_repeat(Value a, int repeats, int extraChars) {
+    TempStorage ta(a);
+    StringStorage* result = ss_repeat(ta, repeats, extraChars, std::malloc);
+    if (!result) {
+        // NULL means either an empty result or one too large to build.
+        bool expectEmpty = !ta.get() || (repeats <= 0 && extraChars <= 0);
+        return expectEmpty ? Value::emptyString : Value::null;
+    }
+    return adopt_ss(result);
+}
+
 int Value::StringIndexOf(Value needle, int start_pos) const {
     Value haystack = *this;
     TempStorage th(haystack), tn(needle);

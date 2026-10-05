@@ -346,6 +346,30 @@ StringStorage* ss_concat(const StringStorage* storage, const StringStorage* othe
     return result;
 }
 
+StringStorage* ss_repeat(const StringStorage* storage, int repeats, int extraChars, StringStorageAllocator allocator) {
+    if (!storage || !allocator) return NULL;
+    if (repeats < 0) repeats = 0;
+    int lenB = storage->lenB;
+    int extraB = (extraChars > 0) ? ss_charToByteIndex(storage, extraChars) : 0;
+    int64_t totalB = (int64_t)lenB * repeats + extraB;
+    if (totalB <= 0 || totalB > 0x7FFFFFFF) return NULL;
+
+    StringStorage* result = ss_createWithLength((int)totalB, allocator);
+    if (!result) return NULL;
+    char* ptr = result->data;
+    for (int i = 0; i < repeats; i++) {
+        memcpy(ptr, storage->data, lenB);
+        ptr += lenB;
+    }
+    if (extraB > 0) memcpy(ptr, storage->data, extraB);
+    if (storage->lenC >= 0) {
+        int extraC = (extraChars < storage->lenC) ? extraChars : storage->lenC;
+        if (extraC < 0) extraC = 0;
+        result->lenC = storage->lenC * repeats + extraC;
+    }
+    return result;
+}
+
 StringStorage* ss_toLower(const StringStorage* storage, StringStorageAllocator allocator) {
     if (!storage || !allocator) return NULL;
     

@@ -37,6 +37,9 @@ Boolean StringUtils::TryParseDouble(String str,Double* result) {
 	*result = v;
 	return true;
 }
+String StringUtils::Repeat(String s,Int32 repeats,Int32 extraChars) {
+	return s.Repeat(repeats, extraChars);
+}
 String StringUtils::ZeroPad(Int32 value,Int32 digits ) {
 	// set width and fill
 	char format[] = "%05d";

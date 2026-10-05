@@ -270,9 +270,11 @@ ASTNode BinaryOpNodeStorage::Simplify() {
 				|| leftStr.Value().Length() * factor > Value::MAX_COLLECTION_SIZE) {
 			return CopyLine( BinaryOpNode::New(Op, simplifiedLeft, simplifiedRight));
 		}
-		int repeats = (int)factor;
-		String result = "";
-		for (int i = 0; i < repeats; i++) result = result + leftStr.Value();
+		String result = StringUtils::Repeat(leftStr.Value(), (int)factor, 0);
+		if (String::IsNullOrEmpty(result)) {
+			// (Too large to build; leave it for the runtime op to report.)
+			return CopyLine( BinaryOpNode::New(Op, simplifiedLeft, simplifiedRight));
+		}
 		return  StringNode::New(result);
 	}
 

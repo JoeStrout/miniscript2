@@ -85,6 +85,10 @@ bool ss_endsWith(const StringStorage* storage, const StringStorage* suffix);
 StringStorage* ss_substring(const StringStorage* storage, int startIndex, StringStorageAllocator allocator);
 StringStorage* ss_substringLen(const StringStorage* storage, int startIndex, int length, StringStorageAllocator allocator);
 StringStorage* ss_concat(const StringStorage* storage, const StringStorage* other, StringStorageAllocator allocator);
+// Repeat: `repeats` whole copies followed by the first `extraChars` characters.
+// Allocates the result once.  Returns NULL for an empty result, or if the result
+// would exceed INT_MAX bytes (or allocation fails).
+StringStorage* ss_repeat(const StringStorage* storage, int repeats, int extraChars, StringStorageAllocator allocator);
 StringStorage* ss_insert(const StringStorage* storage, int startIndex, const StringStorage* value, StringStorageAllocator allocator);
 StringStorage* ss_remove(const StringStorage* storage, int startIndex, StringStorageAllocator allocator);
 StringStorage* ss_removeLen(const StringStorage* storage, int startIndex, int count, StringStorageAllocator allocator);

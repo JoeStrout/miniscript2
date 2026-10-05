@@ -419,9 +419,11 @@ public class BinaryOpNode : ASTNode {
 					|| leftStr.Value.Length * factor > Value.MAX_COLLECTION_SIZE) {
 				return CopyLine(new BinaryOpNode(Op, simplifiedLeft, simplifiedRight));
 			}
-			int repeats = (int)factor;
-			String result = "";
-			for (int i = 0; i < repeats; i++) result = result + leftStr.Value;
+			String result = StringUtils.Repeat(leftStr.Value, (int)factor, 0);
+			if (String.IsNullOrEmpty(result)) {
+				// (Too large to build; leave it for the runtime op to report.)
+				return CopyLine(new BinaryOpNode(Op, simplifiedLeft, simplifiedRight));
+			}
 			return new StringNode(result);
 		}
 

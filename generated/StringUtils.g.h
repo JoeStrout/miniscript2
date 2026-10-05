@@ -34,6 +34,13 @@ class StringUtils {
 	// and trailing whitespace) is not a valid number.
 	public: static Boolean TryParseDouble(String str, Double* result);
 
+	// Return `repeats` whole copies of s, followed by its first `extraChars`
+	// characters (code points).  The result is built in one preallocated
+	// buffer, never by repeated concatenation.  Callers are responsible for
+	// keeping the result within MAX_COLLECTION_SIZE; as a last resort, a result
+	// too large to build at all comes back null (or empty in C++).
+	public: static String Repeat(String s, Int32 repeats, Int32 extraChars);
+
 	public: static Boolean IsNaN(Double x);
 
 	public: static Boolean IsInfinity(Double x);

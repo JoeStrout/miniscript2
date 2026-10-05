@@ -73,6 +73,33 @@ public static class StringUtils {
 		*** END CPP_ONLY ***/
 	}
 
+	// Return `repeats` whole copies of s, followed by its first `extraChars`
+	// characters (code points).  The result is built in one preallocated
+	// buffer, never by repeated concatenation.  Callers are responsible for
+	// keeping the result within MAX_COLLECTION_SIZE; as a last resort, a result
+	// too large to build at all comes back null (or empty in C++).
+	public static String Repeat(String s, Int32 repeats, Int32 extraChars) {
+		//*** BEGIN CS_ONLY ***
+		if (String.IsNullOrEmpty(s)) return "";
+		if (repeats < 0) repeats = 0;
+		int extraUnits = 0;
+		for (int c = 0; c < extraChars && extraUnits < s.Length; c++) {
+			if (Char.IsHighSurrogate(s[extraUnits]) && extraUnits + 1 < s.Length
+					&& Char.IsLowSurrogate(s[extraUnits + 1])) extraUnits += 2;
+			else extraUnits++;
+		}
+		long totalUnits = (long)s.Length * repeats + extraUnits;
+		if (totalUnits > Int32.MaxValue) return null;
+		var sb = new System.Text.StringBuilder((int)totalUnits);
+		for (int i = 0; i < repeats; i++) sb.Append(s);
+		if (extraUnits > 0) sb.Append(s, 0, extraUnits);
+		return sb.ToString();
+		//*** END CS_ONLY ***
+		/*** BEGIN CPP_ONLY ***
+		return s.Repeat(repeats, extraChars);
+		*** END CPP_ONLY ***/
+	}
+
 	[MethodImpl(AggressiveInlining)]
 	public static Boolean IsNaN(Double x) {
 		return double.IsNaN(x);	// CPP: return std::isnan(x);

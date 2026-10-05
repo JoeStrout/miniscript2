@@ -614,11 +614,12 @@ public readonly struct Value {
 				return value_make_runtime_error("string too large (exceeds maximum size)");
 			}
 			int repeats = (int)factor;
-			Value result = Value.emptyString;
-			for (int i = 0; i < repeats; i++) result = result.StringConcat(a);
 			int extraChars = (int)(a.Length() * (factor - repeats));
-			if (extraChars > 0) result = result.StringConcat(a.Substring(0, extraChars));
-			return result;
+			string result = StringUtils.Repeat(a.GetStringValue(), repeats, extraChars);
+			if (result == null) {
+				return value_make_runtime_error("string too large (exceeds maximum size)");
+			}
+			return make_string(result);
 		}
 		if (a.IsList() && b.IsNumber()) {
 			double factor = b.AsDouble();

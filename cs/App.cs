@@ -57,6 +57,10 @@ public struct App {
 	public static bool testMode = false;
 	public static bool interactiveMode = false;
 
+	// Length of one run slice (and so one GC tick), in seconds.  This matches
+	// Mini Micro's 60 Hz frame, so the GC tuning reads the same in both hosts.
+	public static double sliceSeconds = 1.0 / 60.0;
+
 	public static void MainProgram(List<String> args) {
 		// CPP: value_init_constants();
 		CoreIntrinsics.hostVersion = "2.0 FC5";
@@ -566,12 +570,13 @@ public struct App {
 			}
 		} else {
 			vm.DebugMode = debugMode;
-			// RunUntilDone clears vm.yielding on each call, returns early when the
-			// script yields (so we can sleep a moment), and reports any runtime
-			// error through interp.errorOutput.
+			// Run in frame-sized slices; each RunUntilDone call is also a GC
+			// tick.  RunUntilDone clears vm.yielding on each call, returns early
+			// when the script yields (so we can sleep a moment), and reports any
+			// runtime error through interp.errorOutput.
 			while (vm.IsRunning) {
-				interp.RunUntilDone();
-				if (vm.IsRunning) {
+				interp.RunUntilDone(sliceSeconds);
+				if (vm.IsRunning && vm.yielding) {
 					Thread.Sleep(1);	// CPP: std::this_thread::sleep_for(std::chrono::milliseconds(1));
 				}
 			}
@@ -806,12 +811,12 @@ public struct App {
 			inListBefore = CoreIntrinsics.replInList;
 			// Run in short slices, so we notice a Ctrl-C promptly, until the
 			// program finishes.  (Pause a moment whenever it yields.)
-			interp.REPL(line, 0.1);
+			interp.REPL(line, sliceSeconds);
 			while (interp.Running() && !IOHelper.InterruptRequested()) {
 				if (interp.vm.yielding) {
 					Thread.Sleep(1);	// CPP: std::this_thread::sleep_for(std::chrono::milliseconds(1));
 				}
-				interp.ContinueREPL(0.1);
+				interp.ContinueREPL(sliceSeconds);
 			}
 			if (IOHelper.InterruptRequested()) {
 				IOHelper.ClearInterrupt();

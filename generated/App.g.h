@@ -15,6 +15,10 @@ struct App {
 	public: static bool quietMode;
 	public: static bool testMode;
 	public: static bool interactiveMode;
+	public: static double sliceSeconds;
+
+	// Length of one run slice (and so one GC tick), in seconds.  This matches
+	// Mini Micro's 60 Hz frame, so the GC tuning reads the same in both hosts.
 
 	public: static void MainProgram(List<String> args);
 

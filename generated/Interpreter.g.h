@@ -206,10 +206,20 @@ class InterpreterStorage : public std::enable_shared_from_this<InterpreterStorag
 	// already, and in that case, may generate compiler errors.  And of course
 	// it may generate runtime errors while running.  In either case, these are
 	// reported via errorOutput.
-	// 
+	///
+	// Each call is one GC tick (see GCManager.MaybeCollect): a host that drives
+	// the script by calling this once per frame, with a frame-sized timeLimit,
+	// gets garbage collected even if the script never yields.  Such a host
+	// should not also call GCManager.MaybeCollect(false) itself.
 	// <param name="timeLimit">maximum amount of time to run before returning, in seconds</param>
 	// <param name="returnEarly">if true, return as soon as the VM yields</param>
 	public: void RunUntilDone(double timeLimit=60, bool returnEarly=Boolean(true));
+	private: static const UInt32 RunBatchSize;
+
+	// Instructions per vm.Run call within a time slice.  The VM stops at a
+	// yield regardless, so this only bounds how far a slice can overrun its
+	// time limit; it is large so that the per-call overhead (including the
+	// clock read) is negligible.
 
 	// 
 	// Run one step (small batch) of the virtual machine.  This method is not
@@ -235,6 +245,7 @@ class InterpreterStorage : public std::enable_shared_from_this<InterpreterStorag
 
 	// Run the current REPL program until it ends, yields, or reaches the time
 	// limit.  When it ends, update lastImplicitResult (and invoke implicitOutput).
+	// Like RunUntilDone, each slice is one GC tick.
 	private: void RunREPLSlice(double timeLimit);
 
 	// 
@@ -512,10 +523,20 @@ struct Interpreter {
 	// already, and in that case, may generate compiler errors.  And of course
 	// it may generate runtime errors while running.  In either case, these are
 	// reported via errorOutput.
-	// 
+	///
+	// Each call is one GC tick (see GCManager.MaybeCollect): a host that drives
+	// the script by calling this once per frame, with a frame-sized timeLimit,
+	// gets garbage collected even if the script never yields.  Such a host
+	// should not also call GCManager.MaybeCollect(false) itself.
 	// <param name="timeLimit">maximum amount of time to run before returning, in seconds</param>
 	// <param name="returnEarly">if true, return as soon as the VM yields</param>
 	public: inline void RunUntilDone(double timeLimit=60, bool returnEarly=Boolean(true));
+	private: UInt32 RunBatchSize();
+
+	// Instructions per vm.Run call within a time slice.  The VM stops at a
+	// yield regardless, so this only bounds how far a slice can overrun its
+	// time limit; it is large so that the per-call overhead (including the
+	// clock read) is negligible.
 
 	// 
 	// Run one step (small batch) of the virtual machine.  This method is not
@@ -541,6 +562,7 @@ struct Interpreter {
 
 	// Run the current REPL program until it ends, yields, or reaches the time
 	// limit.  When it ends, update lastImplicitResult (and invoke implicitOutput).
+	// Like RunUntilDone, each slice is one GC tick.
 	private: inline void RunREPLSlice(double timeLimit);
 
 	// 
@@ -648,6 +670,7 @@ inline void Interpreter::Compile() { return get()->Compile(); }
 inline Value Interpreter::RunFunction(Value funcRef,List<Value> args) { return get()->RunFunction(funcRef, args); }
 inline void Interpreter::Restart() { return get()->Restart(); }
 inline void Interpreter::RunUntilDone(double timeLimit,bool returnEarly) { return get()->RunUntilDone(timeLimit, returnEarly); }
+inline UInt32 Interpreter::RunBatchSize() { return get()->RunBatchSize; }
 inline void Interpreter::Step() { return get()->Step(); }
 inline void Interpreter::REPL(String sourceLine,double timeLimit) { return get()->REPL(sourceLine, timeLimit); }
 inline void Interpreter::ContinueREPL(double timeLimit) { return get()->ContinueREPL(timeLimit); }

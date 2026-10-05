@@ -65,7 +65,14 @@ Instead, `GCManager.MaybeCollect(encouraged)` is called at well-defined boundary
 
 `CollectGarbage()` forces a cycle regardless, and resets the tick clock. All the tuning constants are public fields, so a host can retune them without a rebuild.
 
-Note which of the two is actually doing the work today. The only `MaybeCollect` call sites are the `wait` and `yield` intrinsics, and both pass `encouraged: true` — and only an *ordinary* call advances the tick counter. So in the command-line host the tick trigger never fires at all, and collection is driven entirely by allocation volume (plus an explicit `gc.collect`). The tick machinery is there for a host that calls `MaybeCollect(false)` on a regular beat, one frame at a time, the way Mini Micro will.
+The VM's dispatch loop never calls `MaybeCollect`; that would cost something on every instruction. Collection instead relies on the host running the script in time slices. The call sites are:
+
+- **`Interpreter.RunUntilDone` and the REPL's run slice** each make one ordinary `MaybeCollect(false)` call per slice, so **one slice is one tick**. The command-line host runs in 1/60 s slices (`App.sliceSeconds`), matching Mini Micro's frame, so a script that never yields or waits is still collected. A host driving the script through these methods should not also call `MaybeCollect(false)` itself, or ticks would count double. (A host running several interpreters per frame advances the tick once per interpreter.)
+- **`wait` and `yield`** make an `encouraged` call, which doesn't advance the tick counter.
+
+Both triggers are evaluated only at these calls, never at allocation, so with a long slice (e.g. `RunUntilDone`'s 60 s default) a script that churns through allocations will only be collected at the end of the slice. Within a slice the VM runs in batches of 100,000 instructions (`Interpreter.RunBatchSize`) between clock checks; a yield still stops the VM immediately, so the batch size only bounds how far a slice can overrun its time limit.
+
+No collection runs on the slice that ends in a runtime error, since the script is over anyway. (`vm.Error` is among the VM's roots, so the error stays valid for the host across later collections.)
 
 ### Long-lived values
 

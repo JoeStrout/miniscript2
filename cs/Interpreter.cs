@@ -16,6 +16,7 @@ using System.Collections.Generic;
 // H: #include "Bytecode.g.h"
 // H: #include "CodeGenerator.g.h"
 // CPP: #include "StringUtils.g.h"
+// CPP: #include "GCManager.g.h"
 // CPP: #include "CS_value_util.h"
 // CPP: #include "CoreIntrinsics.g.h"
 
@@ -370,7 +371,12 @@ public class Interpreter {
 	// already, and in that case, may generate compiler errors.  And of course
 	// it may generate runtime errors while running.  In either case, these are
 	// reported via errorOutput.
-	// 
+	///
+	// Each call is one GC tick (see GCManager.MaybeCollect): a host that drives
+	// the script by calling this once per frame, with a frame-sized timeLimit,
+	// gets garbage collected even if the script never yields.  Such a host
+	// should not also call GCManager.MaybeCollect(false) itself.
+	//
 	// <param name="timeLimit">maximum amount of time to run before returning, in seconds</param>
 	// <param name="returnEarly">if true, return as soon as the VM yields</param>
 	public void RunUntilDone(double timeLimit=60, bool returnEarly=true) {
@@ -381,17 +387,25 @@ public class Interpreter {
 		double startTime = vm.ElapsedTime();
 		vm.yielding = false;
 		while (vm.IsRunning && !vm.yielding) {
-			if (vm.ElapsedTime() - startTime > timeLimit) return;	// time's up for now
-			vm.Run(1000);	// run in small batches so we can check the time
+			if (vm.ElapsedTime() - startTime > timeLimit) break;	// time's up for now
+			vm.Run(RunBatchSize);	// run in batches so we can check the time
 			if (!vm.Error.IsNull()) {
+				// (No collection here; the script is over anyway.)
 				Error = vm.Error;
 				ReportError(Error);
 				Stop();
 				return;
 			}
-			if (returnEarly && vm.yielding) return;		// waiting for something
+			if (returnEarly && vm.yielding) break;		// waiting for something
 		}
+		GCManager.MaybeCollect(false);
 	}
+
+	// Instructions per vm.Run call within a time slice.  The VM stops at a
+	// yield regardless, so this only bounds how far a slice can overrun its
+	// time limit; it is large so that the per-call overhead (including the
+	// clock read) is negligible.
+	private const UInt32 RunBatchSize = 100000;
 
 	// 
 	// Run one step (small batch) of the virtual machine.  This method is not
@@ -511,12 +525,13 @@ public class Interpreter {
 
 	// Run the current REPL program until it ends, yields, or reaches the time
 	// limit.  When it ends, update lastImplicitResult (and invoke implicitOutput).
+	// Like RunUntilDone, each slice is one GC tick.
 	private void RunREPLSlice(double timeLimit) {
 		double startTime = vm.ElapsedTime();
 		vm.yielding = false;
 		while (vm.IsRunning && !vm.yielding) {
-			if (vm.ElapsedTime() - startTime > timeLimit) return;	// time's up for now
-			vm.Run(1000);
+			if (vm.ElapsedTime() - startTime > timeLimit) break;	// time's up for now
+			vm.Run(RunBatchSize);
 			if (!vm.Error.IsNull()) {
 				Error = vm.Error;
 				ReportError(Error);
@@ -524,7 +539,10 @@ public class Interpreter {
 				return;		// (no implicit output after an error)
 			}
 		}
-		if (vm.IsRunning) return;	// yielding; not done yet
+		// (Safe even when the program has just finished: its r0, read below,
+		// is still on the register stack, which the VM's roots cover.)
+		GCManager.MaybeCollect(false);
+		if (vm.IsRunning) return;	// yielding or out of time; not done yet
 
 		// Implicit output: if last statement was a bare expression, capture r0.
 		if (_replHasImplicitOutput) {

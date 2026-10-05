@@ -3,6 +3,7 @@
 
 #include "Interpreter.g.h"
 #include "StringUtils.g.h"
+#include "GCManager.g.h"
 #include "CS_value_util.h"
 #include "CoreIntrinsics.g.h"
 
@@ -165,17 +166,20 @@ void InterpreterStorage::RunUntilDone(double timeLimit,bool returnEarly) {
 	double startTime = vm.ElapsedTime();
 	vm.set_yielding(Boolean(false));
 	while (vm.IsRunning() && !vm.yielding()) {
-		if (vm.ElapsedTime() - startTime > timeLimit) return;	// time's up for now
-		vm.Run(1000);	// run in small batches so we can check the time
+		if (vm.ElapsedTime() - startTime > timeLimit) break;	// time's up for now
+		vm.Run(RunBatchSize);	// run in batches so we can check the time
 		if (!vm.Error().IsNull()) {
+			// (No collection here; the script is over anyway.)
 			Error = vm.Error();
 			ReportError(Error);
 			Stop();
 			return;
 		}
-		if (returnEarly && vm.yielding()) return;		// waiting for something
+		if (returnEarly && vm.yielding()) break;		// waiting for something
 	}
+	GCManager::MaybeCollect(Boolean(false));
 }
+const UInt32 InterpreterStorage::RunBatchSize = 100000;
 void InterpreterStorage::Step() {
 	Compile();
 	if (IsNull(vm)) return;
@@ -276,8 +280,8 @@ void InterpreterStorage::RunREPLSlice(double timeLimit) {
 	double startTime = vm.ElapsedTime();
 	vm.set_yielding(Boolean(false));
 	while (vm.IsRunning() && !vm.yielding()) {
-		if (vm.ElapsedTime() - startTime > timeLimit) return;	// time's up for now
-		vm.Run(1000);
+		if (vm.ElapsedTime() - startTime > timeLimit) break;	// time's up for now
+		vm.Run(RunBatchSize);
 		if (!vm.Error().IsNull()) {
 			Error = vm.Error();
 			ReportError(Error);
@@ -285,7 +289,10 @@ void InterpreterStorage::RunREPLSlice(double timeLimit) {
 			return;		// (no implicit output after an error)
 		}
 	}
-	if (vm.IsRunning()) return;	// yielding; not done yet
+	// (Safe even when the program has just finished: its r0, read below,
+	// is still on the register stack, which the VM's roots cover.)
+	GCManager::MaybeCollect(Boolean(false));
+	if (vm.IsRunning()) return;	// yielding or out of time; not done yet
 
 	// Implicit output: if last statement was a bare expression, capture r0.
 	if (_replHasImplicitOutput) {

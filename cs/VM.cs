@@ -398,6 +398,9 @@ public class VM {
 			vm.MarkFuncConstants(vm.callStack[ci].ReturnFunc);
 		}
 		GCManager.Mark(vm.ManualCallResult);
+		// The error that stopped the VM, if any, so a host can still read it
+		// after later collections.
+		GCManager.Mark(vm.Error);
 		// The global namespace is not on the register stack, so mark it here.
 		// (Globals.AttachMap also roots the map directly, which covers a Globals
 		// that no VM has adopted yet; this mark is what keeps it alive for a VM

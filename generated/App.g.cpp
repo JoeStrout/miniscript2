@@ -57,6 +57,7 @@ bool App::visMode = Boolean(false);
 bool App::quietMode = Boolean(false);
 bool App::testMode = Boolean(false);
 bool App::interactiveMode = Boolean(false);
+double App::sliceSeconds = 1.0 / 60.0;
 void App::MainProgram(List<String> args) {
 	value_init_constants();
 	CoreIntrinsics::hostVersion = "2.0 FC5";
@@ -511,12 +512,13 @@ void App::RunInterpreter(Interpreter interp) {
 		}
 	} else {
 		vm.set_DebugMode(debugMode);
-		// RunUntilDone clears vm.yielding on each call, returns early when the
-		// script yields (so we can sleep a moment), and reports any runtime
-		// error through interp.errorOutput.
+		// Run in frame-sized slices; each RunUntilDone call is also a GC
+		// tick.  RunUntilDone clears vm.yielding on each call, returns early
+		// when the script yields (so we can sleep a moment), and reports any
+		// runtime error through interp.errorOutput.
 		while (vm.IsRunning()) {
-			interp.RunUntilDone();
-			if (vm.IsRunning()) {
+			interp.RunUntilDone(sliceSeconds);
+			if (vm.IsRunning() && vm.yielding()) {
 				std::this_thread::sleep_for(std::chrono::milliseconds(1));
 			}
 		}
@@ -713,12 +715,12 @@ void App::RunREPL(Interpreter interp) {
 		inListBefore = CoreIntrinsics::replInList;
 		// Run in short slices, so we notice a Ctrl-C promptly, until the
 		// program finishes.  (Pause a moment whenever it yields.)
-		interp.REPL(line, 0.1);
+		interp.REPL(line, sliceSeconds);
 		while (interp.Running() && !IOHelper::InterruptRequested()) {
 			if (interp.vm().yielding()) {
 				std::this_thread::sleep_for(std::chrono::milliseconds(1));
 			}
-			interp.ContinueREPL(0.1);
+			interp.ContinueREPL(sliceSeconds);
 		}
 		if (IOHelper::InterruptRequested()) {
 			IOHelper::ClearInterrupt();

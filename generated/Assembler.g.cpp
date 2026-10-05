@@ -725,7 +725,9 @@ Int32 AssemblerStorage::AddConstant(Value value) {
 	return Current.Constants().Count() - 1;
 }
 Boolean AssemblerStorage::IsStringLiteral(String token) {
-	return token.lengthB() >= 2 && token[0] == '"' && token[token.lengthB() - 1] == '"'; // C++ indexes into the bytes, so we need to use lengthB() or change indexing to be character-based.
+	// We can index by bytes because '"' is always just 1 byte, and only the first
+	// and last bytes matter.
+	return token.lengthB() >= 2 && token.AtB(0) == '"' && token.AtB(token.lengthB() - 1) == '"';
 }
 Boolean AssemblerStorage::NeedsConstant(String token) {
 	if (IsStringLiteral(token)) return Boolean(true);

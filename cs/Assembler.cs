@@ -790,7 +790,14 @@ public class Assembler {
 
 	// Helper to check if a token is a string literal (surrounded by quotes)
 	private static Boolean IsStringLiteral(String token) {
-		return token.Length >= 2 && token[0] == '"' && token[token.Length - 1] == '"'; // CPP: return token.lengthB() >= 2 && token[0] == '"' && token[token.lengthB() - 1] == '"'; // C++ indexes into the bytes, so we need to use lengthB() or change indexing to be character-based.
+		//*** BEGIN CS_ONLY ***
+		return token.Length >= 2 && token[0] == '"' && token[token.Length - 1] == '"';
+		//*** END CS_ONLY ***
+		/*** BEGIN CPP_ONLY ***
+		// We can index by bytes because '"' is always just 1 byte, and only the first
+		// and last bytes matter.
+		return token.lengthB() >= 2 && token.AtB(0) == '"' && token.AtB(token.lengthB() - 1) == '"';
+		*** END CPP_ONLY ***/
 	}
 
 	// Helper to check if a token needs to be stored as a constant

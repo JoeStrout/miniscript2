@@ -91,13 +91,14 @@ public class Interpreter {
 	// 
 	// The Value produced by the last complete REPL interaction that had implicit
 	// output (a bare expression as the last statement), or Value.Null otherwise.
-	// Updated at the end of each complete REPL() call.  Host code (e.g. the
+	// Updated when each REPL run finishes (in REPL or ContinueREPL).  Host code (e.g. the
 	// REPL loop in App.cs) reads this to push it into the _out history list.
 	// 
 	public Value lastImplicitResult = Value.Null;
 
 	// REPL state
 	private String _pendingSource;       // accumulated REPL lines so far
+	private Boolean _replHasImplicitOutput;  // does the current REPL run end in a bare expression?
 
 	// This interpreter's global namespace.  Created on demand and then kept for
 	// the life of the interpreter unless Reset replaces it, so it is stable across
@@ -175,7 +176,7 @@ public class Interpreter {
 	// 
 	public void Stop() {
 		if (vm != null) vm.Stop();
-		// TODO: if (parser != null) parser.PartialReset();
+		_pendingSource = null;	// discard any partial REPL input
 	}
 
 	// 
@@ -409,8 +410,9 @@ public class Interpreter {
 
 	// 
 	// Read Eval Print Loop.  Run the given source until it either terminates,
-	// or hits the given time limit.  When it terminates, if we have new
-	// implicit output, print that to the implicitOutput stream.
+	// or hits the given time limit, or yields.  When it terminates, if we have new
+	// implicit output, print that to the implicitOutput stream.  If it is still
+	// Running() when this returns, call ContinueREPL to carry on with it.
 	// 
 	// <param name="sourceLine">line of source code to parse and run</param>
 	// <param name="timeLimit">time limit in seconds</param>
@@ -489,28 +491,44 @@ public class Interpreter {
 		if (vm == null) vm = new VM();
 		vm.SetInterpreter(this);
 		vm.Reset(functions, GetGlobals());
+		_pendingSource = null;
+		_replHasImplicitOutput = hasImplicitOutput;
+		lastImplicitResult = Value.Null;
 
-		// Run
+		RunREPLSlice(timeLimit);
+	}
+
+	//
+	// Continue a REPL run that was still going when REPL (or a previous
+	// ContinueREPL) returned, because it yielded or hit the time limit.
+	// Does nothing if there is no such run.
+	//
+	// <param name="timeLimit">time limit in seconds</param>
+	public void ContinueREPL(double timeLimit=60) {
+		if (vm == null || !vm.IsRunning) return;
+		RunREPLSlice(timeLimit);
+	}
+
+	// Run the current REPL program until it ends, yields, or reaches the time
+	// limit.  When it ends, update lastImplicitResult (and invoke implicitOutput).
+	private void RunREPLSlice(double timeLimit) {
 		double startTime = vm.ElapsedTime();
 		vm.yielding = false;
-		bool hadRuntimeError = false;
 		while (vm.IsRunning && !vm.yielding) {
-			if (vm.ElapsedTime() - startTime > timeLimit) break;
+			if (vm.ElapsedTime() - startTime > timeLimit) return;	// time's up for now
 			vm.Run(1000);
 			if (!vm.Error.IsNull()) {
 				Error = vm.Error;
 				ReportError(Error);
-				hadRuntimeError = true;
-				break;
+				vm.Stop();
+				return;		// (no implicit output after an error)
 			}
 		}
+		if (vm.IsRunning) return;	// yielding; not done yet
 
 		// Implicit output: if last statement was a bare expression, capture r0.
-		// Always update lastImplicitResult (null on error or no implicit output).
-		lastImplicitResult = Value.Null;
-		Value result;
-		if (hasImplicitOutput && !hadRuntimeError) {
-			result = vm.GetStackValue(vm.BaseIndex);
+		if (_replHasImplicitOutput) {
+			Value result = vm.GetStackValue(vm.BaseIndex);
 			if (!result.IsNull()) {
 				lastImplicitResult = result;
 				if (implicitOutput != null) {
@@ -518,8 +536,6 @@ public class Interpreter {
 				}
 			}
 		}
-
-		_pendingSource = null;
 	}
 
 	// 

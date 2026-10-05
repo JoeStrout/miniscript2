@@ -38,6 +38,19 @@ class IOHelper {
 
 	public: static void PrintNoCR(String message, TextStyle style=TextStyle::Normal);
 	
+
+	// Make Ctrl-C set a flag (see InterruptRequested) instead of terminating the
+	// process.  An interactive host (the REPL) calls this, then polls
+	// InterruptRequested between slices of execution to stop the current run.
+	// A blocking TryInput is cut short by the interrupt, and reports EOF.
+	public: static void EnableInterruptHandling();
+
+	// True if Ctrl-C was pressed since the last ClearInterrupt (and interrupt
+	// handling has been enabled; otherwise Ctrl-C just ends the process).
+	public: static Boolean InterruptRequested();
+
+	public: static void ClearInterrupt();
+
 	// Read one line from standard input.  Returns true and sets `result` to the
 	// line (without its newline); returns false at end of file, leaving `result`
 	// null.  Callers must test the return value rather than the string: EOF and

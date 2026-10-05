@@ -616,6 +616,13 @@ static el_status_t insert_string(const char *p)
     return rl_point == rl_end ? CSstay : CSmove;
 }
 
+/* Unlike rl_insert_text, this leaves any text after the cursor displayed, and
+ * returns the status the key dispatcher needs to put the cursor back in place. */
+el_status_t el_insert_string(const char *text)
+{
+    return insert_string(text);
+}
+
 int rl_insert_text(const char *text)
 {
     int mark = rl_point;

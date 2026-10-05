@@ -374,7 +374,12 @@ public static class CoreIntrinsics {
 			// At end of file we return null, which a script can test for; any
 			// string we could return instead would collide with a line the user
 			// might actually type, leaving no way to break out of an input loop.
-			if (!IOHelper.TryInput(prompt, out result)) return new IntrinsicResult(Value.Null);
+			if (!IOHelper.TryInput(prompt, out result)) {
+				// A Ctrl-C handled by the host (the REPL) cuts the read short; stop
+				// the program here rather than letting it carry on with a null.
+				if (IOHelper.InterruptRequested()) ctx.vm.Stop();
+				return new IntrinsicResult(Value.Null);
+			}
 			return new IntrinsicResult(Value.make_string(result));
 		};
 

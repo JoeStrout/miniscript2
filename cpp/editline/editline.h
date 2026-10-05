@@ -65,6 +65,8 @@ extern char *      el_find_word(void);
 extern void        el_print_columns(int ac, char **av);
 extern el_status_t el_ring_bell(void);
 extern el_status_t el_del_char(void);
+/* Insert text at the cursor, as if typed (suitable as an el_bind_key function's result). */
+extern el_status_t el_insert_string(const char *text);
 
 extern el_status_t el_bind_key(int key, el_keymap_func_t function);
 extern el_status_t el_bind_key_in_metamap(int key, el_keymap_func_t function);

@@ -38,6 +38,7 @@ class InterpreterStorage : public std::enable_shared_from_this<InterpreterStorag
 	public: Value Error;
 	public: Value lastImplicitResult = Value::Null;
 	private: String _pendingSource; // accumulated REPL lines so far
+	private: Boolean _replHasImplicitOutput; // does the current REPL run end in a bare expression?
 	private: Globals _globals;
 
 	// 
@@ -89,7 +90,7 @@ class InterpreterStorage : public std::enable_shared_from_this<InterpreterStorag
 	// 
 	// The Value produced by the last complete REPL interaction that had implicit
 	// output (a bare expression as the last statement), or Value.Null otherwise.
-	// Updated at the end of each complete REPL() call.  Host code (e.g. the
+	// Updated when each REPL run finishes (in REPL or ContinueREPL).  Host code (e.g. the
 	// REPL loop in App.cs) reads this to push it into the _out history list.
 	// 
 
@@ -218,12 +219,23 @@ class InterpreterStorage : public std::enable_shared_from_this<InterpreterStorag
 
 	// 
 	// Read Eval Print Loop.  Run the given source until it either terminates,
-	// or hits the given time limit.  When it terminates, if we have new
-	// implicit output, print that to the implicitOutput stream.
+	// or hits the given time limit, or yields.  When it terminates, if we have new
+	// implicit output, print that to the implicitOutput stream.  If it is still
+	// Running() when this returns, call ContinueREPL to carry on with it.
 	// 
 	// <param name="sourceLine">line of source code to parse and run</param>
 	// <param name="timeLimit">time limit in seconds</param>
 	public: void REPL(String sourceLine, double timeLimit=60);
+
+	// Continue a REPL run that was still going when REPL (or a previous
+	// ContinueREPL) returned, because it yielded or hit the time limit.
+	// Does nothing if there is no such run.
+	// <param name="timeLimit">time limit in seconds</param>
+	public: void ContinueREPL(double timeLimit=60);
+
+	// Run the current REPL program until it ends, yields, or reaches the time
+	// limit.  When it ends, update lastImplicitResult (and invoke implicitOutput).
+	private: void RunREPLSlice(double timeLimit);
 
 	// 
 	// Report whether the virtual machine is still running, that is,
@@ -325,6 +337,8 @@ struct Interpreter {
 	public: void set_lastImplicitResult(Value _v);
 	private: String _pendingSource(); // accumulated REPL lines so far
 	private: void set__pendingSource(String _v); // accumulated REPL lines so far
+	private: Boolean _replHasImplicitOutput(); // does the current REPL run end in a bare expression?
+	private: void set__replHasImplicitOutput(Boolean _v); // does the current REPL run end in a bare expression?
 	private: Globals _globals();
 	private: void set__globals(Globals _v);
 	public: Interpreter(InterpreterStorage* p) : storage(p ? p->shared_from_this() : nullptr) {}  
@@ -378,7 +392,7 @@ struct Interpreter {
 	// 
 	// The Value produced by the last complete REPL interaction that had implicit
 	// output (a bare expression as the last statement), or Value.Null otherwise.
-	// Updated at the end of each complete REPL() call.  Host code (e.g. the
+	// Updated when each REPL run finishes (in REPL or ContinueREPL).  Host code (e.g. the
 	// REPL loop in App.cs) reads this to push it into the _out history list.
 	// 
 
@@ -511,12 +525,23 @@ struct Interpreter {
 
 	// 
 	// Read Eval Print Loop.  Run the given source until it either terminates,
-	// or hits the given time limit.  When it terminates, if we have new
-	// implicit output, print that to the implicitOutput stream.
+	// or hits the given time limit, or yields.  When it terminates, if we have new
+	// implicit output, print that to the implicitOutput stream.  If it is still
+	// Running() when this returns, call ContinueREPL to carry on with it.
 	// 
 	// <param name="sourceLine">line of source code to parse and run</param>
 	// <param name="timeLimit">time limit in seconds</param>
 	public: inline void REPL(String sourceLine, double timeLimit=60);
+
+	// Continue a REPL run that was still going when REPL (or a previous
+	// ContinueREPL) returned, because it yielded or hit the time limit.
+	// Does nothing if there is no such run.
+	// <param name="timeLimit">time limit in seconds</param>
+	public: inline void ContinueREPL(double timeLimit=60);
+
+	// Run the current REPL program until it ends, yields, or reaches the time
+	// limit.  When it ends, update lastImplicitResult (and invoke implicitOutput).
+	private: inline void RunREPLSlice(double timeLimit);
 
 	// 
 	// Report whether the virtual machine is still running, that is,
@@ -608,6 +633,8 @@ inline Value Interpreter::lastImplicitResult() { return get()->lastImplicitResul
 inline void Interpreter::set_lastImplicitResult(Value _v) { get()->lastImplicitResult = _v; }
 inline String Interpreter::_pendingSource() { return get()->_pendingSource; } // accumulated REPL lines so far
 inline void Interpreter::set__pendingSource(String _v) { get()->_pendingSource = _v; } // accumulated REPL lines so far
+inline Boolean Interpreter::_replHasImplicitOutput() { return get()->_replHasImplicitOutput; } // does the current REPL run end in a bare expression?
+inline void Interpreter::set__replHasImplicitOutput(Boolean _v) { get()->_replHasImplicitOutput = _v; } // does the current REPL run end in a bare expression?
 inline Globals Interpreter::_globals() { return get()->_globals; }
 inline void Interpreter::set__globals(Globals _v) { get()->_globals = _v; }
 inline void Interpreter::Init(String _source,TextOutputMethod _standardOutput,TextOutputMethod _errorOutput) { return get()->Init(_source, _standardOutput, _errorOutput); }
@@ -623,6 +650,8 @@ inline void Interpreter::Restart() { return get()->Restart(); }
 inline void Interpreter::RunUntilDone(double timeLimit,bool returnEarly) { return get()->RunUntilDone(timeLimit, returnEarly); }
 inline void Interpreter::Step() { return get()->Step(); }
 inline void Interpreter::REPL(String sourceLine,double timeLimit) { return get()->REPL(sourceLine, timeLimit); }
+inline void Interpreter::ContinueREPL(double timeLimit) { return get()->ContinueREPL(timeLimit); }
+inline void Interpreter::RunREPLSlice(double timeLimit) { return get()->RunREPLSlice(timeLimit); }
 inline bool Interpreter::Running() { return get()->Running(); }
 inline bool Interpreter::Done() { return get()->Done(); }
 inline bool Interpreter::ExitRequested() { return get()->ExitRequested(); }

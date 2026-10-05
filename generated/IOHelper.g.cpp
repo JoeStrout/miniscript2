@@ -8,6 +8,7 @@
 #include <string>
 #include <algorithm>
 #include "keyboard.h"
+#include "interrupt.h"
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -111,6 +112,15 @@ void IOHelper::PrintNoCR(String message,TextStyle style) {
 	SetStyle(style);
 	std::cout << message.c_str() << std::flush;
 }
+void IOHelper::EnableInterruptHandling() {
+	Interrupt::Enable();
+}
+Boolean IOHelper::InterruptRequested() {
+	return Interrupt::Pending();
+}
+void IOHelper::ClearInterrupt() {
+	Interrupt::Clear();
+}
 Boolean IOHelper::TryInput(String prompt,String* result,TextStyle promptStyle,TextStyle inputStyle) {
 	SetStyle(promptStyle);
 
@@ -127,6 +137,9 @@ Boolean IOHelper::TryInput(String prompt,String* result,TextStyle promptStyle,Te
 	int bytes = ReadLineFromStream(&line, &len, stdin);
 	if (bytes == -1) {
 		free(line);
+		// A Ctrl-C (when the host handles it) interrupts the read with EINTR,
+		// which leaves stdin's error flag set; clear it so later reads work.
+		if (Interrupt::Pending()) clearerr(stdin);
 		*result = String(nullptr);
 		return false;
 	}

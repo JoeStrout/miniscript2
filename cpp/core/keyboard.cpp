@@ -4,6 +4,7 @@
 // See that header for the rationale behind cbreak mode and the API contract.
 
 #include "keyboard.h"
+#include "interrupt.h"
 
 #ifdef _WIN32
 
@@ -145,7 +146,12 @@ bool EnterRawMode() {
 	if (!s_handlersInstalled) {
 		atexit(RestoreAtExit);
 		int n = (int)(sizeof(kRestoreSignals) / sizeof(kRestoreSignals[0]));
-		for (int i = 0; i < n; i++) signal(kRestoreSignals[i], SignalHandler);
+		for (int i = 0; i < n; i++) {
+			// If the host is handling Ctrl-C itself (see interrupt.h), leave its
+			// SIGINT handler alone; it will restore cooked mode when it stops the run.
+			if (kRestoreSignals[i] == SIGINT && Interrupt::Enabled()) continue;
+			signal(kRestoreSignals[i], SignalHandler);
+		}
 		s_handlersInstalled = true;
 	}
 	return true;
@@ -179,10 +185,10 @@ bool KeyAvailable() {
 int ReadKey() {
 	unsigned char c;
 	ssize_t n;
-	// Retry if interrupted by a signal handler.
+	// Retry if interrupted by a signal handler (unless it was a user interrupt).
 	do {
 		n = read(STDIN_FILENO, &c, 1);
-	} while (n < 0 && errno == EINTR);
+	} while (n < 0 && errno == EINTR && !Interrupt::Pending());
 	if (n == 1) return (int)c;
 	return -1;  // 0 == EOF, <0 == error
 }
@@ -208,7 +214,7 @@ static bool ReadByteTimed(int ms, unsigned char* out) {
 	ssize_t n;
 	do {
 		n = read(STDIN_FILENO, out, 1);
-	} while (n < 0 && errno == EINTR);
+	} while (n < 0 && errno == EINTR && !Interrupt::Pending());
 	return n == 1;
 }
 
@@ -275,7 +281,7 @@ int ReadKeyTranslated() {
 	ssize_t n;
 	do {
 		n = read(STDIN_FILENO, &c, 1);
-	} while (n < 0 && errno == EINTR);
+	} while (n < 0 && errno == EINTR && !Interrupt::Pending());
 	if (n != 1) return -1;
 
 	if (c == 127) return KEY_BACKSPACE;   // terminal Backspace key sends DEL

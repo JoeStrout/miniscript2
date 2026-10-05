@@ -24,6 +24,7 @@ using System.Collections.Generic;
 // CPP: #include "CoreIntrinsics.g.h"
 // CPP: #include "DateTimeUtils.g.h"
 // CPP: #include "keyboard.h"
+// CPP: #include "IOHelper.g.h"
 // CPP: #include <cstdlib>
 // CPP: #include <cstring>
 // CPP: #include <cstdio>
@@ -2399,6 +2400,11 @@ public static class ShellIntrinsics {
 			Value rawVal = Value.Null;
 			modMap.TryGet(Value.make_string("raw"), out rawVal);
 			Int32 code = KeyGetImpl(rawVal.BoolValue());
+			// As with `input`, a Ctrl-C handled by the host stops the program.
+			if (IOHelper.InterruptRequested()) {
+				ctx.vm.Stop();
+				return new IntrinsicResult(Value.emptyString);
+			}
 			if (code <= 0) return new IntrinsicResult(Value.emptyString);
 			return new IntrinsicResult(Value.string_from_code_point(code));
 		};

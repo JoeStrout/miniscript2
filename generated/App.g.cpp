@@ -19,10 +19,18 @@
 #include "Intrinsic.g.h" // ToDo: remove this once we've refactored set_FunctionIndexOffset away
 #include "CoreIntrinsics.g.h"
 #include "ShellIntrinsics.g.h"
+#include "keyboard.h"
 #include <thread>
 #include <chrono>
 #if USE_EDITLINE
 #include "editline/editline.h"
+
+// Editline key binding for Tab: insert 4 spaces.  (Its default, filename
+// completion, is never appropriate in our REPL -- and makes a mess of pasted
+// code indented with tabs.)
+static el_status_t InsertTabSpaces() {
+return el_insert_string("    ");
+}
 #endif
 #ifndef _WIN32
 #include <unistd.h>
@@ -51,7 +59,7 @@ bool App::testMode = Boolean(false);
 bool App::interactiveMode = Boolean(false);
 void App::MainProgram(List<String> args) {
 	value_init_constants();
-	CoreIntrinsics::hostVersion = "2.0 FC4";
+	CoreIntrinsics::hostVersion = "2.0 FC5";
 	CoreIntrinsics::hostName = "Command-Line";
 	#if _WIN32 || _WIN64
 		CoreIntrinsics::hostName = "Command-Line (Windows)";
@@ -544,7 +552,12 @@ Boolean App::GetREPLInput(Interpreter interp,String* line) {
 			IOHelper::Print("");  // blank line before the input prompt
 		}
 
-		// Read one raw line.
+		// Read one raw line.  Ctrl-C here abandons any partial (multi-line)
+		// input and prompts again.  (TryInput reports it as EOF, leaving the
+		// cursor after the terminal's "^C" echo; editline returns an empty
+		// line, having already moved to a new line.)
+		// A script may have left the terminal in raw mode (via the `key` module).
+		Keyboard::EnterCookedMode();
 		#if USE_EDITLINE
 		String styledPrompt = IOHelper::GetStyleTermCode(TextStyle::Subdued) + prompt +
 		  IOHelper::GetStyleTermCode(TextStyle::Normal);
@@ -554,8 +567,17 @@ Boolean App::GetREPLInput(Interpreter interp,String* line) {
 		input = rawLine;
 		if (rawLine[0] != '\0') add_history(rawLine);
 		free(rawLine);
+		if (IOHelper::InterruptRequested()) {
+			CancelREPLInput(interp);
+			continue;
+		}
 		#else
-		if (!IOHelper::TryInput(prompt, &input, TextStyle::Subdued, TextStyle::Normal)) return false;
+		if (!IOHelper::TryInput(prompt, &input, TextStyle::Subdued, TextStyle::Normal)) {
+			if (!IOHelper::InterruptRequested()) return false;
+			IOHelper::Print("");
+			CancelREPLInput(interp);
+			continue;
+		}
 		#endif
 
 		// Handle ! metacommands (only valid on the first line of an interaction).
@@ -593,6 +615,10 @@ Boolean App::GetREPLInput(Interpreter interp,String* line) {
 		return Boolean(true);
 	}
 	return false;	// unreachable; silences compiler warning
+}
+void App::CancelREPLInput(Interpreter interp) {
+	IOHelper::ClearInterrupt();
+	interp.Stop();
 }
 Int32 App::ParseInt(String s) {
 	if (s.Length() == 0) return -1;
@@ -658,13 +684,20 @@ void App::RunREPL(Interpreter interp) {
 	interp.set_standardOutput([](String s, Boolean) { IOHelper::Print(s, TextStyle::Strong); });
 	interp.set_errorOutput([](String s, Boolean) { IOHelper::Print(s, TextStyle::Error); });
 
+	// Ctrl-C stops the current run (or abandons the current input) and
+	// returns to the prompt, rather than ending the process.
+	IOHelper::EnableInterruptHandling();
+	#if USE_EDITLINE
+	el_bind_key('\t', InsertTabSpaces);
+	#endif
+
 	String currentInput = nullptr;
 	Value inListBefore;
 	Value implVal;
 	while (Boolean(true)) {
-		bool needingMoreBefore = interp.NeedMoreInput();
 		String line;
 		if (!GetREPLInput(interp, &line)) break;
+		bool needingMoreBefore = interp.NeedMoreInput();
 
 		// A blank line at the start of an interaction does nothing; just
 		// prompt again.  (Within a multi-line block, it's passed along.)
@@ -678,7 +711,23 @@ void App::RunREPL(Interpreter interp) {
 		}
 
 		inListBefore = CoreIntrinsics::replInList;
-		interp.REPL(line, 60);
+		// Run in short slices, so we notice a Ctrl-C promptly, until the
+		// program finishes.  (Pause a moment whenever it yields.)
+		interp.REPL(line, 0.1);
+		while (interp.Running() && !IOHelper::InterruptRequested()) {
+			if (interp.vm().yielding()) {
+				std::this_thread::sleep_for(std::chrono::milliseconds(1));
+			}
+			interp.ContinueREPL(0.1);
+		}
+		if (IOHelper::InterruptRequested()) {
+			IOHelper::ClearInterrupt();
+			interp.Stop();
+			IOHelper::Print("");		// (the terminal has probably echoed "^C")
+			IOHelper::Print("Interrupted.", TextStyle::Error);
+			currentInput = nullptr;
+			continue;
+		}
 		if (interp.ExitRequested()) DoExit(interp.ExitCode());
 
 		// When the interaction completes, record it and display implicit output.

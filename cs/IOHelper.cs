@@ -9,6 +9,7 @@ using System.Collections.Generic;
 // CPP: #include <string>
 // CPP: #include <algorithm>
 // CPP: #include "keyboard.h"
+// CPP: #include "interrupt.h"
 
 /*** BEGIN CPP_ONLY ***
 #ifdef _WIN32
@@ -139,6 +140,37 @@ public static class IOHelper {
 		Console.Write(message);  // CPP: std::cout << message.c_str() << std::flush;
 	}
 	
+	//*** BEGIN CS_ONLY ***
+	private static volatile bool _interruptRequested = false;
+	private static bool _interruptHandlingEnabled = false;
+	//*** END CS_ONLY ***
+
+	// Make Ctrl-C set a flag (see InterruptRequested) instead of terminating the
+	// process.  An interactive host (the REPL) calls this, then polls
+	// InterruptRequested between slices of execution to stop the current run.
+	// A blocking TryInput is cut short by the interrupt, and reports EOF.
+	public static void EnableInterruptHandling() {
+		//*** BEGIN CS_ONLY ***
+		if (_interruptHandlingEnabled) return;
+		_interruptHandlingEnabled = true;
+		Console.CancelKeyPress += (object sender, ConsoleCancelEventArgs e) => {
+			e.Cancel = true;
+			_interruptRequested = true;
+		};
+		//*** END CS_ONLY ***
+		// CPP: Interrupt::Enable();
+	}
+
+	// True if Ctrl-C was pressed since the last ClearInterrupt (and interrupt
+	// handling has been enabled; otherwise Ctrl-C just ends the process).
+	public static Boolean InterruptRequested() {
+		return _interruptRequested; // CPP: return Interrupt::Pending();
+	}
+
+	public static void ClearInterrupt() {
+		_interruptRequested = false; // CPP: Interrupt::Clear();
+	}
+
 	// Read one line from standard input.  Returns true and sets `result` to the
 	// line (without its newline); returns false at end of file, leaving `result`
 	// null.  Callers must test the return value rather than the string: EOF and
@@ -151,6 +183,7 @@ public static class IOHelper {
 		Console.Write(prompt);
 		SetStyle(inputStyle);
 		result = Console.ReadLine();
+		if (_interruptRequested) result = null;	// Ctrl-C was pressed during the read
 		return result != null;
 		//*** END CS_ONLY ***
 
@@ -168,6 +201,9 @@ public static class IOHelper {
 		int bytes = ReadLineFromStream(&line, &len, stdin);
 		if (bytes == -1) {
 			free(line);
+			// A Ctrl-C (when the host handles it) interrupts the read with EINTR,
+			// which leaves stdin's error flag set; clear it so later reads work.
+			if (Interrupt::Pending()) clearerr(stdin);
 			*result = String(nullptr);
 			return false;
 		}

@@ -19,6 +19,7 @@
 #include "CoreIntrinsics.g.h"
 #include "DateTimeUtils.g.h"
 #include "keyboard.h"
+#include "IOHelper.g.h"
 #include <cstdlib>
 #include <cstring>
 #include <cstdio>
@@ -1686,6 +1687,11 @@ void ShellIntrinsics::InitKeyIntrinsics() {
 		Value rawVal = Value::Null;
 		modMap.TryGet(Value::make_string("raw"), &rawVal);
 		Int32 code = KeyGetImpl(rawVal.BoolValue());
+		// As with `input`, a Ctrl-C handled by the host stops the program.
+		if (IOHelper::InterruptRequested()) {
+			ctx.vm.Stop();
+			return IntrinsicResult(Value::emptyString);
+		}
 		if (code <= 0) return IntrinsicResult(Value::emptyString);
 		return IntrinsicResult(Value::string_from_code_point(code));
 	});

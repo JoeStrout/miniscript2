@@ -35,7 +35,7 @@ InterpreterStorage::InterpreterStorage(List<String> sourceList,TextOutputMethod 
 }
 void InterpreterStorage::Stop() {
 	if (!IsNull(vm)) vm.Stop();
-	// TODO: if (parser != null) parser.PartialReset();
+	_pendingSource = nullptr;	// discard any partial REPL input
 }
 void InterpreterStorage::Reset(String _source) {
 	source = _source;
@@ -262,28 +262,34 @@ void InterpreterStorage::REPL(String sourceLine,double timeLimit) {
 	if (IsNull(vm)) vm =  VM::New();
 	vm.SetInterpreter(_this);
 	vm.Reset(functions, GetGlobals());
+	_pendingSource = nullptr;
+	_replHasImplicitOutput = hasImplicitOutput;
+	lastImplicitResult = Value::Null;
 
-	// Run
+	RunREPLSlice(timeLimit);
+}
+void InterpreterStorage::ContinueREPL(double timeLimit) {
+	if (IsNull(vm) || !vm.IsRunning()) return;
+	RunREPLSlice(timeLimit);
+}
+void InterpreterStorage::RunREPLSlice(double timeLimit) {
 	double startTime = vm.ElapsedTime();
 	vm.set_yielding(Boolean(false));
-	bool hadRuntimeError = Boolean(false);
 	while (vm.IsRunning() && !vm.yielding()) {
-		if (vm.ElapsedTime() - startTime > timeLimit) break;
+		if (vm.ElapsedTime() - startTime > timeLimit) return;	// time's up for now
 		vm.Run(1000);
 		if (!vm.Error().IsNull()) {
 			Error = vm.Error();
 			ReportError(Error);
-			hadRuntimeError = Boolean(true);
-			break;
+			vm.Stop();
+			return;		// (no implicit output after an error)
 		}
 	}
+	if (vm.IsRunning()) return;	// yielding; not done yet
 
 	// Implicit output: if last statement was a bare expression, capture r0.
-	// Always update lastImplicitResult (null on error or no implicit output).
-	lastImplicitResult = Value::Null;
-	Value result;
-	if (hasImplicitOutput && !hadRuntimeError) {
-		result = vm.GetStackValue(vm.BaseIndex());
+	if (_replHasImplicitOutput) {
+		Value result = vm.GetStackValue(vm.BaseIndex());
 		if (!result.IsNull()) {
 			lastImplicitResult = result;
 			if (!IsNull(implicitOutput)) {
@@ -291,8 +297,6 @@ void InterpreterStorage::REPL(String sourceLine,double timeLimit) {
 			}
 		}
 	}
-
-	_pendingSource = nullptr;
 }
 bool InterpreterStorage::Running() {
 	return !IsNull(vm) && vm.IsRunning();

@@ -57,6 +57,10 @@ struct App {
 	// the C++ side an empty line -- which is perfectly valid -- is also null.)
 	private: static Boolean GetREPLInput(Interpreter interp, String* line);
 
+	// Handle a Ctrl-C at the REPL prompt: forget the interrupt, and throw away
+	// any partial (multi-line) input accumulated so far.
+	private: static void CancelREPLInput(Interpreter interp);
+
 	// Parse a non-negative integer from a string.  Returns -1 on failure.
 	private: static Int32 ParseInt(String s);
 

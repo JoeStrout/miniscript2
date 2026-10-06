@@ -446,13 +446,27 @@ case "$TARGET" in
         ;;
 
     "test")
-        echo "Running quick smoke tests..."
-        echo "Testing C# version:"
-        cd build/cs && echo "These are some words for testing" | ./miniscript
-        cd ../..
-        echo "Testing C++ version:"
-        cd build/cpp && echo "These are some words for testing" | ./miniscript
-        cd ../..
+        # Unit tests plus the tests/testSuite.txt integration suite, on each
+        # built executable.  --test always exits 0, so judge it by its output.
+        echo "Running unit and integration tests..."
+        suite_status=0
+        for exe in build/cs/miniscript build/cpp/miniscript; do
+            if [ ! -x "$exe" ]; then
+                echo "  $exe: not built; skipped"
+                continue
+            fi
+            echo "  $exe:"
+            suite_out=$("$exe" --test 2>&1) || true
+            if echo "$suite_out" | grep -q "^Unit tests complete\." \
+                && echo "$suite_out" | grep -q "^Integration tests complete\." \
+                && ! echo "$suite_out" | grep -q "^Some integration tests failed\."; then
+                echo "$suite_out" | grep "^Integration tests:" | sed 's/^/    /'
+            else
+                echo "$suite_out" | sed 's/^/    /'
+                echo "    FAILED"
+                suite_status=1
+            fi
+        done
 
         # Regression: `input` at end of file returns null on both ports, rather
         # than crashing the host (C#) or returning "" (C++).  See notes/bugs.md
@@ -470,7 +484,7 @@ case "$TARGET" in
                 eof_status=1
             fi
         done
-        [ $eof_status -eq 0 ] || exit 1
+        [ $suite_status -eq 0 ] && [ $eof_status -eq 0 ] || exit 1
         ;;
 
     "test-all")
@@ -518,13 +532,10 @@ case "$TARGET" in
         echo "  all         - All of the above"
         echo ""
         echo "Test Commands:"
-        echo "  test        - Quick smoke test of built executables"
+        echo "  test        - Run --test (unit + testSuite.txt integration tests)"
+        echo "                and the EOF-input check on each built executable"
         echo "  test-all    - Run the C# unit tests under tests/"
         echo "  test-cs     - Same thing (tests/ holds only C# tests now)"
-        echo ""
-        echo "  The main suite is in the interpreter itself: run"
-        echo "    build/cpp/miniscript --test"
-        echo "  for the unit tests plus the testSuite.txt integration cases."
         echo ""
         echo "IDE:"
         echo "  xcode       - Generate Xcode project in cpp/xcode/"

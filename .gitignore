@@ -93,5 +93,5 @@ compile_commands.json
 .cache/clangd/
 
 # Benchmarks (symbolic link to miniscript-benchmarks/cmdline)
-benchmarks
+/benchmarks
 

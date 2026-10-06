@@ -83,6 +83,7 @@ int ReadKeyTranslated() {
 #include <termios.h>
 #include <unistd.h>
 #include <sys/select.h>
+#include <sys/ioctl.h>
 #include <cstdlib>  // atexit
 #include <cerrno>
 #include <csignal>
@@ -94,6 +95,19 @@ static struct termios s_origTermios;     // terminal settings to restore
 static bool s_origSaved       = false;   // have we captured s_origTermios?
 static bool s_rawActive       = false;   // is cbreak mode currently active?
 static bool s_handlersInstalled = false; // atexit + signal hooks installed?
+static bool s_eofSeen         = false;   // has a read on stdin returned EOF?
+
+// read() one byte from stdin, retrying if interrupted by a signal handler
+// (unless it was a user interrupt). Records EOF so KeyAvailable() can stop
+// reporting input once the stream is exhausted.
+static ssize_t ReadByte(unsigned char* out) {
+	ssize_t n;
+	do {
+		n = read(STDIN_FILENO, out, 1);
+	} while (n < 0 && errno == EINTR && !Interrupt::Pending());
+	if (n == 0) s_eofSeen = true;
+	return n;
+}
 
 // Restore the captured original terminal settings. optActions is the tcsetattr
 // "when" flag: TCSADRAIN preserves typed-ahead (for handing off to line input);
@@ -172,6 +186,7 @@ bool InRawMode() {
 }
 
 bool KeyAvailable() {
+	if (s_eofSeen) return false;
 	fd_set fds;
 	FD_ZERO(&fds);
 	FD_SET(STDIN_FILENO, &fds);
@@ -179,17 +194,18 @@ bool KeyAvailable() {
 	tv.tv_sec  = 0;
 	tv.tv_usec = 0;
 	int r = select(STDIN_FILENO + 1, &fds, NULL, NULL, &tv);
-	return r > 0 && FD_ISSET(STDIN_FILENO, &fds);
+	if (r <= 0 || !FD_ISSET(STDIN_FILENO, &fds)) return false;
+	// select() also reports a descriptor at end-of-file as readable, so a closed
+	// or exhausted stdin would look like a key forever. Ask how many bytes are
+	// actually pending; zero means EOF (or hangup), not a keystroke.
+	int pending = 0;
+	if (ioctl(STDIN_FILENO, FIONREAD, &pending) == 0 && pending <= 0) return false;
+	return true;
 }
 
 int ReadKey() {
 	unsigned char c;
-	ssize_t n;
-	// Retry if interrupted by a signal handler (unless it was a user interrupt).
-	do {
-		n = read(STDIN_FILENO, &c, 1);
-	} while (n < 0 && errno == EINTR && !Interrupt::Pending());
-	if (n == 1) return (int)c;
+	if (ReadByte(&c) == 1) return (int)c;
 	return -1;  // 0 == EOF, <0 == error
 }
 
@@ -211,11 +227,7 @@ static bool ReadByteTimed(int ms, unsigned char* out) {
 	tv.tv_usec = (ms % 1000) * 1000;
 	int r = select(STDIN_FILENO + 1, &fds, NULL, NULL, &tv);
 	if (r <= 0 || !FD_ISSET(STDIN_FILENO, &fds)) return false;
-	ssize_t n;
-	do {
-		n = read(STDIN_FILENO, out, 1);
-	} while (n < 0 && errno == EINTR && !Interrupt::Pending());
-	return n == 1;
+	return ReadByte(out) == 1;
 }
 
 // Parse the remainder of a CSI sequence (the bytes after "ESC ["). Returns the
@@ -278,11 +290,7 @@ static int ParseSS3() {
 
 int ReadKeyTranslated() {
 	unsigned char c;
-	ssize_t n;
-	do {
-		n = read(STDIN_FILENO, &c, 1);
-	} while (n < 0 && errno == EINTR && !Interrupt::Pending());
-	if (n != 1) return -1;
+	if (ReadByte(&c) != 1) return -1;
 
 	if (c == 127) return KEY_BACKSPACE;   // terminal Backspace key sends DEL
 	if (c == 13)  return KEY_RETURN;      // normalize CR (ICRNL usually gives 10)

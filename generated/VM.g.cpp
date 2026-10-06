@@ -461,7 +461,7 @@ void VMStorage::Reset(List<FuncDef> allFunctions,Globals globals) {
 	// Intrinsics are built once and shared; build the name->funcref table if
 	// this VM doesn't have one yet.
 	if (IsNull(_intrinsics)) {
-		_intrinsics =  Dictionary<String, Value>::New();
+		_intrinsics =  Dictionary<Value, Value>::New();
 		Intrinsic::RegisterAll(_intrinsics);
 	}
 
@@ -2381,8 +2381,7 @@ Int32 VMStorage::ResolveGlobalRef(FuncDef func,Int32 refIdx) {
 Value VMStorage::GlobalMiss(FuncDef func,Int32 refIdx) {
 	Value name = func.GlobalNames()[refIdx];
 	Value result;
-	String nameStr = name.AsCString();
-	if (_intrinsics.TryGetValue(nameStr, &result)) return result;
+	if (_intrinsics.TryGetValue(name, &result)) return result;
 
 	// self/super read as null outside a method, matching LookupVariable.
 	if (name == Value::selfString || name == Value::superString) return Value::Null;
@@ -2438,8 +2437,7 @@ Value VMStorage::LookupVariable(Value varName) {
 	}
 
 	// Check intrinsics table
-	String nameStr = varName.AsCString();
-	if (_intrinsics.TryGetValue(nameStr, &result)) {
+	if (_intrinsics.TryGetValue(varName, &result)) {
 		return result;
 	}
 

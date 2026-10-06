@@ -30,6 +30,7 @@ public class Intrinsic {
 	public Boolean AffectsState = false;
 	private FuncDef _funcDef = null;
 	private Value _funcRef = Value.Null;
+	private Value _nameValue = Value.Null;  // Name as a Value, for the VM's lookup table
 
 	private static List<Intrinsic> _all = new List<Intrinsic>();
 	private static Dictionary<String, Intrinsic> _byName = new Dictionary<String, Intrinsic>();
@@ -131,14 +132,18 @@ public class Intrinsic {
 		return _all[i];
 	}
 
-	// Build (once) this intrinsic's FuncDef and a stable funcref Value.
-	// The funcref is added as a permanent GC root: intrinsics live for the
-	// lifetime of the process and are shared across VMs and resets.
+	// Build (once) this intrinsic's FuncDef and a stable funcref Value, plus
+	// its name as a Value.  Both are added as permanent GC roots: intrinsics
+	// live for the lifetime of the process and are shared across VMs and
+	// resets, and the name is a key in every VM's intrinsics table (an
+	// interned string would otherwise be swept by a full collection).
 	private void EnsureBuilt() {
 		if (_funcDef == null) {
 			_funcDef = BuildFuncDef();
 			_funcRef = Value.make_funcref(_funcDef, Value.Null);
 			GCManager.AddRoot(_funcRef);
+			_nameValue = Value.make_string(Name);
+			GCManager.AddRoot(_nameValue);
 		}
 	}
 
@@ -164,7 +169,9 @@ public class Intrinsic {
 
 	// Populate the VM's intrinsics name->funcref table.  Intrinsic FuncDefs and
 	// their funcref Values are built once (lazily) and shared across all VMs.
-	public static void RegisterAll(Dictionary<String, Value> intrinsics) {
+	// Keyed by name Value rather than String, so the VM can look up a name
+	// it already holds as a Value without building a String first.
+	public static void RegisterAll(Dictionary<Value, Value> intrinsics) {
 		if (!_initialized) {
 			CoreIntrinsics.Init();
 			_initialized = true;
@@ -173,7 +180,7 @@ public class Intrinsic {
 		for (Int32 i = 0; i < _all.Count; i++) {
 			Intrinsic intr = _all[i];
 			intr.EnsureBuilt();
-			intrinsics[intr.Name] = intr._funcRef;
+			intrinsics[intr._nameValue] = intr._funcRef;
 		}
 		// Note: do NOT invalidate the cached type maps here.  They are GC roots
 		// (CoreIntrinsics.MarkRoots), so they are never swept out from under us,

@@ -84,6 +84,8 @@ void IntrinsicStorage::EnsureBuilt() {
 		_funcDef = BuildFuncDef();
 		_funcRef = Value::make_funcref(_funcDef, Value::Null);
 		GCManager::AddRoot(_funcRef);
+		_nameValue = Value::make_string(Name);
+		GCManager::AddRoot(_nameValue);
 	}
 }
 Value IntrinsicStorage::GetFunc() {
@@ -103,7 +105,7 @@ FuncDef IntrinsicStorage::BuildFuncDef() {
 	def.set_AffectsState(AffectsState);
 	return def;
 }
-void IntrinsicStorage::RegisterAll(Dictionary<String, Value> intrinsics) {
+void IntrinsicStorage::RegisterAll(Dictionary<Value, Value> intrinsics) {
 	if (!_initialized) {
 		CoreIntrinsics::Init();
 		_initialized = Boolean(true);
@@ -112,7 +114,7 @@ void IntrinsicStorage::RegisterAll(Dictionary<String, Value> intrinsics) {
 	for (Int32 i = 0; i < _all.Count(); i++) {
 		Intrinsic intr = _all[i];
 		intr.EnsureBuilt();
-		intrinsics[intr.Name()] = intr._funcRef();
+		intrinsics[intr._nameValue()] = intr._funcRef();
 	}
 	// Note: do NOT invalidate the cached type maps here.  They are GC roots
 	// (CoreIntrinsics.MarkRoots), so they are never swept out from under us,

@@ -128,7 +128,7 @@ public class VM {
 	private List<CallInfo> callStack;
 	private Int32 callStackTop;
 
-	private Dictionary<String, Value> _intrinsics; // intrinsic name -> FuncRef Value
+	private Dictionary<Value, Value> _intrinsics; // intrinsic name -> FuncRef Value
 
 	// Execution state (persistent across RunSteps calls)
 	public Int32 PC { get; private set; }
@@ -698,7 +698,7 @@ public class VM {
 		// Intrinsics are built once and shared; build the name->funcref table if
 		// this VM doesn't have one yet.
 		if (_intrinsics == null) {
-			_intrinsics = new Dictionary<String, Value>();
+			_intrinsics = new Dictionary<Value, Value>();
 			Intrinsic.RegisterAll(_intrinsics);
 		}
 
@@ -2952,8 +2952,7 @@ public class VM {
 	private Value GlobalMiss(FuncDef func, Int32 refIdx) {
 		Value name = func.GlobalNames[refIdx];
 		Value result;
-		String nameStr = name.AsCString();
-		if (_intrinsics.TryGetValue(nameStr, out result)) return result;
+		if (_intrinsics.TryGetValue(name, out result)) return result;
 
 		// self/super read as null outside a method, matching LookupVariable.
 		if (name == Value.selfString || name == Value.superString) return Value.Null;
@@ -3041,8 +3040,7 @@ public class VM {
 		}
 
 		// Check intrinsics table
-		String nameStr = varName.AsCString();
-		if (_intrinsics.TryGetValue(nameStr, out result)) {
+		if (_intrinsics.TryGetValue(varName, out result)) {
 			return result;
 		}
 

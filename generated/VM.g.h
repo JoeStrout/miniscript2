@@ -68,7 +68,7 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	public: Interpreter GetInterpreter(); // NO_INLINE
 	private: List<CallInfo> callStack;
 	private: Int32 callStackTop;
-	private: Dictionary<String, Value> _intrinsics; // intrinsic name -> FuncRef Value
+	private: Dictionary<Value, Value> _intrinsics; // intrinsic name -> FuncRef Value
 	public: Int32 PC;
 	public: FuncDef CurrentFunction;
 	public: Boolean IsRunning;
@@ -540,8 +540,8 @@ struct VM {
 	private: void set_callStack(List<CallInfo> _v);
 	private: Int32 callStackTop();
 	private: void set_callStackTop(Int32 _v);
-	private: Dictionary<String, Value> _intrinsics(); // intrinsic name -> FuncRef Value
-	private: void set__intrinsics(Dictionary<String, Value> _v); // intrinsic name -> FuncRef Value
+	private: Dictionary<Value, Value> _intrinsics(); // intrinsic name -> FuncRef Value
+	private: void set__intrinsics(Dictionary<Value, Value> _v); // intrinsic name -> FuncRef Value
 	public: Int32 PC();
 	public: void set_PC(Int32 _v);
 	public: FuncDef CurrentFunction();
@@ -1010,8 +1010,8 @@ inline List<CallInfo> VM::callStack() { return get()->callStack; }
 inline void VM::set_callStack(List<CallInfo> _v) { get()->callStack = _v; }
 inline Int32 VM::callStackTop() { return get()->callStackTop; }
 inline void VM::set_callStackTop(Int32 _v) { get()->callStackTop = _v; }
-inline Dictionary<String, Value> VM::_intrinsics() { return get()->_intrinsics; } // intrinsic name -> FuncRef Value
-inline void VM::set__intrinsics(Dictionary<String, Value> _v) { get()->_intrinsics = _v; } // intrinsic name -> FuncRef Value
+inline Dictionary<Value, Value> VM::_intrinsics() { return get()->_intrinsics; } // intrinsic name -> FuncRef Value
+inline void VM::set__intrinsics(Dictionary<Value, Value> _v) { get()->_intrinsics = _v; } // intrinsic name -> FuncRef Value
 inline Int32 VM::PC() { return get()->PC; }
 inline void VM::set_PC(Int32 _v) { get()->PC = _v; }
 inline FuncDef VM::CurrentFunction() { return get()->CurrentFunction; }

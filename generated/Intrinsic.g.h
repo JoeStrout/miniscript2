@@ -31,6 +31,7 @@ class IntrinsicStorage : public std::enable_shared_from_this<IntrinsicStorage> {
 	public: Boolean AffectsState = Boolean(false);
 	private: FuncDef _funcDef = nullptr;
 	private: Value _funcRef = Value::Null;
+	private: Value _nameValue = Value::Null; // Name as a Value, for the VM's lookup table
 	private: static List<Intrinsic> _all;
 	private: static Dictionary<String, Intrinsic> _byName;
 	private: static Boolean _initialized;
@@ -78,9 +79,11 @@ class IntrinsicStorage : public std::enable_shared_from_this<IntrinsicStorage> {
 
 	public: static Intrinsic GetByIndex(Int32 i);
 
-	// Build (once) this intrinsic's FuncDef and a stable funcref Value.
-	// The funcref is added as a permanent GC root: intrinsics live for the
-	// lifetime of the process and are shared across VMs and resets.
+	// Build (once) this intrinsic's FuncDef and a stable funcref Value, plus
+	// its name as a Value.  Both are added as permanent GC roots: intrinsics
+	// live for the lifetime of the process and are shared across VMs and
+	// resets, and the name is a key in every VM's intrinsics table (an
+	// interned string would otherwise be swept by a full collection).
 	private: void EnsureBuilt();
 
 	public: Value GetFunc();
@@ -90,7 +93,9 @@ class IntrinsicStorage : public std::enable_shared_from_this<IntrinsicStorage> {
 
 	// Populate the VM's intrinsics name->funcref table.  Intrinsic FuncDefs and
 	// their funcref Values are built once (lazily) and shared across all VMs.
-	public: static void RegisterAll(Dictionary<String, Value> intrinsics);
+	// Keyed by name Value rather than String, so the VM can look up a name
+	// it already holds as a Value without building a String first.
+	public: static void RegisterAll(Dictionary<Value, Value> intrinsics);
 }; // end of class IntrinsicStorage
 
 struct Intrinsic {
@@ -119,6 +124,8 @@ struct Intrinsic {
 	private: void set__funcDef(FuncDef _v);
 	private: Value _funcRef();
 	private: void set__funcRef(Value _v);
+	private: Value _nameValue(); // Name as a Value, for the VM's lookup table
+	private: void set__nameValue(Value _v); // Name as a Value, for the VM's lookup table
 	private: List<Intrinsic> _all();
 	private: void set__all(List<Intrinsic> _v);
 	private: Dictionary<String, Intrinsic> _byName();
@@ -174,9 +181,11 @@ struct Intrinsic {
 
 	public: static Intrinsic GetByIndex(Int32 i) { return IntrinsicStorage::GetByIndex(i); }
 
-	// Build (once) this intrinsic's FuncDef and a stable funcref Value.
-	// The funcref is added as a permanent GC root: intrinsics live for the
-	// lifetime of the process and are shared across VMs and resets.
+	// Build (once) this intrinsic's FuncDef and a stable funcref Value, plus
+	// its name as a Value.  Both are added as permanent GC roots: intrinsics
+	// live for the lifetime of the process and are shared across VMs and
+	// resets, and the name is a key in every VM's intrinsics table (an
+	// interned string would otherwise be swept by a full collection).
 	private: inline void EnsureBuilt();
 
 	public: inline Value GetFunc();
@@ -186,7 +195,9 @@ struct Intrinsic {
 
 	// Populate the VM's intrinsics name->funcref table.  Intrinsic FuncDefs and
 	// their funcref Values are built once (lazily) and shared across all VMs.
-	public: static void RegisterAll(Dictionary<String, Value> intrinsics) { return IntrinsicStorage::RegisterAll(intrinsics); }
+	// Keyed by name Value rather than String, so the VM can look up a name
+	// it already holds as a Value without building a String first.
+	public: static void RegisterAll(Dictionary<Value, Value> intrinsics) { return IntrinsicStorage::RegisterAll(intrinsics); }
 }; // end of struct Intrinsic
 
 // INLINE METHODS
@@ -208,6 +219,8 @@ inline FuncDef Intrinsic::_funcDef() { return get()->_funcDef; }
 inline void Intrinsic::set__funcDef(FuncDef _v) { get()->_funcDef = _v; }
 inline Value Intrinsic::_funcRef() { return get()->_funcRef; }
 inline void Intrinsic::set__funcRef(Value _v) { get()->_funcRef = _v; }
+inline Value Intrinsic::_nameValue() { return get()->_nameValue; } // Name as a Value, for the VM's lookup table
+inline void Intrinsic::set__nameValue(Value _v) { get()->_nameValue = _v; } // Name as a Value, for the VM's lookup table
 inline List<Intrinsic> Intrinsic::_all() { return get()->_all; }
 inline void Intrinsic::set__all(List<Intrinsic> _v) { get()->_all = _v; }
 inline Dictionary<String, Intrinsic> Intrinsic::_byName() { return get()->_byName; }

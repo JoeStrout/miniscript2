@@ -70,6 +70,8 @@ TAG="$TAG_PREFIX$NUM"
 TITLE=$(printf "$TITLE_FMT" "$NUM")
 NOTES=$(printf "$NOTES_FMT" "$NUM")
 DIST="build/dist"
+MANUAL="docs/MiniScript-Manual.pdf"
+MANUAL_SRC="docs/MiniScript-Manual.pages"
 
 # Verify the expected binaries are present
 MISSING=0
@@ -81,6 +83,12 @@ for f in "$DIST/miniscript-mac" "$DIST/miniscript-linux" "$DIST/miniscript-win.e
 done
 if [ "$MISSING" = "1" ]; then
     echo "Run 'tools/build.sh dist all' first."
+    exit 1
+fi
+
+# The manual is not built; it is exported by hand and committed under docs/.
+if [ ! -f "$MANUAL" ]; then
+    echo "Missing: $MANUAL"
     exit 1
 fi
 
@@ -182,6 +190,21 @@ if [ "$STALE" = "1" ]; then
 fi
 
 # ---------------------------------------------------------------------------
+# Manual check
+#
+# The PDF is exported by hand from the Pages document, so it is easy to edit
+# the manual and forget to re-export.  Refuse to upload a PDF older than its
+# source.
+# ---------------------------------------------------------------------------
+if [ -e "$MANUAL_SRC" ] && [ "$(mtime "$MANUAL")" -lt "$(mtime "$MANUAL_SRC")" ]; then
+    echo "Stale: $MANUAL  ($(date -r "$(mtime "$MANUAL")" '+%Y-%m-%d %H:%M'))"
+    echo "Newer source: $MANUAL_SRC ($(date -r "$(mtime "$MANUAL_SRC")" '+%Y-%m-%d %H:%M'))"
+    echo "Export the manual to PDF again (and commit it), then push again."
+    [ "$FORCE" = "1" ] || exit 1
+    echo "--force given; uploading the stale manual anyway."
+fi
+
+# ---------------------------------------------------------------------------
 # Repository check
 #
 # The staleness check above compares binaries against source *files*, which
@@ -230,6 +253,7 @@ gh release create "$TAG" \
     "$DIST/miniscript-linux" \
     "$DIST/miniscript-win.exe" \
     "$DIST/miniscript-csharp.zip" \
+    "$MANUAL" \
     --target "$(git rev-parse HEAD)" \
     --title "$TITLE" \
     --prerelease \

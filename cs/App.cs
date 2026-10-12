@@ -38,12 +38,18 @@ static el_status_t InsertTabSpaces() {
 #ifndef _WIN32
 #include <unistd.h>
 #endif
+#ifdef __APPLE__
+#include <mach-o/dyld.h>	// for _NSGetExecutablePath
+#include <stdlib.h>			// for realpath
+#endif
 #ifdef _WIN32
 #include <windows.h>
-// POSIX setenv stub
+#include <stdlib.h>
+// POSIX setenv stub.  Uses _putenv_s (not SetEnvironmentVariableA) so that the
+// CRT's environ array is updated too; ShellIntrinsics builds `env` from environ.
 // Contract: we always ignore the return value and always want to overwrite a previous value
 // ^^^^^^^^^ if either of these things change in the below code, this will need rewritten
-void setenv(const char *name, const char *value, int overwrite) { SetEnvironmentVariableA(name, value); }
+void setenv(const char *name, const char *value, int overwrite) { _putenv_s(name, value); }
 #endif
 using namespace MiniScript;
 *** END CPP_ONLY ***/
@@ -177,9 +183,11 @@ public struct App {
 		
 		// Set MS_SCRIPT_DIR and MS_EXE_DIR so import can find library files.
 		//*** BEGIN CS_ONLY ***
-		String exeDir = System.IO.Path.GetDirectoryName(
-			System.Diagnostics.Process.GetCurrentProcess().MainModule.FileName);
-		if (exeDir == null) exeDir = ".";
+		// (AppContext.BaseDirectory is the app's own folder, even when launched
+		// via `dotnet run` or `dotnet foo.dll`, where MainModule is dotnet itself.)
+		String exeDir = System.AppContext.BaseDirectory;
+		if (String.IsNullOrEmpty(exeDir)) exeDir = ".";
+		else exeDir = System.IO.Path.TrimEndingDirectorySeparator(exeDir);
 		System.Environment.SetEnvironmentVariable("MS_EXE_DIR", exeDir);
 		//*** END CS_ONLY ***
 		/*** BEGIN CPP_ONLY ***
@@ -187,6 +195,14 @@ public struct App {
 			char exePath[1024] = {0};
 			#ifdef _WIN32
 				GetModuleFileNameA(nullptr, exePath, sizeof(exePath));
+			#elif defined(__APPLE__)
+				// _NSGetExecutablePath does not resolve symlinks (unlike
+				// /proc/self/exe on Linux), so follow up with realpath.
+				char rawPath[1024] = {0};
+				uint32_t size = sizeof(rawPath);
+				if (_NSGetExecutablePath(rawPath, &size) != 0 || !realpath(rawPath, exePath)) {
+					exePath[0] = '.'; exePath[1] = '\0';
+				}
 			#else
 				ssize_t len = readlink("/proc/self/exe", exePath, sizeof(exePath) - 1);
 				if (len < 0) { exePath[0] = '.'; exePath[1] = '\0'; }

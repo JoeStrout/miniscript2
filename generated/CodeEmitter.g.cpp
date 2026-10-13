@@ -196,11 +196,8 @@ List<String> AssemblyEmitterStorage::GetLines() {
 	return _lines;
 }
 String AssemblyEmitterStorage::GetAssembly() {
-	String result = "";
-	for (Int32 i = 0; i < _lines.Count(); i++) {
-		result = result + _lines[i] + "\n";
-	}
-	return result;
+	if (_lines.Count() == 0) return "";
+	return String::Join("\n", _lines) + "\n";
 }
 
 } // end of namespace MiniScript

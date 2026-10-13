@@ -890,9 +890,12 @@ namespace InterpImpl {
 				}
 			}
 
-			// Not a placeholder, append this character
-			result += format[pos];
-			pos++;
+			// Not a placeholder: append the literal text up to the next '{'
+			// in one piece (appending a character at a time copies the
+			// whole result for every character).
+			int start = pos++;
+			while (format[pos] && format[pos] != '{') pos++;
+			result += String(format + start, (size_t)(pos - start));
 		}
 
 		// If we get here, we ran out of format string before using all arguments

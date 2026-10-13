@@ -120,7 +120,7 @@ public struct App {
 				Int32 j = 1;
 				while (j < arg.Length) {
 					String ch = arg.Substring(j, 1);
-					if (ch == "h") { PrintUsage(progName); return; }
+					if (ch == "h" || ch == "?") { PrintUsage(progName); return; }
 					else if (ch == "v") { PrintVersion(); return; }
 					else if (ch == "d") debugMode = true;
 					else if (ch == "q") quietMode = true;
@@ -154,13 +154,14 @@ public struct App {
 		}
 
 		// Whatever remains is the script path (unless we have inline code)
-		// followed by the script's own arguments.
-		Int32 shellArgsStart = argIdx;
-		if (inlineCode == null && argIdx < args.Count) {
-			fileArgIndex = argIdx;
-			shellArgsStart = argIdx + 1;
-		}
-		ShellIntrinsics.SetShellArgs(args, shellArgsStart);
+		// followed by the script's own arguments.  shellArgs[0] is the script
+		// path (as in MS1), or "-c" for inline code (as in Python's sys.argv),
+		// so the script's own arguments always start at shellArgs[1].
+		if (inlineCode == null && argIdx < args.Count) fileArgIndex = argIdx;
+		List<String> shellArgStrings = new List<String>();
+		if (inlineCode != null) shellArgStrings.Add("-c");
+		for (Int32 i = argIdx; i < args.Count; i++) shellArgStrings.Add(args[i]);
+		ShellIntrinsics.SetShellArgs(shellArgStrings, 0);
 
 		// The startup banner is for interactive use only: it appears when we're
 		// about to enter the REPL, and not when running a script or -c code.
@@ -251,25 +252,22 @@ public struct App {
 			}
 			*** END CPP_ONLY ***/
 			interp = CreateInterpreter();
-			if (filePath.EndsWith(".ms")) {
-				// Source file: read, join, and compile via Interpreter
+			if (!filePath.EndsWith(".msa")) {
+				// Source file (.ms or any other extension, including none, as is
+				// usual for a shebang script): read, join, and compile via Interpreter
 				if (debugMode) IOHelper.Print(StringUtils.Format("Reading source file: {0}", filePath));
 				List<String> lines = IOHelper.ReadFile(filePath);
 				if (lines.Count == 0) {
 					IOHelper.Print("No lines read from file.");
 				} else {
-					String source = "";
-					for (Int32 i = 0; i < lines.Count; i++) {
-						if (i > 0) source += "\n";
-						source += lines[i];
-					}
+					String source = String.Join("\n", lines);
 					if (debugMode) IOHelper.Print(StringUtils.Format("Parsing {0} lines...", lines.Count));
 					interp.SourceFile = GetPathFilename(filePath);
 					interp.Reset(source);
 					RunInterpreter(interp);
 				}
 			} else {
-				// Assembly file (.msa or any other extension)
+				// Assembly file (.msa)
 				List<FuncDef> functions = AssembleFile(filePath);
 				if (functions != null) {
 					interp.Reset(functions);
@@ -484,11 +482,7 @@ public struct App {
 	// Run a single integration test
 	private static bool RunSingleTest(List<String> inputLines, List<String> expectedLines, Int32 lineNum) {
 		// Join input lines into source code
-		String source = "";
-		for (Int32 i = 0; i < inputLines.Count; i++) {
-			if (i > 0) source += "\n";
-			source += inputLines[i];
-		}
+		String source = String.Join("\n", inputLines);
 
 		// Skip empty tests
 		if (String.IsNullOrEmpty(source.Trim())) return true;
@@ -508,20 +502,10 @@ public struct App {
 		interp.RunUntilDone();
 
 		// Get expected output (join lines, trim trailing empty lines)
-		String expected = "";
-		for (Int32 i = 0; i < expectedLines.Count; i++) {
-			if (i > 0) expected += "\n";
-			expected += expectedLines[i];
-		}
-		expected = expected.Trim();
+		String expected = String.Join("\n", expectedLines).Trim();
 
 		// Get actual output from print statements
-		String actual = "";
-		for (Int32 i = 0; i < printOutput.Count; i++) {
-			if (i > 0) actual += "\n";
-			actual += printOutput[i];
-		}
-		actual = actual.Trim();
+		String actual = String.Join("\n", printOutput).Trim();
 
 		if (actual != expected) {
 			IOHelper.Print(StringUtils.Format("FAIL (line {0}): {1}", lineNum, source));

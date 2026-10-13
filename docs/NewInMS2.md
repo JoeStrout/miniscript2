@@ -390,7 +390,7 @@ MiniScript 1.x used C#'s standard garbage collector in C#, but a reference-count
   garbage collector.
 - **REPL conveniences** — `_in` and `_out` (the input and implicit-output
   history lists) and `reset` (clear all globals and history).  The REPL itself
-  gains line editing, persistent history and syntax coloring.
+  gains line editing, input history and syntax coloring.
 
 ---
 

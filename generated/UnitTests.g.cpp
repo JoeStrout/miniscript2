@@ -1556,10 +1556,12 @@ Boolean UnitTests::TestSpilledLocals() {
 	Boolean ok = Boolean(true);
 	Int32 count = 300;
 
-	String source =  String::New("f = function()\n");
+	List<String> lines =  List<String>::New(count + 1);
+	lines.Add("f = function()\n");
 	for (Int32 i = 1; i <= count; i++) {
-		source = source + StringUtils::Format("\tv{0} = {1}\n", i, i);
+		lines.Add(StringUtils::Format("\tv{0} = {1}\n", i, i));
 	}
+	String source = String::Join("", lines);
 	// A spilled variable read and written, a spilled loop variable, and a
 	// closure that captures a spilled variable.
 	source = source + "\tv1 = v1 + 40\n";

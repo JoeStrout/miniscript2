@@ -297,11 +297,13 @@ Boolean ComparisonChainNodeStorage::IsStatement() {
 	return Boolean(false);
 }
 String ComparisonChainNodeStorage::ToStr() {
-	String result = Operands[0].ToStr();
+	List<String> parts =  List<String>::New(Operands.Count() * 2);
+	parts.Add(Operands[0].ToStr());
 	for (Int32 i = 0; i < Operators.Count(); i++) {
-		result = result + " " + Operators[i] + " " + Operands[i + 1].ToStr();
+		parts.Add(Operators[i]);
+		parts.Add(Operands[i + 1].ToStr());
 	}
-	return result;
+	return String::Join(" ", parts);
 }
 ASTNode ComparisonChainNodeStorage::Simplify() {
 	List<ASTNode> simplifiedOperands =  List<ASTNode>::New();
@@ -333,13 +335,12 @@ Boolean CallNodeStorage::IsStatement() {
 	return Boolean(false);
 }
 String CallNodeStorage::ToStr() {
-	String result = Function + "(";
+	String prefix = Function + "(";
+	List<String> args =  List<String>::New(Arguments.Count());
 	for (Int32 i = 0; i < Arguments.Count(); i++) {
-		if (i > 0) result = result + ", ";
-		result = result + Arguments[i].ToStr();
+		args.Add(Arguments[i].ToStr());
 	}
-	result = result + ")";
-	return result;
+	return prefix + String::Join(", ", args) + ")";
 }
 ASTNode CallNodeStorage::Simplify() {
 	List<ASTNode> simplifiedArgs =  List<ASTNode>::New();
@@ -391,13 +392,11 @@ Boolean ListNodeStorage::IsStatement() {
 	return Boolean(false);
 }
 String ListNodeStorage::ToStr() {
-	String result = "[";
+	List<String> parts =  List<String>::New(Elements.Count());
 	for (Int32 i = 0; i < Elements.Count(); i++) {
-		if (i > 0) result = result + ", ";
-		result = result + Elements[i].ToStr();
+		parts.Add(Elements[i].ToStr());
 	}
-	result = result + "]";
-	return result;
+	return "[" + String::Join(", ", parts) + "]";
 }
 ASTNode ListNodeStorage::Simplify() {
 	List<ASTNode> simplifiedElements =  List<ASTNode>::New();
@@ -429,13 +428,11 @@ Boolean MapNodeStorage::IsStatement() {
 	return Boolean(false);
 }
 String MapNodeStorage::ToStr() {
-	String result = "{";
+	List<String> parts =  List<String>::New(Keys.Count());
 	for (Int32 i = 0; i < Keys.Count(); i++) {
-		if (i > 0) result = result + ", ";
-		result = result + Keys[i].ToStr() + ": " + Values[i].ToStr();
+		parts.Add(Keys[i].ToStr() + ": " + Values[i].ToStr());
 	}
-	result = result + "}";
-	return result;
+	return "{" + String::Join(", ", parts) + "}";
 }
 ASTNode MapNodeStorage::Simplify() {
 	List<ASTNode> simplifiedKeys =  List<ASTNode>::New();
@@ -538,13 +535,12 @@ Boolean MethodCallNodeStorage::IsStatement() {
 	return Boolean(false);
 }
 String MethodCallNodeStorage::ToStr() {
-	String result = Target.ToStr() + "." + Method + "(";
+	String prefix = Target.ToStr() + "." + Method + "(";
+	List<String> args =  List<String>::New(Arguments.Count());
 	for (Int32 i = 0; i < Arguments.Count(); i++) {
-		if (i > 0) result = result + ", ";
-		result = result + Arguments[i].ToStr();
+		args.Add(Arguments[i].ToStr());
 	}
-	result = result + ")";
-	return result;
+	return prefix + String::Join(", ", args) + ")";
 }
 ASTNode MethodCallNodeStorage::Simplify() {
 	List<ASTNode> simplifiedArgs =  List<ASTNode>::New();
@@ -573,13 +569,12 @@ Boolean ExprCallNodeStorage::IsStatement() {
 	return Boolean(false);
 }
 String ExprCallNodeStorage::ToStr() {
-	String result = Function.ToStr() + "(";
+	String prefix = Function.ToStr() + "(";
+	List<String> args =  List<String>::New(Arguments.Count());
 	for (Int32 i = 0; i < Arguments.Count(); i++) {
-		if (i > 0) result = result + ", ";
-		result = result + Arguments[i].ToStr();
+		args.Add(Arguments[i].ToStr());
 	}
-	result = result + ")";
-	return result;
+	return prefix + String::Join(", ", args) + ")";
 }
 ASTNode ExprCallNodeStorage::Simplify() {
 	List<ASTNode> simplifiedArgs =  List<ASTNode>::New();
@@ -608,12 +603,13 @@ Boolean WhileNodeStorage::IsStatement() {
 	return Boolean(true);
 }
 String WhileNodeStorage::ToStr() {
-	String result = "while " + Condition.ToStr() + "\n";
+	List<String> parts =  List<String>::New(Body.Count() + 2);
+	parts.Add("while " + Condition.ToStr() + "\n");
 	for (Int32 i = 0; i < Body.Count(); i++) {
-		result = result + "  " + Body[i].ToStr() + "\n";
+		parts.Add("  " + Body[i].ToStr() + "\n");
 	}
-	result = result + "end while";
-	return result;
+	parts.Add("end while");
+	return String::Join("", parts);
 }
 ASTNode WhileNodeStorage::Simplify() {
 	ASTNode simplifiedCondition = Condition.Simplify();
@@ -644,18 +640,19 @@ Boolean IfNodeStorage::IsStatement() {
 	return Boolean(true);
 }
 String IfNodeStorage::ToStr() {
-	String result = "if " + Condition.ToStr() + " then\n";
+	List<String> parts =  List<String>::New(ThenBody.Count() + ElseBody.Count() + 3);
+	parts.Add("if " + Condition.ToStr() + " then\n");
 	for (Int32 i = 0; i < ThenBody.Count(); i++) {
-		result = result + "  " + ThenBody[i].ToStr() + "\n";
+		parts.Add("  " + ThenBody[i].ToStr() + "\n");
 	}
 	if (ElseBody.Count() > 0) {
-		result = result + "else\n";
+		parts.Add("else\n");
 		for (Int32 i = 0; i < ElseBody.Count(); i++) {
-			result = result + "  " + ElseBody[i].ToStr() + "\n";
+			parts.Add("  " + ElseBody[i].ToStr() + "\n");
 		}
 	}
-	result = result + "end if";
-	return result;
+	parts.Add("end if");
+	return String::Join("", parts);
 }
 ASTNode IfNodeStorage::Simplify() {
 	ASTNode simplifiedCondition = Condition.Simplify();
@@ -693,12 +690,13 @@ Boolean ForNodeStorage::IsStatement() {
 	return Boolean(true);
 }
 String ForNodeStorage::ToStr() {
-	String result = "for " + Variable + " in " + Iterable.ToStr() + "\n";
+	List<String> parts =  List<String>::New(Body.Count() + 2);
+	parts.Add("for " + Variable + " in " + Iterable.ToStr() + "\n");
 	for (Int32 i = 0; i < Body.Count(); i++) {
-		result = result + "  " + Body[i].ToStr() + "\n";
+		parts.Add("  " + Body[i].ToStr() + "\n");
 	}
-	result = result + "end for";
-	return result;
+	parts.Add("end for");
+	return String::Join("", parts);
 }
 ASTNode ForNodeStorage::Simplify() {
 	ASTNode simplifiedIterable = Iterable.Simplify();
@@ -769,21 +767,22 @@ Boolean FunctionNodeStorage::IsStatement() {
 	return Boolean(false);
 }
 String FunctionNodeStorage::ToStr() {
-	String result = "function(";
+	List<String> paramStrs =  List<String>::New(ParamNames.Count());
 	for (Int32 i = 0; i < ParamNames.Count(); i++) {
-		if (i > 0) result = result + ", ";
-		result = result + ParamNames[i];
 		ASTNode def = ParamDefaults[i];
 		if (!IsNull(def)) {
-			result = result + "=" + def.ToStr();
+			paramStrs.Add(ParamNames[i] + "=" + def.ToStr());
+		} else {
+			paramStrs.Add(ParamNames[i]);
 		}
 	}
-	result = result + ")\n";
+	List<String> parts =  List<String>::New(Body.Count() + 2);
+	parts.Add("function(" + String::Join(", ", paramStrs) + ")\n");
 	for (Int32 i = 0; i < Body.Count(); i++) {
-		result = result + "  " + Body[i].ToStr() + "\n";
+		parts.Add("  " + Body[i].ToStr() + "\n");
 	}
-	result = result + "end function";
-	return result;
+	parts.Add("end function");
+	return String::Join("", parts);
 }
 ASTNode FunctionNodeStorage::Simplify() {
 	List<ASTNode> simplifiedDefaults =  List<ASTNode>::New();

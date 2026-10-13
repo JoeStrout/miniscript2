@@ -932,6 +932,20 @@ public readonly struct Value {
 		return GCManager.Lists.Get(ItemIndex()).IndexOf(item, afterIdx);
 	}
 
+	// Join the elements (each converted as by ToString) with the given
+	// delimiter, which is likewise converted unless it's a string; a null
+	// delimiter means a single space.  Returns a string Value.
+	// (The C++ twin in value.cpp builds the result in a single buffer.)
+	public Value ListJoin(Value delimiter) {
+		if (!IsList()) return Value.Null;
+		String delimStr = delimiter.IsNull() ? " " : delimiter.ToString(null);
+		GCList list = GCManager.Lists.Get(ItemIndex());
+		int count = list.Count();
+		List<string> parts = new List<string>(count);
+		for (int i = 0; i < count; i++) parts.Add(list.Get(i).ToString(null));
+		return make_string(String.Join(delimStr, parts));
+	}
+
 	public void Sort(bool ascending) {
 		if (!IsList()) return;
 		int idx = ItemIndex();

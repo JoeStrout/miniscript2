@@ -186,30 +186,138 @@ record_build_stamp() {
 
 # dist_csharp
 #
-# Build a framework-dependent C# distribution package.
-# Output: build/dist/miniscript-csharp.zip
+# Build the framework-dependent C# distribution files.
+# Output: build/dist/csharp/ (bundled up by dist_package csharp)
 # ---------------------------------------------------------------------------
 dist_csharp() {
-    echo "Building C# distribution package..."
+    echo "Building C# distribution files..."
     local PUBLISH="build/dist/cs-publish"
-    local ZIPDIR="build/dist/cs-zip"
-    rm -rf "$PUBLISH" "$ZIPDIR"
-    mkdir -p "$PUBLISH" "$ZIPDIR" build/dist
+    local OUTDIR="build/dist/csharp"
+    rm -rf "$PUBLISH" "$OUTDIR"
+    mkdir -p "$PUBLISH" "$OUTDIR"
 
     dotnet publish "$CSPROJ" -c Release -o "$PUBLISH" --nologo -v quiet
 
-    cp "$PUBLISH/miniscript.dll"                    "$ZIPDIR/miniscript-csharp.dll"
-    cp "$PUBLISH/miniscript.runtimeconfig.json"     "$ZIPDIR/miniscript-csharp.runtimeconfig.json"
-    cp tools/csharp-dist-README.md                   "$ZIPDIR/README.md"
-
+    cp "$PUBLISH/miniscript.dll"                    "$OUTDIR/miniscript-csharp.dll"
+    cp "$PUBLISH/miniscript.runtimeconfig.json"     "$OUTDIR/miniscript-csharp.runtimeconfig.json"
     rm -rf "$PUBLISH"
-    (cd "$ZIPDIR" && zip -q "../miniscript-csharp.zip" \
-        miniscript-csharp.dll \
-        miniscript-csharp.runtimeconfig.json \
-        README.md)
-    rm -rf "$ZIPDIR"
 
-    echo "  Done: build/dist/miniscript-csharp.zip"
+    echo "  Done: $OUTDIR"
+}
+
+# ---------------------------------------------------------------------------
+# dist_package PLATFORM
+#
+# Bundle a dist build into the archive users download.  PLATFORM is one of
+# mac, win, linux, csharp.  Each archive unpacks to a single folder holding
+# the executable, a README, the docs, and the lib folder.  lib sits right
+# next to the executable because $MS_EXE_DIR/lib is on the default import
+# path (see kDefaultImportPath in ShellIntrinsics.cs), so imports work with
+# no setup.
+#
+#   mac    -> build/dist/miniscript-mac.zip
+#   win    -> build/dist/miniscript-win.zip
+#   linux  -> build/dist/miniscript-linux.tar.gz
+#   csharp -> build/dist/miniscript-csharp.zip
+#
+# The docs are not built here: MiniScript-Manual.pdf is exported by hand
+# from Pages, and the others are rendered from Markdown with tools/md2pdf.sh.
+# A missing doc is reported and left out; push_release refuses to publish
+# without them.
+# ---------------------------------------------------------------------------
+DIST_DOCS="docs/MiniScript-Manual.pdf docs/CommandLine.pdf docs/NewInMS2.pdf"
+
+dist_package() {
+    local PLATFORM="$1"
+    local NAME="miniscript-$PLATFORM"
+    local STAGE="build/dist/pkg/$NAME"
+    local LABEL RUN REQUIREMENTS="" EXE_LIST
+    echo "Packaging $NAME..."
+    rm -rf "$STAGE"
+    mkdir -p "$STAGE"
+
+    case "$PLATFORM" in
+        mac|linux)
+            [ -f "build/dist/$NAME" ] || { echo "  Missing build/dist/$NAME; not packaged."; rm -rf "$STAGE"; return; }
+            cp "build/dist/$NAME" "$STAGE/miniscript"
+            chmod 755 "$STAGE/miniscript"
+            if [ "$PLATFORM" = "mac" ]; then LABEL="macOS"; else LABEL="Linux"; fi
+            RUN="./miniscript"
+            EXE_LIST="  miniscript               The MiniScript command-line interpreter"
+            ;;
+        win)
+            [ -f "build/dist/$NAME.exe" ] || { echo "  Missing build/dist/$NAME.exe; not packaged."; rm -rf "$STAGE"; return; }
+            cp "build/dist/$NAME.exe" "$STAGE/miniscript.exe"
+            LABEL="Windows"
+            RUN=".\\miniscript"
+            EXE_LIST="  miniscript.exe           The MiniScript command-line interpreter"
+            ;;
+        csharp)
+            [ -d build/dist/csharp ] || { echo "  Missing build/dist/csharp; not packaged."; rm -rf "$STAGE"; return; }
+            cp build/dist/csharp/* "$STAGE/"
+            LABEL=".NET"
+            RUN="dotnet miniscript-csharp.dll"
+            EXE_LIST="  miniscript-csharp.dll    The MiniScript interpreter (.NET assembly)
+  miniscript-csharp.runtimeconfig.json
+                           Runtime configuration required by .NET"
+            REQUIREMENTS="
+Requirements
+------------
+
+This is a framework-dependent .NET build, intended as a fallback for
+platforms not covered by the native builds (e.g. ARM Linux, FreeBSD).
+The native builds are faster and self-contained; prefer them where
+available.  This build needs .NET 6 or later, from:
+
+    https://dotnet.microsoft.com/download
+"
+            ;;
+        *)
+            echo "Unknown package platform: $PLATFORM"
+            exit 1
+            ;;
+    esac
+
+    # lib, minus the maintainer's sync script and any Finder droppings.
+    cp -R lib "$STAGE/lib"
+    rm -f "$STAGE/lib/sync_from_sysdisk.sh"
+    find "$STAGE/lib" -name .DS_Store -delete
+
+    local doc
+    for doc in $DIST_DOCS; do
+        if [ -f "$doc" ]; then
+            cp "$doc" "$STAGE/"
+        else
+            echo "  WARNING: $doc not found; left out of $NAME."
+        fi
+    done
+    cp LICENSE "$STAGE/LICENSE"
+
+    # Values go in through the environment rather than awk -v, which would
+    # treat the backslash in .\miniscript as an escape.
+    LABEL="$LABEL" RUN="$RUN" EXE_LIST="$EXE_LIST" REQUIREMENTS="$REQUIREMENTS" awk '
+        function subst(line, key, val,   i) {
+            while ((i = index(line, key)) > 0)
+                line = substr(line, 1, i - 1) val substr(line, i + length(key))
+            return line
+        }
+        $0 == "@EXE_LIST@"     { print ENVIRON["EXE_LIST"]; next }
+        $0 == "@REQUIREMENTS@" { print ENVIRON["REQUIREMENTS"]; next }
+        { print subst(subst($0, "@PLATFORM@", ENVIRON["LABEL"]), "@RUN@", ENVIRON["RUN"]) }
+    ' tools/dist-README.txt > "$STAGE/README.txt"
+
+    # COPYFILE_DISABLE keeps macOS tar from adding ._ resource-fork files;
+    # zip -X leaves out extended attributes for the same reason.
+    if [ "$PLATFORM" = "linux" ]; then
+        rm -f "build/dist/$NAME.tar.gz"
+        (cd build/dist/pkg && COPYFILE_DISABLE=1 tar -czf "../$NAME.tar.gz" "$NAME")
+        echo "  Done: build/dist/$NAME.tar.gz"
+    else
+        rm -f "build/dist/$NAME.zip"
+        (cd build/dist/pkg && zip -qrX "../$NAME.zip" "$NAME")
+        echo "  Done: build/dist/$NAME.zip"
+    fi
+    rm -rf "$STAGE"
 }
 
 # ---------------------------------------------------------------------------
@@ -402,7 +510,7 @@ case "$TARGET" in
 
         if [ -z "$DIST_PLATFORM" ]; then
             echo "Usage: $0 dist <platform> [goto_mode]"
-            echo "Platforms: mac-x86  mac-arm  mac  win  linux  csharp  all"
+            echo "Platforms: mac-x86  mac-arm  mac  win  linux  csharp  all  package"
             exit 1
         fi
 
@@ -428,18 +536,27 @@ case "$TARGET" in
             echo "All dist builds complete."
         elif [ "$DIST_PLATFORM" = "csharp" ]; then
             dist_csharp
-        else
+        elif [ "$DIST_PLATFORM" != "package" ]; then
             dist_build "$DIST_PLATFORM" "$DIST_GOTO"
         fi
+
+        # Bundle the results (with lib and docs) into the release archives.
+        # "package" alone rebuilds every archive from the existing binaries,
+        # e.g. after a doc or lib change.
+        case "$DIST_PLATFORM" in
+            all|package)          for p in mac win linux csharp; do dist_package "$p"; done ;;
+            mac|win|linux|csharp) dist_package "$DIST_PLATFORM" ;;
+        esac
 
         # Only a full 'dist all' can certify the whole set of artifacts that
         # push_release uploads.  A partial build leaves the other three
         # untouched and possibly built from older source, so rather than
         # vouch for them, drop the stamp: push_release then falls back to
         # comparing timestamps and says it has nothing to check against.
+        # (Packaging alone leaves the binaries, and so the stamp, as they were.)
         if [ "$DIST_PLATFORM" = "all" ]; then
             record_build_stamp
-        elif [ -f build/dist/.build-info ]; then
+        elif [ "$DIST_PLATFORM" != "package" ] && [ -f build/dist/.build-info ]; then
             rm -f build/dist/.build-info
             echo "  Partial dist build; removed build/dist/.build-info."
         fi
@@ -556,6 +673,7 @@ case "$TARGET" in
         echo "  $0 dist linux            # Linux static binary"
         echo "  $0 dist win off          # Windows binary, switch dispatch"
         echo "  $0 dist all              # All platforms"
+        echo "  $0 dist package          # Re-bundle archives (lib, docs) from existing binaries"
         exit 1
         ;;
 esac

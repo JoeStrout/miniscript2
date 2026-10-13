@@ -408,6 +408,7 @@ public static class ShellIntrinsics {
 		#ifdef _WIN32
 			auto drain = [](void*& pipe, String& dest) {
 				char buf[4096];
+				std::string got;
 				for (int i = 0; i < 256 && pipe; i++) {
 					DWORD avail = 0, n = 0;
 					if (!PeekNamedPipe((HANDLE)pipe, nullptr, 0, nullptr, &avail, nullptr)) {
@@ -422,8 +423,9 @@ public static class ShellIntrinsics {
 						pipe = nullptr;
 						break;
 					}
-					dest += String(buf, (size_t)n);
+					got.append(buf, (size_t)n);
 				}
+				if (!got.empty()) dest += String(got.data(), got.size());
 			};
 			DWORD waitResult = WaitForSingleObject((HANDLE)job.ProcHandle, 0);
 			drain(job.OutPipe, job.Output);
@@ -443,13 +445,15 @@ public static class ShellIntrinsics {
 		#else
 			auto drain = [](int& fd, String& dest) {
 				char buf[4096];
+				std::string got;
 				for (int i = 0; i < 256 && fd >= 0; i++) {
 					ssize_t n = read(fd, buf, sizeof(buf));
-					if (n > 0) dest += String(buf, (size_t)n);
+					if (n > 0) got.append(buf, (size_t)n);
 					else if (n < 0 && errno == EINTR) continue;
 					else if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) break;
 					else { close(fd); fd = -1; }	// EOF (or error)
 				}
+				if (!got.empty()) dest += String(got.data(), got.size());
 			};
 			// Check for exit before draining, so that once the child has exited,
 			// this drain picks up the last of its output.
@@ -597,11 +601,12 @@ public static class ShellIntrinsics {
 		/*** BEGIN CPP_ONLY ***
 		FILE* handle = fopen(path.c_str(), "r");
 		if (!handle) return String("");
-		String result;
+		std::string result;
 		char buf[4096];
-		while (fgets(buf, sizeof(buf), handle)) result += buf;
+		size_t n;
+		while ((n = fread(buf, 1, sizeof(buf), handle)) > 0) result.append(buf, n);
 		fclose(handle);
-		return result;
+		return String(result.data(), result.size());
 		*** END CPP_ONLY ***/
 	}
 
@@ -1078,16 +1083,16 @@ public static class ShellIntrinsics {
 		CppFileHandle* h = (CppFileHandle*)GCManager::GetHandle(handleVal).UserData;
 		if (!h || !h->f) return String("");
 		if (byteCount == 0) return String("");
-		String result;
-		char buf[1024];
+		std::string result;
+		char buf[4096];
 		long toRead = byteCount;
 		while (!feof(h->f) && toRead != 0) {
-			size_t n = fread(buf, 1, (toRead > 0 && toRead < 1024) ? (size_t)toRead : 1024, h->f);
+			size_t n = fread(buf, 1, (toRead > 0 && toRead < 4096) ? (size_t)toRead : 4096, h->f);
 			if (n == 0) break;
-			result += String(buf, n);
+			result.append(buf, n);
 			if (toRead > 0) toRead -= (long)n;
 		}
-		return result;
+		return String(result.data(), result.size());
 		*** END CPP_ONLY ***/
 	}
 
@@ -1421,7 +1426,7 @@ public static class ShellIntrinsics {
 		if (!f) return ErrorTypes::FileError("readLines: cannot open: " + path);
 		Value result = Value::make_list(16);
 		char buf[4096];
-		String partial;
+		std::string partial;	// start of a line that continues into the next buffer
 		while (!feof(f)) {
 			size_t n = fread(buf, 1, sizeof(buf), f);
 			if (n == 0) break;
@@ -1429,15 +1434,19 @@ public static class ShellIntrinsics {
 			for (int i = 0; i < (int)n; i++) {
 				if (buf[i] == '\n' || buf[i] == '\r') {
 					String line(buf + start, i - start);
-					if (partial.LengthB() > 0) { line = partial + line; partial = String(""); }
+					if (!partial.empty()) {
+						partial.append(buf + start, i - start);
+						line = String(partial.data(), partial.size());
+						partial.clear();
+					}
 					result.Push(Value::make_string(line));
 					if (buf[i] == '\r' && i+1 < (int)n && buf[i+1] == '\n') i++;
 					start = i + 1;
 				}
 			}
-			if (start < (int)n) partial += String(buf + start, n - start);
+			if (start < (int)n) partial.append(buf + start, n - start);
 		}
-		if (partial.LengthB() > 0) result.Push(Value::make_string(partial));
+		if (!partial.empty()) result.Push(Value::make_string(String(partial.data(), partial.size())));
 		fclose(f);
 		return result;
 		*** END CPP_ONLY ***/

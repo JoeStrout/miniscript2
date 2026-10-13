@@ -38,19 +38,15 @@ void FuncDefStorage::ReserveRegister(Int32 registerNumber) {
 	if (MaxRegs < impliedCount) MaxRegs = impliedCount;
 }
 String FuncDefStorage::ToString() {
-	String result = Name + "(";
+	List<String> parts =  List<String>::New(ParamNames.Count());
 	Value defaultVal;
 	for (Int32 i = 0; i < ParamNames.Count(); i++) {
-		if (i > 0) result += ", ";
-		result += ParamNames[i].AsCString();
+		String part = ParamNames[i].AsCString();
 		defaultVal = ParamDefaults[i];
-		if (!defaultVal.IsNull()) {
-			result += "=";
-			result += defaultVal.Repr(nullptr).AsCString();
-		}
+		if (!defaultVal.IsNull()) part = part + "=" + defaultVal.Repr(nullptr).AsCString();
+		parts.Add(part);
 	}
-	result += ")";
-	return result;
+	return Name + "(" + String::Join(", ", parts) + ")";
 }
 
 } // end of namespace MiniScript

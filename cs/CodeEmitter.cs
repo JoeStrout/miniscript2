@@ -279,11 +279,8 @@ public class AssemblyEmitter : CodeEmitterBase {
 
 	// Get the assembly as a single string
 	public String GetAssembly() {
-		String result = "";
-		for (Int32 i = 0; i < _lines.Count; i++) {
-			result = result + _lines[i] + "\n";
-		}
-		return result;
+		if (_lines.Count == 0) return "";
+		return String.Join("\n", _lines) + "\n";
 	}
 }
 

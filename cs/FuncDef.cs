@@ -109,19 +109,15 @@ public class FuncDef {
 
 	// Returns a string like "functionName(a, b=1, c=0)"
 	public override String ToString() {
-		String result = Name + "(";
+		List<String> parts = new List<String>(ParamNames.Count);
 		Value defaultVal;
 		for (Int32 i = 0; i < ParamNames.Count; i++) {
-			if (i > 0) result += ", ";
-			result += ParamNames[i].AsCString();
+			String part = ParamNames[i].AsCString();
 			defaultVal = ParamDefaults[i];
-			if (!defaultVal.IsNull()) {
-				result += "=";
-				result += defaultVal.Repr(null).AsCString();
-			}
+			if (!defaultVal.IsNull()) part = part + "=" + defaultVal.Repr(null).AsCString();
+			parts.Add(part);
 		}
-		result += ")";
-		return result;
+		return Name + "(" + String.Join(", ", parts) + ")";
 	}
 
 	// Conversion to bool: returns true if function has a name

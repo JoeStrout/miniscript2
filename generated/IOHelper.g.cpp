@@ -124,7 +124,7 @@ void IOHelper::ClearInterrupt() {
 Boolean IOHelper::TryInput(String prompt,String* result,TextStyle promptStyle,TextStyle inputStyle) {
 	SetStyle(promptStyle);
 
-	std::cout << prompt.c_str();
+	std::cout << prompt.c_str() << std::flush;
 	SetStyle(inputStyle);
 	// If the `key` module has put the terminal in raw (cbreak) mode, drop
 	// back to cooked mode so the user gets echo and line editing here. We

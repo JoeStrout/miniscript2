@@ -252,6 +252,7 @@ typedef struct Value {
     void          ListInsert(int index, Value item) const;
     bool          ListRemove(int index) const;
     int           ListIndexOf(Value item, int afterIdx) const;
+    Value         ListJoin(Value delimiter) const;
     Value         ListSlice(int start, int end) const;
     Value         ListConcat(Value b) const;
     void          Sort(bool ascending) const;

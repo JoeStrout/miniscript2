@@ -12,6 +12,11 @@
 //	include a list or map of other values).  This is the main entry point
 //	for reading JSON data and converting it to native form.
 //	Example: parse("42")		// returns 42
+//
+// If the input is not valid JSON, this returns a ParseError (an `error`
+// value) whose message describes the problem and where it occurred.
+//	Example: data = parse(s)
+//			 if data isa error then print data.message
 parse = function(jsonString)
 	if intrinsics.hasIndex("RawData") and jsonString isa RawData then jsonString = jsonString.utf8
 	p = new Parser
@@ -25,10 +30,19 @@ end function
 //	value: MiniScript value to convert
 //	compact: if true, omit all unnecessary whitespace
 //	indent: amount to indent if multiple lines are needed
+//
+// Note: infinite and NaN numbers are written as Infinity, -Infinity, and NaN.
+// Standard JSON has no way to represent these; this matches the behavior of
+// Python and JSON5, but strict JSON parsers will reject such output.
 toJSON = function(value, compact=false, indent=0)
 	if @value isa funcRef then return """<function>"""
 	if value == null then return "null"
-	if value isa number then return str(value)
+	if value isa number then
+		if value != value then return "NaN"
+		if value == _inf then return "Infinity"
+		if value == -_inf then return "-Infinity"
+		return str(value)
+	end if
 	if value isa string then return """" + escape(value) + """"
 	if value isa list then return _listToJSON(value, compact, indent)
 	if value isa map then return _mapToJSON(value, compact, indent)
@@ -37,9 +51,12 @@ end function
 // hexToInt: convert a string containing a hexadecimal number.
 //	Supports both uppercase and lowercase for digits A-F.
 //	Example: hexToInt("002A") 	// returns 42
+//	Returns an error if s is empty or contains a non-hex character.
 hexToInt = function(s)
+	if not s then return err("hexToInt: empty string")
 	result = 0
 	for c in s
+		if not _hexDigitMap.hasIndex(c) then return err("hexToInt: invalid hex digit '" + c + "'")
 		result = result * 16 + _hexDigitMap[c]
 	end for
 	return result
@@ -57,6 +74,8 @@ end function
 
 // unescape: replace backslash sequences in the given string.
 //	Example: unescape("\t")		// returns char(9)
+//	Returns an error if s contains a malformed escape (a \u not followed by
+//	4 hex digits, or a backslash at the very end).
 unescape = function(s)
 	result = []
 	i = 0
@@ -65,6 +84,7 @@ unescape = function(s)
 		di = 1
 		if s[i] == "\" then
 			di = 2
+			if i+1 >= maxi then return err("unescape: backslash at end of string")
 			c = s[i+1]
 			if c == "b" then
 				result.push char(8)
@@ -79,7 +99,10 @@ unescape = function(s)
 			else if c == "u" then
 				// Unicode code point (must always be 4 digits)
 				hex = s[i+2:i+6]
-				result.push char(hexToInt(hex))
+				if hex.len < 4 then return err("unescape: incomplete \u escape: \u" + hex)
+				code = hexToInt(hex)
+				if code isa error then return err("unescape: invalid \u escape: \u" + hex, code)
+				result.push char(code)
 				di = 6
 			else
 				result.push c
@@ -98,20 +121,40 @@ end function
 
 // Parsing JSON
 
+// Base error type for all JSON parse failures (test with `isa ParseError`).
+ParseError = err("JSON parse error")
+
 Parser = {}
 Parser.source = ""
 Parser._sourceLen = 0
 Parser._p = 0		// index of next character to consume in source
 
 Parser.init = function(source)
+	// Ignore a leading byte order mark (common in files saved on Windows)
+	if source[:1] == _bom then source = source[1:]
 	self.source = source
 	self._sourceLen = source.len
 end function
 
+// Make a ParseError describing a failure at the current position,
+// given as a 1-based line and column (lines are separated by char(10)).
+// Every _parse method returns either its value or such an error, and
+// callers must pass any error straight back up.
+Parser._fail = function(message, inner=null)
+	lines = self.source[:self._p].split(_eol)
+	where = "line " + lines.len + ", column " + (lines[-1].len + 1)
+	return ParseError.err("JSON error at " + where + ": " + message, inner)
+end function
+
+// Parse the source, returning the resulting value, or a ParseError.
 Parser.parse = function(source=null)
 	if source != null then self.init source
 	self._p = 0
-	return self._parseElement
+	result = self._parseElement
+	if result isa error then return result
+	self._skipWhitespace
+	if self._p < self._sourceLen then return self._fail("unexpected trailing characters")
+	return result
 end function
 
 whitespace = " " + char(9) + char(10) + char(13)
@@ -128,8 +171,21 @@ end function
 
 Parser._parseValue = function
 	self._skipWhitespace
+	if self._p >= self._sourceLen then return self._fail("unexpected end of input")
 	c = self.source[self._p]
 	if c == """" then return self._parseString
+	if c == "I" or c == "N" or c == "-" or c == "+" then
+		// Non-finite numbers: not standard JSON, but accepted by Python and JSON5
+		start = self._p + (c == "-" or c == "+")
+		if self.source[start:start+8] == "Infinity" then
+			self._p = start + 8
+			if c == "-" then return -_inf else return _inf
+		end if
+		if self.source[start:start+3] == "NaN" then
+			self._p = start + 3
+			return _nan
+		end if
+	end if
 	if "0123456789-.".indexOf(c) != null then return self._parseNumber
 	if c == "[" then return self._parseList
 	if c == "{" then return self._parseMap
@@ -145,67 +201,75 @@ Parser._parseValue = function
 		self._p = self._p + 4
 		return null
 	end if
+	return self._fail("unexpected character '" + c + "'")
 end function
 
 Parser._parseList = function
 	self._p = self._p + 1		// skip "["
 	self._skipWhitespace
 	result = []
-	while self._p < self._sourceLen
+	while true
+		if self._p >= self._sourceLen then return self._fail("unterminated array")
 		c = self.source[self._p]
-		if c == "]" then break
-		result.push self._parseElement
+		if c == "]" then
+			self._p = self._p + 1
+			return result
+		end if
+		item = self._parseElement
+		if item isa error then return item
+		result.push item
 		self._skipWhitespace
 		// after an element, we should have either a comma or a ']'
+		if self._p >= self._sourceLen then return self._fail("unterminated array")
 		c = self.source[self._p]
 		if c == "," then
 			self._p = self._p + 1
 			self._skipWhitespace
+		else if c != "]" then
+			return self._fail("expected ',' or ']' in array")
 		end if
 	end while
-	self._p = self._p + 1
-	return result
 end function
 
 Parser._parseMap = function
 	self._p = self._p + 1		// skip "{"
 	self._skipWhitespace
 	result = {}
-	while self._p < self._sourceLen
+	while true
 		// grab the key (must be a string)
+		if self._p >= self._sourceLen then return self._fail("unterminated object")
 		c = self.source[self._p]
-		if c == "}" then break
-		if c != """" then
-			print "JSON error: object member key must be a string literal"	// ToDo: better error handling!
-			print "Error at position " + self._p + ": " + self.source[self._p-60 : self._p+60]
-			return null
+		if c == "}" then
+			self._p = self._p + 1
+			return result
 		end if
+		if c != """" then return self._fail("object member key must be a string literal")
 		key = self._parseString
+		if key isa error then return key
 		self._skipWhitespace
-		
+
 		// next token must be a colon
-		if self.source[self._p] != ":" then
-			print "JSON error: colon expected"
-			print "Error at position " + self._p + ": " + self.source[self._p-60 : self._p+60]
-			return null
-		end if
+		if self._p >= self._sourceLen then return self._fail("unterminated object")
+		if self.source[self._p] != ":" then return self._fail("colon expected")
 		self._p = self._p + 1
 		self._skipWhitespace
-		
+
 		// grab the value (could be anything)
 		value = self._parseElement
+		if value isa error then return value
 		result[key] = value
 		self._skipWhitespace
-		
-		// after a a key/value pair, we should have either a comma or a '}'
+
+		// after a key/value pair, we should have either a comma or a '}'
+		if self._p >= self._sourceLen then return self._fail("unterminated object")
 		c = self.source[self._p]
 		if c == "," then
 			self._p = self._p + 1
 			self._skipWhitespace
+		else if c != "}" then
+			return self._fail("expected ',' or '}' in object")
 		end if
 	end while
-	self._p = self._p + 1
-	return result
 end function
 
 // Get a string literal from the source.  Advance to the next
@@ -214,17 +278,28 @@ Parser._parseString = function
 	self._p = self._p + 1
 	startPos = self._p
 	anyEscape = false
+	closed = false
 	while self._p < self._sourceLen
 		c = self.source[self._p]
 		self._p = self._p + 1
-		if c == """" then break
+		if c == """" then
+			closed = true
+			break
+		end if
 		if c == "\" then
 			anyEscape = true
 			self._p = self._p + 1
 		end if
 	end while
+	if not closed then return self._fail("unterminated string literal")
 	result = self.source[startPos : self._p-1]
-	if anyEscape then result = unescape(result)
+	if anyEscape then
+		result = unescape(result)
+		if result isa error then
+			self._p = startPos - 1	// report position of the string's opening quote
+			return self._fail(result.message, result)
+		end if
+	end if
 	return result
 end function
 
@@ -286,20 +361,27 @@ end function
 
 // General utility data structures
 
-_eol = char(13)
+_eol = char(10)
+_bom = char(65279)
+_inf = 1/0
+_nan = 0/0
 _hexDigitMap = {}
 for i in range(0,15)
 	if i < 10 then
 		_hexDigitMap[str(i)] = i
 	else
-		_hexDigitMap[char(55+i)] = i	// (lowercase hex digit)
-		_hexDigitMap[char(87+i)] = i	// (uppercase hex digit)
+		_hexDigitMap[char(55+i)] = i	// (uppercase hex digit)
+		_hexDigitMap[char(87+i)] = i	// (lowercase hex digit)
 	end if
 end for
+freeze _hexDigitMap
 
 _escapeFrom = ["\", """", char(8), char(9), char(10), char(12), char(13)]
 _escapeTo = ["\\", "\""", "\b","\t","\n","\f","\r"]
 _escapeIndexes = _escapeFrom.indexes
+freeze _escapeFrom
+freeze _escapeTo
+freeze _escapeIndexes
 
 //----------------------------------------------------------------------
 // Unit tests (run when you load & run this script directly).
@@ -327,6 +409,8 @@ runUnitTests = function
 	assertEqual parse(char(13) + "42"), 42
 	assertEqual parse("-123.45"), -123.45
 	assertEqual parse(".5"), 0.5
+	assertEqual parse(char(65279) + "[1]"), [1]
+	assertEqual parse(char(65279) + "@").message, "JSON error at line 1, column 1: unexpected character '@'"
 	
 	assertEqual parse("""\tHello, \""Bob\""."""), char(9) + "Hello, ""Bob""."
 	assertEqual parse("""\u002F"""), "/"
@@ -335,6 +419,10 @@ runUnitTests = function
 	assertEqual parse("[ ""hey"", true, [0]]"), ["hey", true, [0]]
 	
 	assertEqual parse("{""hey"": ""ho"", ""9"" : 81}"), {"hey":"ho", "9":81}
+	
+	assertEqual parse("[Infinity, -Infinity, +Infinity]"), [1/0, -1/0, 1/0]
+	x = parse("NaN"); assertEqual x != x, true
+	x = parse("-NaN"); assertEqual x != x, true
 	
 	// And here's a longer example... remember, quotes doubled only
 	// to make them valid MiniScript string literals...
@@ -371,9 +459,32 @@ runUnitTests = function
 	assertEqual data.widget.image.src, "Images\Sun.png"
 	assertEqual data.widget.text.size, 36
 	
+	// Errors come back as ParseError values, not null
+	assertEqual parse("null"), null
+	for bad in ["", "[1,", "[1 2]", "{""a"" 1}", """abc", "[1] x", "@", "{1:2}"]
+		e = parse(bad)
+		assertEqual e isa ParseError, true
+	end for
+	assertEqual parse("{""a"":[1,{""b"" 2}]}").message, "JSON error at line 1, column 14: colon expected"
+	assertEqual parse("""é"""), char(233)
+	for bad in ["""\uZZZZ""", """\u12""", """x\u""", """\u12"]
+		assertEqual parse(bad) isa ParseError, true
+	end for
+	e = parse("[" + char(13) + char(10) + "  1," + char(10) + char(10) + "  @]")
+	assertEqual e.message, "JSON error at line 4, column 3: unexpected character '@'"
+	e = parse("[""ab\uZZZZ""]")
+	assertEqual e.message, "JSON error at line 1, column 2: unescape: invalid \u escape: \uZZZZ"
+	assertEqual e.inner.message, "unescape: invalid \u escape: \uZZZZ"
+	
+	assertEqual hexToInt("002a"), 42
+	assertEqual hexToInt("zz") isa error, true
+	assertEqual hexToInt("") isa error, true
+	assertEqual unescape("a\") isa error, true
+	
 	assertEqual toJSON(42), "42"
 	assertEqual toJSON(char(9)), """\t"""
 	assertEqual toJSON([1, 2, 3], true), "[1,2,3]"
+	assertEqual toJSON([1/0, -1/0, 0/0], true), "[Infinity,-Infinity,NaN]"
 	// Maps are a bit tricky to unit-test, since the order in which the keys appear
 	// is undefined.  But here we go:
 	assertEqualEither toJSON({"one":1, "two":2}, true), 

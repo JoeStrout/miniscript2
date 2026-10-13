@@ -21,6 +21,7 @@
 #include <cmath>
 #include <climits>
 #include <unordered_map>
+#include <string>
 #include <vector>
 
 namespace MiniScript {
@@ -441,58 +442,74 @@ Value quote_string(Value v) {
     return result;
 }
 
-} // namespace
+// Append the raw bytes of string Value s to out (nothing for a non-string).
+void append_string_bytes(std::string& out, Value s) {
+    int len = 0;
+    const char* data = get_string_data_zerocopy(&s, &len);
+    if (data && len > 0) out.append(data, (size_t)len);
+}
 
-Value code_form(Value v, void* vm, int recursion_limit) {
-    char buf[32];
-
-    if (v.IsNull())   return Value::make_string("null");
-    if (v.IsNumber()) { format_double(v.AsDouble(), buf); return Value::make_string(buf); }
-    if (v.IsString()) return quote_string(v);
+// Append the code form of v to out.  Collections build their whole text in
+// one buffer this way; concatenating string Values piece by piece instead
+// copies the growing result at every step, which is quadratic in its length.
+void code_form_append(std::string& out, Value v, void* vm, int recursion_limit) {
+    if (v.IsNull()) { out += "null"; return; }
+    if (v.IsNumber()) {
+        char buf[32];
+        format_double(v.AsDouble(), buf);
+        out += buf;
+        return;
+    }
+    if (v.IsString()) {
+        int len = 0;
+        const char* data = get_string_data_zerocopy(&v, &len);
+        out += '"';
+        for (int i = 0; i < len; i++) {
+            if (data[i] == '"') out += "\"\"";
+            else out += data[i];
+        }
+        out += '"';
+        return;
+    }
 
     if (v.IsList()) {
-        if (recursion_limit == 0) return Value::make_string("[...]");
+        if (recursion_limit == 0) { out += "[...]"; return; }
         if (recursion_limit > 0 && recursion_limit < 3 && vm != nullptr) {
             Value sn = find_short_name(vm, v);
-            if (!sn.IsNull()) return sn;
+            if (!sn.IsNull()) { append_string_bytes(out, sn); return; }
         }
         GCList list = GCManager::Lists.Get(v.ItemIndex());
         int listCount = list.Count();
-        Value result = Value::make_string("[");
+        out += '[';
         for (int i = 0; i < listCount; i++) {
-            if (i > 0) result = string_concat(result, Value::make_string(", "));
-            Value item = list.Get(i);
-            Value item_str = item.IsNull() ? Value::make_string("null")
-                                           : code_form(item, vm, recursion_limit - 1);
-            result = string_concat(result, item_str);
+            if (i > 0) out += ", ";
+            code_form_append(out, list.Get(i), vm, recursion_limit - 1);
         }
-        return string_concat(result, Value::make_string("]"));
+        out += ']';
+        return;
     }
 
     if (v.IsMap()) {
-        if (recursion_limit == 0) return Value::make_string("{...}");
+        if (recursion_limit == 0) { out += "{...}"; return; }
         if (recursion_limit > 0 && recursion_limit < 3 && vm != nullptr) {
             Value sn = find_short_name(vm, v);
-            if (!sn.IsNull()) return sn;
+            if (!sn.IsNull()) { append_string_bytes(out, sn); return; }
         }
         GCMap m = GCManager::Maps.Get(v.ItemIndex());
-        if (m.Count() == 0) return Value::make_string("{}");
-        Value result = Value::make_string("{");
+        out += '{';
         bool first = true;
         for (int i = m.NextEntry(-1); i != -1; i = m.NextEntry(i)) {
-            if (!first) result = string_concat(result, Value::make_string(", "));
+            if (!first) out += ", ";
             first = false;
             int next_limit = recursion_limit - 1;
             Value key = m.KeyAt(i);
-            Value val = m.ValueAt(i);
             if (key.RecursiveEqual(Value::magicIsA)) next_limit = 1;
-            Value key_str = code_form(key, vm, next_limit);
-            Value val_str = val.IsNull() ? Value::make_string("null") : code_form(val, vm, next_limit);
-            result = string_concat(result, key_str);
-            result = string_concat(result, Value::make_string(": "));
-            result = string_concat(result, val_str);
+            code_form_append(out, key, vm, next_limit);
+            out += ": ";
+            code_form_append(out, m.ValueAt(i), vm, next_limit);
         }
-        return string_concat(result, Value::make_string("}"));
+        out += '}';
+        return;
     }
 
     if (v.IsFuncRef()) {
@@ -500,33 +517,77 @@ Value code_form(Value v, void* vm, int recursion_limit) {
         // (with defaults), prefixed by "name=" unless it's anonymous (auto-
         // named "@f..." by the compiler).
         MiniScript::FuncDef fn = v.FunctionDef();
-        if (IsNull(fn)) return Value::make_string("<funcref?>");
+        if (IsNull(fn)) { out += "<funcref?>"; return; }
         List<Value> names = fn.ParamNames();
         List<Value> defaults = fn.ParamDefaults();
         String fname = fn.Name();
-        Value result = Value::make_string("function(");
         if (!fname.Empty() && !fname.StartsWith("@")) {
-            result = Value::make_string((fname + "=function(").c_str());
+            out += fname.c_str();
+            out += '=';
         }
+        out += "function(";
         for (int i = 0; i < names.Count(); i++) {
-            if (i > 0) result = string_concat(result, Value::make_string(", "));
-            result = string_concat(result, names[i]);
+            if (i > 0) out += ", ";
+            append_string_bytes(out, names[i]);
             Value def = defaults[i];
             if (!def.IsNull()) {
-                result = string_concat(result, Value::make_string("="));
-                result = string_concat(result, code_form(def, vm, recursion_limit - 1));
+                out += '=';
+                code_form_append(out, def, vm, recursion_limit - 1);
             }
         }
-        return string_concat(result, Value::make_string(")"));
+        out += ')';
+        return;
     }
 
     if (v.IsError()) {
         Value msg = v.Message();
-        if (msg.IsString()) return string_concat(Value::make_string("error: "), msg);
-        return Value::make_string("error");
+        if (msg.IsString()) { out += "error: "; append_string_bytes(out, msg); }
+        else out += "error";
+        return;
     }
 
-    return Value::make_string("<value>");
+    out += "<value>";
+}
+
+} // namespace
+
+Value code_form(Value v, void* vm, int recursion_limit) {
+    // Scalars come straight from their own formatters; anything that can
+    // contain other values is built up in a single buffer.
+    if (v.IsNull())   return Value::make_string("null");
+    if (v.IsNumber()) {
+        char buf[32];
+        format_double(v.AsDouble(), buf);
+        return Value::make_string(buf);
+    }
+    if (v.IsString()) return quote_string(v);
+
+    std::string out;
+    code_form_append(out, v, vm, recursion_limit);
+    return make_string_n(out.data(), (int)out.size());
+}
+
+// Twin of Value.ListJoin in cs/Value.cs.  Elements and delimiter convert as
+// ToString(null) does (strings as-is, anything else via code_form), but go
+// straight into one buffer rather than through a temporary string per element.
+Value Value::ListJoin(Value delimiter) const {
+    Value self = *this;
+    if (!self.IsList()) return Value::null;
+    std::string delim;
+    if (delimiter.IsNull()) delim = " ";
+    else if (delimiter.IsString()) append_string_bytes(delim, delimiter);
+    else code_form_append(delim, delimiter, nullptr, 3);
+
+    GCList list = GCManager::Lists.Get(self.ItemIndex());
+    int count = list.Count();
+    std::string out;
+    for (int i = 0; i < count; i++) {
+        if (i > 0) out += delim;
+        Value item = list.Computed ? list.Get(i) : list.Items[i];
+        if (item.IsString()) append_string_bytes(out, item);
+        else code_form_append(out, item, nullptr, 3);
+    }
+    return make_string_n(out.data(), (int)out.size());
 }
 
 Value Value::ToStringValue(void* vm) const {

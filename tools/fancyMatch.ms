@@ -139,7 +139,11 @@ end function
 string.fill = function(args)
 	s = self.replace("\t", TAB)
 	for idx in args.indexes
-		s = s.replace("≤" + idx + "≥", args[idx])
+		key = "≤" + idx + "≥"
+		value = @args[idx]
+		if @value isa string or s.indexOf(key) != null then
+			s = s.replace(key, value)
+		end if
 	end for
 	return s
 end function

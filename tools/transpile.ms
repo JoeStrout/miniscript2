@@ -20,7 +20,10 @@
 //	miniscript tools/transpile.ms -c cs -o generated cs/FuncDef.cs 
 
 import "importUtil"
+print "importing stringUtil"
 import "stringUtil"
+print "imported stringUtil"
+"foo".fill locals
 import "listUtil"
 import "mapUtil"
 import "fancyMatch"
@@ -1669,7 +1672,7 @@ Transpiler.processLine = function(line)
 	state = self.state
 	line = self.line.trimmed
 	comment = self.line.comment
-	debugPrint "[≤state≥] ≤line≥ ≤comment≥".fill(locals)
+	if debugMode then debugPrint "[≤state≥] ≤line≥ ≤comment≥".fill(locals)
 	
 	// Check for special control comments
 	if comment == "//*** BEGIN CS_ONLY ***" then
@@ -1705,6 +1708,7 @@ end function
 Transpiler.process = function(filePath, gatherMode=false, outputFolder=null)
 	if gatherMode then verb = "Scanning" else verb = "Transpiling"
 	print verb + ": " + filePath
+	startTime = time
 	self.sourcePath = filePath
 	self.gatherMode = gatherMode
 	self.state = ""
@@ -1713,7 +1717,8 @@ Transpiler.process = function(filePath, gatherMode=false, outputFolder=null)
 		self.processLine line
 	end for
 	if not gatherMode then self.generateOutput
-	debugPrint "Done processing: " + filePath
+	endTime = time
+	print "Done processing: " + filePath + " [" + round(endTime - startTime) + " sec]"
 end function
 
 Transpiler.clearOutput = function

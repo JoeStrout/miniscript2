@@ -1,7 +1,6 @@
 // String Utilities.
 //	This module adds some additional methods to the `string` type.
 
-
 // Small words we don't capitalize in titleCase.
 // This set is from the U.S. Government Printing Office Style Manual:
 smallWords = ["a", "an", "the", "at", "by", "for", "in", "of", "on", "to", "up", "and", "as", "but", "or", "nor"]
@@ -289,6 +288,41 @@ string.rot13 = function
 	return self.cipher(rot13map)
 end function
 
+// hexStr: convert an integer value to a hexadecimal string.
+// Returns any negative value as "0" (padded to the given number
+// of digits).  Oversized values will return more digits than
+// padToLength.  Example:
+//   hexStr(123, 4) --> "007B"
+hexStr = function(val, padToLength=2, lowercase=false)
+	digits = "0123456789ABCDEF"
+	val = floor(val)
+	if val < 0 then return "0" * padToLength
+	result = []
+	while val > 0
+		result.insert 0, digits[val % 16]
+		val = floor(val / 16)
+	end while
+	result = result.join("")
+	if result.len < padToLength then result = "0" * (padToLength - result.len) + result
+	if lowercase then result = result.lower
+	return result
+end function
+
+// HexVal: convert a hexadecimal string to a number.
+// Example:
+//	hexVal("007B") --> 123
+hexVal = function(hexstr)
+	result = 0
+	digits = "0123456789ABCDEF"
+	for c in hexstr
+		cval = digits.indexOf(c.upper)
+		if cval < 0 then break
+		result = result * 16 + cval
+	end for
+	return result
+end function
+
+
 if intrinsics.hasIndex("RawData") then
 	
 	// urlEncode: Encode a string so it can be used as a URL query
@@ -306,7 +340,7 @@ if intrinsics.hasIndex("RawData") then
 			if urlSafeChars.contains(c) then
 				result.push c
 			else
-				result.push "%" + hex2(b)
+				result.push "%" + hexStr(b, 2)
 			end if
 		end for
 		return result.join("")
@@ -405,7 +439,11 @@ end function
 string.fill = function(args)
 	s = self
 	for idx in args.indexes
-		s = s.replace("{" + idx + "}", args[idx])
+		key = "{" + idx + "}"
+		value = @args[idx]
+		if @value isa string or s.indexOf(key) != null then
+			s = s.replace(key, value)
+		end if
 	end for
 	return s
 end function
@@ -509,7 +547,10 @@ runUnitTests = function
 	assertEqual "+3.14".isNumeric, true
 	assertEqual "3.14E6".isNumeric, true
 	assertEqual "-3.14E-6".isNumeric, true
-	assertEqual "  -3E-6".isNumeric, true	
+	assertEqual "  -3E-6".isNumeric, true
+	
+	assertEqual hexStr(123, 4), "007B"
+	assertEqual hexVal("07b"), 123
 	
 	testing = "lastIndexOf"
 	assertEqual "Hello world".lastIndexOf("l"), 9

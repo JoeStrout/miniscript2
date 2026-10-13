@@ -987,12 +987,21 @@ public static class CoreIntrinsics {
 			// CPP: Value iterKey, iterVal;
 			if (self.IsList()) {
 				if (self.IsFrozen()) { ctx.vm.RaiseRuntimeError("Attempt to modify a frozen list"); return new IntrinsicResult(Value.Null); }
-				int count = self.ListCount();
+				// Work on the list's items directly, rather than through
+				// ListGet/ListSet, which look up and copy the list on every call.
+				int listIdx = self.ItemIndex();
+				GCList list = GCManager.Lists.Get(listIdx);
+				if (list.Computed) {
+					list.Materialize();
+					GCManager.Lists.Set(listIdx, list);  // write back materialization
+				}
+				List<Value> items = list.Items;
+				int count = list.Count();
 				for (int i = count - 1; i > 0; i--) {
 					int j = (int)(PRNG.Next() * (i + 1));
-					temp = self.ListGet(i);
-					self.ListSet(i, self.ListGet(j));
-					self.ListSet(j, temp);
+					temp = items[i];
+					items[i] = items[j];
+					items[j] = temp;
 				}
 			} else if (self.IsMap()) {
 				if (self.IsFrozen()) { ctx.vm.RaiseRuntimeError("Attempt to modify a frozen map"); return new IntrinsicResult(Value.Null); }
@@ -1028,14 +1037,7 @@ public static class CoreIntrinsics {
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value self = ctx.GetArg(0);
 			if (!self.IsList()) return new IntrinsicResult(ErrorTypes.TypeError("list", self));
-			Value delim = ctx.GetArg(1);
-			String delimStr = delim.IsNull() ? " " : delim.ToString(null);
-			int count = self.ListCount();
-			List<String> parts = new List<String>(count);
-			for (int i = 0; i < count; i++) {
-				parts.Add(self.ListGet(i).ToString(null));
-			}
-			return new IntrinsicResult(Value.make_string(String.Join(delimStr, parts)));
+			return new IntrinsicResult(self.ListJoin(ctx.GetArg(1)));
 		};
 
 		// split(self, delimiter=" ", maxCount=-1)
@@ -1066,11 +1068,22 @@ public static class CoreIntrinsics {
 			// CPP: Value iterKey, iterVal;
 			int maxCount = maxCountVal.IsNull() ? -1 : (int)maxCountVal.NumericVal();
 			if (self.IsList()) {
-				int count = self.ListCount();
+				// Read the list's items directly, rather than through ListGet/
+				// ListSet, which look up and copy the list on every call.  A
+				// computed list is materialized only once something matches.
+				int listIdx = self.ItemIndex();
+				GCList list = GCManager.Lists.Get(listIdx);
+				int count = list.Count();
 				int found = 0;
 				for (int i = 0; i < count; i++) {
-					if (self.ListGet(i) == oldVal) {
-						self.ListSet(i, newVal);
+					Value item = list.Computed ? list.Get(i) : list.Items[i];
+					if (item == oldVal) {
+						if (list.Frozen) { ctx.vm.RaiseRuntimeError("Attempt to modify a frozen list"); return new IntrinsicResult(Value.Null); }
+						if (list.Computed) {
+							list.Materialize();
+							GCManager.Lists.Set(listIdx, list);  // write back materialization
+						}
+						list.Items[i] = newVal;
 						found++;
 						if (maxCount > 0 && found >= maxCount) break;
 					}
@@ -1113,11 +1126,23 @@ public static class CoreIntrinsics {
 			// CPP: Value iterVal;
 			double total = 0;
 			if (self.IsList()) {
-				int count = self.ListCount();
-				for (int i = 0; i < count; i++) {
-					Value item = self.ListGet(i);
-					if (item.IsError()) return new IntrinsicResult(item);
-					total += item.NumericVal();
+				// Fetch the list once, rather than per element via ListGet (which
+				// looks it up in GCManager.Lists and copies it on every call).
+				GCList list = GCManager.Lists.Get(self.ItemIndex());
+				int count = list.Count();
+				if (list.Computed) {
+					for (int i = 0; i < count; i++) {
+						Value item = list.Get(i);
+						if (item.IsError()) return new IntrinsicResult(item);
+						total += item.NumericVal();
+					}
+				} else {
+					List<Value> items = list.Items;
+					for (int i = 0; i < count; i++) {
+						Value item = items[i];
+						if (item.IsError()) return new IntrinsicResult(item);
+						total += item.NumericVal();
+					}
 				}
 			} else if (self.IsMap()) {
 				MapIterator iter = self.Iterator();

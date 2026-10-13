@@ -10,7 +10,9 @@
 #
 # tools/push_preview is a wrapper that supplies CHANNEL=preview.
 #
-# This script does NOT build anything; it uploads whatever is in build/dist.
+# This script does NOT build anything; it uploads the release archives that
+# 'tools/build.sh dist all' leaves in build/dist (each bundling an executable
+# with lib/ and the docs), plus the manual on its own.
 # --force skips the staleness and repository checks below (use only if you
 # know what the binaries and the tag each contain).
 
@@ -72,10 +74,18 @@ NOTES=$(printf "$NOTES_FMT" "$NUM")
 DIST="build/dist"
 MANUAL="docs/MiniScript-Manual.pdf"
 MANUAL_SRC="docs/MiniScript-Manual.pages"
+ARCHIVES="$DIST/miniscript-mac.zip $DIST/miniscript-linux.tar.gz $DIST/miniscript-win.zip $DIST/miniscript-csharp.zip"
+# Docs bundled into every archive (keep in step with DIST_DOCS in build.sh).
+# The manual is exported by hand from Pages; the others are rendered from
+# Markdown with tools/md2pdf.sh.  Either way they are committed under docs/.
+DOCS="$MANUAL docs/CommandLine.pdf docs/NewInMS2.pdf"
 
-# Verify the expected binaries are present
+BINARIES="$DIST/miniscript-mac $DIST/miniscript-linux $DIST/miniscript-win.exe $DIST/csharp/miniscript-csharp.dll"
+
+# Verify the expected archives (and the binaries they were packed from) are
+# present
 MISSING=0
-for f in "$DIST/miniscript-mac" "$DIST/miniscript-linux" "$DIST/miniscript-win.exe" "$DIST/miniscript-csharp.zip"; do
+for f in $ARCHIVES $BINARIES; do
     if [ ! -f "$f" ]; then
         echo "Missing: $f"
         MISSING=1
@@ -86,9 +96,15 @@ if [ "$MISSING" = "1" ]; then
     exit 1
 fi
 
-# The manual is not built; it is exported by hand and committed under docs/.
-if [ ! -f "$MANUAL" ]; then
-    echo "Missing: $MANUAL"
+for f in $DOCS; do
+    if [ ! -f "$f" ]; then
+        echo "Missing: $f"
+        MISSING=1
+    fi
+done
+if [ "$MISSING" = "1" ]; then
+    echo "Export or render the missing docs (and commit them), then run"
+    echo "'tools/build.sh dist package' and push again."
     exit 1
 fi
 
@@ -153,9 +169,10 @@ source_fingerprint() {
     | cut -d' ' -f1
 }
 
+# Check the binaries themselves, not the archives: 'dist package' re-packs
+# without recompiling, so an archive's own time says nothing about its code.
 STALE=0
-for f in "$DIST/miniscript-mac" "$DIST/miniscript-linux" \
-         "$DIST/miniscript-win.exe" "$DIST/miniscript-csharp.zip"; do
+for f in $BINARIES; do
     if [ "$(mtime "$f")" -lt "$NEWEST_TIME" ]; then
         echo "Stale: $f  ($(date -r "$(mtime "$f")" '+%Y-%m-%d %H:%M'))"
         STALE=1
@@ -190,18 +207,59 @@ if [ "$STALE" = "1" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Manual check
+# Docs check
 #
-# The PDF is exported by hand from the Pages document, so it is easy to edit
-# the manual and forget to re-export.  Refuse to upload a PDF older than its
-# source.
+# The PDFs are exported or rendered by hand, so it is easy to edit a doc and
+# forget to regenerate it.  Refuse to upload a PDF older than its source.
 # ---------------------------------------------------------------------------
-if [ -e "$MANUAL_SRC" ] && [ "$(mtime "$MANUAL")" -lt "$(mtime "$MANUAL_SRC")" ]; then
-    echo "Stale: $MANUAL  ($(date -r "$(mtime "$MANUAL")" '+%Y-%m-%d %H:%M'))"
-    echo "Newer source: $MANUAL_SRC ($(date -r "$(mtime "$MANUAL_SRC")" '+%Y-%m-%d %H:%M'))"
-    echo "Export the manual to PDF again (and commit it), then push again."
+for pair in "$MANUAL:$MANUAL_SRC" \
+            "docs/CommandLine.pdf:docs/CommandLine.md" \
+            "docs/NewInMS2.pdf:docs/NewInMS2.md"; do
+    PDF="${pair%%:*}"
+    SRC="${pair#*:}"
+    if [ -e "$SRC" ] && [ "$(mtime "$PDF")" -lt "$(mtime "$SRC")" ]; then
+        echo "Stale: $PDF  ($(date -r "$(mtime "$PDF")" '+%Y-%m-%d %H:%M'))"
+        echo "Newer source: $SRC ($(date -r "$(mtime "$SRC")" '+%Y-%m-%d %H:%M'))"
+        echo "Regenerate the PDF (and commit it), run 'tools/build.sh dist package',"
+        echo "then push again."
+        [ "$FORCE" = "1" ] || exit 1
+        echo "--force given; uploading the stale doc anyway."
+    fi
+done
+
+# ---------------------------------------------------------------------------
+# Bundle check
+#
+# The archives also carry lib/, the docs, LICENSE, and a README made from
+# tools/dist-README.txt.  The build stamp only vouches for the binaries, so
+# check separately that every archive was packed after the last change to any
+# of those.  ('tools/build.sh dist package' re-packs without recompiling.)
+# ---------------------------------------------------------------------------
+NEWEST_BUNDLED=""
+NEWEST_BUNDLED_TIME=0
+for f in lib/* $DOCS LICENSE tools/dist-README.txt; do
+    [ -f "$f" ] || continue
+    case "$f" in */sync_from_sysdisk.sh|*/.DS_Store) continue ;; esac
+    T=$(mtime "$f")
+    if [ "$T" -gt "$NEWEST_BUNDLED_TIME" ]; then
+        NEWEST_BUNDLED_TIME="$T"
+        NEWEST_BUNDLED="$f"
+    fi
+done
+BUNDLE_# Check the binaries themselves, not the archives: 'dist package' re-packs
+# without recompiling, so an archive's own time says nothing about its code.
+STALE=0
+for f in $BINARIES; do
+    if [ "$(mtime "$f")" -lt "$NEWEST_BUNDLED_TIME" ]; then
+        echo "Stale bundle: $f  ($(date -r "$(mtime "$f")" '+%Y-%m-%d %H:%M'))"
+        BUNDLE_STALE=1
+    fi
+done
+if [ "$BUNDLE_STALE" = "1" ]; then
+    echo "Newer bundled file: $NEWEST_BUNDLED ($(date -r "$NEWEST_BUNDLED_TIME" '+%Y-%m-%d %H:%M'))"
+    echo "Run 'tools/build.sh dist package', then push again."
     [ "$FORCE" = "1" ] || exit 1
-    echo "--force given; uploading the stale manual anyway."
+    echo "--force given; uploading the stale archives anyway."
 fi
 
 # ---------------------------------------------------------------------------
@@ -248,11 +306,9 @@ fi
 echo "Creating GitHub release $TAG ($TITLE) ..."
 # --target pins the tag to the exact commit these binaries were built from,
 # rather than letting gh take whatever the default branch points at.
+# shellcheck disable=SC2086
 gh release create "$TAG" \
-    "$DIST/miniscript-mac" \
-    "$DIST/miniscript-linux" \
-    "$DIST/miniscript-win.exe" \
-    "$DIST/miniscript-csharp.zip" \
+    $ARCHIVES \
     "$MANUAL" \
     --target "$(git rev-parse HEAD)" \
     --title "$TITLE" \

@@ -456,11 +456,13 @@ public class ComparisonChainNode : ASTNode {
 	}
 
 	public override String ToStr() {
-		String result = Operands[0].ToStr();
+		List<String> parts = new List<String>(Operands.Count * 2);
+		parts.Add(Operands[0].ToStr());
 		for (Int32 i = 0; i < Operators.Count; i++) {
-			result = result + " " + Operators[i] + " " + Operands[i + 1].ToStr();
+			parts.Add(Operators[i]);
+			parts.Add(Operands[i + 1].ToStr());
 		}
-		return result;
+		return String.Join(" ", parts);
 	}
 
 	public override ASTNode Simplify() {
@@ -503,13 +505,12 @@ public class CallNode : ASTNode {
 	}
 
 	public override String ToStr() {
-		String result = Function + "(";
+		String prefix = Function + "(";
+		List<String> args = new List<String>(Arguments.Count);
 		for (Int32 i = 0; i < Arguments.Count; i++) {
-			if (i > 0) result = result + ", ";
-			result = result + Arguments[i].ToStr();
+			args.Add(Arguments[i].ToStr());
 		}
-		result = result + ")";
-		return result;
+		return prefix + String.Join(", ", args) + ")";
 	}
 
 	public override ASTNode Simplify() {
@@ -581,13 +582,11 @@ public class ListNode : ASTNode {
 	}
 
 	public override String ToStr() {
-		String result = "[";
+		List<String> parts = new List<String>(Elements.Count);
 		for (Int32 i = 0; i < Elements.Count; i++) {
-			if (i > 0) result = result + ", ";
-			result = result + Elements[i].ToStr();
+			parts.Add(Elements[i].ToStr());
 		}
-		result = result + "]";
-		return result;
+		return "[" + String.Join(", ", parts) + "]";
 	}
 
 	public override ASTNode Simplify() {
@@ -630,13 +629,11 @@ public class MapNode : ASTNode {
 	}
 
 	public override String ToStr() {
-		String result = "{";
+		List<String> parts = new List<String>(Keys.Count);
 		for (Int32 i = 0; i < Keys.Count; i++) {
-			if (i > 0) result = result + ", ";
-			result = result + Keys[i].ToStr() + ": " + Values[i].ToStr();
+			parts.Add(Keys[i].ToStr() + ": " + Values[i].ToStr());
 		}
-		result = result + "}";
-		return result;
+		return "{" + String.Join(", ", parts) + "}";
 	}
 
 	public override ASTNode Simplify() {
@@ -782,13 +779,12 @@ public class MethodCallNode : ASTNode {
 	}
 
 	public override String ToStr() {
-		String result = Target.ToStr() + "." + Method + "(";
+		String prefix = Target.ToStr() + "." + Method + "(";
+		List<String> args = new List<String>(Arguments.Count);
 		for (Int32 i = 0; i < Arguments.Count; i++) {
-			if (i > 0) result = result + ", ";
-			result = result + Arguments[i].ToStr();
+			args.Add(Arguments[i].ToStr());
 		}
-		result = result + ")";
-		return result;
+		return prefix + String.Join(", ", args) + ")";
 	}
 
 	public override ASTNode Simplify() {
@@ -829,13 +825,12 @@ public class ExprCallNode : ASTNode {
 	}
 
 	public override String ToStr() {
-		String result = Function.ToStr() + "(";
+		String prefix = Function.ToStr() + "(";
+		List<String> args = new List<String>(Arguments.Count);
 		for (Int32 i = 0; i < Arguments.Count; i++) {
-			if (i > 0) result = result + ", ";
-			result = result + Arguments[i].ToStr();
+			args.Add(Arguments[i].ToStr());
 		}
-		result = result + ")";
-		return result;
+		return prefix + String.Join(", ", args) + ")";
 	}
 
 	public override ASTNode Simplify() {
@@ -874,12 +869,13 @@ public class WhileNode : ASTNode {
 	}
 
 	public override String ToStr() {
-		String result = "while " + Condition.ToStr() + "\n";
+		List<String> parts = new List<String>(Body.Count + 2);
+		parts.Add("while " + Condition.ToStr() + "\n");
 		for (Int32 i = 0; i < Body.Count; i++) {
-			result = result + "  " + Body[i].ToStr() + "\n";
+			parts.Add("  " + Body[i].ToStr() + "\n");
 		}
-		result = result + "end while";
-		return result;
+		parts.Add("end while");
+		return String.Join("", parts);
 	}
 
 	public override ASTNode Simplify() {
@@ -923,18 +919,19 @@ public class IfNode : ASTNode {
 	}
 
 	public override String ToStr() {
-		String result = "if " + Condition.ToStr() + " then\n";
+		List<String> parts = new List<String>(ThenBody.Count + ElseBody.Count + 3);
+		parts.Add("if " + Condition.ToStr() + " then\n");
 		for (Int32 i = 0; i < ThenBody.Count; i++) {
-			result = result + "  " + ThenBody[i].ToStr() + "\n";
+			parts.Add("  " + ThenBody[i].ToStr() + "\n");
 		}
 		if (ElseBody.Count > 0) {
-			result = result + "else\n";
+			parts.Add("else\n");
 			for (Int32 i = 0; i < ElseBody.Count; i++) {
-				result = result + "  " + ElseBody[i].ToStr() + "\n";
+				parts.Add("  " + ElseBody[i].ToStr() + "\n");
 			}
 		}
-		result = result + "end if";
-		return result;
+		parts.Add("end if");
+		return String.Join("", parts);
 	}
 
 	public override ASTNode Simplify() {
@@ -983,12 +980,13 @@ public class ForNode : ASTNode {
 	}
 
 	public override String ToStr() {
-		String result = "for " + Variable + " in " + Iterable.ToStr() + "\n";
+		List<String> parts = new List<String>(Body.Count + 2);
+		parts.Add("for " + Variable + " in " + Iterable.ToStr() + "\n");
 		for (Int32 i = 0; i < Body.Count; i++) {
-			result = result + "  " + Body[i].ToStr() + "\n";
+			parts.Add("  " + Body[i].ToStr() + "\n");
 		}
-		result = result + "end for";
-		return result;
+		parts.Add("end for");
+		return String.Join("", parts);
 	}
 
 	public override ASTNode Simplify() {
@@ -1082,21 +1080,22 @@ public class FunctionNode : ASTNode {
 	}
 
 	public override String ToStr() {
-		String result = "function(";
+		List<String> paramStrs = new List<String>(ParamNames.Count);
 		for (Int32 i = 0; i < ParamNames.Count; i++) {
-			if (i > 0) result = result + ", ";
-			result = result + ParamNames[i];
 			ASTNode def = ParamDefaults[i];
 			if (def != null) {
-				result = result + "=" + def.ToStr();
+				paramStrs.Add(ParamNames[i] + "=" + def.ToStr());
+			} else {
+				paramStrs.Add(ParamNames[i]);
 			}
 		}
-		result = result + ")\n";
+		List<String> parts = new List<String>(Body.Count + 2);
+		parts.Add("function(" + String.Join(", ", paramStrs) + ")\n");
 		for (Int32 i = 0; i < Body.Count; i++) {
-			result = result + "  " + Body[i].ToStr() + "\n";
+			parts.Add("  " + Body[i].ToStr() + "\n");
 		}
-		result = result + "end function";
-		return result;
+		parts.Add("end function");
+		return String.Join("", parts);
 	}
 
 	public override ASTNode Simplify() {

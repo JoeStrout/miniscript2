@@ -246,10 +246,8 @@ for f in lib/* $DOCS LICENSE tools/dist-README.txt; do
         NEWEST_BUNDLED="$f"
     fi
 done
-BUNDLE_# Check the binaries themselves, not the archives: 'dist package' re-packs
-# without recompiling, so an archive's own time says nothing about its code.
-STALE=0
-for f in $BINARIES; do
+BUNDLE_STALE=0
+for f in $ARCHIVES; do
     if [ "$(mtime "$f")" -lt "$NEWEST_BUNDLED_TIME" ]; then
         echo "Stale bundle: $f  ($(date -r "$(mtime "$f")" '+%Y-%m-%d %H:%M'))"
         BUNDLE_STALE=1

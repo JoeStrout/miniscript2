@@ -3,8 +3,7 @@
 
 import "vt"
 
-delay = 0.5
-delaySub = 0.01
+delay = 0.8
 fieldHeight = 20
 fieldWidth = 10
 fieldLeft = 20
@@ -17,6 +16,25 @@ kEsc = char(27)
 anchorRow = fieldHeight + 2
 gameOverFG = vt.color.white
 gameOverBG = vt.color.teal
+statsLeft = fieldLeft + fieldWidth * 2 + 4
+
+// Scoring, as in classic NES Tetris: line clears are worth
+// lineScores[n] * (level + 1); each row of soft drop is worth 1 point,
+// and each row of hard drop is worth hardDropScore points.
+lineScores = [0, 40, 100, 300, 1200]
+hardDropScore = 5
+linesPerLevel = 10
+
+// Gravity: seconds per row at level 0, multiplied by speedFactor for
+// each level after that, but never less than minDelay.  These values are
+// a least-squares fit to the NES Tetris speeds for levels 0-9.
+startDelay = 0.856
+speedFactor = 0.836
+minDelay = 1/60
+
+score = 0
+level = 0
+lines = 0
 
 cell = {}
 cell.empty = null
@@ -52,6 +70,28 @@ drawField = function
 	end for
 	print vt.cursor.goto(fieldHeight + 1, fieldLeft - 1) + vt.backColor(fieldColor) + "+" + "-" * fieldWidth * 2 + "+"
 	print vt.cursor.goto(anchorRow, 1)
+end function
+
+drawStats = function
+	print vt.normal + vt.cursor.goto(2, statsLeft) + vt.textColor(vt.color.orange) + "SCORE  " + score
+	print vt.cursor.goto(4, statsLeft) + vt.textColor(vt.color.lime) + "LEVEL  " + level
+	print vt.cursor.goto(6, statsLeft) + vt.textColor(vt.color.pink) + "LINES  " + lines
+	print vt.cursor.goto(anchorRow, 1)
+end function
+
+levelDelay = function(lvl)
+	d = startDelay * speedFactor ^ lvl
+	if d < minDelay then d = minDelay
+	return d
+end function
+
+addLines = function(n)
+	if n == 0 then return
+	if n >= lineScores.len then n = lineScores.len - 1
+	globals.score += lineScores[n] * (level + 1)
+	globals.lines += n
+	globals.level = floor(lines / linesPerLevel)
+	globals.delay = levelDelay(level)
 end function
 
 drawGameOver = function
@@ -251,6 +291,7 @@ rotate = function(s)
 	return s2
 end function
 
+// Clear any full rows, and return how many were cleared.
 deleteRows = function
 	// Find all the full rows that need to be deleted.
 	fullRows = []
@@ -261,7 +302,7 @@ deleteRows = function
 		end for
 		if nNulls == 0 then fullRows.push i
 	end for
-	if fullRows.len == 0 then return
+	if fullRows.len == 0 then return 0
 
 	// Animate clearing the full rows from the center outward, all at once.
 	halfWidth = floor(fieldWidth / 2)
@@ -283,13 +324,15 @@ deleteRows = function
 			emptyRow.push _cell.empty
 		end for
 		outer.field = [emptyRow] + field[:i] + field[i + 1:]
-		outer.delay -= delaySub
 	end for
+	return fullRows.len
 end function
 
 print vt.clear
 initField
 drawField
+delay = levelDelay(level)
+drawStats
 done = false
 nextDownTime = time
 
@@ -316,9 +359,16 @@ while not done
 			if moved then
 				nextDownTime = time + delay
 				s = moved
+				score += 1
+				drawStats
 			end if
 		else if k == " " then
 			moved = fall(s)
+			distance = moved.centerRow - s.centerRow
+			if distance > 0 then
+				score += distance * hardDropScore
+				drawStats
+			end if
 		else if k == kLeft then
 			moved = moveLeft(s)
 		else if k == kRight then
@@ -334,8 +384,9 @@ while not done
 		moved = moveDown(s)
 		if moved == null then
 			absorbShape s
-			deleteRows
+			addLines deleteRows
 			drawField
+			drawStats
 			shape = null
 			s = null
 		else

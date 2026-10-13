@@ -1,8 +1,6 @@
 // Acey Deucey card game
 // (Text-based version)
 
-version = {"hostName":"HACK"} // (until we implement version)
-
 // Define some common stuff that makes this code work both
 // in Mini Micro, and in command-line MiniScript.
 if version.hostName == "Mini Micro" then

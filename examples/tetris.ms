@@ -16,7 +16,7 @@ kEsc = char(27)
 anchorRow = fieldHeight + 2
 gameOverFG = vt.color.white
 gameOverBG = vt.color.teal
-statsLeft = fieldLeft + fieldWidth * 2 + 4
+statsLeft = 6
 
 // Scoring, as in classic NES Tetris: line clears are worth
 // lineScores[n] * (level + 1); each row of soft drop is worth 1 point,

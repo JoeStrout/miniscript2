@@ -197,9 +197,8 @@ fresh start without leaving the REPL.
 
 ### Line editing and metacommands
 
-On macOS and Linux, the REPL supports line editing: use the left and right
-arrow keys to move within a line, and the up and down arrow keys to step
-through previous inputs.
+The REPL supports line editing: use the left and right arrow keys to move within a line,
+and the up and down arrow keys to step through previous inputs.
 
 A line beginning with `!` is a *metacommand*, handled by the REPL itself
 rather than run as MiniScript:
@@ -375,7 +374,7 @@ types, so you can use them without going through the module variable at all.
 
 ### The search path
 
-`import` looks for modules in these places, in order:
+`import` by default looks for modules in these places, in order:
 
 1. the folder containing the script being run (or the current directory, for
    the REPL and `-c`)

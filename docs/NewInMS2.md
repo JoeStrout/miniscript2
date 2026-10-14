@@ -193,7 +193,7 @@ The `or` operator is different; `e or x` evaluates to `x`.  This is a convenient
 
 ### Frozen (immutable) maps and lists
 
-Lists and maps in MiniScript have alwasy been _mutable_, meaning that you can change their contents.  (Compare this to strings, which are _immutable_; you can't change an existing string, but can only create a new string that may differ from the old one).  MiniScript 2 introduces the notion of a **frozen** list or map, which (like a string) is immutable.
+Lists and maps in MiniScript have always been _mutable_, meaning that you can change their contents.  (Compare this to strings, which are _immutable_; you can't change an existing string, but can only create a new string that may differ from the old one).  MiniScript 2 introduces the notion of a **frozen** list or map, which (like a string) is immutable.
 
 There are three basic ways you may get a frozen list or map:
 

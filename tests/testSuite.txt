@@ -4021,6 +4021,19 @@ print dog.speak
 --------------------------------
 I am Rex
 ================================
+==== self: auto-invoked self-less intrinsic via dot doesn't leak self
+==== into the next call of a self-taking intrinsic
+================================
+m = {}
+m.t = @time
+m.t
+print code("A")
+x = m.t
+print len("ab")
+--------------------------------
+65
+2
+================================
 ==== self: bracket-syntax returns funcRef (no auto-invoke)
 ================================
 Animal = {}

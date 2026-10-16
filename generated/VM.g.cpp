@@ -701,9 +701,10 @@ Int32 VMStorage::AutoInvokeFuncRef(Value funcRefVal,Int32 resultReg,Int32 return
 		if (selfParam > 0) {
 			stack[calleeBase + 1] = pendingSelf;
 			names[calleeBase + 1] = Value::selfString;
-			pendingSelf = Value::Null;
-			hasPendingContext = Boolean(false);
 		}
+		// Always consume the pending context, even if this intrinsic takes no
+		// self; otherwise it leaks into the next self-taking call.
+		ApplyPendingContext(calleeBase, callee);
 		SaveState(returnPC, baseIndex, currentFunc);
 		if (InvokeNativeCallback(callee.NativeCallback(), callee, calleeBase, selfParam, IntrinsicResult::Null, baseIndex + resultReg)) {
 			return -1;  // done

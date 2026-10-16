@@ -266,15 +266,20 @@ void VMStorage::ManuallyPushCall(Int32 intrinsicCalleeBase,FuncDef importMain) {
 	// will overwrite them with THIS call's continuation right after we return.
 	// When this manual call's continuation completes, Run() pops this entry
 	// to restore the outer call.  See Run().
-	_pendingCallStack.Add(PendingCallState(
-		_pendingCallback, _pendingCallee, _pendingCalleeBase, _pendingArgCount,
-		_pendingResultIndex, _pendingIsManual,
-		_hasPendingManualCall, _pendingManualCallDepth, ManualCallResult));
+	// (A continuation, as in the fetch-based import, was already saved when its
+	// first call went pending; see InvokeNativeCallback.)
+	if (!_invokingContinuation) PushPendingCallState();
 
 	_hasPendingManualCall = Boolean(true);
 	_pendingManualCallDepth = callStackTop;
 	ManualCallResult = Value::Null;
 	_pendingIsManual = Boolean(true);
+}
+void VMStorage::PushPendingCallState() {
+	_pendingCallStack.Add(PendingCallState(
+		_pendingCallback, _pendingCallee, _pendingCalleeBase, _pendingArgCount,
+		_pendingResultIndex, _pendingIsManual,
+		_hasPendingManualCall, _pendingManualCallDepth, ManualCallResult));
 }
 void VMStorage::SetVar(String varName,Value value) {
 	Value targetMap = GetCurrentLocalVarMap(BaseIndex, CurrentFunction.MaxRegs());
@@ -762,11 +767,26 @@ bool VMStorage::InvokeNativeCallback(NativeCallbackDelegate callback,FuncDef cal
 	// Bracket the callback with a CStrArena mark/reset so any Value::c_str()
 	// the intrinsic makes is freed when it returns (C++ only; see cstr_arena.h).
 	CStrArena::Mark _cstrArenaMark = CStrArena::GetMark();
+	Boolean firstCall = partialResult.done;
+	Int32 stackDepthBefore = _pendingCallStack.Count();
+	Boolean savedInvokingContinuation = _invokingContinuation;
+	_invokingContinuation = !firstCall;
 	IntrinsicResult ir = callback(context, partialResult);
+	_invokingContinuation = savedInvokingContinuation;
 	CStrArena::Reset(_cstrArenaMark);
 	_nativeFrameTop = savedNativeTop;
 	stack[absoluteResultIndex] = ir.result;
 	if (ir.done) return Boolean(true);
+	if (firstCall && _pendingCallStack.Count() == stackDepthBefore) {
+		// A first call that goes pending without pushing a manual call (the
+		// fetch-based import on web).  Save whatever pending state is current,
+		// so completing this continuation restores it.  If that state is an
+		// import whose module is running inline, this call is nested inside
+		// it: stop treating that module as runnable until this one completes.
+		PushPendingCallState();
+		if (!IsNull(_pendingCallback) && _hasPendingManualCall) _hasPendingManualCall = Boolean(false);
+		_pendingIsManual = Boolean(true);
+	}
 	_pendingCallback = callback;
 	_pendingCallee = callee;
 	_pendingCalleeBase = calleeBase;

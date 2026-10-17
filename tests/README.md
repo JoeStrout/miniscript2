@@ -32,6 +32,7 @@ tests/
 ├── testSuite.txt          # the integration suite, run by --test
 ├── setters.ms             # extended exercise of property setters
 ├── eof_input.ms           # fixture: `input` at end of file (build.sh test)
+├── modules/               # fixture modules imported by testSuite.txt (SECTION: IMPORT)
 └── cs/
     └── transpilable/      # layered C# unit tests
         ├── TestFramework.cs

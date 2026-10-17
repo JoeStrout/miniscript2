@@ -8275,6 +8275,37 @@ end function
 print g
 --------------------------------
 {"a": 1, "b": 767}
+================================================================================
+==== SECTION: IMPORT
+==== These import real module files from tests/modules, so they assume the
+==== suite runs from the repo root (as --test already does).  env is shared
+==== across tests, so each one restores MS_IMPORT_PATH when it is done.
+================================================================================
+==== import: a module that calls a pending intrinsic (wait) still binds
+==== (the wait must not clobber the import's own pending continuation)
+================================
+savedPath = env.MS_IMPORT_PATH
+env.MS_IMPORT_PATH = "tests/modules"
+import "waitInModule"
+env.MS_IMPORT_PATH = savedPath
+print waitInModule.x
+--------------------------------
+waitInModule start
+waitInModule after wait
+42
+================================
+==== import: nested imports with waits, at top level and from a function
+================================
+savedPath = env.MS_IMPORT_PATH
+env.MS_IMPORT_PATH = "tests/modules"
+import "nestedWaitOuter"
+env.MS_IMPORT_PATH = savedPath
+wait 0.01
+print nestedWaitOuter.b
+print locals.hasIndex("libname")
+--------------------------------
+ABAf
+0
 ================================
 ==== END OF TESTS
 ================================================================================

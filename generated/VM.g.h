@@ -37,21 +37,23 @@ struct CallInfo {
 
 // Snapshot of the VM's "pending call" state: a deferred intrinsic continuation
 // (callback + where to store its result) plus the manual-call sentinel.  This is
-// saved on a stack when a manual call (import) is pushed, so that a *nested*
-// manual call (e.g. an import that itself imports) can restore the outer pending
-// call once the inner one completes.  See ManuallyPushCall and Run.
+// saved on a stack whenever an intrinsic's first call goes pending (returns
+// done=false), so that a pending intrinsic nested inside another one -- an
+// import that itself imports, or a `wait` inside an imported module -- can
+// restore the outer pending call once the inner one completes.  See
+// InvokeNativeCallback and Run.
 struct PendingCallState {
 	public: NativeCallbackDelegate Callback; // pending intrinsic continuation (null if none)
 	public: FuncDef Callee; // callee FuncDef, for reconstructing Context
 	public: Int32 CalleeBase; // base index for reconstructing Context
 	public: Int32 ArgCount; // arg count for reconstructing Context
 	public: Int32 ResultIndex; // absolute stack index for the (partial) result
-	public: Boolean IsManual; // true if this continuation is a manual call
+	public: Boolean OwnsSavedState; // saved _pendingOwnsSavedState
 	public: Boolean HasManual; // saved _hasPendingManualCall
 	public: Int32 ManualDepth; // saved _pendingManualCallDepth
 	public: Value ManualResult; // saved ManualCallResult
 
-	public: PendingCallState(NativeCallbackDelegate callback, FuncDef callee, Int32 calleeBase, Int32 argCount, Int32 resultIndex, Boolean isManual, Boolean hasManual, Int32 manualDepth, Value manualResult);
+	public: PendingCallState(NativeCallbackDelegate callback, FuncDef callee, Int32 calleeBase, Int32 argCount, Int32 resultIndex, Boolean ownsSavedState, Boolean hasManual, Int32 manualDepth, Value manualResult);
 }; // end of struct PendingCallState
 
 class VMStorage : public std::enable_shared_from_this<VMStorage> {
@@ -136,9 +138,8 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	private: Boolean _hasPendingManualCall = Boolean(false);
 	private: Int32 _pendingManualCallDepth = 0; // callStackTop value after the push
 	public: Value ManualCallResult = Value::Null; // return value of the manually-pushed call
-	private: Boolean _pendingIsManual = Boolean(false);
+	private: Boolean _pendingOwnsSavedState = Boolean(false);
 	private: List<PendingCallState> _pendingCallStack;
-	private: Boolean _invokingContinuation = Boolean(false);
 	private: Int32 _nativeFrameTop = 0;
 	public: bool yielding = Boolean(false);
 	private: std::chrono::steady_clock::time_point _startTime;
@@ -150,21 +151,21 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	// we store the state here so Run can re-invoke it on the next call.
 	// The partial result value is stored in stack[_pendingResultIndex].
 
-	// Support for manually-pushed calls (used by the import intrinsic).
-	// When _hasPendingManualCall is true, Run() skips callback re-invocation
-	// and runs RunInner so the pushed function can execute first.
+	// Support for manually-pushed calls (used by the import intrinsic, and by
+	// RunFunction).  When _hasPendingManualCall is true, Run() skips callback
+	// re-invocation and runs RunInner so the pushed function can execute first.
 
-	// True when the current pending continuation (_pendingCallback) belongs to a
-	// manual call (import).  Used by Run() to decide whether completing that
-	// continuation should restore an outer pending call from _pendingCallStack.
-	// Stack of outer pending-call states saved across nested manual calls, so an
-	// import that imports another module doesn't clobber the outer import's
-	// continuation.  Pushed by ManuallyPushCall; popped by Run() when a manual
-	// continuation completes.  See PendingCallState.
-
-	// True while InvokeNativeCallback runs a continuation (not a first call).  A
-	// continuation that pushes a manual call (the fetch-based import, on web)
-	// must not save pending state in ManuallyPushCall: the first call already did.
+	// True when the current pending continuation (_pendingCallback) owns an
+	// entry on _pendingCallStack: the state that was current when its first call
+	// went pending.  Used by Run() to decide whether completing that
+	// continuation should pop and restore that outer state.
+	// Stack of outer pending-call states, one per pending intrinsic still
+	// waiting to complete, so a pending intrinsic nested inside another (an
+	// import that imports another module, or a `wait` inside an imported module)
+	// doesn't clobber the outer one's continuation.  Pushed by
+	// InvokeNativeCallback when an intrinsic's first call goes pending; popped
+	// by Run() when that intrinsic's continuation completes.  See
+	// PendingCallState.
 
 	// Top of the register stack currently in use by an active native (intrinsic)
 	// callback: calleeBase + callee.MaxRegs, set for the duration of each
@@ -224,10 +225,6 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	// intrinsic callback.  The function's return value is placed in ManualCallResult.
 	// intrinsicCalleeBase is ctx.baseIndex from the calling intrinsic.
 	public: void ManuallyPushCall(Int32 intrinsicCalleeBase, FuncDef importMain);
-
-	// Save the current scalar pending-call state on _pendingCallStack, for Run()
-	// to restore when the continuation that owns the new entry completes.
-	private: void PushPendingCallState();
 
 	// Set a variable by name in the current frame's locals VarMap.
 	// Matches the runtime behavior of user code "locals[varName] = value":
@@ -639,12 +636,10 @@ struct VM {
 	private: void set__pendingManualCallDepth(Int32 _v); // callStackTop value after the push
 	public: Value ManualCallResult(); // return value of the manually-pushed call
 	public: void set_ManualCallResult(Value _v); // return value of the manually-pushed call
-	private: Boolean _pendingIsManual();
-	private: void set__pendingIsManual(Boolean _v);
+	private: Boolean _pendingOwnsSavedState();
+	private: void set__pendingOwnsSavedState(Boolean _v);
 	private: List<PendingCallState> _pendingCallStack();
 	private: void set__pendingCallStack(List<PendingCallState> _v);
-	private: Boolean _invokingContinuation();
-	private: void set__invokingContinuation(Boolean _v);
 	private: Int32 _nativeFrameTop();
 	private: void set__nativeFrameTop(Int32 _v);
 	public: bool yielding();
@@ -657,21 +652,21 @@ struct VM {
 	// we store the state here so Run can re-invoke it on the next call.
 	// The partial result value is stored in stack[_pendingResultIndex].
 
-	// Support for manually-pushed calls (used by the import intrinsic).
-	// When _hasPendingManualCall is true, Run() skips callback re-invocation
-	// and runs RunInner so the pushed function can execute first.
+	// Support for manually-pushed calls (used by the import intrinsic, and by
+	// RunFunction).  When _hasPendingManualCall is true, Run() skips callback
+	// re-invocation and runs RunInner so the pushed function can execute first.
 
-	// True when the current pending continuation (_pendingCallback) belongs to a
-	// manual call (import).  Used by Run() to decide whether completing that
-	// continuation should restore an outer pending call from _pendingCallStack.
-	// Stack of outer pending-call states saved across nested manual calls, so an
-	// import that imports another module doesn't clobber the outer import's
-	// continuation.  Pushed by ManuallyPushCall; popped by Run() when a manual
-	// continuation completes.  See PendingCallState.
-
-	// True while InvokeNativeCallback runs a continuation (not a first call).  A
-	// continuation that pushes a manual call (the fetch-based import, on web)
-	// must not save pending state in ManuallyPushCall: the first call already did.
+	// True when the current pending continuation (_pendingCallback) owns an
+	// entry on _pendingCallStack: the state that was current when its first call
+	// went pending.  Used by Run() to decide whether completing that
+	// continuation should pop and restore that outer state.
+	// Stack of outer pending-call states, one per pending intrinsic still
+	// waiting to complete, so a pending intrinsic nested inside another (an
+	// import that imports another module, or a `wait` inside an imported module)
+	// doesn't clobber the outer one's continuation.  Pushed by
+	// InvokeNativeCallback when an intrinsic's first call goes pending; popped
+	// by Run() when that intrinsic's continuation completes.  See
+	// PendingCallState.
 
 	// Top of the register stack currently in use by an active native (intrinsic)
 	// callback: calleeBase + callee.MaxRegs, set for the duration of each
@@ -730,10 +725,6 @@ struct VM {
 	// intrinsic callback.  The function's return value is placed in ManualCallResult.
 	// intrinsicCalleeBase is ctx.baseIndex from the calling intrinsic.
 	public: inline void ManuallyPushCall(Int32 intrinsicCalleeBase, FuncDef importMain);
-
-	// Save the current scalar pending-call state on _pendingCallStack, for Run()
-	// to restore when the continuation that owns the new entry completes.
-	private: inline void PushPendingCallState();
 
 	// Set a variable by name in the current frame's locals VarMap.
 	// Matches the runtime behavior of user code "locals[varName] = value":
@@ -1075,12 +1066,10 @@ inline Int32 VM::_pendingManualCallDepth() { return get()->_pendingManualCallDep
 inline void VM::set__pendingManualCallDepth(Int32 _v) { get()->_pendingManualCallDepth = _v; } // callStackTop value after the push
 inline Value VM::ManualCallResult() { return get()->ManualCallResult; } // return value of the manually-pushed call
 inline void VM::set_ManualCallResult(Value _v) { get()->ManualCallResult = _v; } // return value of the manually-pushed call
-inline Boolean VM::_pendingIsManual() { return get()->_pendingIsManual; }
-inline void VM::set__pendingIsManual(Boolean _v) { get()->_pendingIsManual = _v; }
+inline Boolean VM::_pendingOwnsSavedState() { return get()->_pendingOwnsSavedState; }
+inline void VM::set__pendingOwnsSavedState(Boolean _v) { get()->_pendingOwnsSavedState = _v; }
 inline List<PendingCallState> VM::_pendingCallStack() { return get()->_pendingCallStack; }
 inline void VM::set__pendingCallStack(List<PendingCallState> _v) { get()->_pendingCallStack = _v; }
-inline Boolean VM::_invokingContinuation() { return get()->_invokingContinuation; }
-inline void VM::set__invokingContinuation(Boolean _v) { get()->_invokingContinuation = _v; }
 inline Int32 VM::_nativeFrameTop() { return get()->_nativeFrameTop; }
 inline void VM::set__nativeFrameTop(Int32 _v) { get()->_nativeFrameTop = _v; }
 inline bool VM::yielding() { return get()->yielding; }
@@ -1100,7 +1089,6 @@ inline void VM::InitVM(Int32 stackSlots,Int32 callSlots) { return get()->InitVM(
 inline void VM::CleanupVM() { return get()->CleanupVM(); }
 inline void VM::MarkFuncConstants(FuncDef func) { return get()->MarkFuncConstants(func); }
 inline void VM::ManuallyPushCall(Int32 intrinsicCalleeBase,FuncDef importMain) { return get()->ManuallyPushCall(intrinsicCalleeBase, importMain); }
-inline void VM::PushPendingCallState() { return get()->PushPendingCallState(); }
 inline void VM::SetVar(String varName,Value value) { return get()->SetVar(varName, value); }
 inline Value VM::RunFunction(Value funcRef,List<Value> args) { return get()->RunFunction(funcRef, args); }
 inline void VM::Reset(List<FuncDef> allFunctions) { return get()->Reset(allFunctions); }

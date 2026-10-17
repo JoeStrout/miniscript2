@@ -138,6 +138,7 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	public: Value ManualCallResult = Value::Null; // return value of the manually-pushed call
 	private: Boolean _pendingIsManual = Boolean(false);
 	private: List<PendingCallState> _pendingCallStack;
+	private: Boolean _invokingContinuation = Boolean(false);
 	private: Int32 _nativeFrameTop = 0;
 	public: bool yielding = Boolean(false);
 	private: std::chrono::steady_clock::time_point _startTime;
@@ -160,6 +161,10 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	// import that imports another module doesn't clobber the outer import's
 	// continuation.  Pushed by ManuallyPushCall; popped by Run() when a manual
 	// continuation completes.  See PendingCallState.
+
+	// True while InvokeNativeCallback runs a continuation (not a first call).  A
+	// continuation that pushes a manual call (the fetch-based import, on web)
+	// must not save pending state in ManuallyPushCall: the first call already did.
 
 	// Top of the register stack currently in use by an active native (intrinsic)
 	// callback: calleeBase + callee.MaxRegs, set for the duration of each
@@ -219,6 +224,10 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	// intrinsic callback.  The function's return value is placed in ManualCallResult.
 	// intrinsicCalleeBase is ctx.baseIndex from the calling intrinsic.
 	public: void ManuallyPushCall(Int32 intrinsicCalleeBase, FuncDef importMain);
+
+	// Save the current scalar pending-call state on _pendingCallStack, for Run()
+	// to restore when the continuation that owns the new entry completes.
+	private: void PushPendingCallState();
 
 	// Set a variable by name in the current frame's locals VarMap.
 	// Matches the runtime behavior of user code "locals[varName] = value":
@@ -634,6 +643,8 @@ struct VM {
 	private: void set__pendingIsManual(Boolean _v);
 	private: List<PendingCallState> _pendingCallStack();
 	private: void set__pendingCallStack(List<PendingCallState> _v);
+	private: Boolean _invokingContinuation();
+	private: void set__invokingContinuation(Boolean _v);
 	private: Int32 _nativeFrameTop();
 	private: void set__nativeFrameTop(Int32 _v);
 	public: bool yielding();
@@ -657,6 +668,10 @@ struct VM {
 	// import that imports another module doesn't clobber the outer import's
 	// continuation.  Pushed by ManuallyPushCall; popped by Run() when a manual
 	// continuation completes.  See PendingCallState.
+
+	// True while InvokeNativeCallback runs a continuation (not a first call).  A
+	// continuation that pushes a manual call (the fetch-based import, on web)
+	// must not save pending state in ManuallyPushCall: the first call already did.
 
 	// Top of the register stack currently in use by an active native (intrinsic)
 	// callback: calleeBase + callee.MaxRegs, set for the duration of each
@@ -715,6 +730,10 @@ struct VM {
 	// intrinsic callback.  The function's return value is placed in ManualCallResult.
 	// intrinsicCalleeBase is ctx.baseIndex from the calling intrinsic.
 	public: inline void ManuallyPushCall(Int32 intrinsicCalleeBase, FuncDef importMain);
+
+	// Save the current scalar pending-call state on _pendingCallStack, for Run()
+	// to restore when the continuation that owns the new entry completes.
+	private: inline void PushPendingCallState();
 
 	// Set a variable by name in the current frame's locals VarMap.
 	// Matches the runtime behavior of user code "locals[varName] = value":
@@ -1060,6 +1079,8 @@ inline Boolean VM::_pendingIsManual() { return get()->_pendingIsManual; }
 inline void VM::set__pendingIsManual(Boolean _v) { get()->_pendingIsManual = _v; }
 inline List<PendingCallState> VM::_pendingCallStack() { return get()->_pendingCallStack; }
 inline void VM::set__pendingCallStack(List<PendingCallState> _v) { get()->_pendingCallStack = _v; }
+inline Boolean VM::_invokingContinuation() { return get()->_invokingContinuation; }
+inline void VM::set__invokingContinuation(Boolean _v) { get()->_invokingContinuation = _v; }
 inline Int32 VM::_nativeFrameTop() { return get()->_nativeFrameTop; }
 inline void VM::set__nativeFrameTop(Int32 _v) { get()->_nativeFrameTop = _v; }
 inline bool VM::yielding() { return get()->yielding; }
@@ -1079,6 +1100,7 @@ inline void VM::InitVM(Int32 stackSlots,Int32 callSlots) { return get()->InitVM(
 inline void VM::CleanupVM() { return get()->CleanupVM(); }
 inline void VM::MarkFuncConstants(FuncDef func) { return get()->MarkFuncConstants(func); }
 inline void VM::ManuallyPushCall(Int32 intrinsicCalleeBase,FuncDef importMain) { return get()->ManuallyPushCall(intrinsicCalleeBase, importMain); }
+inline void VM::PushPendingCallState() { return get()->PushPendingCallState(); }
 inline void VM::SetVar(String varName,Value value) { return get()->SetVar(varName, value); }
 inline Value VM::RunFunction(Value funcRef,List<Value> args) { return get()->RunFunction(funcRef, args); }
 inline void VM::Reset(List<FuncDef> allFunctions) { return get()->Reset(allFunctions); }

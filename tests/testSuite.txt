@@ -413,6 +413,64 @@ print "abc
 --------------------------------
 Compiler Error: missing closing quote (") [line 2]
 ================================
+==== Look-alike Unicode characters (as from a word processor) are errors
+==== outside of strings and comments, even within an identifier
+================================
+x = 1
+print 5 − 3
+--------------------------------
+Compiler Error: invalid character '−' (U+2212 minus sign); use '-' instead [line 2]
+================================
+a = 5
+print a−1
+--------------------------------
+Compiler Error: invalid character '−' (U+2212 minus sign); use '-' instead [line 2]
+================================
+print 5 – 3
+--------------------------------
+Compiler Error: invalid character '–' (U+2013 en dash); use '-' instead [line 1]
+================================
+print 2 × 3
+--------------------------------
+Compiler Error: invalid character '×' (U+00D7 multiplication sign); use '*' instead [line 1]
+================================
+print 6 ÷ 3
+--------------------------------
+Compiler Error: invalid character '÷' (U+00F7 division sign); use '/' instead [line 1]
+================================
+print 2 ≠ 3
+--------------------------------
+Compiler Error: invalid character '≠' (U+2260 not equal to); use '!=' instead [line 1]
+================================
+print 2 ≤ 3
+--------------------------------
+Compiler Error: invalid character '≤' (U+2264 less-than or equal to); use '<=' instead [line 1]
+================================
+print 2 ≥ 3
+--------------------------------
+Compiler Error: invalid character '≥' (U+2265 greater-than or equal to); use '>=' instead [line 1]
+================================
+print “hi”
+--------------------------------
+Compiler Error: invalid character '“' (U+201C left double quotation mark); use '"' instead [line 1]
+================================
+print ‘hi’
+--------------------------------
+Compiler Error: invalid character '‘' (U+2018 left single quotation mark); use '"' instead [line 1]
+================================
+==== ...but they are fine within string literals and comments
+================================
+print "5 − 3 – 1 × 2 ÷ 1 ≠ ≤ ≥ “hi” ‘there’"  // − – × ÷ ≠ ≤ ≥ “ ” ‘ ’
+--------------------------------
+5 − 3 – 1 × 2 ÷ 1 ≠ ≤ ≥ “hi” ‘there’
+================================
+==== Other non-ASCII characters are still allowed in identifiers
+================================
+café = 3
+print café * 2
+--------------------------------
+6
+================================
 print ""
 --------------------------------
 

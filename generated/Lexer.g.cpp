@@ -16,6 +16,48 @@ Token::Token(TokenType type,String text,Int32 line,Int32 column) {
 	AfterSpace = Boolean(false);
 }
 
+List<Int32> Confusables::_codes = nullptr; // Unicode code point
+List<String> Confusables::_names = nullptr; // human-readable name
+List<String> Confusables::_fixes = nullptr; // suggested replacement
+void Confusables::Init() {
+	_codes =  List<Int32>::New();
+	_names =  List<String>::New();
+	_fixes =  List<String>::New();
+	//  code    name                            fix
+	Add(0x2212, "minus sign",                   "-");   // −
+	Add(0x2013, "en dash",                      "-");   // –
+	Add(0x2014, "em dash",                      "-");   // —
+	Add(0x00D7, "multiplication sign",          "*");   // ×
+	Add(0x00F7, "division sign",                "/");   // ÷
+	Add(0x2260, "not equal to",                 "!=");  // ≠
+	Add(0x2264, "less-than or equal to",        "<=");  // ≤
+	Add(0x2265, "greater-than or equal to",     ">=");  // ≥
+	Add(0x201C, "left double quotation mark",   "\"");  // “
+	Add(0x201D, "right double quotation mark",  "\"");  // ”
+	Add(0x2018, "left single quotation mark",   "\"");  // ‘
+	Add(0x2019, "right single quotation mark",  "\"");  // ’
+}
+void Confusables::Add(Int32 code,String name,String fix) {
+	_codes.Add(code);
+	_names.Add(name);
+	_fixes.Add(fix);
+}
+Int32 Confusables::IndexOf(Char c) {
+	if ((Int32)c < 128) return -1;
+	if (IsNull(_codes)) Init();
+	for (Int32 i = 0; i < _codes.Count(); i++) {
+		if (_codes[i] == (Int32)c) return i;
+	}
+	return -1;
+}
+String Confusables::ErrorMessage(Int32 index) {
+	Int32 code = _codes[index];
+	return StringUtils::Format("invalid character '{0}' (U+{1} {2}); use '{3}' instead",
+		StringUtils::Str((Char)code),
+		StringUtils::ToHex((UInt32)code).Substring(4),
+		_names[index], _fixes[index]);
+}
+
 Lexer::Lexer(String source) {
 	_input = source.Replace("\r\n", "\n").Replace("\r", "\n");
 	_position = 0;
@@ -63,6 +105,17 @@ Token Lexer::NextToken() {
 	}
 
 	Char c = Peek();
+
+	// Look-alike Unicode characters (such as U+2212, minus sign) are
+	// errors here, though they're fine within strings and comments.
+	Int32 confusable = Confusables::IndexOf(c);
+	if (confusable >= 0) {
+		ReportError(Confusables::ErrorMessage(confusable));
+		Advance();
+		Token errTok = Token(TokenType::ERROR, StringUtils::Str(c), startLine, startColumn);
+		errTok.AfterSpace = hadWhitespace;
+		return errTok;
+	}
 
 	// Numbers (which may begin with a decimal point, as in .5)
 	if (IsDigit(c) || (c == '.' && _position + 1 < _input.Length() && IsDigit(_input[_position + 1]))) {

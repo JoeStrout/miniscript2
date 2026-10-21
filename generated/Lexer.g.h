@@ -27,6 +27,29 @@ struct Token {
 	public: Token(TokenType type, String text, Int32 line, Int32 column);
 }; // end of struct Token
 
+// Unicode characters that are easily confused with MiniScript operators or
+// quotes, and tend to sneak in when code is copied from a word processor,
+// web page, or typeset document.  Outside of string literals and comments,
+// the lexer reports these as errors, suggesting the ASCII replacement.
+// To catch another such character, just add a line to Init.
+class Confusables {
+	private: static List<Int32> _codes; // Unicode code point
+	private: static List<String> _names; // human-readable name
+	private: static List<String> _fixes; // suggested replacement
+
+	private: static void Init();
+
+	private: static void Add(Int32 code, String name, String fix);
+
+	// Return the table index of the given character, or -1 if it is not
+	// a confusable character.
+	public: static Int32 IndexOf(Char c);
+
+	// Return the error message for the character at the given table index,
+	// e.g.: invalid character '−' (U+2212 minus sign); use '-' instead
+	public: static String ErrorMessage(Int32 index);
+}; // end of struct Confusables
+
 struct Lexer {
 	private: String _input;
 	private: Int32 _position;
@@ -77,7 +100,7 @@ inline Boolean Lexer::IsWhiteSpace(Char c) {
 }
 inline Boolean Lexer::IsIdentifierStartChar(Char c) {
 	return ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'
-	    || ((int)c > 127 && !IsWhiteSpace(c)));
+	    || ((int)c > 127 && !IsWhiteSpace(c) && Confusables::IndexOf(c) < 0));
 }
 inline Boolean Lexer::IsIdentifierChar(Char c) {
 	return IsIdentifierStartChar(c) || IsDigit(c);

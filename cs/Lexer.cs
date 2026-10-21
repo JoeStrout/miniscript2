@@ -32,6 +32,63 @@ public struct Token {
 	}
 }
 
+// Unicode characters that are easily confused with MiniScript operators or
+// quotes, and tend to sneak in when code is copied from a word processor,
+// web page, or typeset document.  Outside of string literals and comments,
+// the lexer reports these as errors, suggesting the ASCII replacement.
+// To catch another such character, just add a line to Init.
+public static class Confusables {
+	private static List<Int32> _codes = null;   // Unicode code point
+	private static List<String> _names = null;  // human-readable name
+	private static List<String> _fixes = null;  // suggested replacement
+
+	private static void Init() {
+		_codes = new List<Int32>();
+		_names = new List<String>();
+		_fixes = new List<String>();
+		//  code    name                            fix
+		Add(0x2212, "minus sign",                   "-");   // −
+		Add(0x2013, "en dash",                      "-");   // –
+		Add(0x2014, "em dash",                      "-");   // —
+		Add(0x00D7, "multiplication sign",          "*");   // ×
+		Add(0x00F7, "division sign",                "/");   // ÷
+		Add(0x2260, "not equal to",                 "!=");  // ≠
+		Add(0x2264, "less-than or equal to",        "<=");  // ≤
+		Add(0x2265, "greater-than or equal to",     ">=");  // ≥
+		Add(0x201C, "left double quotation mark",   "\"");  // “
+		Add(0x201D, "right double quotation mark",  "\"");  // ”
+		Add(0x2018, "left single quotation mark",   "\"");  // ‘
+		Add(0x2019, "right single quotation mark",  "\"");  // ’
+	}
+
+	private static void Add(Int32 code, String name, String fix) {
+		_codes.Add(code);
+		_names.Add(name);
+		_fixes.Add(fix);
+	}
+
+	// Return the table index of the given character, or -1 if it is not
+	// a confusable character.
+	public static Int32 IndexOf(Char c) {
+		if ((Int32)c < 128) return -1;
+		if (_codes == null) Init();
+		for (Int32 i = 0; i < _codes.Count; i++) {
+			if (_codes[i] == (Int32)c) return i;
+		}
+		return -1;
+	}
+
+	// Return the error message for the character at the given table index,
+	// e.g.: invalid character '−' (U+2212 minus sign); use '-' instead
+	public static String ErrorMessage(Int32 index) {
+		Int32 code = _codes[index];
+		return StringUtils.Format("invalid character '{0}' (U+{1} {2}); use '{3}' instead",
+			StringUtils.Str((Char)code),
+			StringUtils.ToHex((UInt32)code).Substring(4),
+			_names[index], _fixes[index]);
+	}
+}
+
 public struct Lexer {
 	private String _input;
 	private Int32 _position;
@@ -94,7 +151,7 @@ public struct Lexer {
 	[MethodImpl(AggressiveInlining)]
 	public static Boolean IsIdentifierStartChar(Char c) {
 		return ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'
-		    || ((int)c > 127 && !IsWhiteSpace(c)));
+		    || ((int)c > 127 && !IsWhiteSpace(c) && Confusables.IndexOf(c) < 0));
 	}
 
 	[MethodImpl(AggressiveInlining)]
@@ -132,6 +189,17 @@ public struct Lexer {
 		}
 
 		Char c = Peek();
+
+		// Look-alike Unicode characters (such as U+2212, minus sign) are
+		// errors here, though they're fine within strings and comments.
+		Int32 confusable = Confusables.IndexOf(c);
+		if (confusable >= 0) {
+			ReportError(Confusables.ErrorMessage(confusable));
+			Advance();
+			Token errTok = new Token(TokenType.ERROR, StringUtils.Str(c), startLine, startColumn);
+			errTok.AfterSpace = hadWhitespace;
+			return errTok;
+		}
 
 		// Numbers (which may begin with a decimal point, as in .5)
 		if (IsDigit(c) || (c == '.' && _position + 1 < _input.Length && IsDigit(_input[_position + 1]))) {

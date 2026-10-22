@@ -206,6 +206,114 @@ dist_csharp() {
 }
 
 # ---------------------------------------------------------------------------
+# Mac code signing and notarization
+#
+# Both are opt-in, configured by tools/signing.secret.  That file is
+# gitignored, so no identity or credential lives in the repository.  It holds
+# KEY=value lines ('#' starts a comment line; quotes around a value are
+# optional):
+#
+#   SIGN_ID=Developer ID Application: Your Name (TEAMID)
+#   APPLE_ID=you@example.com
+#   APP_PASSWORD=abcd-efgh-ijkl-mnop
+#
+# SIGN_ID is the identity to sign with (list yours with:
+# security find-identity -v -p codesigning); the team ID notarytool needs is
+# the part in parentheses.  APPLE_ID and APP_PASSWORD are the Apple account
+# and an app-specific password for it (made at appleid.apple.com), used to
+# notarize.  With no SIGN_ID, the Mac binary ships as zig leaves it: the
+# arm64 slice ad-hoc signed, which is enough to run, but Gatekeeper blocks
+# the download.  With SIGN_ID alone, it is signed but not notarized.
+#
+# A bare executable cannot have its notarization ticket stapled, so we notarize
+# the zip instead; Gatekeeper then looks the ticket up online on first launch.
+# A successful notarization is recorded in build/dist/.notarized as the hash of
+# the zip it covers, which push_release checks before uploading.
+# ---------------------------------------------------------------------------
+SIGNING_FILE="tools/signing.secret"
+NOTARIZED_STAMP="build/dist/.notarized"
+
+# Read $SIGNING_FILE (once) into SIGN_ID, APPLE_ID, APP_PASSWORD and TEAM_ID.
+# The file is parsed rather than sourced, so it is data, never code.
+load_signing_config() {
+    [ -z "${SIGNING_LOADED:-}" ] || return 0
+    SIGNING_LOADED=1
+    SIGN_ID="" APPLE_ID="" APP_PASSWORD="" TEAM_ID=""
+    [ -f "$SIGNING_FILE" ] || return 0
+
+    if [ "$(stat -f %Lp "$SIGNING_FILE")" != "600" ]; then
+        echo "  WARNING: $SIGNING_FILE holds a password; make it private with:"
+        echo "    chmod 600 $SIGNING_FILE"
+    fi
+
+    local key val
+    while IFS='=' read -r key val || [ -n "$key" ]; do
+        key="${key//[[:space:]]/}"
+        case "$key" in ''|'#'*) continue ;; esac
+        val="${val%$'\r'}"
+        val="${val#"${val%%[![:space:]]*}"}"   # trim leading space
+        val="${val%"${val##*[![:space:]]}"}"   # trim trailing space
+        val="${val#\"}"; val="${val%\"}"
+        case "$key" in
+            SIGN_ID)      SIGN_ID="$val" ;;
+            APPLE_ID)     APPLE_ID="$val" ;;
+            APP_PASSWORD) APP_PASSWORD="$val" ;;
+            *)            echo "  $SIGNING_FILE: unknown setting '$key' (ignored)" ;;
+        esac
+    done < "$SIGNING_FILE"
+    TEAM_ID=$(echo "$SIGN_ID" | sed -n 's/.*(\([A-Z0-9]*\))$/\1/p')
+}
+
+mac_sign() {
+    local BIN="$1"
+    load_signing_config
+    if [ -z "$SIGN_ID" ]; then
+        echo "  No SIGN_ID in $SIGNING_FILE; Mac binary left unsigned."
+        return
+    fi
+    echo "  Signing $BIN as $SIGN_ID ..."
+    # --options runtime (the hardened runtime) and --timestamp are both
+    # required for notarization.  codesign signs each slice of a fat binary.
+    codesign --force --timestamp --options runtime \
+        --identifier org.miniscript.miniscript \
+        --sign "$SIGN_ID" "$BIN"
+    codesign --verify --strict --verbose=2 "$BIN"
+}
+
+mac_notarize() {
+    local ZIP="$1"
+    rm -f "$NOTARIZED_STAMP"
+    load_signing_config
+    [ -n "$SIGN_ID" ] || return 0
+    if [ -z "$APPLE_ID" ] || [ -z "$APP_PASSWORD" ]; then
+        echo "  No APPLE_ID and APP_PASSWORD in $SIGNING_FILE; $ZIP is signed but not notarized."
+        return
+    fi
+    if [ -z "$TEAM_ID" ]; then
+        echo "  SIGN_ID does not end in (TEAMID); cannot notarize $ZIP."
+        return
+    fi
+    echo "  Submitting $ZIP for notarization (usually a few minutes)..."
+    local OUT
+    OUT=$(xcrun notarytool submit "$ZIP" --apple-id "$APPLE_ID" --team-id "$TEAM_ID" \
+        --password "$APP_PASSWORD" --wait 2>&1) || true
+    echo "$OUT" | sed 's/^/    /'
+    # notarytool's exit status has not always reflected the verdict, so read
+    # the verdict itself.  A rejection is reported but does not stop the
+    # other platforms from packaging; push_release will refuse the result.
+    if echo "$OUT" | grep -q "status: Accepted"; then
+        echo "zip $(shasum "$ZIP" | cut -d' ' -f1)" > "$NOTARIZED_STAMP"
+        echo "  Notarized: $ZIP"
+    else
+        local ID
+        ID=$(echo "$OUT" | awk '$1=="id:"{print $2; exit}')
+        echo "  NOTARIZATION FAILED for $ZIP.  For Apple's explanation, run:"
+        echo "    xcrun notarytool log ${ID:-<submission id>} --apple-id $APPLE_ID --team-id $TEAM_ID"
+        echo "  (it will ask for the app-specific password)."
+    fi
+}
+
+# ---------------------------------------------------------------------------
 # dist_package PLATFORM
 #
 # Bundle a dist build into the archive users download.  PLATFORM is one of
@@ -241,6 +349,7 @@ dist_package() {
             [ -f "build/dist/$NAME" ] || { echo "  Missing build/dist/$NAME; not packaged."; rm -rf "$STAGE"; return; }
             cp "build/dist/$NAME" "$STAGE/miniscript"
             chmod 755 "$STAGE/miniscript"
+            if [ "$PLATFORM" = "mac" ]; then mac_sign "$STAGE/miniscript"; fi
             if [ "$PLATFORM" = "mac" ]; then LABEL="macOS"; else LABEL="Linux"; fi
             RUN="./miniscript"
             EXE_LIST="  miniscript               The MiniScript command-line interpreter"
@@ -316,6 +425,7 @@ available.  This build needs .NET 6 or later, from:
         rm -f "build/dist/$NAME.zip"
         (cd build/dist/pkg && zip -qrX "../$NAME.zip" "$NAME")
         echo "  Done: build/dist/$NAME.zip"
+        if [ "$PLATFORM" = "mac" ]; then mac_notarize "build/dist/$NAME.zip"; fi
     fi
     rm -rf "$STAGE"
 }
@@ -674,6 +784,9 @@ case "$TARGET" in
         echo "  $0 dist win off          # Windows binary, switch dispatch"
         echo "  $0 dist all              # All platforms"
         echo "  $0 dist package          # Re-bundle archives (lib, docs) from existing binaries"
+        echo ""
+        echo "Mac signing and notarization (optional) are configured by tools/signing.secret;"
+        echo "see the comment above load_signing_config in this script for its format."
         exit 1
         ;;
 esac

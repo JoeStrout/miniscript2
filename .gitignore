@@ -87,6 +87,9 @@ cs/cs.sln
 # Internal Stuff
 InternalNotes
 
+# Mac signing credentials (see load_signing_config in tools/build.sh)
+tools/signing.secret
+
 # clangd compile database (machine-specific absolute paths).
 # Regenerate with tools/gen_compile_commands.sh; the .clangd config IS tracked.
 compile_commands.json

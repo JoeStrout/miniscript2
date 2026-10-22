@@ -12,6 +12,8 @@
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#else
+#include <unistd.h>
 #endif
 #include <cstdio>
 #include <cstdlib>
@@ -73,7 +75,7 @@ void IOHelper::EnsureAnsiEnabled() {
 	    }
 	}
 	#else
-	ansiEnabled = true;
+	ansiEnabled = isatty(fileno(stdout)) != 0;
 	#endif
 }
 String IOHelper::GetStyleTermCode(TextStyle style) {

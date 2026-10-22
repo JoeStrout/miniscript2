@@ -1,12 +1,16 @@
 #!/bin/bash
-# Push a numbered release to GitHub.
-# Usage: tools/push_release CHANNEL [number] [--force]
-#   CHANNEL is preview or fc.
-# With no number, finds the highest existing release in that channel and
-# increments it. Pass a number to override.
+# Push a release to GitHub.
+# Usage: tools/push_release CHANNEL [number|version] [--notes-file FILE] [--force]
+#   CHANNEL is preview, fc, or final.
+# For preview and fc, with no number, finds the highest existing release in
+# that channel and increments it. Pass a number to override.
+# For final, the version comes from hostVersion in cs/App.cs (the version the
+# binaries report); pass a version only to double-check it.  A final release
+# requires --notes-file, and a signed and notarized Mac build.
 # Examples:
 #   tools/push_release preview 3  →  tag v2.0-preview-3
 #   tools/push_release fc         →  tag v2.0-fc1 (if no fc release yet)
+#   tools/push_release final --notes-file notes.md  →  tag v2.0.0
 #
 # tools/push_preview is a wrapper that supplies CHANNEL=preview.
 #
@@ -22,18 +26,27 @@ cd "$(dirname "$0")/.."
 
 CHANNEL=""
 NUM=""
+NOTES_FILE=""
 FORCE=0
-for arg in "$@"; do
-    case "$arg" in
-        --force)      FORCE=1 ;;
-        preview|fc)   CHANNEL="$arg" ;;
-        [0-9]*)       NUM="$arg" ;;
-        *)            echo "Unknown argument: $arg"; exit 1 ;;
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --force)            FORCE=1 ;;
+        --notes-file)       shift; NOTES_FILE="${1:-}" ;;
+        preview|fc|final)   CHANNEL="$1" ;;
+        [0-9]*)             NUM="$1" ;;
+        *)                  echo "Unknown argument: $1"; exit 1 ;;
     esac
+    shift
 done
 
 if [ -z "$CHANNEL" ]; then
-    echo "Usage: tools/push_release CHANNEL [number] [--force]   (CHANNEL: preview or fc)"
+    echo "Usage: tools/push_release CHANNEL [number|version] [--notes-file FILE] [--force]"
+    echo "       (CHANNEL: preview, fc, or final)"
+    exit 1
+fi
+
+if [ -n "$NOTES_FILE" ] && [ ! -f "$NOTES_FILE" ]; then
+    echo "Notes file not found: $NOTES_FILE"
     exit 1
 fi
 
@@ -52,6 +65,33 @@ case "$CHANNEL" in
         CHANNEL_NAME="final candidate"
         TITLE_FMT="MiniScript 2.0 FC%s"
         NOTES_FMT="Final candidate %s of MiniScript 2.0."
+        ;;
+    final)
+        # The tag is the version itself, read from the source the binaries
+        # were built from, so the two cannot disagree.
+        VERSION=$(sed -n 's/.*CoreIntrinsics\.hostVersion = "\([^"]*\)".*/\1/p' cs/App.cs | head -1)
+        if [ -z "$VERSION" ]; then
+            echo "Could not find hostVersion in cs/App.cs."
+            exit 1
+        fi
+        if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "hostVersion in cs/App.cs is \"$VERSION\", which is not a final"
+            echo "version number (like 2.0.0)."
+            exit 1
+        fi
+        if [ -n "$NUM" ] && [ "$NUM" != "$VERSION" ]; then
+            echo "You asked for $NUM, but cs/App.cs says hostVersion is $VERSION."
+            exit 1
+        fi
+        if [ -z "$NOTES_FILE" ]; then
+            echo "A final release needs real release notes: pass --notes-file FILE."
+            exit 1
+        fi
+        NUM="$VERSION"
+        TAG_PREFIX="v"
+        CHANNEL_NAME="final release"
+        TITLE_FMT="MiniScript %s"
+        NOTES_FMT="MiniScript %s."
         ;;
 esac
 
@@ -72,6 +112,7 @@ TAG="$TAG_PREFIX$NUM"
 TITLE=$(printf "$TITLE_FMT" "$NUM")
 NOTES=$(printf "$NOTES_FMT" "$NUM")
 DIST="build/dist"
+MAC_ZIP="$DIST/miniscript-mac.zip"
 MANUAL="docs/MiniScript-Manual.pdf"
 MANUAL_SRC="docs/MiniScript-Manual.pages"
 ARCHIVES="$DIST/miniscript-mac.zip $DIST/miniscript-linux.tar.gz $DIST/miniscript-win.zip $DIST/miniscript-csharp.zip"
@@ -261,6 +302,31 @@ if [ "$BUNDLE_STALE" = "1" ]; then
 fi
 
 # ---------------------------------------------------------------------------
+# Mac notarization check
+#
+# 'build.sh dist' signs and notarizes the Mac zip when tools/signing.secret
+# supplies the credentials, recording the notarized zip's hash in
+# .notarized.  Any later repacking changes the hash, so a match means the very
+# zip we are about to upload is the one Apple accepted.  Without it,
+# Gatekeeper blocks the download, which is tolerable for a preview but not for
+# a final release.
+# ---------------------------------------------------------------------------
+NOTARIZED="$DIST/.notarized"
+MAC_ZIP_HASH=$(shasum "$MAC_ZIP" | cut -d' ' -f1)
+if [ -f "$NOTARIZED" ] && [ "$(awk '$1=="zip"{print $2}' "$NOTARIZED")" = "$MAC_ZIP_HASH" ]; then
+    echo "Mac zip is signed and notarized."
+else
+    echo "Mac zip is not notarized (or was repacked since).  To fix, fill in"
+    echo "tools/signing.secret and run 'tools/build.sh dist package'."
+    if [ "$CHANNEL" = "final" ]; then
+        [ "$FORCE" = "1" ] || exit 1
+        echo "--force given; releasing an un-notarized Mac build anyway."
+    else
+        echo "(Continuing, since this is not a final release.)"
+    fi
+fi
+
+# ---------------------------------------------------------------------------
 # Repository check
 #
 # The staleness check above compares binaries against source *files*, which
@@ -301,6 +367,18 @@ else
     fi
 fi
 
+# Previews and FCs are marked pre-release; a final release is marked latest.
+if [ "$CHANNEL" = "final" ]; then
+    RELEASE_KIND="--latest"
+else
+    RELEASE_KIND="--prerelease"
+fi
+if [ -n "$NOTES_FILE" ]; then
+    NOTES_ARGS=(--notes-file "$NOTES_FILE")
+else
+    NOTES_ARGS=(--notes "$NOTES")
+fi
+
 echo "Creating GitHub release $TAG ($TITLE) ..."
 # --target pins the tag to the exact commit these binaries were built from,
 # rather than letting gh take whatever the default branch points at.
@@ -310,7 +388,7 @@ gh release create "$TAG" \
     "$MANUAL" \
     --target "$(git rev-parse HEAD)" \
     --title "$TITLE" \
-    --prerelease \
-    --notes "$NOTES"
+    $RELEASE_KIND \
+    "${NOTES_ARGS[@]}"
 
 echo "Done: https://github.com/$(gh repo view --json nameWithOwner -q .nameWithOwner)/releases/tag/$TAG"

@@ -15,6 +15,8 @@ using System.Collections.Generic;
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#else
+#include <unistd.h>
 #endif
 #include <cstdio>
 #include <cstdlib>
@@ -79,7 +81,9 @@ public static class IOHelper {
 		if (ansiInitialized) return;
 		ansiInitialized = true;
 		//*** BEGIN CS_ONLY ***
-		// Nothing needed; .NET enables ANSI on supported platforms automatically.
+		// .NET enables ANSI on supported platforms automatically; we need only
+		// leave the codes out when output goes to a file or pipe.
+		ansiEnabled = !Console.IsOutputRedirected;
 		//*** END CS_ONLY ***
 		/*** BEGIN CPP_ONLY ***
 		#ifdef _WIN32
@@ -91,7 +95,7 @@ public static class IOHelper {
 		    }
 		}
 		#else
-		ansiEnabled = true;
+		ansiEnabled = isatty(fileno(stdout)) != 0;
 		#endif
 		*** END CPP_ONLY ***/
 	}

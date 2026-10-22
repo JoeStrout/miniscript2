@@ -1542,7 +1542,7 @@ public static class CoreIntrinsics {
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			if (_versionMap.IsNull()) {
 				_versionMap = Value.make_map(6);
-				_versionMap.MapSet("miniscript", "2.0");
+				_versionMap.MapSet("miniscript", "2.0.0");
 				_versionMap.MapSet("buildDate", BuildDate());
 				_versionMap.MapSet("platform", PlatformName());
 				_versionMap.MapSet("host", hostVersion);

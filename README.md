@@ -1,6 +1,6 @@
 # MiniScript 2.0
 
-MiniScript 2.0 is complete rewrite of the [MiniScript](https://miniscript.org) language, focused mainly on performance.  It is the cornerstone of the [2026 MiniScript Road Map](https://dev.to/joestrout/miniscript-road-map-for-2026-17mh).  For MiniScript 1.x source code, see [here](https://github.com/JoeStrout/miniscript).
+MiniScript 2.0 is a complete rewrite of the [MiniScript](https://miniscript.org) language, focused mainly on performance.  It is the cornerstone of the [2026 MiniScript Road Map](https://dev.to/joestrout/miniscript-road-map-for-2026-17mh).  For MiniScript 1.x source code, see [here](https://github.com/JoeStrout/miniscript).
 
 MiniScript 2.0 is developed in C# and transpiled to C++ for production performance. The VM uses 32-bit fixed-width instructions and supports computed-goto dispatch on supported compilers.
 

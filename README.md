@@ -29,12 +29,11 @@ MiniScript is free, and apart from a small amount of revenue from the [books](ht
 So, [click here to sponsor](https://github.com/sponsors/JoeStrout) -- contributions of any size are greatly appreciated!
 
 ## Star History
-
-<a href="https://www.star-history.com/?type=date&legend=top-left&repos=JoeStrout%2Fminiscript2">
+<a href="https://www.star-history.com/?repos=JoeStrout%2Fminiscript2&type=date&legend=top-left">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=JoeStrout/miniscript2&type=date&theme=dark&legend=top-left&sealed_token=Qf9Yut51tdnKEeaWDrdLjjUh5LPz7HORg9BDLCinGXsHWXIDn5aw_fWq8mdhMTcNwe8iXY6Lajd8OyiTLsHcka_ihGTlqXlqJFEbD1qmKM9JRH7AK8eiug" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=JoeStrout/miniscript2&type=date&legend=top-left&sealed_token=Qf9Yut51tdnKEeaWDrdLjjUh5LPz7HORg9BDLCinGXsHWXIDn5aw_fWq8mdhMTcNwe8iXY6Lajd8OyiTLsHcka_ihGTlqXlqJFEbD1qmKM9JRH7AK8eiug" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=JoeStrout/miniscript2&type=date&legend=top-left&sealed_token=Qf9Yut51tdnKEeaWDrdLjjUh5LPz7HORg9BDLCinGXsHWXIDn5aw_fWq8mdhMTcNwe8iXY6Lajd8OyiTLsHcka_ihGTlqXlqJFEbD1qmKM9JRH7AK8eiug" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=JoeStrout/miniscript2&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=JoeStrout/miniscript2&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=JoeStrout/miniscript2&type=date&legend=top-left" />
  </picture>
 </a>
 

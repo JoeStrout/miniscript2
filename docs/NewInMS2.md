@@ -9,9 +9,7 @@ The reference point throughout is **MiniScript 1.6.2**, the last of the 1.x line
 
 ## Why upgrade
 
-Speed, mostly.  Across our benchmark suite the C++ build of 2.0 runs 5-50x
-faster than 1.6.2 depending on the workload, averaging around 25x; the C# build
-averages about 3x faster.  Beyond that, 2.0 adds real error handling,
+MiniScript 2 is *dramatically* faster than MS1.  Across our benchmark suite the C++ build of 2.0 runs 5-50x faster than 1.6.2 depending on the workload, averaging around 25x; the C# build averages about 3x faster.  Beyond that, 2.0 adds real error handling,
 immutable values, property setters, and a handful of smaller conveniences
 described below.
 
@@ -131,7 +129,7 @@ In particular:
 - `<`, `<=`, `>` and `>=` work only between two numbers or two strings.
   (`==` and `!=` still compare any two values.)
 - Repeating a string or list a non-finite number of times, as in `"ab" * (1/0)`,
-  or dividing one by 0, is an error.
+  or dividing one by 0, results in an error.
 
 ---
 
@@ -144,10 +142,10 @@ inspect:
 
 ```
 lines = file.readLines("/nope/missing.txt")
-if lines isa error then print "could not read: " + lines.message
+if lines isa error then print lines.message
 ```
 ```
-could not read: File error: readLines: cannot open: /nope/missing.txt
+File error: readLines: cannot open: /nope/missing.txt
 ```
 
 Create your own with `err(message)`, optionally wrapping an inner error that represents the cause:
@@ -179,7 +177,7 @@ print e isa error
 
 Errors also carry `.stack`, a stack trace captured where the error was made.  Use this to determine where in your program the problem occurred, even if you actually catch and print the error much later.
 
-Errors propagate rather than vanish: if `e` is `error`, then `e + 5` is `e`, `e[i]` is `e`, and most intrinsics hand `e` straight back instead of running.
+Errors propagate rather than vanish: if `e` is `error`, then `e + 5` is `e`, `e[i]` is `e`, and most intrinsics hand an `e` argument straight back.
 
 The `or` operator is different; `e or x` evaluates to `x`.  This is a convenient way of handling an error by providing a fallback value.
 
@@ -187,9 +185,9 @@ The `or` operator is different; `e or x` evaluates to `x`.  This is a convenient
 > An error that could never be caught halts the program.  A bare expression
 > statement that evaluates to an error, `if e then`, `while e`, and reading any
 > member of `e` other than `message`, `inner`, `stack` or `__isa` all terminate
-> with a runtime error.  So `file.readLines(path)` on its own line, in case of 
-> an error, stops your program on that line; you need to assign the error to
-> a variable or otherwise catch it if you want your program to continue.
+> the program and print the error.  So `file.readLines(path)` on its own line, in 
+> case of an error, stops your program on that line; you need to assign the error 
+> to a variable or otherwise catch it if you want your program to continue.
 
 ### Frozen (immutable) maps and lists
 
@@ -246,7 +244,7 @@ One of MiniScript's design principles is to **hide the difference between storag
 
 But in MiniScript 1, this hiding applied only to _reading_ values, never to _writing_ them.  (Except in cases where a host app made use of `assignOverride`, a feature that no longer exists.)
 
-MiniScript 2 introduces a **property setter** feature: a specially-named method that is invoked when an assignment is made to a map key.  The method name is the identifier plus an equal sign, representing assignment.
+MiniScript 2 introduces a new **property setter** feature: a specially-named method that is invoked when an assignment is made to a specific map key.  The method name is the identifier plus an equal sign, representing assignment.
 
 ```
 Counter = {"n": 0}
@@ -341,7 +339,7 @@ literal.  2.0 allows it.
 
 The docs always said map order was undefined.  In practice the C# build of 1.x
 gave insertion order and the C++ build did not always agree.  2.0 *commits* to
-insertion order, on both builds, including after removals — a re-added key goes
+insertion order, on both versions, including after removals — a re-added key goes
 to the end.
 
 ```

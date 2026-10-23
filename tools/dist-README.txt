@@ -5,6 +5,7 @@ Contents
 
 @EXE_LIST@
   lib/                     Standard library modules, available via `import`
+  examples/                Example programs to run, study, and modify
   MiniScript-Manual.pdf    The MiniScript language manual
   CommandLine.pdf          Using command-line MiniScript
   NewInMS2.pdf             What's new in MiniScript 2.0

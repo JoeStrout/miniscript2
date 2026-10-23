@@ -324,7 +324,7 @@ mac_notarize() {
 #
 # Bundle a dist build into the archive users download.  PLATFORM is one of
 # mac, win, linux, csharp.  Each archive unpacks to a single folder holding
-# the executable, a README, the docs, and the lib folder.  lib sits right
+# the executable, a README, the docs, and the lib and examples folders.  lib sits right
 # next to the executable because $MS_EXE_DIR/lib is on the default import
 # path (see kDefaultImportPath in ShellIntrinsics.cs), so imports work with
 # no setup.
@@ -397,6 +397,10 @@ available.  This build needs .NET 6 or later, from:
     cp -R lib "$STAGE/lib"
     rm -f "$STAGE/lib/sync_from_sysdisk.sh"
     find "$STAGE/lib" -name .DS_Store -delete
+
+    # examples, minus dotfiles (Finder droppings, editor settings).
+    cp -R examples "$STAGE/examples"
+    find "$STAGE/examples" -name '.*' -prune -exec rm -rf {} +
 
     local doc
     for doc in $DIST_DOCS; do

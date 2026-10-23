@@ -16,7 +16,7 @@
 #
 # This script does NOT build anything; it uploads the release archives that
 # 'tools/build.sh dist all' leaves in build/dist (each bundling an executable
-# with lib/ and the docs), plus the manual on its own.
+# with lib/, examples/ and the docs), plus the manual on its own.
 # --force skips the staleness and repository checks below (use only if you
 # know what the binaries and the tag each contain).
 
@@ -271,14 +271,14 @@ done
 # ---------------------------------------------------------------------------
 # Bundle check
 #
-# The archives also carry lib/, the docs, LICENSE, and a README made from
-# tools/dist-README.txt.  The build stamp only vouches for the binaries, so
-# check separately that every archive was packed after the last change to any
-# of those.  ('tools/build.sh dist package' re-packs without recompiling.)
+# The archives also carry lib/, examples/, the docs, LICENSE, and a README
+# made from tools/dist-README.txt.  The build stamp only vouches for the
+# binaries, so check separately that every archive was packed after the last
+# change to any of those.  ('tools/build.sh dist package' re-packs without recompiling.)
 # ---------------------------------------------------------------------------
 NEWEST_BUNDLED=""
 NEWEST_BUNDLED_TIME=0
-for f in lib/* $DOCS LICENSE tools/dist-README.txt; do
+for f in lib/* examples/* $DOCS LICENSE tools/dist-README.txt; do
     [ -f "$f" ] || continue
     case "$f" in */sync_from_sysdisk.sh|*/.DS_Store) continue ;; esac
     T=$(mtime "$f")

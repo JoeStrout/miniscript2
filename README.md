@@ -1,10 +1,14 @@
 # MiniScript 2.0
 
-MiniScript 2.0 is a complete rewrite of the [MiniScript](https://miniscript.org) language, focused mainly on performance.  It is the cornerstone of the [2026 MiniScript Road Map](https://dev.to/joestrout/miniscript-road-map-for-2026-17mh).  For MiniScript 1.x source code, see [here](https://github.com/JoeStrout/miniscript).
+MiniScript 2.0 is a complete rewrite of the [MiniScript](https://miniscript.org) language.  It is the cornerstone of the [2026 MiniScript Road Map](https://dev.to/joestrout/miniscript-road-map-for-2026-17mh).  For MiniScript 1.x source code, see [here](https://github.com/JoeStrout/miniscript).
 
-MiniScript 2.0 is developed in C# and transpiled to C++ for production performance. The VM uses 32-bit fixed-width instructions and supports computed-goto dispatch on supported compilers.
+MiniScript 2.0 is developed in C# and transpiled to C++ for production performance. The VM uses 32-bit fixed-width instructions and supports computed-goto dispatch on supported compilers.  Thanks to a performance-first design throughout, MiniScript 2 is up to **45X faster** than MiniScript 1.  It also includes some nice new language features, including a new `error` type and frozen (immutable) lists and maps.
 
 See [What's New in MiniScript 2](docs/NewInMS2.md) (also available in [PDF form](docs/NewInMS2.pdf)) for details on what has changed since MiniScript 1.x.
+
+## Download a Pre-Built Binary
+
+[Command-line MiniScript](https://github.com/JoeStrout/miniscript2/blob/main/docs/CommandLine.md) is available as a binary for Windows, Linux, and Mac, as well as a C# version that can be used on any .NET system.  Go to the [Releases](https://github.com/JoeStrout/miniscript2/releases) page to find the latest .zip or .gz achieve for your platform.
 
 ## Building
 

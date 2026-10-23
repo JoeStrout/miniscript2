@@ -307,9 +307,15 @@ mac_notarize() {
     else
         local ID
         ID=$(echo "$OUT" | awk '$1=="id:"{print $2; exit}')
-        echo "  NOTARIZATION FAILED for $ZIP.  For Apple's explanation, run:"
-        echo "    xcrun notarytool log ${ID:-<submission id>} --apple-id $APPLE_ID --team-id $TEAM_ID"
-        echo "  (it will ask for the app-specific password)."
+        echo "  NOTARIZATION FAILED for $ZIP."
+        # A request refused outright (bad credentials, an unsigned agreement)
+        # never becomes a submission, so there is no log to point at; the
+        # error printed above is all Apple says.
+        if [ -n "$ID" ]; then
+            echo "  For Apple's explanation, run:"
+            echo "    xcrun notarytool log $ID --apple-id $APPLE_ID --team-id $TEAM_ID"
+            echo "  (it will ask for the app-specific password)."
+        fi
     fi
 }
 

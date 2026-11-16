@@ -14,7 +14,6 @@ namespace MiniScript {
 // Precedence levels (higher precedence binds more strongly)
 enum class Precedence : Int32 {
 	NONE = 0,
-	ASSIGNMENT,
 	OR,
 	AND,
 	NOT,
@@ -86,6 +85,9 @@ enum class TokenType : Int32 {
 	LOCALS,
 	OUTER,
 	GLOBALS,
+	KW_TRUE,
+	KW_FALSE,
+	KW_NULL,
 	END,
 	EOL,
 	COMMENT,

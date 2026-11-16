@@ -64,6 +64,9 @@ public class Parser : IParser {
 		RegisterPrefix(TokenType.LOCALS, new ScopeParselet(ScopeType.Locals));
 		RegisterPrefix(TokenType.OUTER, new ScopeParselet(ScopeType.Outer));
 		RegisterPrefix(TokenType.GLOBALS, new ScopeParselet(ScopeType.Globals));
+		RegisterPrefix(TokenType.KW_TRUE, new ConstantParselet());
+		RegisterPrefix(TokenType.KW_FALSE, new ConstantParselet());
+		RegisterPrefix(TokenType.KW_NULL, new ConstantParselet());
 
 		// Binary operators
 		RegisterInfix(TokenType.PLUS, new BinaryOpParselet(Op.PLUS, Precedence.SUM));
@@ -312,6 +315,9 @@ public class Parser : IParser {
 			|| type == TokenType.LOCALS
 			|| type == TokenType.OUTER
 			|| type == TokenType.GLOBALS
+			|| type == TokenType.KW_TRUE
+			|| type == TokenType.KW_FALSE
+			|| type == TokenType.KW_NULL
 			|| type == TokenType.FUNCTION;
 	}
 
@@ -513,6 +519,19 @@ public class Parser : IParser {
 		if (memNode2 != null && IsAssignOp(_current.Type)) {
 			String lhsName2 = memNode2.Target.ToStr() + "." + memNode2.Member;
 			return ParseIndexedAssignment(memNode2.Target, new StringNode(memNode2.Member), true, lhsName2);
+		}
+
+		// Any other assignment here is to something that can't be assigned to.
+		// Name the keyword when that's what it is ("true = 1", "self = x"); the
+		// nodes for these print as their own source text.  Other targets, like
+		// "-x" or "5", get a generic message.
+		if (IsAssignOp(_current.Type)) {
+			if (Lexer.IsKeyword(expr2.ToStr())) {
+				ReportError($"Can't assign to keyword '{expr2.ToStr()}'");
+			} else {
+				ReportError("Invalid assignment target");
+			}
+			return expr2;
 		}
 
 		// Check for no-parens call on an expression result, e.g. super.speak msg

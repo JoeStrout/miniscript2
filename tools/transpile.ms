@@ -1718,7 +1718,7 @@ Transpiler.process = function(filePath, gatherMode=false, outputFolder=null)
 	end for
 	if not gatherMode then self.generateOutput
 	endTime = time
-	print "Done processing: " + filePath + " [" + round(endTime - startTime) + " sec]"
+	//print "Done processing: " + filePath + " [" + round(endTime - startTime) + " sec]"
 end function
 
 Transpiler.clearOutput = function

@@ -36,6 +36,9 @@ void ParserStorage::RegisterParselets() {
 	RegisterPrefix(TokenType::LOCALS,  ScopeParselet::New(ScopeType::Locals));
 	RegisterPrefix(TokenType::OUTER,  ScopeParselet::New(ScopeType::Outer));
 	RegisterPrefix(TokenType::GLOBALS,  ScopeParselet::New(ScopeType::Globals));
+	RegisterPrefix(TokenType::KW_TRUE,  ConstantParselet::New());
+	RegisterPrefix(TokenType::KW_FALSE,  ConstantParselet::New());
+	RegisterPrefix(TokenType::KW_NULL,  ConstantParselet::New());
 
 	// Binary operators
 	RegisterInfix(TokenType::PLUS,  BinaryOpParselet::New(Op::PLUS, Precedence::SUM));
@@ -229,6 +232,9 @@ Boolean ParserStorage::CanStartExpression(TokenType type) {
 		|| type == TokenType::LOCALS
 		|| type == TokenType::OUTER
 		|| type == TokenType::GLOBALS
+		|| type == TokenType::KW_TRUE
+		|| type == TokenType::KW_FALSE
+		|| type == TokenType::KW_NULL
 		|| type == TokenType::FUNCTION;
 }
 Boolean ParserStorage::AtCallArgument() {
@@ -404,6 +410,19 @@ ASTNode ParserStorage::ParseSimpleStatement() {
 	if (!IsNull(memNode2) && IsAssignOp(_current.Type)) {
 		String lhsName2 = memNode2.Target().ToStr() + "." + memNode2.Member();
 		return ParseIndexedAssignment(memNode2.Target(),  StringNode::New(memNode2.Member()), Boolean(true), lhsName2);
+	}
+
+	// Any other assignment here is to something that can't be assigned to.
+	// Name the keyword when that's what it is ("true = 1", "self = x"); the
+	// nodes for these print as their own source text.  Other targets, like
+	// "-x" or "5", get a generic message.
+	if (IsAssignOp(_current.Type)) {
+		if (Lexer::IsKeyword(expr2.ToStr())) {
+			ReportError(Interp("Can't assign to keyword '{}'", expr2.ToStr()));
+		} else {
+			ReportError("Invalid assignment target");
+		}
+		return expr2;
 	}
 
 	// Check for no-parens call on an expression result, e.g. super.speak msg

@@ -85,6 +85,74 @@ print 40 +
   5 - 3
 --------------------------------
 42
+================================
+==== true, false, and null are keywords: they can't be assigned to (issue #21)
+================================
+print [true, false, null]
+false = 1
+--------------------------------
+Compiler Error: Can't assign to keyword 'false' [line 2]
+================================
+null = 3
+--------------------------------
+Compiler Error: Can't assign to keyword 'null' [line 1]
+================================
+true += 1
+--------------------------------
+Compiler Error: Can't assign to keyword 'true' [line 1]
+================================
+self = 3
+--------------------------------
+Compiler Error: Can't assign to keyword 'self' [line 1]
+================================
+==== ...nor used as a parameter or loop variable name
+================================
+f = function(true)
+end function
+--------------------------------
+Compiler Error: Expected parameter name [line 1]
+================================
+for null in [1, 2]
+end for
+--------------------------------
+Compiler Error: Expected identifier after 'for', got: null [line 1]
+================================
+==== ...but work as values anywhere an expression can go
+================================
+print true
+print [true, false, null]
+print {true: "t", null: "n"}
+if not false then print "ok"
+x = @null; print x
+--------------------------------
+1
+[1, 0, null]
+{1: "t", null: "n"}
+ok
+null
+================================
+==== Assignment is a statement, not an expression: only a variable, index,
+==== or member can be assigned to, and only at the start of a statement
+================================
+-x = 3
+--------------------------------
+Compiler Error: Invalid assignment target [line 1]
+================================
+(y) = 4
+--------------------------------
+Compiler Error: Invalid assignment target [line 1]
+================================
+print x = 3
+--------------------------------
+Compiler Error: Expected end of line, got: = [line 1]
+================================
+a = b = 3
+--------------------------------
+Compiler Error: Expected end of line, got: = [line 1]
+================================
+y = (z = 4) + 1
+--------------------------------
+Compiler Error: Expected ')' after expression [line 1]
 ================================================================================
 ==== SECTION 1: NUMERIC ARITHMETIC
 ================================================================================

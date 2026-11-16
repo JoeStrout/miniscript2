@@ -24,22 +24,16 @@ ASTNode ScopeParseletStorage::Parse(IParser& parser,Token token) {
 	return  ScopeNode::New(_scope);
 }
 
+ASTNode ConstantParseletStorage::Parse(IParser& parser,Token token) {
+	return  IdentifierNode::New(token.Text);
+}
+
 ASTNode StringParseletStorage::Parse(IParser& parser,Token token) {
 	return  StringNode::New(token.Text);
 }
 
 ASTNode IdentifierParseletStorage::Parse(IParser& parser,Token token) {
-	String name = token.Text;
-
-	// Check what comes next
-	if (parser.Check(TokenType::ASSIGN)) {
-		parser.Consume();  // consume '='
-		ASTNode value = parser.ParseExpression(Precedence::ASSIGNMENT);
-		return  AssignmentNode::New(name, value);
-	}
-
-	// Just a variable reference
-	return  IdentifierNode::New(name);
+	return  IdentifierNode::New(token.Text);
 }
 
 UnaryOpParseletStorage::UnaryOpParseletStorage(String op,Precedence prec) {

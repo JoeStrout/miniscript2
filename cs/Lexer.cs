@@ -159,6 +159,42 @@ public struct Lexer {
 		return IsIdentifierStartChar(c) || IsDigit(c);
 	}
 
+	// Return the token type for the given word: the keyword's own type if it is
+	// a keyword, or TokenType.IDENTIFIER if it is not.
+	public static TokenType KeywordType(String text) {
+		if (text == "and") return TokenType.AND;
+		if (text == "or") return TokenType.OR;
+		if (text == "not") return TokenType.NOT;
+		if (text == "while") return TokenType.WHILE;
+		if (text == "for") return TokenType.FOR;
+		if (text == "in") return TokenType.IN;
+		if (text == "if") return TokenType.IF;
+		if (text == "then") return TokenType.THEN;
+		if (text == "else") return TokenType.ELSE;
+		if (text == "break") return TokenType.BREAK;
+		if (text == "continue") return TokenType.CONTINUE;
+		if (text == "function") return TokenType.FUNCTION;
+		if (text == "return") return TokenType.RETURN;
+		if (text == "new") return TokenType.NEW;
+		if (text == "isa") return TokenType.ISA;
+		if (text == "self") return TokenType.SELF;
+		if (text == "super") return TokenType.SUPER;
+		if (text == "locals") return TokenType.LOCALS;
+		if (text == "outer") return TokenType.OUTER;
+		if (text == "globals") return TokenType.GLOBALS;
+		if (text == "true") return TokenType.KW_TRUE;
+		if (text == "false") return TokenType.KW_FALSE;
+		if (text == "null") return TokenType.KW_NULL;
+		if (text == "end") return TokenType.END;
+		return TokenType.IDENTIFIER;
+	}
+
+	// Return whether the given word is a keyword (and so can't be used as a
+	// variable, parameter, or member name).
+	public static Boolean IsKeyword(String text) {
+		return KeywordType(text) != TokenType.IDENTIFIER;
+	}
+
 	// Skip whitespace (but not newlines, which may be significant)
 	// Returns true if any whitespace was skipped
 	[MethodImpl(AggressiveInlining)]
@@ -246,53 +282,7 @@ public struct Lexer {
 				Advance();
 			}
 			String text = _input.Substring(start, _position - start);
-			Token tok;
-			// Check for keywords
-			if (text == "and") {
-				tok = new Token(TokenType.AND, text, startLine, startColumn);
-			} else if (text == "or") {
-				tok = new Token(TokenType.OR, text, startLine, startColumn);
-			} else if (text == "not") {
-				tok = new Token(TokenType.NOT, text, startLine, startColumn);
-			} else if (text == "while") {
-				tok = new Token(TokenType.WHILE, text, startLine, startColumn);
-			} else if (text == "for") {
-				tok = new Token(TokenType.FOR, text, startLine, startColumn);
-			} else if (text == "in") {
-				tok = new Token(TokenType.IN, text, startLine, startColumn);
-			} else if (text == "if") {
-				tok = new Token(TokenType.IF, text, startLine, startColumn);
-			} else if (text == "then") {
-				tok = new Token(TokenType.THEN, text, startLine, startColumn);
-			} else if (text == "else") {
-				tok = new Token(TokenType.ELSE, text, startLine, startColumn);
-			} else if (text == "break") {
-				tok = new Token(TokenType.BREAK, text, startLine, startColumn);
-			} else if (text == "continue") {
-				tok = new Token(TokenType.CONTINUE, text, startLine, startColumn);
-			} else if (text == "function") {
-				tok = new Token(TokenType.FUNCTION, text, startLine, startColumn);
-			} else if (text == "return") {
-				tok = new Token(TokenType.RETURN, text, startLine, startColumn);
-			} else if (text == "new") {
-				tok = new Token(TokenType.NEW, text, startLine, startColumn);
-			} else if (text == "isa") {
-				tok = new Token(TokenType.ISA, text, startLine, startColumn);
-			} else if (text == "self") {
-				tok = new Token(TokenType.SELF, text, startLine, startColumn);
-			} else if (text == "super") {
-				tok = new Token(TokenType.SUPER, text, startLine, startColumn);
-			} else if (text == "locals") {
-				tok = new Token(TokenType.LOCALS, text, startLine, startColumn);
-			} else if (text == "outer") {
-				tok = new Token(TokenType.OUTER, text, startLine, startColumn);
-			} else if (text == "globals") {
-				tok = new Token(TokenType.GLOBALS, text, startLine, startColumn);
-			} else if (text == "end") {
-				tok = new Token(TokenType.END, text, startLine, startColumn);
-			} else {
-				tok = new Token(TokenType.IDENTIFIER, text, startLine, startColumn);
-			}
+			Token tok = new Token(KeywordType(text), text, startLine, startColumn);
 			tok.AfterSpace = hadWhitespace;
 			return tok;
 		}

@@ -36,6 +36,8 @@ struct SuperParselet;
 class SuperParseletStorage;
 struct ScopeParselet;
 class ScopeParseletStorage;
+struct ConstantParselet;
+class ConstantParseletStorage;
 struct StringParselet;
 class StringParseletStorage;
 struct IdentifierParselet;

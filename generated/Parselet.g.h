@@ -120,6 +120,12 @@ class ScopeParseletStorage : public PrefixParseletStorage {
 	public: ASTNode Parse(IParser& parser, Token token);
 }; // end of class ScopeParseletStorage
 
+class ConstantParseletStorage : public PrefixParseletStorage {
+	friend struct ConstantParselet;
+	public: ConstantParseletStorage() {}
+	public: ASTNode Parse(IParser& parser, Token token);
+}; // end of class ConstantParseletStorage
+
 class StringParseletStorage : public PrefixParseletStorage {
 	friend struct StringParselet;
 	public: StringParseletStorage() {}
@@ -270,6 +276,23 @@ struct ScopeParselet : public PrefixParselet {
 	public: ASTNode Parse(IParser& parser, Token token) { return get()->Parse(parser, token); }
 }; // end of struct ScopeParselet
 
+// ConstantParselet: handles the 'true', 'false', and 'null' keywords.  These
+// are keywords (not identifiers) so that they can't be assigned to, or used
+// as parameter or loop variable names.  They still produce an IdentifierNode
+// by name, which the code generator turns into the constant value.
+struct ConstantParselet : public PrefixParselet {
+	friend class ConstantParseletStorage;
+	ConstantParselet(std::shared_ptr<ConstantParseletStorage> stor);
+	ConstantParselet() : PrefixParselet() {}
+	ConstantParselet(std::nullptr_t) : PrefixParselet(nullptr) {}
+	private: ConstantParseletStorage* get() const;
+
+	public: static ConstantParselet New() {
+		return ConstantParselet(std::make_shared<ConstantParseletStorage>());
+	}
+	public: ASTNode Parse(IParser& parser, Token token) { return get()->Parse(parser, token); }
+}; // end of struct ConstantParselet
+
 // StringParselet: handles string literals.
 struct StringParselet : public PrefixParselet {
 	friend class StringParseletStorage;
@@ -284,10 +307,10 @@ struct StringParselet : public PrefixParselet {
 	public: ASTNode Parse(IParser& parser, Token token) { return get()->Parse(parser, token); }
 }; // end of struct StringParselet
 
-// IdentifierParselet: handles identifiers, which can be:
-// - Variable lookups
-// - Variable assignments (when followed by '=')
-// - Function calls (when followed by '(')
+// IdentifierParselet: handles identifiers, as variable references.  (A function
+// call is handled by CallParselet as an infix on the result.)  Assignment is not
+// an expression in MiniScript; it is handled only at the start of a statement,
+// in Parser.ParseStatement.
 struct IdentifierParselet : public PrefixParselet {
 	friend class IdentifierParseletStorage;
 	IdentifierParselet(std::shared_ptr<IdentifierParseletStorage> stor);
@@ -499,6 +522,9 @@ inline ScopeParselet::ScopeParselet(std::shared_ptr<ScopeParseletStorage> stor) 
 inline ScopeParseletStorage* ScopeParselet::get() const { return static_cast<ScopeParseletStorage*>(storage.get()); }
 inline ScopeType ScopeParselet::_scope() { return get()->_scope; }
 inline void ScopeParselet::set__scope(ScopeType _v) { get()->_scope = _v; }
+
+inline ConstantParselet::ConstantParselet(std::shared_ptr<ConstantParseletStorage> stor) : PrefixParselet(stor) {}
+inline ConstantParseletStorage* ConstantParselet::get() const { return static_cast<ConstantParseletStorage*>(storage.get()); }
 
 inline StringParselet::StringParselet(std::shared_ptr<StringParseletStorage> stor) : PrefixParselet(stor) {}
 inline StringParseletStorage* StringParselet::get() const { return static_cast<StringParseletStorage*>(storage.get()); }

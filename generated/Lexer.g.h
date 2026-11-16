@@ -75,6 +75,14 @@ struct Lexer {
 
 	public: static Boolean IsIdentifierChar(Char c);
 
+	// Return the token type for the given word: the keyword's own type if it is
+	// a keyword, or TokenType.IDENTIFIER if it is not.
+	public: static TokenType KeywordType(String text);
+
+	// Return whether the given word is a keyword (and so can't be used as a
+	// variable, parameter, or member name).
+	public: static Boolean IsKeyword(String text);
+
 	// Skip whitespace (but not newlines, which may be significant)
 	// Returns true if any whitespace was skipped
 	private: Boolean SkipWhitespace();

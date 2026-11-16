@@ -72,6 +72,17 @@ public class ScopeParselet : PrefixParselet {
 	}
 }
 
+// ConstantParselet: handles the 'true', 'false', and 'null' keywords.  These
+// are keywords (not identifiers) so that they can't be assigned to, or used
+// as parameter or loop variable names.  They still produce an IdentifierNode
+// by name, which the code generator turns into the constant value.
+public class ConstantParselet : PrefixParselet {
+	public ConstantParselet() {}
+	public override ASTNode Parse(IParser parser, Token token) {
+		return new IdentifierNode(token.Text);
+	}
+}
+
 // StringParselet: handles string literals.
 public class StringParselet : PrefixParselet {
 	public StringParselet() {}
@@ -80,24 +91,14 @@ public class StringParselet : PrefixParselet {
 	}
 }
 
-// IdentifierParselet: handles identifiers, which can be:
-// - Variable lookups
-// - Variable assignments (when followed by '=')
-// - Function calls (when followed by '(')
+// IdentifierParselet: handles identifiers, as variable references.  (A function
+// call is handled by CallParselet as an infix on the result.)  Assignment is not
+// an expression in MiniScript; it is handled only at the start of a statement,
+// in Parser.ParseStatement.
 public class IdentifierParselet : PrefixParselet {
 	public IdentifierParselet() {}
 	public override ASTNode Parse(IParser parser, Token token) {
-		String name = token.Text;
-
-		// Check what comes next
-		if (parser.Check(TokenType.ASSIGN)) {
-			parser.Consume();  // consume '='
-			ASTNode value = parser.ParseExpression(Precedence.ASSIGNMENT);
-			return new AssignmentNode(name, value);
-		}
-
-		// Just a variable reference
-		return new IdentifierNode(name);
+		return new IdentifierNode(token.Text);
 	}
 }
 

@@ -181,6 +181,19 @@ class UnitTests {
 	// read back, that a spilled variable can be updated and used as a loop
 	// variable, and that they appear in `locals`.
 	public: static Boolean TestSpilledLocals();
+	private: static Boolean _stackGrowthIntrinsicsMade;
+
+	// ── Growing the call stack and register stack (issue #27) ─────────────────
+	// Both stacks start small and grow on demand.  Growing the register stack
+	// reallocates it, so the VM must re-derive its cached pointer (Span, in C#)
+	// into the current frame afterward.  The tricky case is a native callback
+	// that runs script synchronously (RunFunction) deep enough to grow the
+	// stack: when it returns, the calling frame must read and write its
+	// registers in the new storage, not the old.
+
+	private: static void MakeStackGrowthTestIntrinsics();
+
+	public: static Boolean TestStackGrowth();
 
 	// A single unlimited vm.Run() must carry an ordinary program (one that does
 	// nothing to yield) all the way to the end.  If it returns while the VM is

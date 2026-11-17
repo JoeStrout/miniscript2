@@ -32,6 +32,7 @@ class InterpreterStorage : public std::enable_shared_from_this<InterpreterStorag
 	public: object hostData = nullptr;
 	public: VM vm;
 	public: String SourceFile = "";
+	public: Int32 MaxCallDepth = 100000;
 	protected: String source;
 	protected: Parser parser;
 	protected: List<FuncDef> compiledFunctions;
@@ -79,6 +80,15 @@ class InterpreterStorage : public std::enable_shared_from_this<InterpreterStorag
 	// SourceFile: the name of the file this interpreter loaded (e.g. "myScript.ms"),
 	// or empty string for source provided directly as a string.
 	// Used to populate FuncDef.FileName for stack traces.
+	// 
+
+	// 
+	// MaxCallDepth: the maximum depth of script function calls before a
+	// "Call stack overflow" error.  The call stack grows as needed up to this
+	// limit, which is mainly a guard against runaway recursion.  This is
+	// applied to the VM whenever one is created (on compile/reset); to change
+	// the limit of an already-running program, call vm.SetMaxCallDepth as well.
+	// (Default matches VM.DefaultMaxCallDepth.)
 	// 
 
 	// 
@@ -342,6 +352,8 @@ struct Interpreter {
 	public: void set_vm(VM _v);
 	public: String SourceFile();
 	public: void set_SourceFile(String _v);
+	public: Int32 MaxCallDepth();
+	public: void set_MaxCallDepth(Int32 _v);
 	protected: String source();
 	protected: void set_source(String _v);
 	protected: Parser parser();
@@ -398,6 +410,15 @@ struct Interpreter {
 	// SourceFile: the name of the file this interpreter loaded (e.g. "myScript.ms"),
 	// or empty string for source provided directly as a string.
 	// Used to populate FuncDef.FileName for stack traces.
+	// 
+
+	// 
+	// MaxCallDepth: the maximum depth of script function calls before a
+	// "Call stack overflow" error.  The call stack grows as needed up to this
+	// limit, which is mainly a guard against runaway recursion.  This is
+	// applied to the VM whenever one is created (on compile/reset); to change
+	// the limit of an already-running program, call vm.SetMaxCallDepth as well.
+	// (Default matches VM.DefaultMaxCallDepth.)
 	// 
 
 	// 
@@ -655,6 +676,8 @@ inline VM Interpreter::vm() { return get()->vm; }
 inline void Interpreter::set_vm(VM _v) { get()->vm = _v; }
 inline String Interpreter::SourceFile() { return get()->SourceFile; }
 inline void Interpreter::set_SourceFile(String _v) { get()->SourceFile = _v; }
+inline Int32 Interpreter::MaxCallDepth() { return get()->MaxCallDepth; }
+inline void Interpreter::set_MaxCallDepth(Int32 _v) { get()->MaxCallDepth = _v; }
 inline String Interpreter::source() { return get()->source; }
 inline void Interpreter::set_source(String _v) { get()->source = _v; }
 inline Parser Interpreter::parser() { return get()->parser; }

@@ -76,6 +76,7 @@ void InterpreterStorage::Reset(List<FuncDef> functions) {
 	// Create and configure VM
 	vm =  VM::New();
 	vm.SetInterpreter(_this);
+	vm.SetMaxCallDepth(MaxCallDepth);
 	vm.Reset(functions, GetGlobals());
 }
 void InterpreterStorage::Compile() {
@@ -121,6 +122,7 @@ void InterpreterStorage::Compile() {
 	// ResetPreservingGlobals) the outgoing program's globals.
 	vm =  VM::New();
 	vm.SetInterpreter(_this);
+	vm.SetMaxCallDepth(MaxCallDepth);
 	vm.Reset(compiledFunctions, GetGlobals());
 }
 FuncDef InterpreterStorage::CompileToFunc(String source,String fileName,Value* error) {
@@ -268,6 +270,7 @@ void InterpreterStorage::REPL(String sourceLine,double timeLimit) {
 	// rebound onto the new @main's registers.
 	if (IsNull(vm)) vm =  VM::New();
 	vm.SetInterpreter(_this);
+	vm.SetMaxCallDepth(MaxCallDepth);
 	vm.Reset(functions, GetGlobals());
 	_pendingSource = nullptr;
 	_replHasImplicitOutput = hasImplicitOutput;

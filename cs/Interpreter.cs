@@ -78,6 +78,16 @@ public class Interpreter {
 	// 
 	public String SourceFile = "";
 
+	// 
+	// MaxCallDepth: the maximum depth of script function calls before a
+	// "Call stack overflow" error.  The call stack grows as needed up to this
+	// limit, which is mainly a guard against runaway recursion.  This is
+	// applied to the VM whenever one is created (on compile/reset); to change
+	// the limit of an already-running program, call vm.SetMaxCallDepth as well.
+	// (Default matches VM.DefaultMaxCallDepth.)
+	// 
+	public Int32 MaxCallDepth = 100000;
+
 	protected String source;
 	protected Parser parser;
 	protected List<FuncDef> compiledFunctions;
@@ -251,6 +261,7 @@ public class Interpreter {
 		// Create and configure VM
 		vm = new VM();
 		vm.SetInterpreter(this);
+		vm.SetMaxCallDepth(MaxCallDepth);
 		vm.Reset(functions, GetGlobals());
 	}
 
@@ -300,6 +311,7 @@ public class Interpreter {
 		// ResetPreservingGlobals) the outgoing program's globals.
 		vm = new VM();
 		vm.SetInterpreter(this);
+		vm.SetMaxCallDepth(MaxCallDepth);
 		vm.Reset(compiledFunctions, GetGlobals());
 	}
 
@@ -514,6 +526,7 @@ public class Interpreter {
 		// rebound onto the new @main's registers.
 		if (vm == null) vm = new VM();
 		vm.SetInterpreter(this);
+		vm.SetMaxCallDepth(MaxCallDepth);
 		vm.Reset(functions, GetGlobals());
 		_pendingSource = null;
 		_replHasImplicitOutput = hasImplicitOutput;

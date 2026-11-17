@@ -70,6 +70,9 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	public: Interpreter GetInterpreter(); // NO_INLINE
 	private: List<CallInfo> callStack;
 	private: Int32 callStackTop;
+	public: static const Int32 DefaultMaxCallDepth;
+	private: Int32 _maxCallDepth = DefaultMaxCallDepth;
+	private: static const Int32 MaxStackSlots;
 	private: Dictionary<Value, Value> _intrinsics; // intrinsic name -> FuncRef Value
 	public: Int32 PC;
 	public: FuncDef CurrentFunction;
@@ -86,6 +89,17 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	// context (globals live here), callStack[1] is the first user function call, etc.
 	// callStackTop is the index of the next free slot (== current depth + 1).
 	// Invariant: callStackTop >= 1 during all execution (set up in Reset).
+	// Both callStack and the register stack (stack/names) start small and grow
+	// by doubling as needed; see GrowCallStack and EnsureFrame.
+
+	// Maximum call depth (number of call frames, including @main's).  Calls
+	// past this raise "Call stack overflow".  Hosts may change this (via
+	// SetMaxCallDepth); it is mainly a guard against runaway recursion, which
+	// is a common beginner bug.
+
+	// Hard backstop on the register stack size, in slots.  The call-depth limit
+	// is what normally stops runaway recursion; this just keeps the register
+	// stack from growing without bound (or overflowing Int32 when doubling).
 
 	// Execution state (persistent across RunSteps calls)
 
@@ -207,6 +221,13 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 
 	public: Int32 CallStackDepth();
 
+	public: Int32 GetMaxCallDepth();
+
+	// Set the maximum call depth.  The limit is checked only when the call
+	// stack must grow, so if it already has more slots than the new limit
+	// allows, drop the unused ones above that (never any in use).
+	public: void SetMaxCallDepth(Int32 depth);
+
 	public: Value GetStackValue(Int32 index);
 
 	public: Value GetStackName(Int32 index);
@@ -215,6 +236,8 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 
 	public: String FindShortName(Value v);
 
+	// stackSlots and callSlots are the *initial* sizes of the register stack and
+	// call stack; both grow as needed (the call stack up to the max call depth).
 	public: VMStorage(Int32 stackSlots=10240, Int32 callSlots=256);
 
 	private: void InitVM(Int32 stackSlots, Int32 callSlots);
@@ -471,7 +494,24 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	// and returns false.  Callers MUST bail out (without writing into the frame)
 	// when this returns false, since RaiseRuntimeError does not stop the current
 	// opcode handler on its own.
+	// If the frame doesn't fit, the register stack is grown (by doubling).  That
+	// reallocates its storage, so any Span/pointer into it -- notably RunInner's
+	// localStack -- is stale afterward and must be re-derived (SwitchFrame or
+	// RefreshLocalStack).  Code that holds the stack List plus indices, such as
+	// VarMaps and intrinsic Contexts, is unaffected, since the List object itself
+	// is grown in place.
 	private: bool EnsureFrame(Int32 baseIndex, UInt16 neededRegs);
+
+	// Grow the register stack (and its parallel names list) to at least
+	// neededSlots, by doubling.  Returns true if OK; if that would exceed
+	// MaxStackSlots, raises a runtime error and returns false.
+	private: bool GrowStack(Int32 neededSlots);
+
+	// Make room for one more frame on the call stack (called only when
+	// callStackTop == callStack.Count), growing it by doubling, up to
+	// the max call depth.  Returns true if OK; at the limit, raises a runtime error
+	// and returns false.
+	private: bool GrowCallStack();
 
 	// Tell the VM that `map` has just been given a property setter.
 	// Rarely needed.  A setter stored by script is noticed by IDXSET below, one
@@ -538,7 +578,7 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	// raises a runtime error and yields null.  superVal is the __isa of the map
 	// the key was found in, when it was found in a map.
 	private: Int32 LookupMember(Value container, Value key, Value* result, Value* superVal);
-	void SwitchFrame(const FuncDef& currentFunc, Int32 baseIndex, FuncDefStorage* &curFuncRaw, Int32 &codeCount, UInt32* &curCode, Value* &curConstants, Value* &localStack, Value* stackPtr);
+	void SwitchFrame(const FuncDef& currentFunc, Int32 baseIndex, FuncDefStorage* &curFuncRaw, Int32 &codeCount, UInt32* &curCode, Value* &curConstants, Value* &localStack);
 
 	// Switch all frame-local execution state to the given function.
 
@@ -624,6 +664,10 @@ struct VM {
 	private: void set_callStack(List<CallInfo> _v);
 	private: Int32 callStackTop();
 	private: void set_callStackTop(Int32 _v);
+	public: Int32 DefaultMaxCallDepth();
+	private: Int32 _maxCallDepth();
+	private: void set__maxCallDepth(Int32 _v);
+	private: Int32 MaxStackSlots();
 	private: Dictionary<Value, Value> _intrinsics(); // intrinsic name -> FuncRef Value
 	private: void set__intrinsics(Dictionary<Value, Value> _v); // intrinsic name -> FuncRef Value
 	public: Int32 PC();
@@ -651,6 +695,17 @@ struct VM {
 	// context (globals live here), callStack[1] is the first user function call, etc.
 	// callStackTop is the index of the next free slot (== current depth + 1).
 	// Invariant: callStackTop >= 1 during all execution (set up in Reset).
+	// Both callStack and the register stack (stack/names) start small and grow
+	// by doubling as needed; see GrowCallStack and EnsureFrame.
+
+	// Maximum call depth (number of call frames, including @main's).  Calls
+	// past this raise "Call stack overflow".  Hosts may change this (via
+	// SetMaxCallDepth); it is mainly a guard against runaway recursion, which
+	// is a common beginner bug.
+
+	// Hard backstop on the register stack size, in slots.  The call-depth limit
+	// is what normally stops runaway recursion; this just keeps the register
+	// stack from growing without bound (or overflowing Int32 when doubling).
 
 	// Execution state (persistent across RunSteps calls)
 
@@ -790,6 +845,13 @@ struct VM {
 
 	public: inline Int32 CallStackDepth();
 
+	public: inline Int32 GetMaxCallDepth();
+
+	// Set the maximum call depth.  The limit is checked only when the call
+	// stack must grow, so if it already has more slots than the new limit
+	// allows, drop the unused ones above that (never any in use).
+	public: inline void SetMaxCallDepth(Int32 depth);
+
 	public: inline Value GetStackValue(Int32 index);
 
 	public: inline Value GetStackName(Int32 index);
@@ -798,6 +860,8 @@ struct VM {
 
 	public: inline String FindShortName(Value v);
 
+	// stackSlots and callSlots are the *initial* sizes of the register stack and
+	// call stack; both grow as needed (the call stack up to the max call depth).
 	public: static VM New(Int32 stackSlots=10240, Int32 callSlots=256) {
 		return VM(std::make_shared<VMStorage>(stackSlots, callSlots));
 	}
@@ -1044,7 +1108,24 @@ struct VM {
 	// and returns false.  Callers MUST bail out (without writing into the frame)
 	// when this returns false, since RaiseRuntimeError does not stop the current
 	// opcode handler on its own.
+	// If the frame doesn't fit, the register stack is grown (by doubling).  That
+	// reallocates its storage, so any Span/pointer into it -- notably RunInner's
+	// localStack -- is stale afterward and must be re-derived (SwitchFrame or
+	// RefreshLocalStack).  Code that holds the stack List plus indices, such as
+	// VarMaps and intrinsic Contexts, is unaffected, since the List object itself
+	// is grown in place.
 	private: inline bool EnsureFrame(Int32 baseIndex, UInt16 neededRegs);
+
+	// Grow the register stack (and its parallel names list) to at least
+	// neededSlots, by doubling.  Returns true if OK; if that would exceed
+	// MaxStackSlots, raises a runtime error and returns false.
+	private: inline bool GrowStack(Int32 neededSlots);
+
+	// Make room for one more frame on the call stack (called only when
+	// callStackTop == callStack.Count), growing it by doubling, up to
+	// the max call depth.  Returns true if OK; at the limit, raises a runtime error
+	// and returns false.
+	private: inline bool GrowCallStack();
 
 	// Tell the VM that `map` has just been given a property setter.
 	// Rarely needed.  A setter stored by script is noticed by IDXSET below, one
@@ -1179,6 +1260,10 @@ inline List<CallInfo> VM::callStack() { return get()->callStack; }
 inline void VM::set_callStack(List<CallInfo> _v) { get()->callStack = _v; }
 inline Int32 VM::callStackTop() { return get()->callStackTop; }
 inline void VM::set_callStackTop(Int32 _v) { get()->callStackTop = _v; }
+inline Int32 VM::DefaultMaxCallDepth() { return get()->DefaultMaxCallDepth; }
+inline Int32 VM::_maxCallDepth() { return get()->_maxCallDepth; }
+inline void VM::set__maxCallDepth(Int32 _v) { get()->_maxCallDepth = _v; }
+inline Int32 VM::MaxStackSlots() { return get()->MaxStackSlots; }
 inline Dictionary<Value, Value> VM::_intrinsics() { return get()->_intrinsics; } // intrinsic name -> FuncRef Value
 inline void VM::set__intrinsics(Dictionary<Value, Value> _v) { get()->_intrinsics = _v; } // intrinsic name -> FuncRef Value
 inline Int32 VM::PC() { return get()->PC; }
@@ -1246,6 +1331,8 @@ inline Int32 VM::StackSize() { return get()->StackSize(); }
 inline List<Value> VM::GetStack() { return get()->GetStack(); }
 inline List<Value> VM::GetNames() { return get()->GetNames(); }
 inline Int32 VM::CallStackDepth() { return get()->CallStackDepth(); }
+inline Int32 VM::GetMaxCallDepth() { return get()->GetMaxCallDepth(); }
+inline void VM::SetMaxCallDepth(Int32 depth) { return get()->SetMaxCallDepth(depth); }
 inline Value VM::GetStackValue(Int32 index) { return get()->GetStackValue(index); }
 inline Value VM::GetStackName(Int32 index) { return get()->GetStackName(index); }
 inline CallInfo VM::GetCallStackFrame(Int32 index) { return get()->GetCallStackFrame(index); }
@@ -1293,12 +1380,11 @@ inline Value VM::Run(UInt32 maxCycles) { return get()->Run(maxCycles); }
 inline Value VM::RunInner(UInt32 maxCycles) { return get()->RunInner(maxCycles); }
 inline bool VM::EnsureFrame(Int32 baseIndex,UInt16 neededRegs) { return get()->EnsureFrame(baseIndex, neededRegs); }
 inline bool VMStorage::EnsureFrame(Int32 baseIndex,UInt16 neededRegs) {
-	if (baseIndex + neededRegs > stack.Count()) {
-		RaiseRuntimeError("Stack Overflow");
-		return Boolean(false);
-	}
+	if (baseIndex + neededRegs > stack.Count()) return GrowStack(baseIndex + neededRegs);
 	return Boolean(true);
 }
+inline bool VM::GrowStack(Int32 neededSlots) { return get()->GrowStack(neededSlots); }
+inline bool VM::GrowCallStack() { return get()->GrowCallStack(); }
 inline void VM::NoteSetterDefined(Value map) { return get()->NoteSetterDefined(map); }
 inline void VM::NoteKeyRemoved(Value key) { return get()->NoteKeyRemoved(key); }
 inline Boolean VMStorage::IsIsaKey(Value key) {

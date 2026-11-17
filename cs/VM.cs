@@ -127,8 +127,22 @@ public class VM {
 	// context (globals live here), callStack[1] is the first user function call, etc.
 	// callStackTop is the index of the next free slot (== current depth + 1).
 	// Invariant: callStackTop >= 1 during all execution (set up in Reset).
+	// Both callStack and the register stack (stack/names) start small and grow
+	// by doubling as needed; see GrowCallStack and EnsureFrame.
 	private List<CallInfo> callStack;
 	private Int32 callStackTop;
+
+	// Maximum call depth (number of call frames, including @main's).  Calls
+	// past this raise "Call stack overflow".  Hosts may change this (via
+	// SetMaxCallDepth); it is mainly a guard against runaway recursion, which
+	// is a common beginner bug.
+	public const Int32 DefaultMaxCallDepth = 100000;
+	private Int32 _maxCallDepth = DefaultMaxCallDepth;
+
+	// Hard backstop on the register stack size, in slots.  The call-depth limit
+	// is what normally stops runaway recursion; this just keeps the register
+	// stack from growing without bound (or overflowing Int32 when doubling).
+	private const Int32 MaxStackSlots = 64 * 1024 * 1024;
 
 	private Dictionary<Value, Value> _intrinsics; // intrinsic name -> FuncRef Value
 
@@ -287,6 +301,20 @@ public class VM {
 		return callStackTop;
 	}
 
+	public Int32 GetMaxCallDepth() {
+		return _maxCallDepth;
+	}
+
+	// Set the maximum call depth.  The limit is checked only when the call
+	// stack must grow, so if it already has more slots than the new limit
+	// allows, drop the unused ones above that (never any in use).
+	public void SetMaxCallDepth(Int32 depth) {
+		if (depth < 1) depth = 1;
+		_maxCallDepth = depth;
+		Int32 keep = depth > callStackTop ? depth : callStackTop;
+		if (callStack.Count > keep) callStack.RemoveRange(keep, callStack.Count - keep);
+	}
+
 	public Value GetStackValue(Int32 index) {
 		if (index < 0 || index >= stack.Count) return Value.Null;
 		return stack[index];
@@ -318,6 +346,8 @@ public class VM {
 		return Intrinsic.GetShortName(v);
 	}
 
+	// stackSlots and callSlots are the *initial* sizes of the register stack and
+	// call stack; both grow as needed (the call stack up to the max call depth).
 	public VM(Int32 stackSlots=10240, Int32 callSlots=256) {
 		InitVM(stackSlots, callSlots);
 	}
@@ -464,7 +494,7 @@ public class VM {
 			names[calleeBase + i] = Value.Null;
 		}
 
-		if (callStackTop >= callStack.Count) callStack.Add(new CallInfo(0, 0, null));
+		if (callStackTop >= callStack.Count && !GrowCallStack()) return;
 		callStack[callStackTop] = new CallInfo(PC, BaseIndex, CurrentFunction);
 		callStackTop++;
 
@@ -613,10 +643,7 @@ public class VM {
 				"PushCall: too many arguments: got {0}, expected {1}", argCount + selfParam, paramCount));
 			return false;
 		}
-		if (callStackTop >= callStack.Count) {
-			RaiseRuntimeError("Call stack overflow");
-			return false;
-		}
+		if (callStackTop >= callStack.Count && !GrowCallStack()) return false;
 		// The callee's frame goes just above the calling intrinsic's frame, so
 		// the intrinsic's arguments are intact when it is re-invoked.
 		Int32 calleeBase = _nativeFrameTop;
@@ -716,6 +743,7 @@ public class VM {
 		Int32 safeTop = BaseIndex + (CurrentFunction != null ? CurrentFunction.MaxRegs : 0);
 		Int32 calleeBase = _nativeFrameTop > safeTop ? _nativeFrameTop : safeTop;
 		if (!EnsureFrame(calleeBase, callee.MaxRegs)) return Value.Null;
+		if (callStackTop >= callStack.Count && !GrowCallStack()) return Value.Null;
 
 		// Set up the callee frame, writing each register exactly once (mirrors
 		// ProcessArguments + SetupCallFrame).  r0 is the return register; the
@@ -825,7 +853,6 @@ public class VM {
 		// instance execution state to the callee.  The pushed CallInfo records the
 		// outer state and uses CopyResultToReg = -1, so RETURN restores us without
 		// writing a result into any outer register (we read ManualCallResult).
-		if (callStackTop >= callStack.Count) callStack.Add(new CallInfo(0, 0, null));
 		callStack[callStackTop] = new CallInfo(savedPC, savedBase, savedFunc, -1, funcRef.OuterVars());
 		callStackTop++;
 		Int32 runDepth = callStackTop;
@@ -1262,10 +1289,7 @@ public class VM {
 		}
 
 		// User function: push CallInfo and set up callee frame
-		if (callStackTop >= callStack.Count) {
-			RaiseRuntimeError("Call stack overflow");
-			return -1;
-		}
+		if (callStackTop >= callStack.Count && !GrowCallStack()) return -1;
 		callStack[callStackTop] = new CallInfo(returnPC, baseIndex, currentFunc, resultReg, outerVars);
 		callStackTop++;
 
@@ -1516,9 +1540,13 @@ public class VM {
 		Int32 baseIndex = BaseIndex;
 		FuncDef currentFunc = CurrentFunction;
 
-		// CPP: Value* stackPtr = &stack[0];
+		// localStack (below) gives direct access to the current frame's registers.
+		// It is a Span (C#) or raw pointer (C++) into the register stack, so it
+		// goes stale whenever the stack grows (see EnsureFrame).  SwitchFrame
+		// re-derives it, and so must every path that may have grown the stack
+		// without switching frames -- in practice, any native callback, which
+		// can run nested script via RunFunction.  See RefreshLocalStack.
 		// Note: CollectionsMarshal.AsSpan requires .NET 5+; not compatible with Mono.
-		// This gives us direct array access without copying, for performance.
 		
 		// Variables reflecting the current call frame:
 		FuncDef curFunc = null; // CPP: FuncDefStorage* curFuncRaw = nullptr;
@@ -1528,7 +1556,7 @@ public class VM {
 		Span<Value> localStack = default; // CPP: Value* localStack = nullptr;
 		
 		SwitchFrame(currentFunc, baseIndex, ref curFunc, ref codeCount, ref curCode, ref curConstants, ref localStack); // CPP:
-		// CPP: SwitchFrame(currentFunc, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack, stackPtr);
+		// CPP: SwitchFrame(currentFunc, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack);
 
 		UInt32 cyclesLeft = maxCycles;
 		if (maxCycles == 0) cyclesLeft--;  // wraps to MAX_UINT32
@@ -1677,6 +1705,9 @@ public class VM {
 						// Value is a funcref — auto-invoke with zero args
 						FuncDef autoCallee = null;
 						Int32 status = AutoInvokeFuncRef(valB, a, pc, baseIndex, currentFunc, ref autoCallee);
+						// (The callee may have grown the stack -- e.g. a native callback
+						// that ran script via RunFunction -- so re-derive localStack.)
+						RefreshLocalStack(baseIndex, ref localStack); // CPP: localStack = &stack[0] + baseIndex;
 						if (status == -2) {
 							// Native callback pending.  If it pushed a call (PushCall), resync
 							// to the pushed frame and run it inline; otherwise exit RunInner.
@@ -1685,7 +1716,7 @@ public class VM {
 								baseIndex = BaseIndex;
 								currentFunc = CurrentFunction;
 								SwitchFrame(currentFunc, baseIndex, ref curFunc, ref codeCount, ref curCode, ref curConstants, ref localStack); // CPP:
-								// CPP: SwitchFrame(currentFunc, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack, stackPtr);
+								// CPP: SwitchFrame(currentFunc, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack);
 							} else {
 								cyclesLeft = 0;
 							}
@@ -1695,7 +1726,7 @@ public class VM {
 							pc = 0;
 							currentFunc = autoCallee;
 							SwitchFrame(currentFunc, baseIndex, ref curFunc, ref codeCount, ref curCode, ref curConstants, ref localStack); // CPP:
-							// CPP: SwitchFrame(currentFunc, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack, stackPtr);
+							// CPP: SwitchFrame(currentFunc, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack);
 						}
 					}
 					break;
@@ -1750,6 +1781,9 @@ public class VM {
 						// Value is a funcref — auto-invoke with zero args
 						FuncDef autoCallee = null;
 						Int32 status = AutoInvokeFuncRef(valB, a, pc, baseIndex, currentFunc, ref autoCallee);
+						// (The callee may have grown the stack -- e.g. a native callback
+						// that ran script via RunFunction -- so re-derive localStack.)
+						RefreshLocalStack(baseIndex, ref localStack); // CPP: localStack = &stack[0] + baseIndex;
 						if (status == -2) {
 							// Native callback pending.  If it pushed a call (PushCall), resync
 							// to the pushed frame and run it inline; otherwise exit RunInner.
@@ -1758,7 +1792,7 @@ public class VM {
 								baseIndex = BaseIndex;
 								currentFunc = CurrentFunction;
 								SwitchFrame(currentFunc, baseIndex, ref curFunc, ref codeCount, ref curCode, ref curConstants, ref localStack); // CPP:
-								// CPP: SwitchFrame(currentFunc, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack, stackPtr);
+								// CPP: SwitchFrame(currentFunc, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack);
 							} else {
 								cyclesLeft = 0;
 							}
@@ -1768,7 +1802,7 @@ public class VM {
 							pc = 0;
 							currentFunc = autoCallee;
 							SwitchFrame(currentFunc, baseIndex, ref curFunc, ref codeCount, ref curCode, ref curConstants, ref localStack); // CPP:
-							// CPP: SwitchFrame(currentFunc, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack, stackPtr);
+							// CPP: SwitchFrame(currentFunc, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack);
 						}
 					}
 					break;
@@ -2123,6 +2157,9 @@ public class VM {
 					} else {
 						FuncDef autoCallee = null;
 						Int32 status = AutoInvokeFuncRef(valB, a, pc, baseIndex, currentFunc, ref autoCallee);
+						// (The callee may have grown the stack -- e.g. a native callback
+						// that ran script via RunFunction -- so re-derive localStack.)
+						RefreshLocalStack(baseIndex, ref localStack); // CPP: localStack = &stack[0] + baseIndex;
 						if (status == -2) {
 							// Native callback pending.  If it pushed a call (PushCall), resync
 							// to the pushed frame and run it inline; otherwise exit RunInner.
@@ -2131,7 +2168,7 @@ public class VM {
 								baseIndex = BaseIndex;
 								currentFunc = CurrentFunction;
 								SwitchFrame(currentFunc, baseIndex, ref curFunc, ref codeCount, ref curCode, ref curConstants, ref localStack); // CPP:
-								// CPP: SwitchFrame(currentFunc, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack, stackPtr);
+								// CPP: SwitchFrame(currentFunc, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack);
 							} else {
 								cyclesLeft = 0;
 							}
@@ -2141,7 +2178,7 @@ public class VM {
 							pc = 0;
 							currentFunc = autoCallee;
 							SwitchFrame(currentFunc, baseIndex, ref curFunc, ref codeCount, ref curCode, ref curConstants, ref localStack); // CPP:
-							// CPP: SwitchFrame(currentFunc, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack, stackPtr);
+							// CPP: SwitchFrame(currentFunc, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack);
 						}
 					}
 					break;
@@ -2489,17 +2526,18 @@ public class VM {
 								baseIndex = BaseIndex;
 								currentFunc = CurrentFunction;
 								SwitchFrame(currentFunc, baseIndex, ref curFunc, ref codeCount, ref curCode, ref curConstants, ref localStack); // CPP:
-								// CPP: SwitchFrame(currentFunc, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack, stackPtr);
+								// CPP: SwitchFrame(currentFunc, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack);
 							} else {
 								cyclesLeft = 0;
 							}
 						}
+						// (The intrinsic may have grown the stack, e.g. via RunFunction.)
+						RefreshLocalStack(baseIndex, ref localStack); // CPP: localStack = &stack[0] + baseIndex;
 						break;
 					}
 
 					// Now execute the CALL (step 6): push CallInfo and switch to callee
-					if (callStackTop >= callStack.Count) {
-						RaiseRuntimeError("Call stack overflow");
+					if (callStackTop >= callStack.Count && !GrowCallStack()) {
 						break;
 					}
 
@@ -2511,7 +2549,7 @@ public class VM {
 					currentFunc = callee; // Switch to callee function
 					pc = 0; // Start at beginning of callee code
 					SwitchFrame(currentFunc, baseIndex, ref curFunc, ref codeCount, ref curCode, ref curConstants, ref localStack); // CPP:
-					// CPP: SwitchFrame(currentFunc, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack, stackPtr);
+					// CPP: SwitchFrame(currentFunc, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack);
 					break;
 				}
 
@@ -2544,8 +2582,7 @@ public class VM {
 					}
 
 					// Push return info
-					if (callStackTop >= callStack.Count) {
-						RaiseRuntimeError("Call stack overflow");
+					if (callStackTop >= callStack.Count && !GrowCallStack()) {
 						break;
 					}
 					callStack[callStackTop] = new CallInfo(pc, baseIndex, currentFunc);
@@ -2556,12 +2593,13 @@ public class VM {
 					// Note: ApplyPendingContext skipped for CALLF (only needed for method dispatch via CALL)
 					pc = 0; // Start at beginning of callee code
 					currentFunc = callee; // Switch to callee function
-					SwitchFrame(currentFunc, baseIndex, ref curFunc, ref codeCount, ref curCode, ref curConstants, ref localStack); // CPP:
-					// CPP: SwitchFrame(currentFunc, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack, stackPtr);
-
-					// No frame writes happen before the next opcode, so just verify
-					// (it raises and halts on overflow) and fall through to break.
+					// Verify (and grow if needed) the frame BEFORE SwitchFrame, since
+					// growing the stack invalidates localStack.  No frame writes happen
+					// before the next opcode, so on overflow (which raises and halts)
+					// we just fall through.
 					EnsureFrame(baseIndex, callee.MaxRegs);
+					SwitchFrame(currentFunc, baseIndex, ref curFunc, ref codeCount, ref curCode, ref curConstants, ref localStack); // CPP:
+					// CPP: SwitchFrame(currentFunc, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack);
 					break;
 				}
 
@@ -2616,16 +2654,17 @@ public class VM {
 								baseIndex = BaseIndex;
 								currentFunc = CurrentFunction;
 								SwitchFrame(currentFunc, baseIndex, ref curFunc, ref codeCount, ref curCode, ref curConstants, ref localStack); // CPP:
-								// CPP: SwitchFrame(currentFunc, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack, stackPtr);
+								// CPP: SwitchFrame(currentFunc, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack);
 							} else {
 								cyclesLeft = 0;
 							}
 						}
+						// (The intrinsic may have grown the stack, e.g. via RunFunction.)
+						RefreshLocalStack(baseIndex, ref localStack); // CPP: localStack = &stack[0] + baseIndex;
 						break;
 					}
 
-					if (callStackTop >= callStack.Count) {
-						RaiseRuntimeError("Call stack overflow");
+					if (callStackTop >= callStack.Count && !GrowCallStack()) {
 						break;
 					}
 					callStack[callStackTop] = new CallInfo(pc, baseIndex, currentFunc, a, valD);
@@ -2636,7 +2675,7 @@ public class VM {
 					pc = 0; // Start at beginning of callee code
 					currentFunc = callee; // Switch to callee function
 					SwitchFrame(currentFunc, baseIndex, ref curFunc, ref codeCount, ref curCode, ref curConstants, ref localStack); // CPP:
-					// CPP: SwitchFrame(currentFunc, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack, stackPtr);
+					// CPP: SwitchFrame(currentFunc, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack);
 					break;
 				}
 
@@ -2898,6 +2937,9 @@ public class VM {
 					// Auto-invoke the funcref with zero args
 					FuncDef autoCallee = null;
 					Int32 status = AutoInvokeFuncRef(val, a, pc, baseIndex, currentFunc, ref autoCallee);
+					// (The callee may have grown the stack -- e.g. a native callback
+					// that ran script via RunFunction -- so re-derive localStack.)
+					RefreshLocalStack(baseIndex, ref localStack); // CPP: localStack = &stack[0] + baseIndex;
 					if (status == -2) {
 						// Native callback pending.  If it pushed a call (PushCall), resync
 						// to the pushed frame and run it inline; otherwise exit RunInner.
@@ -2906,7 +2948,7 @@ public class VM {
 							baseIndex = BaseIndex;
 							currentFunc = CurrentFunction;
 							SwitchFrame(currentFunc, baseIndex, ref curFunc, ref codeCount, ref curCode, ref curConstants, ref localStack); // CPP:
-							// CPP: SwitchFrame(currentFunc, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack, stackPtr);
+							// CPP: SwitchFrame(currentFunc, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack);
 						} else {
 							cyclesLeft = 0;
 						}
@@ -2916,7 +2958,7 @@ public class VM {
 						pc = 0;
 						currentFunc = autoCallee;
 						SwitchFrame(currentFunc, baseIndex, ref curFunc, ref codeCount, ref curCode, ref curConstants, ref localStack); // CPP:
-						// CPP: SwitchFrame(currentFunc, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack, stackPtr);
+						// CPP: SwitchFrame(currentFunc, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack);
 					}
 					break; // CPP: VM_NEXT();
 				}
@@ -2983,7 +3025,7 @@ public class VM {
 					baseIndex = callInfo.ReturnBase;
 					currentFunc = callInfo.ReturnFunc;
 					SwitchFrame(currentFunc, baseIndex, ref curFunc, ref codeCount, ref curCode, ref curConstants, ref localStack); // CPP:
-					// CPP: SwitchFrame(currentFunc, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack, stackPtr);
+					// CPP: SwitchFrame(currentFunc, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack);
 
 					if (callInfo.CopyResultToReg >= 0) {
 						stack[baseIndex + callInfo.CopyResultToReg] = val;
@@ -3047,11 +3089,52 @@ public class VM {
 	// and returns false.  Callers MUST bail out (without writing into the frame)
 	// when this returns false, since RaiseRuntimeError does not stop the current
 	// opcode handler on its own.
+	//
+	// If the frame doesn't fit, the register stack is grown (by doubling).  That
+	// reallocates its storage, so any Span/pointer into it -- notably RunInner's
+	// localStack -- is stale afterward and must be re-derived (SwitchFrame or
+	// RefreshLocalStack).  Code that holds the stack List plus indices, such as
+	// VarMaps and intrinsic Contexts, is unaffected, since the List object itself
+	// is grown in place.
 	[MethodImpl(AggressiveInlining)]
 	private bool EnsureFrame(Int32 baseIndex, UInt16 neededRegs) {
-		if (baseIndex + neededRegs > stack.Count) {
+		if (baseIndex + neededRegs > stack.Count) return GrowStack(baseIndex + neededRegs);
+		return true;
+	}
+
+	// Grow the register stack (and its parallel names list) to at least
+	// neededSlots, by doubling.  Returns true if OK; if that would exceed
+	// MaxStackSlots, raises a runtime error and returns false.
+	private bool GrowStack(Int32 neededSlots) {
+		if (neededSlots > MaxStackSlots) {
 			RaiseRuntimeError("Stack Overflow");
 			return false;
+		}
+		Int32 count = stack.Count;
+		Int32 newCount = count < 256 ? 256 : count;
+		while (newCount < neededSlots) newCount *= 2;
+		if (newCount > MaxStackSlots) newCount = MaxStackSlots;
+		for (Int32 i = count; i < newCount; i++) {
+			stack.Add(Value.Null);
+			names.Add(Value.Null);
+		}
+		return true;
+	}
+
+	// Make room for one more frame on the call stack (called only when
+	// callStackTop == callStack.Count), growing it by doubling, up to
+	// the max call depth.  Returns true if OK; at the limit, raises a runtime error
+	// and returns false.
+	private bool GrowCallStack() {
+		Int32 count = callStack.Count;
+		if (count >= _maxCallDepth) {
+			RaiseRuntimeError("Call stack overflow");
+			return false;
+		}
+		Int32 newCount = count < 16 ? 16 : count * 2;
+		if (newCount > _maxCallDepth) newCount = _maxCallDepth;
+		for (Int32 i = count; i < newCount; i++) {
+			callStack.Add(new CallInfo(0, 0, null));
 		}
 		return true;
 	}
@@ -3267,13 +3350,22 @@ public class VM {
 		curConstants = curFunc.Constants;
 		localStack = CollectionsMarshal.AsSpan(stack).Slice(baseIndex);
 	}
+
+	// Re-derive localStack for the current frame, after something (a native
+	// callback, or EnsureFrame) may have grown -- and so reallocated -- the
+	// register stack.  In C++ this is inlined at each call site as
+	// `localStack = &stack[0] + baseIndex;`.
+	[MethodImpl(AggressiveInlining)]
+	private void RefreshLocalStack(Int32 baseIndex, ref Span<Value> localStack) {
+		localStack = CollectionsMarshal.AsSpan(stack).Slice(baseIndex);
+	}
 	//*** END CS_ONLY ***
-	// H: void SwitchFrame(const FuncDef& currentFunc, Int32 baseIndex, FuncDefStorage* &curFuncRaw, Int32 &codeCount, UInt32* &curCode, Value* &curConstants, Value* &localStack, Value* stackPtr);
+	// H: void SwitchFrame(const FuncDef& currentFunc, Int32 baseIndex, FuncDefStorage* &curFuncRaw, Int32 &codeCount, UInt32* &curCode, Value* &curConstants, Value* &localStack);
 	/*** BEGIN CPP_ONLY ***
 	FORCE_INLINE void VMStorage::SwitchFrame(const FuncDef& currentFunc, Int32 baseIndex,
 			FuncDefStorage* &curFuncRaw, Int32 &codeCount,
 			UInt32* &curCode, Value* &curConstants,
-			Value* &localStack, Value* stackPtr) {
+			Value* &localStack) {
 		// Keep the frame-identifying fields current at every frame switch, so
 		// BuildStackTrace is accurate at any point (paired with PC = pc in the loop).
 		CurrentFunction = currentFunc;
@@ -3282,7 +3374,8 @@ public class VM {
 		codeCount = curFuncRaw->Code.Count();
 		curCode = &curFuncRaw->Code[0];
 		curConstants = curFuncRaw->Constants.Count() > 0 ? &curFuncRaw->Constants[0] : nullptr;
-		localStack = stackPtr + baseIndex;
+		// (Read the stack base fresh each time; it moves when the stack grows.)
+		localStack = &stack[0] + baseIndex;
 	}
 	*** END CPP_ONLY ***/
 

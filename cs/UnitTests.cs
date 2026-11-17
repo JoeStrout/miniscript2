@@ -2032,6 +2032,74 @@ public static class UnitTests {
 		return ok;
 	}
 
+	// ── Growing the call stack and register stack (issue #27) ─────────────────
+	// Both stacks start small and grow on demand.  Growing the register stack
+	// reallocates it, so the VM must re-derive its cached pointer (Span, in C#)
+	// into the current frame afterward.  The tricky case is a native callback
+	// that runs script synchronously (RunFunction) deep enough to grow the
+	// stack: when it returns, the calling frame must read and write its
+	// registers in the new storage, not the old.
+
+	private static Boolean _stackGrowthIntrinsicsMade = false;
+
+	private static void MakeStackGrowthTestIntrinsics() {
+		if (_stackGrowthIntrinsicsMade) return;
+		_stackGrowthIntrinsicsMade = true;
+		// __testRunSync(func, arg): func(arg), via RunFunction.
+		Intrinsic f = Intrinsic.Create("__testRunSync");
+		f.AddParam("func");
+		f.AddParam("arg");
+		f.Code = (Context ctx, IntrinsicResult partialResult) => {
+			List<Value> args = new List<Value>();
+			args.Add(ctx.GetArg(1));
+			return new IntrinsicResult(ctx.vm.RunFunction(ctx.GetArg(0), args));
+		};
+	}
+
+	public static Boolean TestStackGrowth() {
+		MakeStackGrowthTestIntrinsics();
+		Boolean ok = true;
+		String source = new String("deep = function(n)\n");
+		source += "\tif n == 0 then return 0\n";
+		source += "\treturn 1 + deep(n-1)\n";
+		source += "end function\n";
+		// The first (and so stack-growing) deep recursion happens inside
+		// RunFunction; afterward, the caller uses its registers again.
+		source += "caller = function\n";
+		source += "\ta = 7\n\tb = 8\n";
+		source += "\tr = __testRunSync(@deep, 5000)\n";
+		source += "\ta = a + 1\n";
+		source += "\treturn [a, b, r, a + b + r]\n";
+		source += "end function\n";
+		source += "result1 = caller\n";
+		// Then ordinary deep recursion, past the old 256-frame limit.
+		source += "result2 = deep(20000)\n";
+
+		Interpreter interp = new Interpreter(source);
+		interp.RunUntilDone(60, false);
+		ok = Assert(interp.vm.Error.IsNull(), StringUtils.Format("stack growth test should not error: {0}",
+			interp.vm.Error.IsNull() ? "" : StringUtils.Format("{0}", interp.vm.Error.Message()))) && ok;
+		String r1 = StringUtils.Format("{0}", interp.GetGlobalValue("result1"));
+		ok = Assert(r1 == "[8, 8, 5000, 5016]",
+			StringUtils.Format("after RunFunction grew the stack, caller should give [8, 8, 5000, 5016], got {0}", r1)) && ok;
+		String r2 = StringUtils.Format("{0}", interp.GetGlobalValue("result2"));
+		ok = Assert(r2 == "20000", StringUtils.Format("deep(20000) should give 20000, got {0}", r2)) && ok;
+
+		// The host-configurable limit.
+		interp = new Interpreter("f = function(n)\n\tif n == 0 then return 0\n\treturn 1 + f(n-1)\nend function\nok = f(40)\nx = f(60)\n");
+		interp.MaxCallDepth = 50;
+		interp.errorOutput = (String s, bool eol) => { }; // CPP: interp.set_errorOutput([](String, Boolean) {});
+		interp.RunUntilDone(60, false);
+		String msg = interp.Error.IsError() ? StringUtils.Format("{0}", interp.Error.Message()) : "";
+		ok = Assert(msg.IndexOf("Call stack overflow") >= 0,
+			StringUtils.Format("recursing past MaxCallDepth should give a call stack overflow, got '{0}'", msg)) && ok;
+		String okVal = StringUtils.Format("{0}", interp.GetGlobalValue("ok"));
+		ok = Assert(okVal == "40", StringUtils.Format("recursing within MaxCallDepth should work, got {0}", okVal)) && ok;
+
+		if (!ok) IOHelper.Print("TestStackGrowth FAILED");
+		return ok;
+	}
+
 	// A single unlimited vm.Run() must carry an ordinary program (one that does
 	// nothing to yield) all the way to the end.  If it returns while the VM is
 	// still running, some opcode handler left the dispatch loop instead of
@@ -2197,6 +2265,7 @@ public static class UnitTests {
 			&& TestPushCall()
 			&& TestGetVar()
 			&& TestSpilledLocals()
+			&& TestStackGrowth()
 			&& TestRunWithoutYield()
 			&& TestGCHandle()
 			&& TestGCSlotTrim()

@@ -80,7 +80,7 @@ A survey of the C# (`cs/`) and C/C++ (`cpp/core/`) source for bad smells, incons
 ## Magic Numbers & Hardcoded Limits
 
 - **`GCManager.cs` ~33**: `InternThreshold = 128` — no explanation of the performance tradeoff that set this value.
-- **`VM.cs` ~205**: Stack size defaults (`stackSlots=1024`, `callSlots=256`) are arbitrary with no comment.
+- ~~**`VM.cs` ~205**: Stack size defaults (`stackSlots=1024`, `callSlots=256`) are arbitrary with no comment.~~  These are now just initial sizes; both stacks grow by doubling, the call stack up to `MaxCallDepth` (default 100,000; issue #27). ✔️
 - **`Assembler.cs` ~565**: The constant `16777215` (0xFFFFFF) for `ARG` range validation should be a named constant.
 - **`CoreIntrinsics.cs` ~272**: Error cycle-detection depth of 256 is arbitrary and undocumented.
 - **`StringUtils.cs` ~74**: `Spaces()` has no upper-bound guard; pathologically large values could allocate enormous strings.

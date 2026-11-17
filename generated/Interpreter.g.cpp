@@ -165,7 +165,7 @@ void InterpreterStorage::RunUntilDone(double timeLimit,bool returnEarly) {
 	}
 	double startTime = vm.ElapsedTime();
 	vm.set_yielding(Boolean(false));
-	while (vm.IsRunning() && !vm.yielding()) {
+	while (vm.IsRunning()) {
 		if (vm.ElapsedTime() - startTime > timeLimit) break;	// time's up for now
 		vm.Run(RunBatchSize);	// run in batches so we can check the time
 		if (!vm.Error().IsNull()) {
@@ -175,7 +175,10 @@ void InterpreterStorage::RunUntilDone(double timeLimit,bool returnEarly) {
 			Stop();
 			return;
 		}
-		if (returnEarly && vm.yielding()) break;		// waiting for something
+		if (vm.yielding()) {
+			if (returnEarly) break;		// waiting for something
+			vm.set_yielding(Boolean(false));		// caller wants us to keep going
+		}
 	}
 	GCManager::MaybeCollect(Boolean(false));
 }

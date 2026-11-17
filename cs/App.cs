@@ -499,7 +499,7 @@ public struct App {
 		interp.errorOutput = (String s, bool eol) => { printOutput.Add(s); }; // CPP:
 		// CPP: interp.set_errorOutput([](String s, Boolean) { gPrintOutput.Add(s); });
 		interp.Reset(source);
-		interp.RunUntilDone();
+		interp.RunUntilDone(60, false);	// run to completion, through any waits
 
 		// Get expected output (join lines, trim trailing empty lines)
 		String expected = String.Join("\n", expectedLines).Trim();

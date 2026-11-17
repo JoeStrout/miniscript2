@@ -386,7 +386,7 @@ public class Interpreter {
 		}
 		double startTime = vm.ElapsedTime();
 		vm.yielding = false;
-		while (vm.IsRunning && !vm.yielding) {
+		while (vm.IsRunning) {
 			if (vm.ElapsedTime() - startTime > timeLimit) break;	// time's up for now
 			vm.Run(RunBatchSize);	// run in batches so we can check the time
 			if (!vm.Error.IsNull()) {
@@ -396,7 +396,10 @@ public class Interpreter {
 				Stop();
 				return;
 			}
-			if (returnEarly && vm.yielding) break;		// waiting for something
+			if (vm.yielding) {
+				if (returnEarly) break;		// waiting for something
+				vm.yielding = false;		// caller wants us to keep going
+			}
 		}
 		GCManager.MaybeCollect(false);
 	}

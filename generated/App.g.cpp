@@ -441,7 +441,7 @@ bool App::RunSingleTest(List<String> inputLines,List<String> expectedLines,Int32
 	interp.set_standardOutput([](String s, Boolean) { gPrintOutput.Add(s); });
 	interp.set_errorOutput([](String s, Boolean) { gPrintOutput.Add(s); });
 	interp.Reset(source);
-	interp.RunUntilDone();
+	interp.RunUntilDone(60, Boolean(false));	// run to completion, through any waits
 
 	// Get expected output (join lines, trim trailing empty lines)
 	String expected = String::Join("\n", expectedLines).Trim();

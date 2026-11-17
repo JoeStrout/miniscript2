@@ -1126,6 +1126,14 @@ public class VM {
 		_pendingCalleeBase = calleeBase;
 		_pendingArgCount = argCount;
 		_pendingResultIndex = absoluteResultIndex;
+		// A partial result means "nothing to do until later" (e.g. `wait`, or
+		// `exec` with its process still running), so yield: this ends the slice
+		// at the next dispatch, and lets the host sleep rather than spin calling
+		// Run() until its time slice expires.  The exception is a callback that
+		// pushed a manual call (e.g. `import`): that code is meant to run inline,
+		// right now.  (A set _hasPendingManualCall here is either that, or
+		// RunFunction's sentinel, which also must not yield.)
+		if (!_hasPendingManualCall) yielding = true;
 		return false;
 	}
 

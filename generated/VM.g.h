@@ -83,7 +83,7 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	public: Int32 ExitCode;
 	private: Boolean _errorStackPending = Boolean(false);
 	private: Globals _globals;
-	private: Int32 _globalsId;
+	private: Int64 _globalsId;
 
 	// callStack is indexed by execution depth: callStack[0] is always @main's execution
 	// context (globals live here), callStack[1] is the first user function call, etc.
@@ -688,8 +688,8 @@ struct VM {
 	private: void set__errorStackPending(Boolean _v);
 	private: Globals _globals();
 	private: void set__globals(Globals _v);
-	private: Int32 _globalsId();
-	private: void set__globalsId(Int32 _v);
+	private: Int64 _globalsId();
+	private: void set__globalsId(Int64 _v);
 
 	// callStack is indexed by execution depth: callStack[0] is always @main's execution
 	// context (globals live here), callStack[1] is the first user function call, etc.
@@ -1284,8 +1284,8 @@ inline Boolean VM::_errorStackPending() { return get()->_errorStackPending; }
 inline void VM::set__errorStackPending(Boolean _v) { get()->_errorStackPending = _v; }
 inline Globals VM::_globals() { return get()->_globals; }
 inline void VM::set__globals(Globals _v) { get()->_globals = _v; }
-inline Int32 VM::_globalsId() { return get()->_globalsId; }
-inline void VM::set__globalsId(Int32 _v) { get()->_globalsId = _v; }
+inline Int64 VM::_globalsId() { return get()->_globalsId; }
+inline void VM::set__globalsId(Int64 _v) { get()->_globalsId = _v; }
 inline Globals VM::GetGlobals() { return get()->GetGlobals(); }
 inline void VM::SetGlobals(Globals globals) { return get()->SetGlobals(globals); }
 inline Value VM::pendingSelf() { return get()->pendingSelf; }

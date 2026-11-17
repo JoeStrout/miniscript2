@@ -62,7 +62,7 @@ public class Globals {
 	private List<Value> _names;               // slot -> name (set once, never cleared)
 	private List<Value> _values;              // slot -> value, or Value.Unassigned
 	private Dictionary<Value, Int32> _index;  // name -> slot
-	private Int32 _id;                        // generation; see Id()
+	private Int64 _id;                        // generation; see Id()
 	private Int32 _assignedCount;             // slots currently holding a value
 	private Value _mapValue;                  // the `globals` map viewing this table
 
@@ -75,7 +75,12 @@ public class Globals {
 	// Pre-incremented, so the first Globals gets Id 1 and 0 is never a valid Id
 	// -- which lets a not-yet-resolved slot cache use 0 as its "never resolved"
 	// marker.
-	private static Int32 _lastId = 0;
+	//
+	// 64 bits so it can never wrap: a host making a namespace per request at a
+	// million per second would take ~290,000 years to exhaust it.  A wrapped Id
+	// could collide with one still cached in some FuncDef (and 32-bit signed
+	// overflow is UB in C++).
+	private static Int64 _lastId = 0;
 
 	//
 	// Make a new, empty global namespace.  Use this rather than `new Globals()`
@@ -129,7 +134,7 @@ public class Globals {
 	// ── Identity and size ─────────────────────────────────────────────────────
 
 	[MethodImpl(AggressiveInlining)]
-	public Int32 Id() {
+	public Int64 Id() {
 		return _id;
 	}
 

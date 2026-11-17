@@ -54,10 +54,10 @@ class GlobalsStorage : public std::enable_shared_from_this<GlobalsStorage> {
 	private: List<Value> _names; // slot -> name (set once, never cleared)
 	private: List<Value> _values; // slot -> value, or Value.Unassigned
 	private: Dictionary<Value, Int32> _index; // name -> slot
-	private: Int32 _id; // generation; see Id()
+	private: Int64 _id; // generation; see Id()
 	private: Int32 _assignedCount; // slots currently holding a value
 	private: Value _mapValue; // the `globals` map viewing this table
-	private: static Int32 _lastId;
+	private: static Int64 _lastId;
 
 	// Generation counter.  Every Globals gets a distinct Id, and an Id is never
 	// reused.  Compiled code caches (name -> slot) resolutions and validates
@@ -67,6 +67,10 @@ class GlobalsStorage : public std::enable_shared_from_this<GlobalsStorage> {
 	// Pre-incremented, so the first Globals gets Id 1 and 0 is never a valid Id
 	// -- which lets a not-yet-resolved slot cache use 0 as its "never resolved"
 	// marker.
+	// 64 bits so it can never wrap: a host making a namespace per request at a
+	// million per second would take ~290,000 years to exhaust it.  A wrapped Id
+	// could collide with one still cached in some FuncDef (and 32-bit signed
+	// overflow is UB in C++).
 
 	// Make a new, empty global namespace.  Use this rather than `new Globals()`
 	// directly: a Globals is paired 1:1 with the map that views it, and only a
@@ -95,7 +99,7 @@ class GlobalsStorage : public std::enable_shared_from_this<GlobalsStorage> {
 
 	// ── Identity and size ─────────────────────────────────────────────────────
 
-	public: Int32 Id();
+	public: Int64 Id();
 
 	// The `globals` map: an ordinary MiniScript map whose entire storage is this
 	// table.  There is no second tier -- every entry is a slot.
@@ -206,14 +210,14 @@ struct Globals {
 	private: void set__values(List<Value> _v); // slot -> value, or Value.Unassigned
 	private: Dictionary<Value, Int32> _index(); // name -> slot
 	private: void set__index(Dictionary<Value, Int32> _v); // name -> slot
-	private: Int32 _id(); // generation; see Id()
-	private: void set__id(Int32 _v); // generation; see Id()
+	private: Int64 _id(); // generation; see Id()
+	private: void set__id(Int64 _v); // generation; see Id()
 	private: Int32 _assignedCount(); // slots currently holding a value
 	private: void set__assignedCount(Int32 _v); // slots currently holding a value
 	private: Value _mapValue(); // the `globals` map viewing this table
 	private: void set__mapValue(Value _v); // the `globals` map viewing this table
-	private: Int32 _lastId();
-	private: void set__lastId(Int32 _v);
+	private: Int64 _lastId();
+	private: void set__lastId(Int64 _v);
 
 	// Generation counter.  Every Globals gets a distinct Id, and an Id is never
 	// reused.  Compiled code caches (name -> slot) resolutions and validates
@@ -223,6 +227,10 @@ struct Globals {
 	// Pre-incremented, so the first Globals gets Id 1 and 0 is never a valid Id
 	// -- which lets a not-yet-resolved slot cache use 0 as its "never resolved"
 	// marker.
+	// 64 bits so it can never wrap: a host making a namespace per request at a
+	// million per second would take ~290,000 years to exhaust it.  A wrapped Id
+	// could collide with one still cached in some FuncDef (and 32-bit signed
+	// overflow is UB in C++).
 
 	// Make a new, empty global namespace.  Use this rather than `new Globals()`
 	// directly: a Globals is paired 1:1 with the map that views it, and only a
@@ -253,7 +261,7 @@ struct Globals {
 
 	// ── Identity and size ─────────────────────────────────────────────────────
 
-	public: inline Int32 Id();
+	public: inline Int64 Id();
 
 	// The `globals` map: an ordinary MiniScript map whose entire storage is this
 	// table.  There is no second tier -- every entry is a slot.
@@ -357,18 +365,18 @@ inline List<Value> Globals::_values() { return get()->_values; } // slot -> valu
 inline void Globals::set__values(List<Value> _v) { get()->_values = _v; } // slot -> value, or Value.Unassigned
 inline Dictionary<Value, Int32> Globals::_index() { return get()->_index; } // name -> slot
 inline void Globals::set__index(Dictionary<Value, Int32> _v) { get()->_index = _v; } // name -> slot
-inline Int32 Globals::_id() { return get()->_id; } // generation; see Id()
-inline void Globals::set__id(Int32 _v) { get()->_id = _v; } // generation; see Id()
+inline Int64 Globals::_id() { return get()->_id; } // generation; see Id()
+inline void Globals::set__id(Int64 _v) { get()->_id = _v; } // generation; see Id()
 inline Int32 Globals::_assignedCount() { return get()->_assignedCount; } // slots currently holding a value
 inline void Globals::set__assignedCount(Int32 _v) { get()->_assignedCount = _v; } // slots currently holding a value
 inline Value Globals::_mapValue() { return get()->_mapValue; } // the `globals` map viewing this table
 inline void Globals::set__mapValue(Value _v) { get()->_mapValue = _v; } // the `globals` map viewing this table
-inline Int32 Globals::_lastId() { return get()->_lastId; }
-inline void Globals::set__lastId(Int32 _v) { get()->_lastId = _v; }
+inline Int64 Globals::_lastId() { return get()->_lastId; }
+inline void Globals::set__lastId(Int64 _v) { get()->_lastId = _v; }
 inline void Globals::AttachMap(Value mapValue) { return get()->AttachMap(mapValue); }
 inline void Globals::Release() { return get()->Release(); }
-inline Int32 Globals::Id() { return get()->Id(); }
-inline Int32 GlobalsStorage::Id() {
+inline Int64 Globals::Id() { return get()->Id(); }
+inline Int64 GlobalsStorage::Id() {
 	return _id;
 }
 inline Value Globals::AsMap() { return get()->AsMap(); }

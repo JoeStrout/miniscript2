@@ -186,7 +186,7 @@ public class VM {
 	// a bare field compare rather than a walk out to the Globals object.  Must be
 	// updated everywhere _globals is.  Zero is never a valid Id, so a VM with no
 	// namespace can never validate a stale FuncDef cache.
-	private Int32 _globalsId;
+	private Int64 _globalsId;
 
 	public Globals GetGlobals() {
 		return _globals;

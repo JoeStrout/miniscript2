@@ -30,7 +30,7 @@ class FuncDefStorage : public std::enable_shared_from_this<FuncDefStorage> {
 	public: String FileName = "";
 	public: List<Value> GlobalNames = List<Value>::New();
 	public: List<Int32> GlobalSlots = List<Int32>::New();
-	public: Int32 GlobalCacheId = 0;
+	public: Int64 GlobalCacheId = 0;
 
 	// ── Global-reference table ────────────────────────────────────────────────
 	// The names this function reaches as globals, in the order the BC operand of
@@ -126,8 +126,8 @@ struct FuncDef {
 	public: void set_GlobalNames(List<Value> _v);
 	public: List<Int32> GlobalSlots();
 	public: void set_GlobalSlots(List<Int32> _v);
-	public: Int32 GlobalCacheId();
-	public: void set_GlobalCacheId(Int32 _v);
+	public: Int64 GlobalCacheId();
+	public: void set_GlobalCacheId(Int64 _v);
 
 	// ── Global-reference table ────────────────────────────────────────────────
 	// The names this function reaches as globals, in the order the BC operand of
@@ -220,8 +220,8 @@ inline List<Value> FuncDef::GlobalNames() { return get()->GlobalNames; }
 inline void FuncDef::set_GlobalNames(List<Value> _v) { get()->GlobalNames = _v; }
 inline List<Int32> FuncDef::GlobalSlots() { return get()->GlobalSlots; }
 inline void FuncDef::set_GlobalSlots(List<Int32> _v) { get()->GlobalSlots = _v; }
-inline Int32 FuncDef::GlobalCacheId() { return get()->GlobalCacheId; }
-inline void FuncDef::set_GlobalCacheId(Int32 _v) { get()->GlobalCacheId = _v; }
+inline Int64 FuncDef::GlobalCacheId() { return get()->GlobalCacheId; }
+inline void FuncDef::set_GlobalCacheId(Int64 _v) { get()->GlobalCacheId = _v; }
 inline Int32 FuncDef::AddGlobalRef(Value name) { return get()->AddGlobalRef(name); }
 inline List<Int32> FuncDef::_lineRLEPC() { return get()->_lineRLEPC; }
 inline void FuncDef::set__lineRLEPC(List<Int32> _v) { get()->_lineRLEPC = _v; }

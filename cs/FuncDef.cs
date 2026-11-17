@@ -44,7 +44,7 @@ public class FuncDef {
 	// Id 0 is never issued (Globals pre-increments), so 0 means "never resolved".
 	public List<Value> GlobalNames = new List<Value>();
 	public List<Int32> GlobalSlots = new List<Int32>();
-	public Int32 GlobalCacheId = 0;
+	public Int64 GlobalCacheId = 0;
 
 	// Intern a name into the global-reference table, returning its index.  Used
 	// by the code generator and the assembler while building this function.

@@ -121,7 +121,7 @@ public class Globals {
 	private List<Value> _names;             // slot -> name (never cleared)
 	private List<Value> _values;            // slot -> value, or Value.Unassigned
 	private Dictionary<Value, Int32> _index; // name -> slot
-	public Int32 Id;                        // generation, for cache validation
+	public Int64 Id;                        // generation, for cache validation
 }
 ```
 
@@ -259,7 +259,7 @@ proposal; see §8 stage 4 for why they were renamed.)
 
 `BC` indexes a per-`FuncDef` global-reference table: `List<Value> GlobalNames`
 filled at compile time, `List<Int32> GlobalSlots` filled at run time, plus a
-single `Int32 GlobalCacheId`.  The access is:
+single `Int64 GlobalCacheId`.  The access is:
 
 ```csharp
 if (curFunc.GlobalCacheId != globals.Id) ResolveGlobalRefs(curFunc, globals);

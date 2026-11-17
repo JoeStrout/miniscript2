@@ -28,7 +28,10 @@ Globals InterpreterStorage::GetGlobals() {
 	return _globals;
 }
 void InterpreterStorage::ClearGlobals() {
-	if (!IsNull(_globals)) _globals.Clear();
+	if (!IsNull(_globals)) {
+		_globals.Clear();
+		_globals.ResetPerProgramValues();
+	}
 }
 InterpreterStorage::InterpreterStorage(List<String> sourceList,TextOutputMethod standardOutput,TextOutputMethod errorOutput) {
 	String source = String::Join("\n", sourceList);

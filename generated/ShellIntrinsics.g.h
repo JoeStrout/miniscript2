@@ -36,19 +36,20 @@ struct ExecJob {
 class ShellIntrinsics {
 	private: static List<String> _shellArgStrings;
 	private: static Value _shellArgs;
-	private: static Value _envMap;
+	private: static PerProgram _env;
 	private: static const String kDefaultImportPath;
 	private: static List<ExecJob> _execJobs;
-	private: static Value _fileModuleMap;
-	private: static Value _fileHandleClassMap;
-	private: static Value _rawDataClassMap;
+	private: static PerProgram _fileModule;
+	private: static PerProgram _fileHandleClass;
+	private: static PerProgram _rawDataClass;
 	private: static Int32 _rdStart;
 	private: static List<String> _rdKeys;
 	private: static List<String> _fhKeys;
 	private: static List<String> _fmKeys;
-	private: static Value _keyModuleMap;
+	private: static PerProgram _keyModule;
 	private: static Int32 _keyStart;
 	private: static List<String> _keyKeys;
+	// `env`: each program's own map of environment variables (see PerProgram.cs).
 
 	// Default import search path, used when MS_IMPORT_PATH is not already set in
 	// the environment.  Variables are expanded at import time, not here.
@@ -57,6 +58,8 @@ class ShellIntrinsics {
 	// once FinishExec returns the job's result, and is then reused.
 
 	// ── File module static fields ─────────────────────────────────────────────
+	// Each program gets its own copy of these maps (see PerProgram.cs), so one
+	// script's changes to `file`, `FileHandle` or `RawData` are not seen by others.
 
 	// ── Key module static fields ──────────────────────────────────────────────
 
@@ -72,20 +75,26 @@ class ShellIntrinsics {
 	// Build and cache the shell-argument list.
 	private: static Value GetShellArgs();
 
-	// Build and cache the environment-variable map.
-	// C# reads System.Environment; C++ reads the POSIX environ array.
+	// The running program's environment-variable map, built on first use.
 	private: static Value GetEnvMap();
 
-	// GC root callback — keep our cached Values alive.
+	// Build a fresh environment-variable map: a snapshot of the process
+	// environment, as it is when a program first uses `env`.  The program's
+	// changes to it reach the real environment only when it calls `exec`
+	// (see SyncEnvMap).
+	// C# reads System.Environment; C++ reads the POSIX environ array.
+	private: static Value BuildEnvMap();
+
+	// GC root callback — keep our cached Values alive.  (The module and env
+	// maps are PerProgram values, kept alive by each program's namespace.)
 	public: static void MarkRoots(object userData);
 
 	// Drop cached values so they are rebuilt on next use.
-	// Call from VM reset if needed.
 	public: static void InvalidateCaches();
 
-	// Push all entries in _envMap to the real process environment.
-	// Only called when _envMap is non-null (i.e., the user has accessed `env`).
-	private: static void SyncEnvMap();
+	// Push all entries in a program's env map to the real process environment.
+	// Only called when the program has built one (i.e., has accessed `env`).
+	private: static void SyncEnvMap(Value envMap);
 
 	// Store a newly started job in a free slot of _execJobs (adding a slot if
 	// none is free), and return its index, which serves as the job handle.
@@ -231,9 +240,15 @@ class ShellIntrinsics {
 
 	private: static Value GetRawDataClassMap();
 
+	private: static Value BuildRawDataClassMap();
+
 	private: static Value GetFileHandleClassMap();
 
+	private: static Value BuildFileHandleClassMap();
+
 	private: static Value GetFileModuleMap();
+
+	private: static Value BuildFileModuleMap();
 
 	// ── File module init ──────────────────────────────────────────────────────
 
@@ -270,6 +285,8 @@ class ShellIntrinsics {
 	private: static Int32 KeyGetImpl(Boolean raw);
 
 	private: static Value GetKeyModuleMap();
+
+	private: static Value BuildKeyModuleMap();
 
 	private: static void InitKeyIntrinsics();
 	private: static Double _dateTimeEpoch;

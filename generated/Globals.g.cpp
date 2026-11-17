@@ -5,6 +5,7 @@
 #include "GCManager.g.h"
 #include "IntrinsicAPI.g.h"
 #include "VM.g.h"
+#include "PerProgram.g.h"
 
 namespace MiniScript {
 
@@ -21,6 +22,7 @@ GlobalsStorage::GlobalsStorage() {
 	_index         =  Dictionary<Value, Int32>::New();
 	_assignedCount = 0;
 	_mapValue      = Value::Null;
+	_perProgram    =  List<Value>::New();
 	_lastId++;
 	_id            = _lastId;
 }
@@ -78,6 +80,26 @@ void GlobalsStorage::Clear() {
 	for (Int32 i = 0; i < _values.Count(); i++) _values[i] = Value::Unassigned;
 	_assignedCount = 0;
 }
+Value GlobalsStorage::PerProgramValue(Int32 index) {
+	if (index < 0 || index >= _perProgram.Count()) return Value::Null;
+	return _perProgram[index];
+}
+void GlobalsStorage::SetPerProgramValue(Int32 index,Value value) {
+	while (_perProgram.Count() <= index) _perProgram.Add(Value::Null);
+	_perProgram[index] = value;
+}
+void GlobalsStorage::ResetPerProgramValues() {
+	for (Int32 i = 0; i < _perProgram.Count(); i++) _perProgram[i] = Value::Null;
+}
+String GlobalsStorage::PerProgramName(Value v) {
+	if (v.IsNull()) return nullptr;
+	for (Int32 i = 0; i < _perProgram.Count(); i++) {
+		if (!_perProgram[i].RefEquals(v)) continue;
+		String name = PerProgram::DisplayName(i);
+		if (name.Length() > 0) return name;
+	}
+	return nullptr;
+}
 Int32 GlobalsStorage::NextAssignedSlot(Int32 startSlot) {
 	Int32 i = startSlot;
 	if (i < 0) i = 0;
@@ -92,6 +114,7 @@ void GlobalsStorage::MarkChildren() {
 		GCManager::Mark(_names[i]);
 		GCManager::Mark(_values[i]);
 	}
+	for (Int32 i = 0; i < _perProgram.Count(); i++) GCManager::Mark(_perProgram[i]);
 }
 void GlobalsStorage::EnsureUnassignedSentinel() {
 	FuncDef f = Value::Unassigned.FunctionDef();

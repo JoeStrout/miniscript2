@@ -16,6 +16,7 @@ using System.Collections.Generic;
 // CPP: #include "Interpreter.g.h"
 // CPP: #include "Intrinsic.g.h"
 // CPP: #include "CoreIntrinsics.g.h"
+// CPP: #include "PerProgram.g.h"
 
 namespace MiniScript {
 
@@ -1050,6 +1051,103 @@ public static class UnitTests {
 				output.Count > 4 ? output[4] : "(no output)"));
 
 		if (!ok) IOHelper.Print("TestResetPreservingGlobals FAILED");
+		return ok;
+	}
+
+	// ── Per-program type maps ────────────────────────────────────────────────────
+
+	// Methods a script adds to `list` or `string` belong to that program: another
+	// interpreter must not see them, a chained program (same namespace) must, and
+	// a plain Reset (new namespace) must start from the pristine templates.
+	public static Boolean TestTypeMapIsolation() {
+		Boolean ok = true;
+
+		List<String> output = new List<String>();
+		// CPP: gTestOutput = output;
+		Interpreter a;
+		a = new Interpreter(
+			"list.double = function; return self + self; end function\nstring.shout = function; return self.upper + \"!\"; end function\nprint [1].double\nprint \"hi\".shout");
+		a.standardOutput = (String s, bool eol) => { output.Add(s); }; // CPP:
+		// CPP: a.set_standardOutput([](String s, Boolean) { gTestOutput.Add(s); });
+		a.errorOutput = (String s, bool eol) => { output.Add(s); }; // CPP:
+		// CPP: a.set_errorOutput([](String s, Boolean) { gTestOutput.Add(s); });
+		a.RunUntilDone(10, false);
+
+		Interpreter b = new Interpreter("print list.hasIndex(\"double\")\nprint string.hasIndex(\"shout\")\nprint [] isa list");
+		b.standardOutput = (String s, bool eol) => { output.Add(s); }; // CPP:
+		// CPP: b.set_standardOutput([](String s, Boolean) { gTestOutput.Add(s); });
+		b.errorOutput = (String s, bool eol) => { output.Add(s); }; // CPP:
+		// CPP: b.set_errorOutput([](String s, Boolean) { gTestOutput.Add(s); });
+		b.RunUntilDone(10, false);
+
+		// A chained program keeps the namespace, so it keeps the added methods.
+		a.ResetPreservingGlobals("print [2].double");
+		GCManager.CollectGarbage();
+		a.RunUntilDone(10, false);
+
+		// A new program gets a new namespace, and so the original type maps.
+		a.Reset("print list.hasIndex(\"double\")");
+		a.RunUntilDone(10, false);
+
+		ok = ok && Assert(output.Count == 7,
+			StringUtils.Format("expected 7 lines of output, got {0}", output.Count));
+		if (output.Count == 7) {
+			ok = ok && Assert(output[0] == "[1, 1]",
+				StringUtils.Format("added list method: expected '[1, 1]', got '{0}'", output[0]));
+			ok = ok && Assert(output[1] == "HI!",
+				StringUtils.Format("added string method: expected 'HI!', got '{0}'", output[1]));
+			ok = ok && Assert(output[2] == "0",
+				StringUtils.Format("other interpreter saw list.double: got '{0}'", output[2]));
+			ok = ok && Assert(output[3] == "0",
+				StringUtils.Format("other interpreter saw string.shout: got '{0}'", output[3]));
+			ok = ok && Assert(output[4] == "1",
+				StringUtils.Format("[] isa list in other interpreter: expected '1', got '{0}'", output[4]));
+			ok = ok && Assert(output[5] == "[2, 2]",
+				StringUtils.Format("chained program lost list.double: got '{0}'", output[5]));
+			ok = ok && Assert(output[6] == "0",
+				StringUtils.Format("plain Reset kept list.double: got '{0}'", output[6]));
+		}
+
+		if (!ok) IOHelper.Print("TestTypeMapIsolation FAILED");
+		return ok;
+	}
+
+	// Builder for TestPerProgram: a fresh map each call.
+	private static Value BuildPerProgramTestMap() {
+		Value m = Value.make_map(2);
+		m.MapSet("greeting", "hello there");
+		return m;
+	}
+
+	// A host-defined PerProgram: one value per program, the same value on every
+	// request, kept alive by the program's namespace, and rebuilt after `reset`
+	// (Interpreter.ClearGlobals).
+	public static Boolean TestPerProgram() {
+		Boolean ok = true;
+		PerProgram pp = new PerProgram(BuildPerProgramTestMap, "ppTest"); // CPP: PerProgram pp = PerProgram::New(UnitTests::BuildPerProgramTestMap, "ppTest");
+		Interpreter a = new Interpreter("x = 1");
+		Interpreter b = new Interpreter("x = 2");
+
+		Value va = pp.GetFor(a.GetGlobals());
+		Value vb = pp.GetFor(b.GetGlobals());
+		ok = ok && Assert(va.IsMap(), "PerProgram value should be the built map");
+		ok = ok && Assert(pp.GetFor(a.GetGlobals()).RefEquals(va), "same program should get the same value");
+		ok = ok && Assert(!vb.RefEquals(va), "different programs should get different values");
+		ok = ok && Assert(a.GetGlobals().PerProgramName(va) == "ppTest", "display name should be registered");
+
+		// Kept alive by the namespace alone.
+		GCManager.FullCollectGarbage();
+		Value greeting;
+		ok = ok && Assert(va.TryGet(Value.make_string("greeting"), out greeting)
+			&& greeting.ToString(null) == "hello there", "value should survive a full collection");
+
+		// Cleared by ClearGlobals (what `reset` does), then rebuilt on request.
+		a.ClearGlobals();
+		Value va2 = pp.GetFor(a.GetGlobals());
+		ok = ok && Assert(va2.IsMap() && !va2.RefEquals(va), "ClearGlobals should cause a fresh value to be built");
+		ok = ok && Assert(pp.GetFor(b.GetGlobals()).RefEquals(vb), "ClearGlobals on one program must not affect another");
+
+		if (!ok) IOHelper.Print("TestPerProgram FAILED");
 		return ok;
 	}
 
@@ -2258,6 +2356,8 @@ public static class UnitTests {
 			&& TestParserNeedMoreInput()
 			&& TestREPL()
 			&& TestResetPreservingGlobals()
+			&& TestTypeMapIsolation()
+			&& TestPerProgram()
 		&& TestHostGlobals()
 		&& TestGlobalsSwitch()
 			&& TestRunFunction()

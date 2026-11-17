@@ -182,13 +182,11 @@ public class Intrinsic {
 			intr.EnsureBuilt();
 			intrinsics[intr._nameValue] = intr._funcRef;
 		}
-		// Note: do NOT invalidate the cached type maps here.  They are GC roots
-		// (CoreIntrinsics.MarkRoots), so they are never swept out from under us,
-		// and they are built lazily -- so on the first call there is nothing to
-		// rebuild anyway.  Doing it per VM would discard whatever a script has
-		// added to `list`, `string` or `map`, process-wide, since those maps are
-		// shared by every VM; it would also clear short names a host registered
-		// during its own setup.
+		// Note: do NOT invalidate the type map templates here.  They are GC roots
+		// (CoreIntrinsics.MarkRoots) and built lazily, so there is nothing to
+		// rebuild; doing it per VM would discard methods a host added to them
+		// during its own setup, and clear the short names it registered.  (Each
+		// program's own type maps live on its Globals; see Globals.ListType.)
 	}
 }
 

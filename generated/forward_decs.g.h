@@ -64,6 +64,8 @@ struct MemberParselet;
 class MemberParseletStorage;
 struct Intrinsic;
 class IntrinsicStorage;
+struct PerProgram;
+class PerProgramStorage;
 struct GCSetBase;
 class GCSetBaseStorage;
 struct GCStringSet;

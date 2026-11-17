@@ -42,6 +42,7 @@ using static System.Runtime.CompilerServices.MethodImplOptions;
 // CPP: #include "GCManager.g.h"
 // CPP: #include "IntrinsicAPI.g.h"
 // CPP: #include "VM.g.h"
+// CPP: #include "PerProgram.g.h"
 //
 // Context and IntrinsicResult are only named inside a method body (the sentinel
 // callback), and FuncDef.g.h already forward-declares both, so those two stay
@@ -65,6 +66,12 @@ public class Globals {
 	private Int64 _id;                        // generation; see Id()
 	private Int32 _assignedCount;             // slots currently holding a value
 	private Value _mapValue;                  // the `globals` map viewing this table
+
+	// This program's PerProgram values (see PerProgram.cs), indexed by each
+	// PerProgram's index; null where not built yet.  These include the
+	// built-in type maps (`list`, `string`, ...), so that one script's
+	// `string.foo = ...` is not seen by every other script in the process.
+	private List<Value> _perProgram;
 
 	// Generation counter.  Every Globals gets a distinct Id, and an Id is never
 	// reused.  Compiled code caches (name -> slot) resolutions and validates
@@ -108,6 +115,7 @@ public class Globals {
 		_index         = new Dictionary<Value, Int32>();
 		_assignedCount = 0;
 		_mapValue      = Value.Null;
+		_perProgram    = new List<Value>();
 		_lastId++;
 		_id            = _lastId;
 	}
@@ -279,6 +287,40 @@ public class Globals {
 		_assignedCount = 0;
 	}
 
+	// ── PerProgram values ─────────────────────────────────────────────────────
+
+	// The value stored for the PerProgram with the given index, or null if
+	// none has been built.  Use PerProgram.Get rather than calling this directly.
+	public Value PerProgramValue(Int32 index) {
+		if (index < 0 || index >= _perProgram.Count) return Value.Null;
+		return _perProgram[index];
+	}
+
+	public void SetPerProgramValue(Int32 index, Value value) {
+		while (_perProgram.Count <= index) _perProgram.Add(Value.Null);
+		_perProgram[index] = value;
+	}
+
+	// Discard every PerProgram value (including this program's type maps), so
+	// each is rebuilt on next use, undoing whatever scripts did to them.  Used
+	// by `reset`.  Code still holding one of the old values keeps it, but it is
+	// no longer the program's value.
+	public void ResetPerProgramValues() {
+		for (Int32 i = 0; i < _perProgram.Count; i++) _perProgram[i] = Value.Null;
+	}
+
+	// The display name of v if it is one of this program's PerProgram values
+	// and has one (as `list`, `file`, etc.), or null if not.
+	public String PerProgramName(Value v) {
+		if (v.IsNull()) return null;
+		for (Int32 i = 0; i < _perProgram.Count; i++) {
+			if (!_perProgram[i].RefEquals(v)) continue;
+			String name = PerProgram.DisplayName(i);
+			if (name.Length > 0) return name;
+		}
+		return null;
+	}
+
 	// Find the next assigned slot at or after startSlot, or -1 if there is
 	// none.  This is the iteration primitive behind `for k in globals`; unlike
 	// the Dictionary walk it replaces, it is O(1) per step.
@@ -301,6 +343,7 @@ public class Globals {
 			GCManager.Mark(_names[i]);
 			GCManager.Mark(_values[i]);
 		}
+		for (Int32 i = 0; i < _perProgram.Count; i++) GCManager.Mark(_perProgram[i]);
 	}
 
 	// ── The Unassigned sentinel ───────────────────────────────────────────────

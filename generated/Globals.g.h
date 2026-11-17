@@ -57,7 +57,13 @@ class GlobalsStorage : public std::enable_shared_from_this<GlobalsStorage> {
 	private: Int64 _id; // generation; see Id()
 	private: Int32 _assignedCount; // slots currently holding a value
 	private: Value _mapValue; // the `globals` map viewing this table
+	private: List<Value> _perProgram;
 	private: static Int64 _lastId;
+
+	// This program's PerProgram values (see PerProgram.cs), indexed by each
+	// PerProgram's index; null where not built yet.  These include the
+	// built-in type maps (`list`, `string`, ...), so that one script's
+	// `string.foo = ...` is not seen by every other script in the process.
 
 	// Generation counter.  Every Globals gets a distinct Id, and an Id is never
 	// reused.  Compiled code caches (name -> slot) resolutions and validates
@@ -170,6 +176,24 @@ class GlobalsStorage : public std::enable_shared_from_this<GlobalsStorage> {
 	// index, and this object's Id).
 	public: void Clear();
 
+	// ── PerProgram values ─────────────────────────────────────────────────────
+
+	// The value stored for the PerProgram with the given index, or null if
+	// none has been built.  Use PerProgram.Get rather than calling this directly.
+	public: Value PerProgramValue(Int32 index);
+
+	public: void SetPerProgramValue(Int32 index, Value value);
+
+	// Discard every PerProgram value (including this program's type maps), so
+	// each is rebuilt on next use, undoing whatever scripts did to them.  Used
+	// by `reset`.  Code still holding one of the old values keeps it, but it is
+	// no longer the program's value.
+	public: void ResetPerProgramValues();
+
+	// The display name of v if it is one of this program's PerProgram values
+	// and has one (as `list`, `file`, etc.), or null if not.
+	public: String PerProgramName(Value v);
+
 	// Find the next assigned slot at or after startSlot, or -1 if there is
 	// none.  This is the iteration primitive behind `for k in globals`; unlike
 	// the Dictionary walk it replaces, it is O(1) per step.
@@ -216,8 +240,15 @@ struct Globals {
 	private: void set__assignedCount(Int32 _v); // slots currently holding a value
 	private: Value _mapValue(); // the `globals` map viewing this table
 	private: void set__mapValue(Value _v); // the `globals` map viewing this table
+	private: List<Value> _perProgram();
+	private: void set__perProgram(List<Value> _v);
 	private: Int64 _lastId();
 	private: void set__lastId(Int64 _v);
+
+	// This program's PerProgram values (see PerProgram.cs), indexed by each
+	// PerProgram's index; null where not built yet.  These include the
+	// built-in type maps (`list`, `string`, ...), so that one script's
+	// `string.foo = ...` is not seen by every other script in the process.
 
 	// Generation counter.  Every Globals gets a distinct Id, and an Id is never
 	// reused.  Compiled code caches (name -> slot) resolutions and validates
@@ -332,6 +363,24 @@ struct Globals {
 	// index, and this object's Id).
 	public: inline void Clear();
 
+	// ── PerProgram values ─────────────────────────────────────────────────────
+
+	// The value stored for the PerProgram with the given index, or null if
+	// none has been built.  Use PerProgram.Get rather than calling this directly.
+	public: inline Value PerProgramValue(Int32 index);
+
+	public: inline void SetPerProgramValue(Int32 index, Value value);
+
+	// Discard every PerProgram value (including this program's type maps), so
+	// each is rebuilt on next use, undoing whatever scripts did to them.  Used
+	// by `reset`.  Code still holding one of the old values keeps it, but it is
+	// no longer the program's value.
+	public: inline void ResetPerProgramValues();
+
+	// The display name of v if it is one of this program's PerProgram values
+	// and has one (as `list`, `file`, etc.), or null if not.
+	public: inline String PerProgramName(Value v);
+
 	// Find the next assigned slot at or after startSlot, or -1 if there is
 	// none.  This is the iteration primitive behind `for k in globals`; unlike
 	// the Dictionary walk it replaces, it is O(1) per step.
@@ -371,6 +420,8 @@ inline Int32 Globals::_assignedCount() { return get()->_assignedCount; } // slot
 inline void Globals::set__assignedCount(Int32 _v) { get()->_assignedCount = _v; } // slots currently holding a value
 inline Value Globals::_mapValue() { return get()->_mapValue; } // the `globals` map viewing this table
 inline void Globals::set__mapValue(Value _v) { get()->_mapValue = _v; } // the `globals` map viewing this table
+inline List<Value> Globals::_perProgram() { return get()->_perProgram; }
+inline void Globals::set__perProgram(List<Value> _v) { get()->_perProgram = _v; }
 inline Int64 Globals::_lastId() { return get()->_lastId; }
 inline void Globals::set__lastId(Int64 _v) { get()->_lastId = _v; }
 inline void Globals::AttachMap(Value mapValue) { return get()->AttachMap(mapValue); }
@@ -428,6 +479,10 @@ inline void Globals::Set(Value key,Value value) { return get()->Set(key, value);
 inline Boolean Globals::Remove(Value key) { return get()->Remove(key); }
 inline Boolean Globals::HasKey(Value key) { return get()->HasKey(key); }
 inline void Globals::Clear() { return get()->Clear(); }
+inline Value Globals::PerProgramValue(Int32 index) { return get()->PerProgramValue(index); }
+inline void Globals::SetPerProgramValue(Int32 index,Value value) { return get()->SetPerProgramValue(index, value); }
+inline void Globals::ResetPerProgramValues() { return get()->ResetPerProgramValues(); }
+inline String Globals::PerProgramName(Value v) { return get()->PerProgramName(v); }
 inline Int32 Globals::NextAssignedSlot(Int32 startSlot) { return get()->NextAssignedSlot(startSlot); }
 inline void Globals::MarkChildren() { return get()->MarkChildren(); }
 

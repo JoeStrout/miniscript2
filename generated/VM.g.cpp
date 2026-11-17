@@ -77,6 +77,48 @@ void VMStorage::SetGlobals(Globals globals) {
 	_globals = globals;
 	_globalsId = (!IsNull(globals)) ? globals.Id() : 0;
 }
+Value VMStorage::ListType() {
+	if (IsNull(_globals)) return CoreIntrinsics::ListType();
+	return CoreIntrinsics::ListTypeIn(_globals);
+}
+Value VMStorage::StringType() {
+	if (IsNull(_globals)) return CoreIntrinsics::StringType();
+	return CoreIntrinsics::StringTypeIn(_globals);
+}
+Value VMStorage::MapType() {
+	if (IsNull(_globals)) return CoreIntrinsics::MapType();
+	return CoreIntrinsics::MapTypeIn(_globals);
+}
+Value VMStorage::NumberType() {
+	if (IsNull(_globals)) return CoreIntrinsics::NumberType();
+	return CoreIntrinsics::NumberTypeIn(_globals);
+}
+Value VMStorage::FunctionType() {
+	if (IsNull(_globals)) return CoreIntrinsics::FunctionType();
+	return CoreIntrinsics::FunctionTypeIn(_globals);
+}
+Value VMStorage::ErrorType() {
+	if (IsNull(_globals)) return CoreIntrinsics::ErrorType();
+	return CoreIntrinsics::ErrorTypeIn(_globals);
+}
+Value VMStorage::IntrinsicsMap() {
+	if (_intrinsicsMap.IsNull()) {
+		Int32 count = Intrinsic::Count();
+		Value map = Value::make_map(count);
+		if (!IsNull(_intrinsics)) {
+			for (Int32 i = 0; i < count; i++) {
+				Intrinsic intr = Intrinsic::GetByIndex(i);
+				if (IsNull(intr) || IsNull(intr.Name()) || intr.Name().Length() == 0) continue;
+				Value name = Value::make_string(intr.Name());
+				Value func;
+				if (_intrinsics.TryGetValue(name, &func)) map.MapSet(name, func);
+			}
+		}
+		map.Freeze();
+		_intrinsicsMap = map;
+	}
+	return _intrinsicsMap;
+}
 double VMStorage::ElapsedTime() {
 	auto now = std::chrono::steady_clock::now();
 	return std::chrono::duration<double>(now - _startTime).count();
@@ -130,7 +172,13 @@ String VMStorage::FindShortName(Value v) {
 			if (!slotName.RefEquals(v)) return slotName.ToString(nullptr);
 		}
 	}
-	// Fall back to the intrinsic short-name registry (type maps, etc.)
+	// This program's PerProgram values (type maps, modules) display by
+	// their registered names, as `list`, `string`, `file`, etc.
+	if (!IsNull(_globals)) {
+		String ppName = _globals.PerProgramName(v);
+		if (!IsNull(ppName)) return ppName;
+	}
+	// Fall back to the intrinsic short-name registry (host-registered names, etc.)
 	return Intrinsic::GetShortName(v);
 }
 VMStorage::VMStorage(Int32 stackSlots,Int32 callSlots) {
@@ -143,6 +191,7 @@ void VMStorage::InitVM(Int32 stackSlots,Int32 callSlots) {
 	callStackTop = 0;
 	_globals = nullptr;   // created (or adopted) at Reset
 	_globalsId = 0;
+	_intrinsicsMap = Value::Null;
 	_pendingCallStack =  List<PendingCallState>::New();
 	Error = Value::Null;
 
@@ -229,6 +278,7 @@ void VMStorage::MarkRoots(object user_data) {
 	// that no VM has adopted yet; this mark is what keeps it alive for a VM
 	// that outlives its creator.)
 	if (!IsNull(vm._globals())) GCManager::Mark(vm._globals().AsMap());
+	GCManager::Mark(vm._intrinsicsMap());
 	// Manual-call results saved on the pending-call stack (nested imports).
 	for (Int32 pi = 0; pi < vm._pendingCallStack().Count(); pi++) {
 		GCManager::Mark(vm._pendingCallStack()[pi].ManualResult);
@@ -2284,7 +2334,7 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 					// Error-specific isa rules:
 					//   e isa error   -> 1
 					//   e1 isa e2     -> 1 if e2 is in e1's __isa chain (not e1 itself)
-					if (valC.RefEquals(CoreIntrinsics::ErrorType())) {
+					if (valC.RefEquals(ErrorType())) {
 						isaResult = 1;
 					} else if (valC.IsError() && valB.Isa().IsaContains(valC)) {
 						isaResult = 1;
@@ -2308,15 +2358,15 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 					}
 					// If not found via __isa chain, check built-in type maps
 					if (isaResult == 0) {
-						if (valB.IsNumber() && valC.RefEquals(CoreIntrinsics::NumberType())) {
+						if (valB.IsNumber() && valC.RefEquals(NumberType())) {
 							isaResult = 1;
-						} else if (valB.IsString() && valC.RefEquals(CoreIntrinsics::StringType())) {
+						} else if (valB.IsString() && valC.RefEquals(StringType())) {
 							isaResult = 1;
-						} else if (valB.IsList() && valC.RefEquals(CoreIntrinsics::ListType())) {
+						} else if (valB.IsList() && valC.RefEquals(ListType())) {
 							isaResult = 1;
-						} else if (valB.IsMap() && valC.RefEquals(CoreIntrinsics::MapType())) {
+						} else if (valB.IsMap() && valC.RefEquals(MapType())) {
 							isaResult = 1;
-						} else if (valB.IsFuncRef() && valC.RefEquals(CoreIntrinsics::FunctionType())) {
+						} else if (valB.IsFuncRef() && valC.RefEquals(FunctionType())) {
 							isaResult = 1;
 						}
 					}
@@ -2436,13 +2486,13 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 						hasPendingContext = Boolean(false);
 						VM_NEXT();
 					}
-					typeMap = CoreIntrinsics::MapType();
+					typeMap = MapType();
 				} else if (valB.IsList()) {
-					typeMap = CoreIntrinsics::ListType();
+					typeMap = ListType();
 				} else if (valB.IsString()) {
-					typeMap = CoreIntrinsics::StringType();
+					typeMap = StringType();
 				} else if (valB.IsNumber()) {
-					typeMap = CoreIntrinsics::NumberType();
+					typeMap = NumberType();
 				}
 				if (typeMap.IsNull()) {
 					RaiseRuntimeError("Can't index into {0}", valB);

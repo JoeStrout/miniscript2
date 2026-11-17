@@ -265,7 +265,7 @@ parameterNames = function(s)
 	result = []
 	unnamed = 0
 	for param in splitParams(s)
-		param = param.split("=", 2)[0]
+		param = param.split("=", 2)[0].trim
 		name = param.split(" ")[-1]
 		result.push name
 	end for

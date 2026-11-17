@@ -7473,6 +7473,32 @@ print fn(-7)
 --------------------------------
 abs=function(x=0)
 7
+================================
+==== intrinsics map is frozen
+================================
+print isFrozen(intrinsics)
+print intrinsics.hasIndex("print")
+--------------------------------
+1
+1
+================================
+==== reset undoes changes to the built-in type maps
+================================
+list.second = function; return self[1]; end function
+print [5, 6].second
+print list.hasIndex("second")
+print [list, string, map, number, funcRef, error]
+reset
+print list.hasIndex("second")
+print [5, 6] isa list
+print [list, string, map, number, funcRef, error]
+--------------------------------
+6
+1
+[list, string, map, number, funcRef, error]
+0
+1
+[list, string, map, number, funcRef, error]
 ==== bitAnd basic cases
 ================================
 print bitAnd(12, 10)

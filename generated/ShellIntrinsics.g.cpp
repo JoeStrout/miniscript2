@@ -17,6 +17,7 @@
 #include "StringUtils.g.h"
 #include "CS_value_util.h"
 #include "CoreIntrinsics.g.h"
+#include "PerProgram.g.h"
 #include "DateTimeUtils.g.h"
 #include "keyboard.h"
 #include "IOHelper.g.h"
@@ -62,17 +63,17 @@ namespace MiniScript {
 
 List<String> ShellIntrinsics::_shellArgStrings = nullptr;
 Value ShellIntrinsics::_shellArgs = Value::Null;
-Value ShellIntrinsics::_envMap = Value::Null;
+PerProgram ShellIntrinsics::_env = nullptr;
 const String ShellIntrinsics::kDefaultImportPath = "$MS_SCRIPT_DIR:$MS_SCRIPT_DIR/lib:$MS_EXE_DIR/lib";
 List<ExecJob> ShellIntrinsics::_execJobs = nullptr;
-Value ShellIntrinsics::_fileModuleMap = Value::Null;
-Value ShellIntrinsics::_fileHandleClassMap = Value::Null;
-Value ShellIntrinsics::_rawDataClassMap = Value::Null;
+PerProgram ShellIntrinsics::_fileModule = nullptr;
+PerProgram ShellIntrinsics::_fileHandleClass = nullptr;
+PerProgram ShellIntrinsics::_rawDataClass = nullptr;
 Int32 ShellIntrinsics::_rdStart = -1, _fhStart = -1, _fmStart = -1;
 List<String> ShellIntrinsics::_rdKeys = nullptr;
 List<String> ShellIntrinsics::_fhKeys = nullptr;
 List<String> ShellIntrinsics::_fmKeys = nullptr;
-Value ShellIntrinsics::_keyModuleMap = Value::Null;
+PerProgram ShellIntrinsics::_keyModule = nullptr;
 Int32 ShellIntrinsics::_keyStart = -1;
 List<String> ShellIntrinsics::_keyKeys = nullptr;
 struct CppFileHandle { FILE* f; };
@@ -95,14 +96,16 @@ Value ShellIntrinsics::GetShellArgs() {
 	return _shellArgs;
 }
 Value ShellIntrinsics::GetEnvMap() {
-	if (!_envMap.IsNull()) return _envMap;
-	_envMap = Value::make_map(64);
+	return _env.Get();
+}
+Value ShellIntrinsics::BuildEnvMap() {
+	Value envMap = Value::make_map(64);
 	for (char **current = environ; *current; current++) {
 		char* eqPos = strchr(*current, '=');
 		if (!eqPos) continue;
 		String varName(*current, (size_t)(eqPos - *current));
 		String valueStr(eqPos + 1);
-		_envMap.MapSet(Value::make_string(varName), Value::make_string(valueStr));
+		envMap.MapSet(Value::make_string(varName), Value::make_string(valueStr));
 	}
 	// Seed the default import search path, unless the user already set
 	// MS_IMPORT_PATH in the environment.  Seeding it into the map (rather
@@ -110,29 +113,19 @@ Value ShellIntrinsics::GetEnvMap() {
 	// env.MS_IMPORT_PATH = env.MS_IMPORT_PATH + ":" + myDir.
 	Value importPathKey = Value::make_string("MS_IMPORT_PATH");
 	Value existing;
-	if (!_envMap.TryGet(importPathKey, &existing) || existing.IsNull()) {
-		_envMap.MapSet(importPathKey, Value::make_string(kDefaultImportPath));
+	if (!envMap.TryGet(importPathKey, &existing) || existing.IsNull()) {
+		envMap.MapSet(importPathKey, Value::make_string(kDefaultImportPath));
 	}
-	return _envMap;
+	return envMap;
 }
 void ShellIntrinsics::MarkRoots(object userData) {
 	GCManager::Mark(_shellArgs);
-	GCManager::Mark(_envMap);
-	GCManager::Mark(_fileModuleMap);
-	GCManager::Mark(_fileHandleClassMap);
-	GCManager::Mark(_rawDataClassMap);
-	GCManager::Mark(_keyModuleMap);
 }
 void ShellIntrinsics::InvalidateCaches() {
 	_shellArgs = Value::Null;
-	_envMap = Value::Null;
-	_fileModuleMap = Value::Null;
-	_fileHandleClassMap = Value::Null;
-	_rawDataClassMap = Value::Null;
-	_keyModuleMap = Value::Null;
 }
-void ShellIntrinsics::SyncEnvMap() {
-	MapIterator iter = _envMap.Iterator();
+void ShellIntrinsics::SyncEnvMap(Value envMap) {
+	MapIterator iter = envMap.Iterator();
 	Value iterKey, iterVal;
 	while (map_iterator_next(&iter, &iterKey, &iterVal)) {
 		String key = iterKey.AsCString();
@@ -902,27 +895,33 @@ Value ShellIntrinsics::FsSaveRaw(String path,Value rawDataMap) {
 	return Value::null;
 }
 Value ShellIntrinsics::GetRawDataClassMap() {
-	if (!_rawDataClassMap.IsNull()) return _rawDataClassMap;
-	_rawDataClassMap = Value::make_map(24);
-	_rawDataClassMap.MapSet("_handle", Value::Null);
-	_rawDataClassMap.MapSet("littleEndian", Value::one);
+	return _rawDataClass.Get();
+}
+Value ShellIntrinsics::BuildRawDataClassMap() {
+	Value map = Value::make_map(24);
+	map.MapSet("_handle", Value::Null);
+	map.MapSet("littleEndian", Value::one);
 	for (Int32 i = 0; i < (Int32)_rdKeys.Count(); i++)
-		_rawDataClassMap.MapSet(_rdKeys[i], Intrinsic::GetByIndex(_rdStart + i).GetFunc());
-	return _rawDataClassMap;
+		map.MapSet(_rdKeys[i], Intrinsic::GetByIndex(_rdStart + i).GetFunc());
+	return map;
 }
 Value ShellIntrinsics::GetFileHandleClassMap() {
-	if (!_fileHandleClassMap.IsNull()) return _fileHandleClassMap;
-	_fileHandleClassMap = Value::make_map(12);
+	return _fileHandleClass.Get();
+}
+Value ShellIntrinsics::BuildFileHandleClassMap() {
+	Value map = Value::make_map(12);
 	for (Int32 i = 0; i < (Int32)_fhKeys.Count(); i++)
-		_fileHandleClassMap.MapSet(_fhKeys[i], Intrinsic::GetByIndex(_fhStart + i).GetFunc());
-	return _fileHandleClassMap;
+		map.MapSet(_fhKeys[i], Intrinsic::GetByIndex(_fhStart + i).GetFunc());
+	return map;
 }
 Value ShellIntrinsics::GetFileModuleMap() {
-	if (!_fileModuleMap.IsNull()) return _fileModuleMap;
-	_fileModuleMap = Value::make_map(20);
+	return _fileModule.Get();
+}
+Value ShellIntrinsics::BuildFileModuleMap() {
+	Value map = Value::make_map(20);
 	for (Int32 i = 0; i < (Int32)_fmKeys.Count(); i++)
-		_fileModuleMap.MapSet(_fmKeys[i], Intrinsic::GetByIndex(_fmStart + i).GetFunc());
-	return _fileModuleMap;
+		map.MapSet(_fmKeys[i], Intrinsic::GetByIndex(_fmStart + i).GetFunc());
+	return map;
 }
 void ShellIntrinsics::InitFileIntrinsics() {
 	Intrinsic f;
@@ -1670,12 +1669,14 @@ Int32 ShellIntrinsics::KeyGetImpl(Boolean raw) {
 	return code;
 }
 Value ShellIntrinsics::GetKeyModuleMap() {
-	if (!_keyModuleMap.IsNull()) return _keyModuleMap;
-	_keyModuleMap = Value::make_map(8);
+	return _keyModule.Get();
+}
+Value ShellIntrinsics::BuildKeyModuleMap() {
+	Value map = Value::make_map(8);
 	for (Int32 i = 0; i < (Int32)_keyKeys.Count(); i++)
-		_keyModuleMap.MapSet(_keyKeys[i], Intrinsic::GetByIndex(_keyStart + i).GetFunc());
-	_keyModuleMap.MapSet("raw", Value::zero);
-	return _keyModuleMap;
+		map.MapSet(_keyKeys[i], Intrinsic::GetByIndex(_keyStart + i).GetFunc());
+	map.MapSet("raw", Value::zero);
+	return map;
 }
 void ShellIntrinsics::InitKeyIntrinsics() {
 	Intrinsic f;
@@ -1732,6 +1733,11 @@ Double ShellIntrinsics::NowSeconds() {
 void ShellIntrinsics::Init() {
 	GCManager::RegisterMarkCallback(ShellIntrinsics::MarkRoots, nullptr);
 	CoreIntrinsics::RegisterInvalidateCallback(ShellIntrinsics::InvalidateCaches);
+	_env = PerProgram::New(ShellIntrinsics::BuildEnvMap, "env");
+	_fileModule = PerProgram::New(ShellIntrinsics::BuildFileModuleMap, "file");
+	_fileHandleClass = PerProgram::New(ShellIntrinsics::BuildFileHandleClassMap, "FileHandle");
+	_rawDataClass = PerProgram::New(ShellIntrinsics::BuildRawDataClassMap, "RawData");
+	_keyModule = PerProgram::New(ShellIntrinsics::BuildKeyModuleMap, "key");
 	InitFileIntrinsics();
 	InitKeyIntrinsics();
 
@@ -1785,8 +1791,9 @@ void ShellIntrinsics::Init() {
 		Value cmdArg = ctx.GetArg(0);
 		String cmd = cmdArg.ToString(nullptr);
 		Double timeout = ctx.GetArg(1).DoubleValue();
-		if (!_envMap.IsNull()) {
-			SyncEnvMap();
+		Value envMap = _env.Peek(ctx);
+		if (!envMap.IsNull()) {
+			SyncEnvMap(envMap);
 		}
 		Value handle = BeginExec(cmd, now + timeout);
 		if (handle.IsNull()) {

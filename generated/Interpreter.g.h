@@ -125,7 +125,9 @@ class InterpreterStorage : public std::enable_shared_from_this<InterpreterStorag
 	// bootstrap used to do.
 	public: Globals GetGlobals();
 
-	// Discard every global, in place.  The namespace object and its slot numbering
+	// Discard every global, in place, along with this program's PerProgram values
+	// (including any changes made to the built-in type maps `list`, `string`,
+	// etc.), which are rebuilt fresh on next use.  The namespace object and its slot numbering
 	// survive, so this takes effect immediately for code that is already running --
 	// including the rest of the statement that asked for it, which is what the
 	// `reset` intrinsic needs.
@@ -457,7 +459,9 @@ struct Interpreter {
 	// bootstrap used to do.
 	public: inline Globals GetGlobals();
 
-	// Discard every global, in place.  The namespace object and its slot numbering
+	// Discard every global, in place, along with this program's PerProgram values
+	// (including any changes made to the built-in type maps `list`, `string`,
+	// etc.), which are rebuilt fresh on next use.  The namespace object and its slot numbering
 	// survive, so this takes effect immediately for code that is already running --
 	// including the rest of the statement that asked for it, which is what the
 	// `reset` intrinsic needs.

@@ -62,6 +62,21 @@ class UnitTests {
 
 	public: static Boolean TestResetPreservingGlobals();
 
+	// ── Per-program type maps ────────────────────────────────────────────────────
+
+	// Methods a script adds to `list` or `string` belong to that program: another
+	// interpreter must not see them, a chained program (same namespace) must, and
+	// a plain Reset (new namespace) must start from the pristine templates.
+	public: static Boolean TestTypeMapIsolation();
+
+	// Builder for TestPerProgram: a fresh map each call.
+	private: static Value BuildPerProgramTestMap();
+
+	// A host-defined PerProgram: one value per program, the same value on every
+	// request, kept alive by the program's namespace, and rebuilt after `reset`
+	// (Interpreter.ClearGlobals).
+	public: static Boolean TestPerProgram();
+
 	// ── The host global API ──────────────────────────────────────────────────────
 
 	// Get/SetGlobalValue used to disagree: Set wrote the REPL globals map and so

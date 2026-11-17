@@ -17,6 +17,8 @@ using System.Collections.Generic;
 // CPP: #include "CS_value_util.h"
 // CPP: #include "Interpreter.g.h"
 // CPP: #include "PRNG.g.h"
+// CPP: #include "PerProgram.g.h"
+// CPP: #include "Globals.g.h"
 
 /*** BEGIN CPP_ONLY ***
 #if defined(__APPLE__)
@@ -189,10 +191,20 @@ public static class CoreIntrinsics {
 		}
 	}
 
-	// 
-	// ListType: a static map that represents the `list` type, and provides
-	// intrinsic methods that can be invoked on it via dot syntax.
-	// 
+	//
+	// Built-in type map templates.
+	//
+	// ListType, StringType, etc. here are process-wide *templates*.  Scripts
+	// never see them: each global namespace makes its own shallow copy of a
+	// template the first time it needs it (see Globals.ListType), so changes a
+	// script makes to `list`, `string`, etc. stay within that program, and
+	// `reset` can discard them.  A host may add methods to a template to make
+	// them available to every program; do that before running scripts, since a
+	// namespace that has already copied a template does not see later changes.
+	//
+	// ListType: the template for the `list` type map, which provides the
+	// intrinsic methods that can be invoked on a list via dot syntax.
+	//
 	public static Value ListType() {
 		if (_listType.IsNull()) {
 			_listType = Value.make_map(16);
@@ -218,8 +230,8 @@ public static class CoreIntrinsics {
 	private static Value _listType = Value.Null;
 
 	// 
-	// StringType: a static map that represents the `string` type, and provides
-	// intrinsic methods that can be invoked on it via dot syntax.
+	// StringType: the template for the `string` type map, which provides the
+	// intrinsic methods that can be invoked on a string via dot syntax.
 	// 
 	public static Value StringType() {
 		if (_stringType.IsNull()) {
@@ -244,8 +256,8 @@ public static class CoreIntrinsics {
 	private static Value _stringType = Value.Null;
 
 	// 
-	// MapType: a static map that represents the `map` type, and provides
-	// intrinsic methods that can be invoked on it via dot syntax.
+	// MapType: the template for the `map` type map, which provides the
+	// intrinsic methods that can be invoked on a map via dot syntax.
 	// 
 	public static Value MapType() {
 		if (_mapType.IsNull()) {
@@ -269,7 +281,7 @@ public static class CoreIntrinsics {
 	private static Value _mapType = Value.Null;
 	
 	// 
-	// NumberType: a static map that represents the `number` type.
+	// NumberType: the template for the `number` type map.
 	// 
 	public static Value NumberType() {
 		if (_numberType.IsNull()) {
@@ -281,7 +293,7 @@ public static class CoreIntrinsics {
 	private static Value _numberType = Value.Null;	
 
 	// 
-	// FunctionType: a static map that represents the `funcRef` type.
+	// FunctionType: the template for the `funcRef` type map.
 	// 
 	public static Value FunctionType() {
 		if (_functionType.IsNull()) {
@@ -293,7 +305,7 @@ public static class CoreIntrinsics {
 	private static Value _functionType = Value.Null;
 
 	//
-	// ErrorType: a static map that represents the `error` type, and provides
+	// ErrorType: the template for the `error` type map, which provides the
 	// intrinsic methods that can be invoked on an error via dot syntax
 	// (notably `err` for creating a specialization).
 	//
@@ -310,6 +322,82 @@ public static class CoreIntrinsics {
 	private static Value _errorType = Value.Null;
 	private static Intrinsic _errorErrIntr = null;
 
+	// ── Each program's own type maps ─────────────────────────────────────────
+	// Each program gets a shallow copy of each template above, the first time it
+	// needs one (see PerProgram.cs).  The VM reaches them through these
+	// XxxTypeIn methods (see VM.ListType and friends).
+
+	private static PerProgram _listTypePP = null;
+	private static PerProgram _stringTypePP = null;
+	private static PerProgram _mapTypePP = null;
+	private static PerProgram _numberTypePP = null;
+	private static PerProgram _functionTypePP = null;
+	private static PerProgram _errorTypePP = null;
+
+	private static Value CopyListType() {
+		return ListType().MapConcat(Value.Null);
+	}
+
+	private static Value CopyStringType() {
+		return StringType().MapConcat(Value.Null);
+	}
+
+	private static Value CopyMapType() {
+		return MapType().MapConcat(Value.Null);
+	}
+
+	private static Value CopyNumberType() {
+		return NumberType().MapConcat(Value.Null);
+	}
+
+	private static Value CopyFunctionType() {
+		return FunctionType().MapConcat(Value.Null);
+	}
+
+	private static Value CopyErrorType() {
+		return ErrorType().MapConcat(Value.Null);
+	}
+
+	private static void EnsureTypeMapPerPrograms() {
+		if (_listTypePP != null) return;
+		_listTypePP = new PerProgram(CopyListType, "list"); // CPP: _listTypePP = PerProgram::New(CoreIntrinsics::CopyListType, "list");
+		_stringTypePP = new PerProgram(CopyStringType, "string"); // CPP: _stringTypePP = PerProgram::New(CoreIntrinsics::CopyStringType, "string");
+		_mapTypePP = new PerProgram(CopyMapType, "map"); // CPP: _mapTypePP = PerProgram::New(CoreIntrinsics::CopyMapType, "map");
+		_numberTypePP = new PerProgram(CopyNumberType, "number"); // CPP: _numberTypePP = PerProgram::New(CoreIntrinsics::CopyNumberType, "number");
+		_functionTypePP = new PerProgram(CopyFunctionType, "funcRef"); // CPP: _functionTypePP = PerProgram::New(CoreIntrinsics::CopyFunctionType, "funcRef");
+		_errorTypePP = new PerProgram(CopyErrorType, "error"); // CPP: _errorTypePP = PerProgram::New(CoreIntrinsics::CopyErrorType, "error");
+	}
+
+	public static Value ListTypeIn(Globals g) {
+		EnsureTypeMapPerPrograms();
+		return _listTypePP.GetFor(g);
+	}
+
+	public static Value StringTypeIn(Globals g) {
+		EnsureTypeMapPerPrograms();
+		return _stringTypePP.GetFor(g);
+	}
+
+	public static Value MapTypeIn(Globals g) {
+		EnsureTypeMapPerPrograms();
+		return _mapTypePP.GetFor(g);
+	}
+
+	public static Value NumberTypeIn(Globals g) {
+		EnsureTypeMapPerPrograms();
+		return _numberTypePP.GetFor(g);
+	}
+
+	public static Value FunctionTypeIn(Globals g) {
+		EnsureTypeMapPerPrograms();
+		return _functionTypePP.GetFor(g);
+	}
+
+	public static Value ErrorTypeIn(Globals g) {
+		EnsureTypeMapPerPrograms();
+		return _errorTypePP.GetFor(g);
+	}
+
 	private static Value _EOL = Value.make_string("\n");
 
 	// REPL history lists, set by App.RunREPL at startup and by the reset intrinsic.
@@ -325,7 +413,6 @@ public static class CoreIntrinsics {
 		GCManager.Mark(_errorType);
 		GCManager.Mark(_gcMap);
 		GCManager.Mark(_versionMap);
-		GCManager.Mark(_intrinsicsMap);
 		GCManager.Mark(replInList);
 		GCManager.Mark(replOutList);
 	}
@@ -1308,7 +1395,7 @@ public static class CoreIntrinsics {
 		//    assign new methods here to make them available on all lists.
 		f = Intrinsic.Create("list");
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
-			return new IntrinsicResult(ListType());
+			return new IntrinsicResult(ctx.vm.ListType());
 		};
 
 		// string
@@ -1318,7 +1405,7 @@ public static class CoreIntrinsics {
 		//    assign new methods here to make them available on all strings.
 		f = Intrinsic.Create("string");
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
-			return new IntrinsicResult(StringType());
+			return new IntrinsicResult(ctx.vm.StringType());
 		};
 
 		// map
@@ -1328,7 +1415,7 @@ public static class CoreIntrinsics {
 		//    assign new methods here to make them available on all maps.
 		f = Intrinsic.Create("map");
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
-			return new IntrinsicResult(MapType());
+			return new IntrinsicResult(ctx.vm.MapType());
 		};
 
 		// number
@@ -1337,7 +1424,7 @@ public static class CoreIntrinsics {
 		//    to check whether a variable contains a number.
 		f = Intrinsic.Create("number");
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
-			return new IntrinsicResult(NumberType());
+			return new IntrinsicResult(ctx.vm.NumberType());
 		};
 
 		// funcRef
@@ -1347,7 +1434,7 @@ public static class CoreIntrinsics {
 		//    (Remember to use @ to avoid invoking the function!)
 		f = Intrinsic.Create("funcRef");
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
-			return new IntrinsicResult(FunctionType());
+			return new IntrinsicResult(ctx.vm.FunctionType());
 		};
 
 		// error
@@ -1356,7 +1443,7 @@ public static class CoreIntrinsics {
 		//    to check whether a variable refers to an error.
 		f = Intrinsic.Create("error");
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
-			return new IntrinsicResult(ErrorType());
+			return new IntrinsicResult(ctx.vm.ErrorType());
 		};
 
 		// time
@@ -1599,28 +1686,13 @@ public static class CoreIntrinsics {
 			return new IntrinsicResult(GCMap());
 		};
 
-		// intrinsics — returns a map of all named intrinsic functions.
+		// intrinsics — returns a map of all the named intrinsic functions this VM has.
 		f = Intrinsic.Create("intrinsics");
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
-			return new IntrinsicResult(IntrinsicsMap());
+			return new IntrinsicResult(ctx.vm.IntrinsicsMap());
 		};
 
 	}
-
-	public static Value IntrinsicsMap() {
-		if (_intrinsicsMap.IsNull()) {
-			int count = Intrinsic.Count();
-			_intrinsicsMap = Value.make_map(count);
-			for (Int32 i = 0; i < count; i++) {
-				Intrinsic intr = Intrinsic.GetByIndex(i);
-				if (intr == null || intr.Name == null || intr.Name.Length == 0) continue;
-				_intrinsicsMap.MapSet(intr.Name, intr.GetFunc());
-			}
-			_intrinsicsMap.Freeze();
-		}
-		return _intrinsicsMap;
-	}
-	private static Value _intrinsicsMap = Value.Null;
 
 	public static Value GCMap() {
 		if (_gcMap.IsNull()) {
@@ -1644,6 +1716,10 @@ public static class CoreIntrinsics {
 		_invalidateCallbacks.Add(callback);
 	}
 
+	// Discard the type map templates (and other cached maps), so they are rebuilt
+	// from the current intrinsics on next use.  This affects only namespaces
+	// that have not yet copied a template; to reset a running program's type
+	// maps, use Globals.ResetTypeMaps (as the `reset` intrinsic does).
 	public static void InvalidateTypeMaps() {
 		_listType = Value.Null;
 		_stringType = Value.Null;
@@ -1653,7 +1729,6 @@ public static class CoreIntrinsics {
 		_errorType = Value.Null;
 		_gcMap = Value.Null;
 		_versionMap = Value.Null;
-		_intrinsicsMap = Value.Null;
 		Intrinsic.ClearShortNames();
 		if (_invalidateCallbacks != null) {
 			for (Int32 i = 0; i < _invalidateCallbacks.Count; i++) _invalidateCallbacks[i]();

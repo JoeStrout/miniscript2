@@ -46,45 +46,88 @@ class CoreIntrinsics {
 
 	private: static void AddIntrinsicToMap(Value map, String methodName);
 
-	// 
-	// ListType: a static map that represents the `list` type, and provides
-	// intrinsic methods that can be invoked on it via dot syntax.
-	// 
+	// Built-in type map templates.
+	// ListType, StringType, etc. here are process-wide *templates*.  Scripts
+	// never see them: each global namespace makes its own shallow copy of a
+	// template the first time it needs it (see Globals.ListType), so changes a
+	// script makes to `list`, `string`, etc. stay within that program, and
+	// `reset` can discard them.  A host may add methods to a template to make
+	// them available to every program; do that before running scripts, since a
+	// namespace that has already copied a template does not see later changes.
+	// ListType: the template for the `list` type map, which provides the
+	// intrinsic methods that can be invoked on a list via dot syntax.
 	public: static Value ListType();
 	private: static Value _listType;
 
 	// 
-	// StringType: a static map that represents the `string` type, and provides
-	// intrinsic methods that can be invoked on it via dot syntax.
+	// StringType: the template for the `string` type map, which provides the
+	// intrinsic methods that can be invoked on a string via dot syntax.
 	// 
 	public: static Value StringType();
 	private: static Value _stringType;
 
 	// 
-	// MapType: a static map that represents the `map` type, and provides
-	// intrinsic methods that can be invoked on it via dot syntax.
+	// MapType: the template for the `map` type map, which provides the
+	// intrinsic methods that can be invoked on a map via dot syntax.
 	// 
 	public: static Value MapType();
 	private: static Value _mapType;
 	
 	// 
-	// NumberType: a static map that represents the `number` type.
+	// NumberType: the template for the `number` type map.
 	// 
 	public: static Value NumberType();
 	private: static Value _numberType;
 
 	// 
-	// FunctionType: a static map that represents the `funcRef` type.
+	// FunctionType: the template for the `funcRef` type map.
 	// 
 	public: static Value FunctionType();
 	private: static Value _functionType;
 
-	// ErrorType: a static map that represents the `error` type, and provides
+	// ErrorType: the template for the `error` type map, which provides the
 	// intrinsic methods that can be invoked on an error via dot syntax
 	// (notably `err` for creating a specialization).
 	public: static Value ErrorType();
 	private: static Value _errorType;
 	private: static Intrinsic _errorErrIntr;
+	private: static PerProgram _listTypePP;
+	private: static PerProgram _stringTypePP;
+	private: static PerProgram _mapTypePP;
+	private: static PerProgram _numberTypePP;
+	private: static PerProgram _functionTypePP;
+	private: static PerProgram _errorTypePP;
+
+	// ── Each program's own type maps ─────────────────────────────────────────
+	// Each program gets a shallow copy of each template above, the first time it
+	// needs one (see PerProgram.cs).  The VM reaches them through these
+	// XxxTypeIn methods (see VM.ListType and friends).
+
+	private: static Value CopyListType();
+
+	private: static Value CopyStringType();
+
+	private: static Value CopyMapType();
+
+	private: static Value CopyNumberType();
+
+	private: static Value CopyFunctionType();
+
+	private: static Value CopyErrorType();
+
+	private: static void EnsureTypeMapPerPrograms();
+
+	public: static Value ListTypeIn(Globals g);
+
+	public: static Value StringTypeIn(Globals g);
+
+	public: static Value MapTypeIn(Globals g);
+
+	public: static Value NumberTypeIn(Globals g);
+
+	public: static Value FunctionTypeIn(Globals g);
+
+	public: static Value ErrorTypeIn(Globals g);
 	private: static Value _EOL;
 	public: static Value replInList;
 	public: static Value replOutList;
@@ -94,9 +137,6 @@ class CoreIntrinsics {
 	public: static void MarkRoots(object user_data);
 
 	public: static void Init();
-
-	public: static Value IntrinsicsMap();
-	private: static Value _intrinsicsMap;
 
 	public: static Value GCMap();
 	private: static Value _gcMap;
@@ -108,6 +148,10 @@ class CoreIntrinsics {
 
 	public: static void RegisterInvalidateCallback(VoidCallback callback);
 
+	// Discard the type map templates (and other cached maps), so they are rebuilt
+	// from the current intrinsics on next use.  This affects only namespaces
+	// that have not yet copied a template; to reset a running program's type
+	// maps, use Globals.ResetTypeMaps (as the `reset` intrinsic does).
 	public: static void InvalidateTypeMaps();
 
 }; // end of struct CoreIntrinsics

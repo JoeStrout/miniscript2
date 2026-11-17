@@ -22,6 +22,7 @@ using System.Collections.Generic;
 // CPP: #include "StringUtils.g.h"
 // CPP: #include "CS_value_util.h"
 // CPP: #include "CoreIntrinsics.g.h"
+// CPP: #include "PerProgram.g.h"
 // CPP: #include "DateTimeUtils.g.h"
 // CPP: #include "keyboard.h"
 // CPP: #include "IOHelper.g.h"
@@ -95,7 +96,8 @@ public struct ExecJob {
 public static class ShellIntrinsics {
 	private static List<String> _shellArgStrings = null;
 	private static Value _shellArgs = Value.Null;
-	private static Value _envMap = Value.Null;
+	// `env`: each program's own map of environment variables (see PerProgram.cs).
+	private static PerProgram _env = null;
 
 	// Default import search path, used when MS_IMPORT_PATH is not already set in
 	// the environment.  Variables are expanded at import time, not here.
@@ -106,16 +108,18 @@ public static class ShellIntrinsics {
 	private static List<ExecJob> _execJobs = null;
 
 	// ── File module static fields ─────────────────────────────────────────────
-	private static Value _fileModuleMap = Value.Null;
-	private static Value _fileHandleClassMap = Value.Null;
-	private static Value _rawDataClassMap = Value.Null;
+	// Each program gets its own copy of these maps (see PerProgram.cs), so one
+	// script's changes to `file`, `FileHandle` or `RawData` are not seen by others.
+	private static PerProgram _fileModule = null;
+	private static PerProgram _fileHandleClass = null;
+	private static PerProgram _rawDataClass = null;
 	private static Int32 _rdStart = -1, _fhStart = -1, _fmStart = -1;
 	private static List<String> _rdKeys = null;
 	private static List<String> _fhKeys = null;
 	private static List<String> _fmKeys = null;
 
 	// ── Key module static fields ──────────────────────────────────────────────
-	private static Value _keyModuleMap = Value.Null;
+	private static PerProgram _keyModule = null;
 	private static Int32 _keyStart = -1;
 	private static List<String> _keyKeys = null;
 
@@ -157,18 +161,25 @@ public static class ShellIntrinsics {
 		return _shellArgs;
 	}
 
-	// Build and cache the environment-variable map.
-	// C# reads System.Environment; C++ reads the POSIX environ array.
+	// The running program's environment-variable map, built on first use.
 	private static Value GetEnvMap() {
-		if (!_envMap.IsNull()) return _envMap;
-		_envMap = Value.make_map(64);
+		return _env.Get();
+	}
+
+	// Build a fresh environment-variable map: a snapshot of the process
+	// environment, as it is when a program first uses `env`.  The program's
+	// changes to it reach the real environment only when it calls `exec`
+	// (see SyncEnvMap).
+	// C# reads System.Environment; C++ reads the POSIX environ array.
+	private static Value BuildEnvMap() {
+		Value envMap = Value.make_map(64);
 		//*** BEGIN CS_ONLY ***
 		System.Collections.IDictionary envVars = System.Environment.GetEnvironmentVariables();
 		foreach (System.Collections.DictionaryEntry entry in envVars) {
 			String k = entry.Key as String;
 			String v = entry.Value as String;
 			if (k != null && v != null) {
-				_envMap.MapSet(k, v);
+				envMap.MapSet(k, v);
 			}
 		}
 		//*** END CS_ONLY ***
@@ -178,7 +189,7 @@ public static class ShellIntrinsics {
 			if (!eqPos) continue;
 			String varName(*current, (size_t)(eqPos - *current));
 			String valueStr(eqPos + 1);
-			_envMap.MapSet(Value::make_string(varName), Value::make_string(valueStr));
+			envMap.MapSet(Value::make_string(varName), Value::make_string(valueStr));
 		}
 		*** END CPP_ONLY ***/
 		// Seed the default import search path, unless the user already set
@@ -187,37 +198,27 @@ public static class ShellIntrinsics {
 		// env.MS_IMPORT_PATH = env.MS_IMPORT_PATH + ":" + myDir.
 		Value importPathKey = Value.make_string("MS_IMPORT_PATH");
 		Value existing;
-		if (!_envMap.TryGet(importPathKey, out existing) || existing.IsNull()) {
-			_envMap.MapSet(importPathKey, Value.make_string(kDefaultImportPath));
+		if (!envMap.TryGet(importPathKey, out existing) || existing.IsNull()) {
+			envMap.MapSet(importPathKey, Value.make_string(kDefaultImportPath));
 		}
-		return _envMap;
+		return envMap;
 	}
 
-	// GC root callback — keep our cached Values alive.
+	// GC root callback — keep our cached Values alive.  (The module and env
+	// maps are PerProgram values, kept alive by each program's namespace.)
 	public static void MarkRoots(object userData) {
 		GCManager.Mark(_shellArgs);
-		GCManager.Mark(_envMap);
-		GCManager.Mark(_fileModuleMap);
-		GCManager.Mark(_fileHandleClassMap);
-		GCManager.Mark(_rawDataClassMap);
-		GCManager.Mark(_keyModuleMap);
 	}
 
 	// Drop cached values so they are rebuilt on next use.
-	// Call from VM reset if needed.
 	public static void InvalidateCaches() {
 		_shellArgs = Value.Null;
-		_envMap = Value.Null;
-		_fileModuleMap = Value.Null;
-		_fileHandleClassMap = Value.Null;
-		_rawDataClassMap = Value.Null;
-		_keyModuleMap = Value.Null;
 	}
 
-	// Push all entries in _envMap to the real process environment.
-	// Only called when _envMap is non-null (i.e., the user has accessed `env`).
-	private static void SyncEnvMap() {
-		MapIterator iter = _envMap.Iterator();
+	// Push all entries in a program's env map to the real process environment.
+	// Only called when the program has built one (i.e., has accessed `env`).
+	private static void SyncEnvMap(Value envMap) {
+		MapIterator iter = envMap.Iterator();
 		// CPP: Value iterKey, iterVal;
 		while (Value.map_iterator_next(ref iter)) { // CPP: while (map_iterator_next(&iter, &iterKey, &iterVal)) {
 			String key = iter.Key.AsCString(); // CPP: String key = iterKey.AsCString();
@@ -1540,29 +1541,38 @@ public static class ShellIntrinsics {
 	// assigned real function indices to all intrinsics.
 
 	private static Value GetRawDataClassMap() {
-		if (!_rawDataClassMap.IsNull()) return _rawDataClassMap;
-		_rawDataClassMap = Value.make_map(24);
-		_rawDataClassMap.MapSet("_handle", Value.Null);
-		_rawDataClassMap.MapSet("littleEndian", Value.one);
+		return _rawDataClass.Get();
+	}
+
+	private static Value BuildRawDataClassMap() {
+		Value map = Value.make_map(24);
+		map.MapSet("_handle", Value.Null);
+		map.MapSet("littleEndian", Value.one);
 		for (Int32 i = 0; i < _rdKeys.Count; i++) // CPP: for (Int32 i = 0; i < (Int32)_rdKeys.Count(); i++)
-			_rawDataClassMap.MapSet(_rdKeys[i], Intrinsic.GetByIndex(_rdStart + i).GetFunc());
-		return _rawDataClassMap;
+			map.MapSet(_rdKeys[i], Intrinsic.GetByIndex(_rdStart + i).GetFunc());
+		return map;
 	}
 
 	private static Value GetFileHandleClassMap() {
-		if (!_fileHandleClassMap.IsNull()) return _fileHandleClassMap;
-		_fileHandleClassMap = Value.make_map(12);
+		return _fileHandleClass.Get();
+	}
+
+	private static Value BuildFileHandleClassMap() {
+		Value map = Value.make_map(12);
 		for (Int32 i = 0; i < _fhKeys.Count; i++) // CPP: for (Int32 i = 0; i < (Int32)_fhKeys.Count(); i++)
-			_fileHandleClassMap.MapSet(_fhKeys[i], Intrinsic.GetByIndex(_fhStart + i).GetFunc());
-		return _fileHandleClassMap;
+			map.MapSet(_fhKeys[i], Intrinsic.GetByIndex(_fhStart + i).GetFunc());
+		return map;
 	}
 
 	private static Value GetFileModuleMap() {
-		if (!_fileModuleMap.IsNull()) return _fileModuleMap;
-		_fileModuleMap = Value.make_map(20);
+		return _fileModule.Get();
+	}
+
+	private static Value BuildFileModuleMap() {
+		Value map = Value.make_map(20);
 		for (Int32 i = 0; i < _fmKeys.Count; i++) // CPP: for (Int32 i = 0; i < (Int32)_fmKeys.Count(); i++)
-			_fileModuleMap.MapSet(_fmKeys[i], Intrinsic.GetByIndex(_fmStart + i).GetFunc());
-		return _fileModuleMap;
+			map.MapSet(_fmKeys[i], Intrinsic.GetByIndex(_fmStart + i).GetFunc());
+		return map;
 	}
 
 	// ── File module init ──────────────────────────────────────────────────────
@@ -2382,12 +2392,15 @@ public static class ShellIntrinsics {
 	}
 
 	private static Value GetKeyModuleMap() {
-		if (!_keyModuleMap.IsNull()) return _keyModuleMap;
-		_keyModuleMap = Value.make_map(8);
+		return _keyModule.Get();
+	}
+
+	private static Value BuildKeyModuleMap() {
+		Value map = Value.make_map(8);
 		for (Int32 i = 0; i < _keyKeys.Count; i++) // CPP: for (Int32 i = 0; i < (Int32)_keyKeys.Count(); i++)
-			_keyModuleMap.MapSet(_keyKeys[i], Intrinsic.GetByIndex(_keyStart + i).GetFunc());
-		_keyModuleMap.MapSet("raw", Value.zero);
-		return _keyModuleMap;
+			map.MapSet(_keyKeys[i], Intrinsic.GetByIndex(_keyStart + i).GetFunc());
+		map.MapSet("raw", Value.zero);
+		return map;
 	}
 
 	private static void InitKeyIntrinsics() {
@@ -2466,6 +2479,11 @@ public static class ShellIntrinsics {
 	public static void Init() {
 		GCManager.RegisterMarkCallback(MarkRoots, null); // CPP: GCManager::RegisterMarkCallback(ShellIntrinsics::MarkRoots, nullptr);
 		CoreIntrinsics.RegisterInvalidateCallback(InvalidateCaches); // CPP: CoreIntrinsics::RegisterInvalidateCallback(ShellIntrinsics::InvalidateCaches);
+		_env = new PerProgram(BuildEnvMap, "env"); // CPP: _env = PerProgram::New(ShellIntrinsics::BuildEnvMap, "env");
+		_fileModule = new PerProgram(BuildFileModuleMap, "file"); // CPP: _fileModule = PerProgram::New(ShellIntrinsics::BuildFileModuleMap, "file");
+		_fileHandleClass = new PerProgram(BuildFileHandleClassMap, "FileHandle"); // CPP: _fileHandleClass = PerProgram::New(ShellIntrinsics::BuildFileHandleClassMap, "FileHandle");
+		_rawDataClass = new PerProgram(BuildRawDataClassMap, "RawData"); // CPP: _rawDataClass = PerProgram::New(ShellIntrinsics::BuildRawDataClassMap, "RawData");
+		_keyModule = new PerProgram(BuildKeyModuleMap, "key"); // CPP: _keyModule = PerProgram::New(ShellIntrinsics::BuildKeyModuleMap, "key");
 		InitFileIntrinsics();
 		InitKeyIntrinsics();
 
@@ -2519,8 +2537,9 @@ public static class ShellIntrinsics {
 			Value cmdArg = ctx.GetArg(0);
 			String cmd = cmdArg.ToString(null);
 			Double timeout = ctx.GetArg(1).DoubleValue();
-			if (!_envMap.IsNull()) {
-				SyncEnvMap();
+			Value envMap = _env.Peek(ctx);
+			if (!envMap.IsNull()) {
+				SyncEnvMap(envMap);
 			}
 			Value handle = BeginExec(cmd, now + timeout);
 			if (handle.IsNull()) {

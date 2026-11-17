@@ -314,7 +314,7 @@ struct GCStringSet : public GCSetBase {
 	private: void set__items(List<GCString> _v);
 
 	public: static GCStringSet New(Int32 initialCapacity = 64) {
-		return GCStringSet(std::make_shared<GCStringSetStorage>());
+		return GCStringSet(std::make_shared<GCStringSetStorage>(initialCapacity));
 	}
 
 	protected: void CallMarkChildren(Int32 idx) { return get()->CallMarkChildren(idx); }
@@ -340,7 +340,7 @@ struct GCListSet : public GCSetBase {
 	private: void set__items(List<GCList> _v);
 
 	public: static GCListSet New(Int32 initialCapacity = 64) {
-		return GCListSet(std::make_shared<GCListSetStorage>());
+		return GCListSet(std::make_shared<GCListSetStorage>(initialCapacity));
 	}
 
 	protected: void CallMarkChildren(Int32 idx) { return get()->CallMarkChildren(idx); }
@@ -373,7 +373,7 @@ struct GCMapSet : public GCSetBase {
 	private: void set__items(List<GCMap> _v);
 
 	public: static GCMapSet New(Int32 initialCapacity = 64) {
-		return GCMapSet(std::make_shared<GCMapSetStorage>());
+		return GCMapSet(std::make_shared<GCMapSetStorage>(initialCapacity));
 	}
 
 	protected: void CallMarkChildren(Int32 idx) { return get()->CallMarkChildren(idx); }
@@ -419,7 +419,7 @@ struct GCErrorSet : public GCSetBase {
 	private: void set__items(List<GCError> _v);
 
 	public: static GCErrorSet New(Int32 initialCapacity = 64) {
-		return GCErrorSet(std::make_shared<GCErrorSetStorage>());
+		return GCErrorSet(std::make_shared<GCErrorSetStorage>(initialCapacity));
 	}
 
 	protected: void CallMarkChildren(Int32 idx) { return get()->CallMarkChildren(idx); }
@@ -445,7 +445,7 @@ struct GCHandleSet : public GCSetBase {
 	private: void set__items(List<GCHandle> _v);
 
 	public: static GCHandleSet New(Int32 initialCapacity = 16) {
-		return GCHandleSet(std::make_shared<GCHandleSetStorage>());
+		return GCHandleSet(std::make_shared<GCHandleSetStorage>(initialCapacity));
 	}
 
 	protected: void CallMarkChildren(Int32 idx) { return get()->CallMarkChildren(idx); }
@@ -471,7 +471,7 @@ struct GCFuncRefSet : public GCSetBase {
 	private: void set__items(List<GCFunction> _v);
 
 	public: static GCFuncRefSet New(Int32 initialCapacity = 64) {
-		return GCFuncRefSet(std::make_shared<GCFuncRefSetStorage>());
+		return GCFuncRefSet(std::make_shared<GCFuncRefSetStorage>(initialCapacity));
 	}
 
 	protected: void CallMarkChildren(Int32 idx) { return get()->CallMarkChildren(idx); }

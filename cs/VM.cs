@@ -145,6 +145,7 @@ public class VM {
 	private const Int32 MaxStackSlots = 64 * 1024 * 1024;
 
 	private Dictionary<Value, Value> _intrinsics; // intrinsic name -> FuncRef Value
+	private Value _intrinsicsMap;  // the `intrinsics` map for this VM, built lazily
 
 	// Execution state (persistent across RunSteps calls)
 	public Int32 PC { get; private set; }
@@ -202,6 +203,65 @@ public class VM {
 	public void SetGlobals(Globals globals) {
 		_globals = globals;
 		_globalsId = (globals != null) ? globals.Id() : 0;
+	}
+
+	// The built-in type maps this VM's code sees: its program's own copies (see
+	// CoreIntrinsics.ListTypeIn and PerProgram.cs), so changes a script makes to
+	// `list`, `string`, etc. stay within that program.  Switching namespaces with
+	// SetGlobals switches type maps along with the variables.  A VM with no
+	// namespace at all (between SetGlobals(null) and its next Reset) falls back
+	// to the shared templates, so that `isa` still works there.
+	public Value ListType() {
+		if (_globals == null) return CoreIntrinsics.ListType();
+		return CoreIntrinsics.ListTypeIn(_globals);
+	}
+
+	public Value StringType() {
+		if (_globals == null) return CoreIntrinsics.StringType();
+		return CoreIntrinsics.StringTypeIn(_globals);
+	}
+
+	public Value MapType() {
+		if (_globals == null) return CoreIntrinsics.MapType();
+		return CoreIntrinsics.MapTypeIn(_globals);
+	}
+
+	public Value NumberType() {
+		if (_globals == null) return CoreIntrinsics.NumberType();
+		return CoreIntrinsics.NumberTypeIn(_globals);
+	}
+
+	public Value FunctionType() {
+		if (_globals == null) return CoreIntrinsics.FunctionType();
+		return CoreIntrinsics.FunctionTypeIn(_globals);
+	}
+
+	public Value ErrorType() {
+		if (_globals == null) return CoreIntrinsics.ErrorType();
+		return CoreIntrinsics.ErrorTypeIn(_globals);
+	}
+
+	// The `intrinsics` map: name -> funcref for every intrinsic this VM has,
+	// in registration order, frozen.  Built from this VM's own intrinsics table
+	// rather than the process-wide registry, so it lists exactly what this VM's
+	// code can reach by name.
+	public Value IntrinsicsMap() {
+		if (_intrinsicsMap.IsNull()) {
+			Int32 count = Intrinsic.Count();
+			Value map = Value.make_map(count);
+			if (_intrinsics != null) {
+				for (Int32 i = 0; i < count; i++) {
+					Intrinsic intr = Intrinsic.GetByIndex(i);
+					if (intr == null || intr.Name == null || intr.Name.Length == 0) continue;
+					Value name = Value.make_string(intr.Name);
+					Value func;
+					if (_intrinsics.TryGetValue(name, out func)) map.MapSet(name, func);
+				}
+			}
+			map.Freeze();
+			_intrinsicsMap = map;
+		}
+		return _intrinsicsMap;
 	}
 
 	// Pending self/super for method calls, set by METHFIND/SETSELF,
@@ -342,7 +402,13 @@ public class VM {
 				if (!slotName.RefEquals(v)) return slotName.ToString(null);
 			}
 		}
-		// Fall back to the intrinsic short-name registry (type maps, etc.)
+		// This program's PerProgram values (type maps, modules) display by
+		// their registered names, as `list`, `string`, `file`, etc.
+		if (_globals != null) {
+			String ppName = _globals.PerProgramName(v);
+			if (ppName != null) return ppName;
+		}
+		// Fall back to the intrinsic short-name registry (host-registered names, etc.)
 		return Intrinsic.GetShortName(v);
 	}
 
@@ -359,6 +425,7 @@ public class VM {
 		callStackTop = 0;
 		_globals = null;   // created (or adopted) at Reset
 		_globalsId = 0;
+		_intrinsicsMap = Value.Null;
 		_pendingCallStack = new List<PendingCallState>();
 		Error = Value.Null;
 
@@ -456,6 +523,7 @@ public class VM {
 		// that no VM has adopted yet; this mark is what keeps it alive for a VM
 		// that outlives its creator.)
 		if (vm._globals != null) GCManager.Mark(vm._globals.AsMap());
+		GCManager.Mark(vm._intrinsicsMap);
 		// Manual-call results saved on the pending-call stack (nested imports).
 		for (Int32 pi = 0; pi < vm._pendingCallStack.Count; pi++) {
 			GCManager.Mark(vm._pendingCallStack[pi].ManualResult);
@@ -2728,7 +2796,7 @@ public class VM {
 						// Error-specific isa rules:
 						//   e isa error   -> 1
 						//   e1 isa e2     -> 1 if e2 is in e1's __isa chain (not e1 itself)
-						if (valC.RefEquals(CoreIntrinsics.ErrorType())) {
+						if (valC.RefEquals(ErrorType())) {
 							isaResult = 1;
 						} else if (valC.IsError() && valB.Isa().IsaContains(valC)) {
 							isaResult = 1;
@@ -2752,15 +2820,15 @@ public class VM {
 						}
 						// If not found via __isa chain, check built-in type maps
 						if (isaResult == 0) {
-							if (valB.IsNumber() && valC.RefEquals(CoreIntrinsics.NumberType())) {
+							if (valB.IsNumber() && valC.RefEquals(NumberType())) {
 								isaResult = 1;
-							} else if (valB.IsString() && valC.RefEquals(CoreIntrinsics.StringType())) {
+							} else if (valB.IsString() && valC.RefEquals(StringType())) {
 								isaResult = 1;
-							} else if (valB.IsList() && valC.RefEquals(CoreIntrinsics.ListType())) {
+							} else if (valB.IsList() && valC.RefEquals(ListType())) {
 								isaResult = 1;
-							} else if (valB.IsMap() && valC.RefEquals(CoreIntrinsics.MapType())) {
+							} else if (valB.IsMap() && valC.RefEquals(MapType())) {
 								isaResult = 1;
-							} else if (valB.IsFuncRef() && valC.RefEquals(CoreIntrinsics.FunctionType())) {
+							} else if (valB.IsFuncRef() && valC.RefEquals(FunctionType())) {
 								isaResult = 1;
 							}
 						}
@@ -2880,13 +2948,13 @@ public class VM {
 							hasPendingContext = false;
 							break; // CPP: VM_NEXT();
 						}
-						typeMap = CoreIntrinsics.MapType();
+						typeMap = MapType();
 					} else if (valB.IsList()) {
-						typeMap = CoreIntrinsics.ListType();
+						typeMap = ListType();
 					} else if (valB.IsString()) {
-						typeMap = CoreIntrinsics.StringType();
+						typeMap = StringType();
 					} else if (valB.IsNumber()) {
-						typeMap = CoreIntrinsics.NumberType();
+						typeMap = NumberType();
 					}
 					if (typeMap.IsNull()) {
 						RaiseRuntimeError("Can't index into {0}", valB);
@@ -3286,7 +3354,7 @@ public class VM {
 				if (keyStr == "stack")   { result = container.Stack();   return MemberField; }
 				if (keyStr == "__isa")   { result = container.Isa();     return MemberField; }
 			}
-			if (CoreIntrinsics.ErrorType().TryGet(key, out found)) {
+			if (ErrorType().TryGet(key, out found)) {
 				result = found;
 				return MemberMethod;
 			}
@@ -3299,13 +3367,13 @@ public class VM {
 				superVal = origin;
 				return MemberMethod;
 			}
-			typeMap = CoreIntrinsics.MapType();
+			typeMap = MapType();
 		} else if (container.IsList()) {
-			typeMap = CoreIntrinsics.ListType();
+			typeMap = ListType();
 		} else if (container.IsString()) {
-			typeMap = CoreIntrinsics.StringType();
+			typeMap = StringType();
 		} else if (container.IsNumber()) {
-			typeMap = CoreIntrinsics.NumberType();
+			typeMap = NumberType();
 		}
 		if (typeMap.IsNull()) {
 			RaiseRuntimeError("Can't index into {0}", container);

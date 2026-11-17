@@ -14,6 +14,8 @@
 #include "CS_value_util.h"
 #include "Interpreter.g.h"
 #include "PRNG.g.h"
+#include "PerProgram.g.h"
+#include "Globals.g.h"
 #if defined(__APPLE__)
 #include <sys/sysctl.h>
 #elif defined(_WIN32)
@@ -235,6 +237,63 @@ Value CoreIntrinsics::ErrorType() {
 }
 Value CoreIntrinsics::_errorType = Value::Null;
 Intrinsic CoreIntrinsics::_errorErrIntr = nullptr;
+PerProgram CoreIntrinsics::_listTypePP = nullptr;
+PerProgram CoreIntrinsics::_stringTypePP = nullptr;
+PerProgram CoreIntrinsics::_mapTypePP = nullptr;
+PerProgram CoreIntrinsics::_numberTypePP = nullptr;
+PerProgram CoreIntrinsics::_functionTypePP = nullptr;
+PerProgram CoreIntrinsics::_errorTypePP = nullptr;
+Value CoreIntrinsics::CopyListType() {
+	return ListType().MapConcat(Value::Null);
+}
+Value CoreIntrinsics::CopyStringType() {
+	return StringType().MapConcat(Value::Null);
+}
+Value CoreIntrinsics::CopyMapType() {
+	return MapType().MapConcat(Value::Null);
+}
+Value CoreIntrinsics::CopyNumberType() {
+	return NumberType().MapConcat(Value::Null);
+}
+Value CoreIntrinsics::CopyFunctionType() {
+	return FunctionType().MapConcat(Value::Null);
+}
+Value CoreIntrinsics::CopyErrorType() {
+	return ErrorType().MapConcat(Value::Null);
+}
+void CoreIntrinsics::EnsureTypeMapPerPrograms() {
+	if (!IsNull(_listTypePP)) return;
+	_listTypePP = PerProgram::New(CoreIntrinsics::CopyListType, "list");
+	_stringTypePP = PerProgram::New(CoreIntrinsics::CopyStringType, "string");
+	_mapTypePP = PerProgram::New(CoreIntrinsics::CopyMapType, "map");
+	_numberTypePP = PerProgram::New(CoreIntrinsics::CopyNumberType, "number");
+	_functionTypePP = PerProgram::New(CoreIntrinsics::CopyFunctionType, "funcRef");
+	_errorTypePP = PerProgram::New(CoreIntrinsics::CopyErrorType, "error");
+}
+Value CoreIntrinsics::ListTypeIn(Globals g) {
+	EnsureTypeMapPerPrograms();
+	return _listTypePP.GetFor(g);
+}
+Value CoreIntrinsics::StringTypeIn(Globals g) {
+	EnsureTypeMapPerPrograms();
+	return _stringTypePP.GetFor(g);
+}
+Value CoreIntrinsics::MapTypeIn(Globals g) {
+	EnsureTypeMapPerPrograms();
+	return _mapTypePP.GetFor(g);
+}
+Value CoreIntrinsics::NumberTypeIn(Globals g) {
+	EnsureTypeMapPerPrograms();
+	return _numberTypePP.GetFor(g);
+}
+Value CoreIntrinsics::FunctionTypeIn(Globals g) {
+	EnsureTypeMapPerPrograms();
+	return _functionTypePP.GetFor(g);
+}
+Value CoreIntrinsics::ErrorTypeIn(Globals g) {
+	EnsureTypeMapPerPrograms();
+	return _errorTypePP.GetFor(g);
+}
 Value CoreIntrinsics::_EOL = Value::make_string("\n");
 Value CoreIntrinsics::replInList = Value::Null;
 Value CoreIntrinsics::replOutList = Value::Null;
@@ -247,7 +306,6 @@ void CoreIntrinsics::MarkRoots(object user_data) {
 	GCManager::Mark(_errorType);
 	GCManager::Mark(_gcMap);
 	GCManager::Mark(_versionMap);
-	GCManager::Mark(_intrinsicsMap);
 	GCManager::Mark(replInList);
 	GCManager::Mark(replOutList);
 }
@@ -1229,7 +1287,7 @@ void CoreIntrinsics::Init() {
 	//    assign new methods here to make them available on all lists.
 	f = Intrinsic::Create("list");
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
-		return IntrinsicResult(ListType());
+		return IntrinsicResult(ctx.vm.ListType());
 	});
 
 	// string
@@ -1239,7 +1297,7 @@ void CoreIntrinsics::Init() {
 	//    assign new methods here to make them available on all strings.
 	f = Intrinsic::Create("string");
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
-		return IntrinsicResult(StringType());
+		return IntrinsicResult(ctx.vm.StringType());
 	});
 
 	// map
@@ -1249,7 +1307,7 @@ void CoreIntrinsics::Init() {
 	//    assign new methods here to make them available on all maps.
 	f = Intrinsic::Create("map");
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
-		return IntrinsicResult(MapType());
+		return IntrinsicResult(ctx.vm.MapType());
 	});
 
 	// number
@@ -1258,7 +1316,7 @@ void CoreIntrinsics::Init() {
 	//    to check whether a variable contains a number.
 	f = Intrinsic::Create("number");
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
-		return IntrinsicResult(NumberType());
+		return IntrinsicResult(ctx.vm.NumberType());
 	});
 
 	// funcRef
@@ -1268,7 +1326,7 @@ void CoreIntrinsics::Init() {
 	//    (Remember to use @ to avoid invoking the function!)
 	f = Intrinsic::Create("funcRef");
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
-		return IntrinsicResult(FunctionType());
+		return IntrinsicResult(ctx.vm.FunctionType());
 	});
 
 	// error
@@ -1277,7 +1335,7 @@ void CoreIntrinsics::Init() {
 	//    to check whether a variable refers to an error.
 	f = Intrinsic::Create("error");
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
-		return IntrinsicResult(ErrorType());
+		return IntrinsicResult(ctx.vm.ErrorType());
 	});
 
 	// time
@@ -1520,27 +1578,13 @@ void CoreIntrinsics::Init() {
 		return IntrinsicResult(GCMap());
 	});
 
-	// intrinsics — returns a map of all named intrinsic functions.
+	// intrinsics — returns a map of all the named intrinsic functions this VM has.
 	f = Intrinsic::Create("intrinsics");
 	f.set_Code([](Context ctx, IntrinsicResult partialResult) -> IntrinsicResult {
-		return IntrinsicResult(IntrinsicsMap());
+		return IntrinsicResult(ctx.vm.IntrinsicsMap());
 	});
 
 }
-Value CoreIntrinsics::IntrinsicsMap() {
-	if (_intrinsicsMap.IsNull()) {
-		int count = Intrinsic::Count();
-		_intrinsicsMap = Value::make_map(count);
-		for (Int32 i = 0; i < count; i++) {
-			Intrinsic intr = Intrinsic::GetByIndex(i);
-			if (IsNull(intr) || IsNull(intr.Name()) || intr.Name().Length() == 0) continue;
-			_intrinsicsMap.MapSet(intr.Name(), intr.GetFunc());
-		}
-		_intrinsicsMap.Freeze();
-	}
-	return _intrinsicsMap;
-}
-Value CoreIntrinsics::_intrinsicsMap = Value::Null;
 Value CoreIntrinsics::GCMap() {
 	if (_gcMap.IsNull()) {
 		_gcMap = Value::make_map(2);
@@ -1568,7 +1612,6 @@ void CoreIntrinsics::InvalidateTypeMaps() {
 	_errorType = Value::Null;
 	_gcMap = Value::Null;
 	_versionMap = Value::Null;
-	_intrinsicsMap = Value::Null;
 	Intrinsic::ClearShortNames();
 	if (!IsNull(_invalidateCallbacks)) {
 		for (Int32 i = 0; i < _invalidateCallbacks.Count(); i++) _invalidateCallbacks[i]();

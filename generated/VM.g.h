@@ -74,6 +74,7 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	private: Int32 _maxCallDepth = DefaultMaxCallDepth;
 	private: static const Int32 MaxStackSlots;
 	private: Dictionary<Value, Value> _intrinsics; // intrinsic name -> FuncRef Value
+	private: Value _intrinsicsMap; // the `intrinsics` map for this VM, built lazily
 	public: Int32 PC;
 	public: FuncDef CurrentFunction;
 	public: Boolean IsRunning;
@@ -141,6 +142,30 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	// the namespace's Id, so switching here invalidates every one of them at a
 	// stroke; the next global access re-resolves against the new table.
 	public: void SetGlobals(Globals globals);
+
+	// The built-in type maps this VM's code sees: its program's own copies (see
+	// CoreIntrinsics.ListTypeIn and PerProgram.cs), so changes a script makes to
+	// `list`, `string`, etc. stay within that program.  Switching namespaces with
+	// SetGlobals switches type maps along with the variables.  A VM with no
+	// namespace at all (between SetGlobals(null) and its next Reset) falls back
+	// to the shared templates, so that `isa` still works there.
+	public: Value ListType();
+
+	public: Value StringType();
+
+	public: Value MapType();
+
+	public: Value NumberType();
+
+	public: Value FunctionType();
+
+	public: Value ErrorType();
+
+	// The `intrinsics` map: name -> funcref for every intrinsic this VM has,
+	// in registration order, frozen.  Built from this VM's own intrinsics table
+	// rather than the process-wide registry, so it lists exactly what this VM's
+	// code can reach by name.
+	public: Value IntrinsicsMap();
 	private: Value pendingSelf;
 	private: Value pendingSuper;
 	private: bool hasPendingContext;
@@ -670,6 +695,8 @@ struct VM {
 	private: Int32 MaxStackSlots();
 	private: Dictionary<Value, Value> _intrinsics(); // intrinsic name -> FuncRef Value
 	private: void set__intrinsics(Dictionary<Value, Value> _v); // intrinsic name -> FuncRef Value
+	private: Value _intrinsicsMap(); // the `intrinsics` map for this VM, built lazily
+	private: void set__intrinsicsMap(Value _v); // the `intrinsics` map for this VM, built lazily
 	public: Int32 PC();
 	public: void set_PC(Int32 _v);
 	public: FuncDef CurrentFunction();
@@ -747,6 +774,30 @@ struct VM {
 	// the namespace's Id, so switching here invalidates every one of them at a
 	// stroke; the next global access re-resolves against the new table.
 	public: inline void SetGlobals(Globals globals);
+
+	// The built-in type maps this VM's code sees: its program's own copies (see
+	// CoreIntrinsics.ListTypeIn and PerProgram.cs), so changes a script makes to
+	// `list`, `string`, etc. stay within that program.  Switching namespaces with
+	// SetGlobals switches type maps along with the variables.  A VM with no
+	// namespace at all (between SetGlobals(null) and its next Reset) falls back
+	// to the shared templates, so that `isa` still works there.
+	public: inline Value ListType();
+
+	public: inline Value StringType();
+
+	public: inline Value MapType();
+
+	public: inline Value NumberType();
+
+	public: inline Value FunctionType();
+
+	public: inline Value ErrorType();
+
+	// The `intrinsics` map: name -> funcref for every intrinsic this VM has,
+	// in registration order, frozen.  Built from this VM's own intrinsics table
+	// rather than the process-wide registry, so it lists exactly what this VM's
+	// code can reach by name.
+	public: inline Value IntrinsicsMap();
 	private: Value pendingSelf();
 	private: void set_pendingSelf(Value _v);
 	private: Value pendingSuper();
@@ -1266,6 +1317,8 @@ inline void VM::set__maxCallDepth(Int32 _v) { get()->_maxCallDepth = _v; }
 inline Int32 VM::MaxStackSlots() { return get()->MaxStackSlots; }
 inline Dictionary<Value, Value> VM::_intrinsics() { return get()->_intrinsics; } // intrinsic name -> FuncRef Value
 inline void VM::set__intrinsics(Dictionary<Value, Value> _v) { get()->_intrinsics = _v; } // intrinsic name -> FuncRef Value
+inline Value VM::_intrinsicsMap() { return get()->_intrinsicsMap; } // the `intrinsics` map for this VM, built lazily
+inline void VM::set__intrinsicsMap(Value _v) { get()->_intrinsicsMap = _v; } // the `intrinsics` map for this VM, built lazily
 inline Int32 VM::PC() { return get()->PC; }
 inline void VM::set_PC(Int32 _v) { get()->PC = _v; }
 inline FuncDef VM::CurrentFunction() { return get()->CurrentFunction; }
@@ -1288,6 +1341,13 @@ inline Int64 VM::_globalsId() { return get()->_globalsId; }
 inline void VM::set__globalsId(Int64 _v) { get()->_globalsId = _v; }
 inline Globals VM::GetGlobals() { return get()->GetGlobals(); }
 inline void VM::SetGlobals(Globals globals) { return get()->SetGlobals(globals); }
+inline Value VM::ListType() { return get()->ListType(); }
+inline Value VM::StringType() { return get()->StringType(); }
+inline Value VM::MapType() { return get()->MapType(); }
+inline Value VM::NumberType() { return get()->NumberType(); }
+inline Value VM::FunctionType() { return get()->FunctionType(); }
+inline Value VM::ErrorType() { return get()->ErrorType(); }
+inline Value VM::IntrinsicsMap() { return get()->IntrinsicsMap(); }
 inline Value VM::pendingSelf() { return get()->pendingSelf; }
 inline void VM::set_pendingSelf(Value _v) { get()->pendingSelf = _v; }
 inline Value VM::pendingSuper() { return get()->pendingSuper; }
@@ -1432,7 +1492,7 @@ inline Int32 VMStorage::LookupMember(Value container,Value key,Value* result,Val
 			if (keyStr == "stack")   { *result = container.Stack();   return MemberField; }
 			if (keyStr == "__isa")   { *result = container.Isa();     return MemberField; }
 		}
-		if (CoreIntrinsics::ErrorType().TryGet(key, &found)) {
+		if (ErrorType().TryGet(key, &found)) {
 			*result = found;
 			return MemberMethod;
 		}
@@ -1445,13 +1505,13 @@ inline Int32 VMStorage::LookupMember(Value container,Value key,Value* result,Val
 			*superVal = origin;
 			return MemberMethod;
 		}
-		typeMap = CoreIntrinsics::MapType();
+		typeMap = MapType();
 	} else if (container.IsList()) {
-		typeMap = CoreIntrinsics::ListType();
+		typeMap = ListType();
 	} else if (container.IsString()) {
-		typeMap = CoreIntrinsics::StringType();
+		typeMap = StringType();
 	} else if (container.IsNumber()) {
-		typeMap = CoreIntrinsics::NumberType();
+		typeMap = NumberType();
 	}
 	if (typeMap.IsNull()) {
 		RaiseRuntimeError("Can't index into {0}", container);

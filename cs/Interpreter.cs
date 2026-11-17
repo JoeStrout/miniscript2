@@ -150,13 +150,18 @@ public class Interpreter {
 	}
 
 	//
-	// Discard every global, in place.  The namespace object and its slot numbering
+	// Discard every global, in place, along with this program's PerProgram values
+	// (including any changes made to the built-in type maps `list`, `string`,
+	// etc.), which are rebuilt fresh on next use.  The namespace object and its slot numbering
 	// survive, so this takes effect immediately for code that is already running --
 	// including the rest of the statement that asked for it, which is what the
 	// `reset` intrinsic needs.
 	//
 	public void ClearGlobals() {
-		if (_globals != null) _globals.Clear();
+		if (_globals != null) {
+			_globals.Clear();
+			_globals.ResetPerProgramValues();
+		}
 	}
 
 	// 

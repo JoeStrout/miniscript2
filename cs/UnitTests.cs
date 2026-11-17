@@ -1666,6 +1666,327 @@ public static class UnitTests {
 		return ok;
 	}
 
+	// RunFunction is synchronous: the host is blocked waiting for the result,
+	// so there is no later in which to resume a pending intrinsic or come back
+	// after a yield.  A callee that tries either must stop with a clear runtime
+	// error -- not hang (yield used to loop forever), and not return early with
+	// a stale continuation left behind (wait and import used to be mistaken for
+	// RunFunction's own manual call).  Issue #44.
+	// Run the fixture (source) up to its top-level yield, call funcName via
+	// RunFunction, and check that the call failed with the synchronous-callback
+	// error.
+	private static Boolean CheckRunFunctionFails(String source, String funcName) {
+		Interpreter interp = new Interpreter(source);
+		interp.errorOutput = (String s, bool eol) => { }; // CPP: interp.set_errorOutput([](String, Boolean) {});
+		interp.RunUntilDone(10, true);
+		Boolean ok = Assert(interp.vm.IsRunning && interp.vm.yielding,
+			"RunFunction wait test: fixture should be paused at its yield");
+		Value r = interp.RunFunction(interp.GetGlobalValue(funcName), new List<Value>());
+		String msg = interp.vm.Error.IsError() ? StringUtils.Format("{0}", interp.vm.Error.Message()) : "";
+		ok = ok && Assert(r.IsNull(),
+			StringUtils.Format("RunFunction(@{0}) should return null, got {1}", funcName, r.ToString(null)));
+		ok = ok && Assert(msg.IndexOf("synchronous callback") >= 0,
+			StringUtils.Format("RunFunction(@{0}) should fail with a synchronous-callback error, got '{1}'",
+				funcName, msg));
+		ok = ok && Assert(!interp.vm.IsRunning,
+			StringUtils.Format("RunFunction(@{0}) error should stop the VM", funcName));
+		if (funcName == "importer") {
+			interp.RunFunction(interp.GetGlobalValue("restorePath"), new List<Value>());
+		}
+		return ok;
+	}
+
+	public static Boolean TestRunFunctionCantWait() {
+		Boolean ok = true;
+		String source = new String("waiter = function\n\twait 0.01\n\treturn 1\nend function\n");
+		source += "yielder = function\n\tyield\n\treturn 2\nend function\n";
+		source += "importer = function\n\tenv.MS_IMPORT_PATH = \"tests/modules\"\n\timport \"waitInModule\"\n\treturn 3\nend function\n";
+		source += "triple = function(x)\n\treturn x * 3\nend function\n";
+		source += "restorePath = function\n\tenv.MS_IMPORT_PATH = savedPath\nend function\n";
+		source += "yieldRef = @yield\n";
+		source += "waitRef = @wait\n";
+		source += "savedPath = env.MS_IMPORT_PATH\n";
+		source += "yield\n";
+		source += "finished = 1\n";
+
+		ok = CheckRunFunctionFails(source, "waiter") && ok;
+		ok = CheckRunFunctionFails(source, "yielder") && ok;
+		ok = CheckRunFunctionFails(source, "importer") && ok;
+
+		// The same, calling the intrinsics directly rather than from a script
+		// function (RunFunction's short path for native callees).
+		ok = CheckRunFunctionFails(source, "yieldRef") && ok;
+		ok = CheckRunFunctionFails(source, "waitRef") && ok;
+
+		// An ordinary callee works while the outer script is paused at a yield,
+		// and leaves that yield in place for the host; the script then resumes.
+		Interpreter interp = new Interpreter(source);
+		interp.RunUntilDone(10, true);
+		List<Value> args = new List<Value>();
+		args.Add(new Value(5));
+		Value r = interp.RunFunction(interp.GetGlobalValue("triple"), args);
+		ok = Assert(r == new Value(15),
+			StringUtils.Format("RunFunction(@triple, [5]) while yielding should give 15, got {0}",
+				r.ToString(null))) && ok;
+		ok = Assert(interp.vm.Error.IsNull(), "RunFunction while yielding should not error") && ok;
+		ok = Assert(interp.vm.yielding, "RunFunction should leave the outer yield flag set") && ok;
+		interp.RunUntilDone(10, false);
+		ok = Assert(interp.GetGlobalValue("finished") == new Value(1),
+			"script should run to completion after RunFunction") && ok;
+
+		if (!ok) IOHelper.Print("TestRunFunctionCantWait FAILED");
+		return ok;
+	}
+
+	// ── Calling a function value from an intrinsic, asynchronously (PushCall) ──
+	// Issue #34.  These test-only intrinsics are registered once, globally (as
+	// all intrinsics are), under names no script would use.
+
+	private static Boolean _pushCallIntrinsicsMade = false;
+
+	private static void MakePushCallTestIntrinsics() {
+		if (_pushCallIntrinsicsMade) return;
+		_pushCallIntrinsicsMade = true;
+		Intrinsic f;
+
+		// __testApply(func, items): a list of func(item) for each item, calling
+		// func via PushCall once per element.  The partial result is the list
+		// of results so far, whose length is also the index of the next item.
+		f = Intrinsic.Create("__testApply");
+		f.AddParam("func");
+		f.AddParam("items");
+		f.Code = (Context ctx, IntrinsicResult partialResult) => {
+			Value items = ctx.GetArg(1);
+			Value results;
+			if (partialResult.done) {
+				results = Value.make_list(4);
+			} else {
+				results = partialResult.result;
+				results.Push(ctx.vm.ManualCallResult);
+			}
+			Int32 i = results.ListCount();
+			if (i >= items.ListCount()) return new IntrinsicResult(results);
+			List<Value> args = new List<Value>();
+			args.Add(items.ListGet(i));
+			if (!ctx.vm.PushCall(ctx.GetArg(0), args)) return IntrinsicResult.Null;
+			return new IntrinsicResult(results, false);
+		};
+
+		// __testMethod(obj, name, arg): obj.name(arg) (or obj.name, if arg is
+		// null), via PushMethodCall.
+		f = Intrinsic.Create("__testMethod");
+		f.AddParam("obj");
+		f.AddParam("name");
+		f.AddParam("arg");
+		f.Code = (Context ctx, IntrinsicResult partialResult) => {
+			if (!partialResult.done) return new IntrinsicResult(ctx.vm.ManualCallResult);
+			List<Value> args = new List<Value>();
+			if (!ctx.GetArg(2).IsNull()) args.Add(ctx.GetArg(2));
+			if (!ctx.vm.PushMethodCall(ctx.GetArg(0), ctx.GetArg(1).ToString(null), args)) {
+				return IntrinsicResult.Null;
+			}
+			return new IntrinsicResult(Value.Null, false);
+		};
+
+		// __testCallSelf(func, obj, arg): func(arg) as a method on obj, via
+		// PushCall with self (and the default super).
+		f = Intrinsic.Create("__testCallSelf");
+		f.AddParam("func");
+		f.AddParam("obj");
+		f.AddParam("arg");
+		f.Code = (Context ctx, IntrinsicResult partialResult) => {
+			if (!partialResult.done) return new IntrinsicResult(ctx.vm.ManualCallResult);
+			List<Value> args = new List<Value>();
+			args.Add(ctx.GetArg(2));
+			if (!ctx.vm.PushCall(ctx.GetArg(0), args, ctx.GetArg(1))) return IntrinsicResult.Null;
+			return new IntrinsicResult(Value.Null, false);
+		};
+
+		// __testSelfCall(self): self.go, via PushMethodCall.  Taking only self,
+		// it can be invoked without parentheses (o.run), which exercises the
+		// VM's auto-invoke path rather than CALL.
+		f = Intrinsic.Create("__testSelfCall");
+		f.AddParam("self");
+		f.Code = (Context ctx, IntrinsicResult partialResult) => {
+			if (!partialResult.done) return new IntrinsicResult(ctx.vm.ManualCallResult);
+			if (!ctx.vm.PushMethodCall(ctx.GetArg(0), "go", new List<Value>())) return IntrinsicResult.Null;
+			return new IntrinsicResult(Value.Null, false);
+		};
+
+		// __testDouble(func): misuse -- pushes two calls in one invocation.
+		f = Intrinsic.Create("__testDouble");
+		f.AddParam("func");
+		f.Code = (Context ctx, IntrinsicResult partialResult) => {
+			if (!partialResult.done) return new IntrinsicResult(ctx.vm.ManualCallResult);
+			ctx.vm.PushCall(ctx.GetArg(0), new List<Value>());
+			if (!ctx.vm.PushCall(ctx.GetArg(0), new List<Value>())) return IntrinsicResult.Null;
+			return new IntrinsicResult(Value.Null, false);
+		};
+	}
+
+
+	private static Boolean CheckGlobal(Interpreter interp, String name, String expected) {
+		String actual = StringUtils.Format("{0}", interp.GetGlobalValue(name));
+		return Assert(actual == expected,
+			StringUtils.Format("PushCall test: {0} should be {1}, got {2}", name, expected, actual));
+	}
+
+	public static Boolean TestPushCall() {
+		MakePushCallTestIntrinsics();
+		Boolean ok = true;
+		String source = new String("k = 10\n");
+		source += "f = function(x)\n\twait 0.001\n\tyield\n\treturn x * k\nend function\n";
+		source += "r1 = __testApply(@f, [1, 2, 3])\n";
+		// A closure keeps its outer variables, and does not see the calling
+		// intrinsic's parameter names among them.
+		source += "g = function\n\tm = 3\n";
+		source += "\th = function(x)\n\t\treturn [x * m, outer.hasIndex(\"items\"), outer.hasIndex(\"func\")]\n\tend function\n";
+		source += "\treturn __testApply(@h, [1, 2])\nend function\n";
+		source += "r2 = g\n";
+		// An intrinsic callee.
+		source += "r3 = __testApply(@abs, [-1, 2, -3])\n";
+		// Methods: self and super, found by PushMethodCall as a dot-call would.
+		source += "Base = {}\nBase.describe = function(n)\n\treturn \"base \" + n\nend function\n";
+		source += "Sub = new Base\nSub.describe = function(n)\n\treturn \"sub \" + super.describe(n) + \" \" + self.name\nend function\n";
+		source += "obj = new Sub\nobj.name = \"o\"\n";
+		source += "r4 = __testMethod(obj, \"describe\", 5)\n";
+		source += "r5 = __testMethod([3, 1, 2], \"indexOf\", 1)\n";
+		source += "r6 = __testMethod(obj, \"name\", null)\n";
+		// PushCall with self and the default super: for a method on self
+		// itself, self.__isa.
+		source += "own = new Base\nown.describe = function(n)\n\treturn \"own \" + super.describe(n)\nend function\n";
+		source += "r7 = __testCallSelf(@own.describe, own, 4)\n";
+		// ...and for an inherited method, where the default super is found up
+		// the chain: Sub.describe's super is Base, not obj.__isa (= Sub).
+		source += "r10 = __testCallSelf(@Sub.describe, obj, 6)\n";
+		// An intrinsic method invoked without parentheses.
+		source += "o = {}\no.go = function\n\treturn 42\nend function\no.run = @__testSelfCall\n";
+		source += "r8 = o.run\n";
+		// A pushed callee that itself uses a pushing intrinsic.
+		source += "nested = function(x)\n\treturn __testApply(@f, [x, x + 1])\nend function\n";
+		source += "r9 = __testApply(@nested, [1, 3])\n";
+		// For RunFunction (from the test, below).
+		source += "viaRunFunctionNative = function\n\treturn __testApply(@abs, [-5])\nend function\n";
+		source += "viaRunFunctionScript = function\n\treturn __testApply(@f, [1])\nend function\n";
+
+		// Drive the script as a host does, returning to it on every yield, and
+		// count those: the callee's yields and waits must reach the host.
+		Interpreter interp = new Interpreter(source);
+		Int32 yields = 0;
+		Int32 guard = 0;
+		interp.RunUntilDone(10, true);
+		while (interp.Running() && guard < 100000) {
+			if (interp.vm.yielding) yields++;
+			interp.RunUntilDone(10, true);
+			guard++;
+		}
+		ok = Assert(!interp.Running(), "PushCall test script should finish") && ok;
+		ok = Assert(interp.vm.Error.IsNull(), StringUtils.Format("PushCall test script should not error: {0}",
+			interp.vm.Error.IsNull() ? "" : StringUtils.Format("{0}", interp.vm.Error.Message()))) && ok;
+		ok = Assert(yields >= 7, StringUtils.Format(
+			"PushCall callee's yields should reach the host (expected at least 7, got {0})", yields)) && ok;
+		ok = CheckGlobal(interp, "r1", "[10, 20, 30]") && ok;
+		ok = CheckGlobal(interp, "r2", "[[3, 0, 0], [6, 0, 0]]") && ok;
+		ok = CheckGlobal(interp, "r3", "[1, 2, 3]") && ok;
+		ok = CheckGlobal(interp, "r4", "sub base 5 o") && ok;
+		ok = CheckGlobal(interp, "r5", "1") && ok;
+		ok = CheckGlobal(interp, "r6", "o") && ok;
+		ok = CheckGlobal(interp, "r7", "own base 4") && ok;
+		ok = CheckGlobal(interp, "r8", "42") && ok;
+		ok = CheckGlobal(interp, "r9", "[[10, 20], [30, 40]]") && ok;
+		ok = CheckGlobal(interp, "r10", "sub base 6 o") && ok;
+
+		// Inside RunFunction, an intrinsic callee completes on the spot, so
+		// that works; a script callee would need to be resumed, so it fails
+		// cleanly (issue #44).
+		Value r = interp.RunFunction(interp.GetGlobalValue("viaRunFunctionNative"), new List<Value>());
+		ok = Assert(StringUtils.Format("{0}", r) == "[5]",
+			StringUtils.Format("PushCall of an intrinsic inside RunFunction should give [5], got {0}",
+				r.ToString(null))) && ok;
+		interp.errorOutput = (String s, bool eol) => { }; // CPP: interp.set_errorOutput([](String, Boolean) {});
+		r = interp.RunFunction(interp.GetGlobalValue("viaRunFunctionScript"), new List<Value>());
+		String msg = interp.vm.Error.IsError() ? StringUtils.Format("{0}", interp.vm.Error.Message()) : "";
+		ok = Assert(r.IsNull() && msg.IndexOf("synchronous callback") >= 0,
+			StringUtils.Format("PushCall of a script function inside RunFunction should fail cleanly, got '{0}'",
+				msg)) && ok;
+
+		// Pushing twice in one invocation is an error.
+		interp = new Interpreter("f = function\n\treturn 1\nend function\nx = __testDouble(@f)\n");
+		interp.errorOutput = (String s, bool eol) => { }; // CPP: interp.set_errorOutput([](String, Boolean) {});
+		interp.RunUntilDone(10, false);
+		msg = interp.vm.Error.IsError() ? StringUtils.Format("{0}", interp.vm.Error.Message()) : "";
+		ok = Assert(msg.IndexOf("only one call") >= 0,
+			StringUtils.Format("pushing two calls should fail with 'only one call', got '{0}'", msg)) && ok;
+
+		if (!ok) IOHelper.Print("TestPushCall FAILED");
+		return ok;
+	}
+
+	// Context.GetVar: an intrinsic can read its arguments by parameter name
+	// (the MiniScript 1.x style) as well as by position.  This must hold on a
+	// first call, on a re-invocation after a not-done result, from inside a
+	// script function whose own locals share those names, with a default
+	// argument, and via RunFunction.  (The VM clears the register names of an
+	// intrinsic's frame so they don't show up in the caller's `locals`; GetVar
+	// must not depend on those names.)
+	private static Boolean _getVarIntrinsicMade = false;
+	public static Boolean TestGetVar() {
+		if (!_getVarIntrinsicMade) {
+			_getVarIntrinsicMade = true;
+			// __testGetVar(a, b, c=7, twoPhase=1): [c, a, b, nope], all read by
+			// name.  If twoPhase is true, first returns a not-done result, and
+			// reads the arguments only when re-invoked.
+			Intrinsic f = Intrinsic.Create("__testGetVar");
+			f.AddParam("a");
+			f.AddParam("b");
+			f.AddParam("c", new Value(7));
+			f.AddParam("twoPhase", Value.one);
+			f.Code = (Context ctx, IntrinsicResult partialResult) => {
+				if (partialResult.done && ctx.GetVar("twoPhase").BoolValue()) {
+					return new IntrinsicResult(Value.one, false);
+				}
+				Value result = Value.make_list(4);
+				result.Push(ctx.GetVar("c"));
+				result.Push(ctx.GetVar("a"));
+				result.Push(ctx.GetVar("b"));
+				result.Push(ctx.GetVar("nope"));
+				return new IntrinsicResult(result);
+			};
+		}
+		Boolean ok = true;
+		String source = new String("r1 = __testGetVar(1, 2, 3, 0)\n");
+		source += "r2 = __testGetVar(\"x\", \"y\")\n";
+		source += "f = function(a)\n\tb = 100\n\treturn __testGetVar(b, a)\nend function\n";
+		source += "r3 = f(5)\n";
+		source += "g = @__testGetVar\n";
+		Interpreter interp = new Interpreter(source);
+		interp.RunUntilDone(10, false);
+		ok = Assert(interp.vm.Error.IsNull(), StringUtils.Format("GetVar test script should not error: {0}",
+			interp.vm.Error.IsNull() ? "" : StringUtils.Format("{0}", interp.vm.Error.Message()))) && ok;
+		ok = CheckGlobalNamed(interp, "GetVar", "r1", "[3, 1, 2, null]") && ok;
+		ok = CheckGlobalNamed(interp, "GetVar", "r2", "[7, \"x\", \"y\", null]") && ok;
+		ok = CheckGlobalNamed(interp, "GetVar", "r3", "[7, 100, 5, null]") && ok;
+
+		List<Value> args = new List<Value>();
+		args.Add(new Value(10));
+		args.Add(new Value(20));
+		args.Add(new Value(30));
+		args.Add(Value.zero);
+		Value r = interp.RunFunction(interp.GetGlobalValue("g"), args);
+		ok = Assert(StringUtils.Format("{0}", r) == "[30, 10, 20, null]",
+			StringUtils.Format("GetVar via RunFunction should give [30, 10, 20, null], got {0}",
+				StringUtils.Format("{0}", r))) && ok;
+
+		if (!ok) IOHelper.Print("TestGetVar FAILED");
+		return ok;
+	}
+
+	private static Boolean CheckGlobalNamed(Interpreter interp, String testName, String name, String expected) {
+		String actual = StringUtils.Format("{0}", interp.GetGlobalValue(name));
+		return Assert(actual == expected,
+			StringUtils.Format("{0} test: {1} should be {2}, got {3}", testName, name, expected, actual));
+	}
+
 	// A function with more named variables than the register file can hold: past
 	// MaxVarRegIndex the code generator spills them to the frame's variable map
 	// (bugs.md entry 18).  Checks that the early ones -- the spilled ones -- still
@@ -1683,11 +2004,11 @@ public static class UnitTests {
 		String source = String.Join("", lines);
 		// A spilled variable read and written, a spilled loop variable, and a
 		// closure that captures a spilled variable.
-		source = source + "\tv1 = v1 + 40\n";
-		source = source + "\ttotal = 0\n\tfor item in [10, 20]\n\t\ttotal = total + item\n\tend for\n";
-		source = source + "\tinner = function\n\t\treturn v250\n\tend function\n";
-		source = source + StringUtils.Format("\treturn [v1, v{0}, total, inner, locals.len]\n", count);
-		source = source + "end function\nresult = f\n";
+		source += "\tv1 = v1 + 40\n";
+		source += "\ttotal = 0\n\tfor item in [10, 20]\n\t\ttotal = total + item\n\tend for\n";
+		source += "\tinner = function\n\t\treturn v250\n\tend function\n";
+		source += StringUtils.Format("\treturn [v1, v{0}, total, inner, locals.len]\n", count);
+		source += "end function\nresult = f\n";
 
 		Interpreter interp;
 		interp = new Interpreter(source);
@@ -1723,17 +2044,17 @@ public static class UnitTests {
 	public static Boolean TestRunWithoutYield() {
 		Boolean ok = true;
 		String source = new String("fib = function(n)\n");
-		source = source + "\tif n < 2 then return n\n";
-		source = source + "\treturn fib(n-1) + fib(n-2)\n";
-		source = source + "end function\n";
-		source = source + "m = {}\nlst = []\ntotal = 0\n";
-		source = source + "for i in range(1, 20)\n";
-		source = source + "\tm[i] = i * 2\n\tlst.push i\n\ttotal = total + m[i]\n";
-		source = source + "end for\n";
-		source = source + "Obj = {\"v\": 1}\no = new Obj\no.v = 5\nisObj = o isa Obj\n";
-		source = source + "s = \"abc\" + str(total)\n";
-		source = source + "while total > 100\n\ttotal = total - 7\nend while\n";
-		source = source + "result = [fib(10), total, lst[-1], isObj, s.len, o.v]\n";
+		source += "\tif n < 2 then return n\n";
+		source += "\treturn fib(n-1) + fib(n-2)\n";
+		source += "end function\n";
+		source += "m = {}\nlst = []\ntotal = 0\n";
+		source += "for i in range(1, 20)\n";
+		source += "\tm[i] = i * 2\n\tlst.push i\n\ttotal = total + m[i]\n";
+		source += "end for\n";
+		source += "Obj = {\"v\": 1}\no = new Obj\no.v = 5\nisObj = o isa Obj\n";
+		source += "s = \"abc\" + str(total)\n";
+		source += "while total > 100\n\ttotal = total - 7\nend while\n";
+		source += "result = [fib(10), total, lst[-1], isObj, s.len, o.v]\n";
 
 		Interpreter interp;
 		interp = new Interpreter(source);
@@ -1872,6 +2193,9 @@ public static class UnitTests {
 		&& TestHostGlobals()
 		&& TestGlobalsSwitch()
 			&& TestRunFunction()
+			&& TestRunFunctionCantWait()
+			&& TestPushCall()
+			&& TestGetVar()
 			&& TestSpilledLocals()
 			&& TestRunWithoutYield()
 			&& TestGCHandle()

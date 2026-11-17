@@ -139,6 +139,42 @@ class UnitTests {
 	// intrinsic has no bytecode for RunInner to run.
 	public: static Boolean TestRunFunction();
 
+	// RunFunction is synchronous: the host is blocked waiting for the result,
+	// so there is no later in which to resume a pending intrinsic or come back
+	// after a yield.  A callee that tries either must stop with a clear runtime
+	// error -- not hang (yield used to loop forever), and not return early with
+	// a stale continuation left behind (wait and import used to be mistaken for
+	// RunFunction's own manual call).  Issue #44.
+	// Run the fixture (source) up to its top-level yield, call funcName via
+	// RunFunction, and check that the call failed with the synchronous-callback
+	// error.
+	private: static Boolean CheckRunFunctionFails(String source, String funcName);
+
+	public: static Boolean TestRunFunctionCantWait();
+	private: static Boolean _pushCallIntrinsicsMade;
+
+	// ── Calling a function value from an intrinsic, asynchronously (PushCall) ──
+	// Issue #34.  These test-only intrinsics are registered once, globally (as
+	// all intrinsics are), under names no script would use.
+
+	private: static void MakePushCallTestIntrinsics();
+
+	private: static Boolean CheckGlobal(Interpreter interp, String name, String expected);
+
+	public: static Boolean TestPushCall();
+	private: static Boolean _getVarIntrinsicMade;
+
+	// Context.GetVar: an intrinsic can read its arguments by parameter name
+	// (the MiniScript 1.x style) as well as by position.  This must hold on a
+	// first call, on a re-invocation after a not-done result, from inside a
+	// script function whose own locals share those names, with a default
+	// argument, and via RunFunction.  (The VM clears the register names of an
+	// intrinsic's frame so they don't show up in the caller's `locals`; GetVar
+	// must not depend on those names.)
+	public: static Boolean TestGetVar();
+
+	private: static Boolean CheckGlobalNamed(Interpreter interp, String testName, String name, String expected);
+
 	// A function with more named variables than the register file can hold: past
 	// MaxVarRegIndex the code generator spills them to the frame's variable map
 	// (bugs.md entry 18).  Checks that the early ones -- the spilled ones -- still

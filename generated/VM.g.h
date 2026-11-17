@@ -141,6 +141,9 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	private: Boolean _pendingOwnsSavedState = Boolean(false);
 	private: List<PendingCallState> _pendingCallStack;
 	private: Int32 _nativeFrameTop = 0;
+	private: Int32 _nativeCallStackTop = 0;
+	private: Boolean _pushedCallDone = Boolean(false);
+	private: Int32 _runFunctionDepth = 0;
 	public: bool yielding = Boolean(false);
 	private: std::chrono::steady_clock::time_point _startTime;
 
@@ -173,6 +176,17 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	// (see RunFunction) must place its frame above this so it doesn't clobber
 	// the intrinsic's own argument/working registers.  Zero when no native
 	// callback is on the C++ stack.
+	// ...and the callStackTop when that callback was entered, for PushCall.
+
+	// Set by PushCall when the call it was asked to make finished on the spot
+	// (the callee was itself an intrinsic), with the result already in
+	// ManualCallResult.  InvokeNativeCallback then re-invokes the calling
+	// intrinsic at once instead of treating its not-done result as pending.
+
+	// How many RunFunction calls are currently driving script code.  While this
+	// is nonzero, the host is blocked waiting for a result, so there is no
+	// "later" in which to resume an intrinsic that goes pending (wait, exec,
+	// import) or to come back after a yield; both are runtime errors instead.
 
 	// Set by the "yield" intrinsic; host app can check and clear this.
 
@@ -225,6 +239,60 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	// intrinsic callback.  The function's return value is placed in ManualCallResult.
 	// intrinsicCalleeBase is ctx.baseIndex from the calling intrinsic.
 	public: void ManuallyPushCall(Int32 intrinsicCalleeBase, FuncDef importMain);
+
+	// Call a MiniScript function value from inside an intrinsic, asynchronously.
+	// This is how an intrinsic that takes a callback (a sort key, a map/filter
+	// helper, an event handler) calls it.  PushCall pushes a call to funcRef
+	// with the given arguments, above the calling intrinsic's own frame; the
+	// intrinsic then returns a not-done result, and once the callee returns, the
+	// intrinsic is re-invoked (with that partial result) and finds the callee's
+	// return value in ManualCallResult.  It may then push another call (once per
+	// list element, say) or finish.  The callee runs as ordinary script code:
+	// it may yield, wait, or import, and its instructions count against the
+	// host's time slice.
+	// Unlike ManuallyPushCall, this takes any function value -- closures keep
+	// their outer variables -- with arguments (missing ones take the callee's
+	// defaults), and works whatever the calling intrinsic's own parameter
+	// count.  If self is given, the callee runs as a method on it: self is
+	// bound, and super is too.  When super is not given, it is found as a
+	// dot-call would: the __isa of whichever map in self's __isa chain
+	// (starting with self itself) holds funcRef.  If
+	// funcRef is an intrinsic, it is simply called, and the calling intrinsic
+	// re-invoked at once with its result.
+	// Push only one call per invocation, and always return not-done after
+	// pushing.  Returns true if the call is under way (or already done); false
+	// if it could not be made, in which case a runtime error has been raised.
+	// Calls made inside RunFunction cannot be resumed, so there a pushed call
+	// becomes a runtime error when the intrinsic returns not-done.
+	public: Boolean PushCall(Value funcRef, List<Value> args);
+
+	public: Boolean PushCall(Value funcRef, List<Value> args, Value selfVal);
+
+	public: Boolean PushCall(Value funcRef, List<Value> args, Value selfVal, Value superVal);
+
+	// Like PushCall, but call the method `methodName` of obj, found exactly as a
+	// dot-call (obj.methodName(args)) finds it: up obj's __isa chain, or in the
+	// type map for a list, string, number, or plain map.  self and super are
+	// bound accordingly.  If the member is not a function, it is not called;
+	// its value is the result, as in script.
+	public: Boolean PushMethodCall(Value obj, String methodName, List<Value> args);
+
+	// Find the super that a dot-call on obj would bind for the method funcRef:
+	// the __isa of the map, in obj's __isa chain (starting with obj itself),
+	// that holds funcRef.  Funcrefs are compared by identity, which is right
+	// for one fetched from the object or its class.  If funcRef is not found
+	// there, treat it as a method on obj itself, and return obj.__isa.
+	private: Value SuperForMethod(Value obj, Value funcRef);
+
+	// Check that PushCall is being called where it can work: from inside an
+	// intrinsic, and not a second time in the same invocation.
+	private: Boolean CanPushCall();
+
+	// The body of PushCall/PushMethodCall.  defaultSuper says whether a null
+	// superVal (with a self) should be found by SuperForMethod; PushMethodCall
+	// passes false, since its lookup has already found the right super (which
+	// may be null, e.g. for a method from a type map).
+	private: Boolean PushCallWithContext(Value funcRef, List<Value> args, Value selfVal, Value superVal, Boolean defaultSuper);
 
 	// Set a variable by name in the current frame's locals VarMap.
 	// Matches the runtime behavior of user code "locals[varName] = value":
@@ -374,6 +442,16 @@ class VMStorage : public std::enable_shared_from_this<VMStorage> {
 	// terminates if the intrinsic affects state.  This returns the first such
 	// error among the arguments in place at calleeBase, or null if there is none.
 	private: Value RefusedErrorArg(FuncDef callee, Int32 calleeBase);
+
+	// Erase the register names over count registers starting at baseIndex.
+	private: void ClearNames(Int32 baseIndex, Int32 count);
+
+	// Undo a manual call that a native callback pushed (ManuallyPushCall or
+	// PushCall), if it pushed one, restoring the caller's execution state; and
+	// restore the manual-call fields the push overwrote -- which, inside
+	// RunFunction, include its own sentinel.  Used when the call must not go
+	// ahead after all (see InvokeNativeCallback).
+	private: void UndoManualPush(Int32 callStackTopBefore, Boolean outerHasManual, Int32 outerManualDepth, Value outerManualResult);
 
 	// Invoke a native callback and handle the result.  If done, writes the
 	// result to stack[absoluteResultIndex] and returns true.  If not done,
@@ -642,6 +720,12 @@ struct VM {
 	private: void set__pendingCallStack(List<PendingCallState> _v);
 	private: Int32 _nativeFrameTop();
 	private: void set__nativeFrameTop(Int32 _v);
+	private: Int32 _nativeCallStackTop();
+	private: void set__nativeCallStackTop(Int32 _v);
+	private: Boolean _pushedCallDone();
+	private: void set__pushedCallDone(Boolean _v);
+	private: Int32 _runFunctionDepth();
+	private: void set__runFunctionDepth(Int32 _v);
 	public: bool yielding();
 	public: void set_yielding(bool _v);
 
@@ -674,6 +758,17 @@ struct VM {
 	// (see RunFunction) must place its frame above this so it doesn't clobber
 	// the intrinsic's own argument/working registers.  Zero when no native
 	// callback is on the C++ stack.
+	// ...and the callStackTop when that callback was entered, for PushCall.
+
+	// Set by PushCall when the call it was asked to make finished on the spot
+	// (the callee was itself an intrinsic), with the result already in
+	// ManualCallResult.  InvokeNativeCallback then re-invokes the calling
+	// intrinsic at once instead of treating its not-done result as pending.
+
+	// How many RunFunction calls are currently driving script code.  While this
+	// is nonzero, the host is blocked waiting for a result, so there is no
+	// "later" in which to resume an intrinsic that goes pending (wait, exec,
+	// import) or to come back after a yield; both are runtime errors instead.
 
 	// Set by the "yield" intrinsic; host app can check and clear this.
 
@@ -725,6 +820,60 @@ struct VM {
 	// intrinsic callback.  The function's return value is placed in ManualCallResult.
 	// intrinsicCalleeBase is ctx.baseIndex from the calling intrinsic.
 	public: inline void ManuallyPushCall(Int32 intrinsicCalleeBase, FuncDef importMain);
+
+	// Call a MiniScript function value from inside an intrinsic, asynchronously.
+	// This is how an intrinsic that takes a callback (a sort key, a map/filter
+	// helper, an event handler) calls it.  PushCall pushes a call to funcRef
+	// with the given arguments, above the calling intrinsic's own frame; the
+	// intrinsic then returns a not-done result, and once the callee returns, the
+	// intrinsic is re-invoked (with that partial result) and finds the callee's
+	// return value in ManualCallResult.  It may then push another call (once per
+	// list element, say) or finish.  The callee runs as ordinary script code:
+	// it may yield, wait, or import, and its instructions count against the
+	// host's time slice.
+	// Unlike ManuallyPushCall, this takes any function value -- closures keep
+	// their outer variables -- with arguments (missing ones take the callee's
+	// defaults), and works whatever the calling intrinsic's own parameter
+	// count.  If self is given, the callee runs as a method on it: self is
+	// bound, and super is too.  When super is not given, it is found as a
+	// dot-call would: the __isa of whichever map in self's __isa chain
+	// (starting with self itself) holds funcRef.  If
+	// funcRef is an intrinsic, it is simply called, and the calling intrinsic
+	// re-invoked at once with its result.
+	// Push only one call per invocation, and always return not-done after
+	// pushing.  Returns true if the call is under way (or already done); false
+	// if it could not be made, in which case a runtime error has been raised.
+	// Calls made inside RunFunction cannot be resumed, so there a pushed call
+	// becomes a runtime error when the intrinsic returns not-done.
+	public: inline Boolean PushCall(Value funcRef, List<Value> args);
+
+	public: inline Boolean PushCall(Value funcRef, List<Value> args, Value selfVal);
+
+	public: inline Boolean PushCall(Value funcRef, List<Value> args, Value selfVal, Value superVal);
+
+	// Like PushCall, but call the method `methodName` of obj, found exactly as a
+	// dot-call (obj.methodName(args)) finds it: up obj's __isa chain, or in the
+	// type map for a list, string, number, or plain map.  self and super are
+	// bound accordingly.  If the member is not a function, it is not called;
+	// its value is the result, as in script.
+	public: inline Boolean PushMethodCall(Value obj, String methodName, List<Value> args);
+
+	// Find the super that a dot-call on obj would bind for the method funcRef:
+	// the __isa of the map, in obj's __isa chain (starting with obj itself),
+	// that holds funcRef.  Funcrefs are compared by identity, which is right
+	// for one fetched from the object or its class.  If funcRef is not found
+	// there, treat it as a method on obj itself, and return obj.__isa.
+	private: inline Value SuperForMethod(Value obj, Value funcRef);
+
+	// Check that PushCall is being called where it can work: from inside an
+	// intrinsic, and not a second time in the same invocation.
+	private: inline Boolean CanPushCall();
+
+	// The body of PushCall/PushMethodCall.  defaultSuper says whether a null
+	// superVal (with a self) should be found by SuperForMethod; PushMethodCall
+	// passes false, since its lookup has already found the right super (which
+	// may be null, e.g. for a method from a type map).
+	private: inline Boolean PushCallWithContext(Value funcRef, List<Value> args, Value selfVal, Value superVal, Boolean defaultSuper);
 
 	// Set a variable by name in the current frame's locals VarMap.
 	// Matches the runtime behavior of user code "locals[varName] = value":
@@ -866,6 +1015,16 @@ struct VM {
 	// terminates if the intrinsic affects state.  This returns the first such
 	// error among the arguments in place at calleeBase, or null if there is none.
 	private: inline Value RefusedErrorArg(FuncDef callee, Int32 calleeBase);
+
+	// Erase the register names over count registers starting at baseIndex.
+	private: inline void ClearNames(Int32 baseIndex, Int32 count);
+
+	// Undo a manual call that a native callback pushed (ManuallyPushCall or
+	// PushCall), if it pushed one, restoring the caller's execution state; and
+	// restore the manual-call fields the push overwrote -- which, inside
+	// RunFunction, include its own sentinel.  Used when the call must not go
+	// ahead after all (see InvokeNativeCallback).
+	private: inline void UndoManualPush(Int32 callStackTopBefore, Boolean outerHasManual, Int32 outerManualDepth, Value outerManualResult);
 
 	// Invoke a native callback and handle the result.  If done, writes the
 	// result to stack[absoluteResultIndex] and returns true.  If not done,
@@ -1072,6 +1231,12 @@ inline List<PendingCallState> VM::_pendingCallStack() { return get()->_pendingCa
 inline void VM::set__pendingCallStack(List<PendingCallState> _v) { get()->_pendingCallStack = _v; }
 inline Int32 VM::_nativeFrameTop() { return get()->_nativeFrameTop; }
 inline void VM::set__nativeFrameTop(Int32 _v) { get()->_nativeFrameTop = _v; }
+inline Int32 VM::_nativeCallStackTop() { return get()->_nativeCallStackTop; }
+inline void VM::set__nativeCallStackTop(Int32 _v) { get()->_nativeCallStackTop = _v; }
+inline Boolean VM::_pushedCallDone() { return get()->_pushedCallDone; }
+inline void VM::set__pushedCallDone(Boolean _v) { get()->_pushedCallDone = _v; }
+inline Int32 VM::_runFunctionDepth() { return get()->_runFunctionDepth; }
+inline void VM::set__runFunctionDepth(Int32 _v) { get()->_runFunctionDepth = _v; }
 inline bool VM::yielding() { return get()->yielding; }
 inline void VM::set_yielding(bool _v) { get()->yielding = _v; }
 inline double VM::ElapsedTime() { return get()->ElapsedTime(); }
@@ -1089,6 +1254,13 @@ inline void VM::InitVM(Int32 stackSlots,Int32 callSlots) { return get()->InitVM(
 inline void VM::CleanupVM() { return get()->CleanupVM(); }
 inline void VM::MarkFuncConstants(FuncDef func) { return get()->MarkFuncConstants(func); }
 inline void VM::ManuallyPushCall(Int32 intrinsicCalleeBase,FuncDef importMain) { return get()->ManuallyPushCall(intrinsicCalleeBase, importMain); }
+inline Boolean VM::PushCall(Value funcRef,List<Value> args) { return get()->PushCall(funcRef, args); }
+inline Boolean VM::PushCall(Value funcRef,List<Value> args,Value selfVal) { return get()->PushCall(funcRef, args, selfVal); }
+inline Boolean VM::PushCall(Value funcRef,List<Value> args,Value selfVal,Value superVal) { return get()->PushCall(funcRef, args, selfVal, superVal); }
+inline Boolean VM::PushMethodCall(Value obj,String methodName,List<Value> args) { return get()->PushMethodCall(obj, methodName, args); }
+inline Value VM::SuperForMethod(Value obj,Value funcRef) { return get()->SuperForMethod(obj, funcRef); }
+inline Boolean VM::CanPushCall() { return get()->CanPushCall(); }
+inline Boolean VM::PushCallWithContext(Value funcRef,List<Value> args,Value selfVal,Value superVal,Boolean defaultSuper) { return get()->PushCallWithContext(funcRef, args, selfVal, superVal, defaultSuper); }
 inline void VM::SetVar(String varName,Value value) { return get()->SetVar(varName, value); }
 inline Value VM::RunFunction(Value funcRef,List<Value> args) { return get()->RunFunction(funcRef, args); }
 inline void VM::Reset(List<FuncDef> allFunctions) { return get()->Reset(allFunctions); }
@@ -1112,6 +1284,8 @@ inline void VM::ApplyPendingContext(Int32 calleeBase,FuncDef callee) { return ge
 inline void VM::SetupCallFrame(Int32 argCount,Int32 selfParam,Int32 calleeBase,FuncDef callee) { return get()->SetupCallFrame(argCount, selfParam, calleeBase, callee); }
 inline Int32 VM::AutoInvokeFuncRef(Value funcRefVal,Int32 resultReg,Int32 returnPC,Int32 baseIndex,FuncDef currentFunc,FuncDef* calleeOut) { return get()->AutoInvokeFuncRef(funcRefVal, resultReg, returnPC, baseIndex, currentFunc, calleeOut); }
 inline Value VM::RefusedErrorArg(FuncDef callee,Int32 calleeBase) { return get()->RefusedErrorArg(callee, calleeBase); }
+inline void VM::ClearNames(Int32 baseIndex,Int32 count) { return get()->ClearNames(baseIndex, count); }
+inline void VM::UndoManualPush(Int32 callStackTopBefore,Boolean outerHasManual,Int32 outerManualDepth,Value outerManualResult) { return get()->UndoManualPush(callStackTopBefore, outerHasManual, outerManualDepth, outerManualResult); }
 inline bool VM::InvokeNativeCallback(NativeCallbackDelegate callback,FuncDef callee,Int32 calleeBase,Int32 argCount,IntrinsicResult partialResult,Int32 absoluteResultIndex) { return get()->InvokeNativeCallback(callback, callee, calleeBase, argCount, partialResult, absoluteResultIndex); }
 inline Value VM::Execute(FuncDef entry) { return get()->Execute(entry); }
 inline Value VM::Execute(FuncDef entry,UInt32 maxCycles) { return get()->Execute(entry, maxCycles); }

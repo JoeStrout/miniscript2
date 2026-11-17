@@ -239,14 +239,9 @@ void VMStorage::ManuallyPushCall(Int32 intrinsicCalleeBase,FuncDef importMain) {
 	Int32 calleeBase = intrinsicCalleeBase + 2;
 	if (!EnsureFrame(calleeBase, importMain.MaxRegs())) return;
 
-	// The import intrinsic's 2-register scratch frame (r0 + the "libname" arg)
-	// lives inside the CALLER's register file.  ProcessArguments named the arg
-	// register "libname"; the module-map result gets written back into that
-	// same register when import finishes.  If we leave the name in place, that
-	// bogus "libname" entry leaks into the caller module's locals map (visible
-	// once nested imports actually complete).  Clear both scratch names.
-	names[intrinsicCalleeBase] = Value::Null;
-	names[intrinsicCalleeBase + 1] = Value::Null;
+	// (The import intrinsic's own "libname" register name, which would
+	// otherwise leak into the caller's locals, was already erased by
+	// InvokeNativeCallback, as for every intrinsic.)
 	for (Int32 i = 0; i < importMain.MaxRegs(); i++) {
 		stack[calleeBase + i] = Value::Null;
 		names[calleeBase + i] = Value::Null;
@@ -266,6 +261,133 @@ void VMStorage::ManuallyPushCall(Int32 intrinsicCalleeBase,FuncDef importMain) {
 	_hasPendingManualCall = Boolean(true);
 	_pendingManualCallDepth = callStackTop;
 	ManualCallResult = Value::Null;
+}
+Boolean VMStorage::PushCall(Value funcRef,List<Value> args) {
+	return PushCallWithContext(funcRef, args, Value::Null, Value::Null, Boolean(true));
+}
+Boolean VMStorage::PushCall(Value funcRef,List<Value> args,Value selfVal) {
+	return PushCallWithContext(funcRef, args, selfVal, Value::Null, Boolean(true));
+}
+Boolean VMStorage::PushCall(Value funcRef,List<Value> args,Value selfVal,Value superVal) {
+	return PushCallWithContext(funcRef, args, selfVal, superVal, Boolean(true));
+}
+Boolean VMStorage::PushMethodCall(Value obj,String methodName,List<Value> args) {
+	if (!CanPushCall()) return Boolean(false);
+	Value found;
+	Value superVal;
+	Int32 kind = LookupMember(obj, Value::make_string(methodName), &found, &superVal);
+	if (kind == MemberMissing) return Boolean(false);	// (error already raised)
+	if (!found.IsFuncRef()) {
+		ManualCallResult = found;
+		_pushedCallDone = Boolean(true);
+		return Boolean(true);
+	}
+	if (kind == MemberMethod) return PushCallWithContext(found, args, obj, superVal, Boolean(false));
+	return PushCallWithContext(found, args, Value::Null, Value::Null, Boolean(false));
+}
+Value VMStorage::SuperForMethod(Value obj,Value funcRef) {
+	Value current = obj;
+	Value iterVal;
+	for (Int32 depth = 0; depth < 256 && current.IsMap(); depth++) {
+		MapIterator iter = current.Iterator();
+		while (map_iterator_next(&iter, nullptr, &iterVal)) {
+			if (iterVal.RefEquals(funcRef)) return current.MapGet(Value::magicIsA);
+		}
+		current = current.MapGet(Value::magicIsA);
+	}
+	return obj.MapGet(Value::magicIsA);
+}
+Boolean VMStorage::CanPushCall() {
+	if (_nativeFrameTop == 0) {
+		RaiseRuntimeError("PushCall: must be called from inside an intrinsic");
+		return Boolean(false);
+	}
+	if (callStackTop != _nativeCallStackTop || _pushedCallDone) {
+		RaiseRuntimeError("PushCall: only one call may be pushed per invocation of an intrinsic");
+		return Boolean(false);
+	}
+	return Boolean(true);
+}
+Boolean VMStorage::PushCallWithContext(Value funcRef,List<Value> args,Value selfVal,Value superVal,Boolean defaultSuper) {
+	if (!CanPushCall()) return Boolean(false);
+	if (!funcRef.IsFuncRef()) {
+		RaiseRuntimeError("PushCall: value is not a function reference");
+		return Boolean(false);
+	}
+	FuncDef callee = funcRef.FunctionDef();
+	if (IsNull(callee)) {
+		RaiseRuntimeError("PushCall: invalid function reference");
+		return Boolean(false);
+	}
+	Boolean hasSelf = !selfVal.IsNull();
+	Value superArg = superVal;
+	if (hasSelf && defaultSuper && superArg.IsNull()) superArg = SuperForMethod(selfVal, funcRef);
+	Int32 argCount = (IsNull(args)) ? 0 : args.Count();
+	Int32 paramCount = callee.ParamNames().Count();
+	// As in a dot-call, self is passed as the first argument to a callee
+	// whose first parameter is named "self".
+	Int32 selfParam = (hasSelf && paramCount > 0 && callee.ParamNames()[0] == Value::selfString) ? 1 : 0;
+
+	// An intrinsic callee has no bytecode to push; just call it, and have
+	// InvokeNativeCallback re-invoke our caller at once with the result.
+	if (!IsNull(callee.NativeCallback())) {
+		List<Value> callArgs =  List<Value>::New();
+		if (selfParam > 0) callArgs.Add(selfVal);
+		for (Int32 i = 0; i < argCount; i++) callArgs.Add(args[i]);
+		Value result = RunFunction(funcRef, callArgs);
+		if (!IsRunning) return Boolean(false);	// (it raised an error)
+		ManualCallResult = result;
+		_pushedCallDone = Boolean(true);
+		return Boolean(true);
+	}
+
+	if (argCount + selfParam > paramCount) {
+		RaiseRuntimeError(StringUtils::Format(
+			"PushCall: too many arguments: got {0}, expected {1}", argCount + selfParam, paramCount));
+		return Boolean(false);
+	}
+	if (callStackTop >= callStack.Count()) {
+		RaiseRuntimeError("Call stack overflow");
+		return Boolean(false);
+	}
+	// The callee's frame goes just above the calling intrinsic's frame, so
+	// the intrinsic's arguments are intact when it is re-invoked.
+	Int32 calleeBase = _nativeFrameTop;
+	if (!EnsureFrame(calleeBase, callee.MaxRegs())) return Boolean(false);
+
+	// Set up the callee frame, as CALL does (ProcessArguments, SetupCallFrame,
+	// then the self/super registers).
+	for (Int32 i = 0; i < argCount; i++) {
+		stack[calleeBase + 1 + selfParam + i] = args[i];
+		names[calleeBase + 1 + selfParam + i] = callee.ParamNames()[selfParam + i];
+	}
+	SetupCallFrame(argCount, selfParam, calleeBase, callee);
+	if (selfParam > 0) {
+		stack[calleeBase + 1] = selfVal;
+		names[calleeBase + 1] = Value::selfString;
+	}
+	if (hasSelf && callee.SelfReg() >= 0) {
+		stack[calleeBase + callee.SelfReg()] = selfVal;
+		names[calleeBase + callee.SelfReg()] = Value::selfString;
+	}
+	if (hasSelf && callee.SuperReg() >= 0) {
+		stack[calleeBase + callee.SuperReg()] = superArg;
+		names[calleeBase + callee.SuperReg()] = Value::superString;
+	}
+
+	// Push a frame that returns to the intrinsic's caller (where execution
+	// stands now) and writes no register; the result goes to
+	// ManualCallResult instead, via the manual-call sentinel, which also
+	// stops RunInner on return so that Run re-invokes the intrinsic.
+	callStack[callStackTop] = CallInfo(PC, BaseIndex, CurrentFunction, -1, funcRef.OuterVars());
+	callStackTop++;
+	BaseIndex = calleeBase;
+	CurrentFunction = callee;
+	PC = 0;
+	_hasPendingManualCall = Boolean(true);
+	_pendingManualCallDepth = callStackTop;
+	ManualCallResult = Value::Null;
+	return Boolean(true);
 }
 void VMStorage::SetVar(String varName,Value value) {
 	Value targetMap = GetCurrentLocalVarMap(BaseIndex, CurrentFunction.MaxRegs());
@@ -317,12 +439,20 @@ Value VMStorage::RunFunction(Value funcRef,List<Value> args) {
 		names[calleeBase + i] = Value::Null;
 	}
 
+	// The callee must not yield (there is no later to come back in), so we
+	// watch the yielding flag -- but it may already be set by the outer
+	// script, e.g. if the host calls us between frames after a yield.  So
+	// we clear it just before running the callee (below), and restore it
+	// when we are done.
+	Boolean savedYielding = yielding;
+
 	// A native intrinsic has no bytecode to run, so it needs none of the
 	// state-saving and RunInner driving below: its arguments are already in
 	// place, and invoking the callback IS the call.  This mirrors what CALL
 	// does for an intrinsic (see AutoInvokeFuncRef), minus the frame push --
 	// there is nothing for the callback to return *to*.
 	if (!IsNull(callee.NativeCallback())) {
+		ClearNames(calleeBase, callee.MaxRegs());	// (see InvokeNativeCallback)
 		Value refused = RefusedErrorArg(callee, calleeBase);
 		if (!refused.IsNull()) {
 			if (!callee.AffectsState()) return refused;
@@ -335,26 +465,48 @@ Value VMStorage::RunFunction(Value funcRef,List<Value> args) {
 			calleeBase,
 			argCount,
 			callee.ParamNames());
-		// Record this intrinsic's frame top, exactly as InvokeNativeCallback
-		// does, so a RunFunction made from within this callback in turn lands
-		// above it.
+		// Record this intrinsic's frame, exactly as InvokeNativeCallback does,
+		// so a RunFunction or PushCall made from within this callback in turn
+		// lands above it.
 		Int32 savedNativeTop = _nativeFrameTop;
+		Int32 savedNativeCallStackTop = _nativeCallStackTop;
 		_nativeFrameTop = calleeBase + callee.MaxRegs();
+		_nativeCallStackTop = callStackTop;
+		Int32 callStackTopBefore = callStackTop;
+		Boolean outerHasManual = _hasPendingManualCall;
+		Int32 outerManualDepth = _pendingManualCallDepth;
+		Value outerManualResult = ManualCallResult;
 		CStrArena::Mark _cstrArenaMark = CStrArena::GetMark();
+		yielding = Boolean(false);
+		_pushedCallDone = Boolean(false);
 		IntrinsicResult ir = callee.NativeCallback()(context, IntrinsicResult::Null);
+		while (!ir.done && _pushedCallDone) {	// (see InvokeNativeCallback)
+			_pushedCallDone = Boolean(false);
+			ir = callee.NativeCallback()(context, IntrinsicResult(ir.result, Boolean(false)));
+		}
+		_pushedCallDone = Boolean(false);
 		CStrArena::Reset(_cstrArenaMark);
 		_nativeFrameTop = savedNativeTop;
+		_nativeCallStackTop = savedNativeCallStackTop;
 		// A not-done result means "invoke me again later", which the normal
 		// CALL path services from Run's continuation loop.  There is no later
 		// here: the host is blocked waiting for this value.  Say so, rather
 		// than spinning (which would hang on an intrinsic like import, whose
 		// continuation needs bytecode to run in between).
 		if (!ir.done) {
+			yielding = savedYielding;
+			UndoManualPush(callStackTopBefore, outerHasManual, outerManualDepth, outerManualResult);
 			RaiseRuntimeError(StringUtils::Format(
-				"RunFunction: intrinsic {0} needs to resume, which a synchronous call cannot do",
+				"{0} can't be used inside a synchronous callback (RunFunction), since it needs to wait",
 				callee.Name()));
 			return Value::Null;
 		}
+		if (yielding) {
+			yielding = savedYielding;
+			RaiseRuntimeError("can't yield inside a synchronous callback (RunFunction)");
+			return Value::Null;
+		}
+		yielding = savedYielding;
 		return ir.result;
 	}
 
@@ -399,12 +551,27 @@ Value VMStorage::RunFunction(Value funcRef,List<Value> args) {
 	// Drive the VM until our pushed call completes.  Normally one RunInner is
 	// enough (the sentinel exits the instant our frame returns); the loop is
 	// belt-and-suspenders should RunInner exit early for any other reason.
+	// The one early exit we must catch is a yield: RunInner stops at the
+	// next instruction and would keep stopping there, so looping again would
+	// hang.  An intrinsic going pending is caught in InvokeNativeCallback
+	// (see _runFunctionDepth).
 	VM previousVM = _activeVM;
 	_activeVM = _this;
+	_runFunctionDepth++;
+	yielding = Boolean(false);
 	while (_hasPendingManualCall && IsRunning) {
 		RunInner(0);
+		if (yielding && IsRunning) {
+			RaiseRuntimeError("can't yield inside a synchronous callback (RunFunction)");
+			// Attach the stack trace now, at the yield point; RunInner has
+			// already saved its state, so no later SaveState would do it
+			// before we restore the outer state below.
+			SaveState(PC, BaseIndex, CurrentFunction);
+		}
 	}
+	_runFunctionDepth--;
 	_activeVM = previousVM;
+	yielding = savedYielding;
 
 	Value result = ManualCallResult;
 	Value callError = Error;
@@ -730,9 +897,33 @@ Value VMStorage::RefusedErrorArg(FuncDef callee,Int32 calleeBase) {
 	}
 	return Value::Null;
 }
+void VMStorage::ClearNames(Int32 baseIndex,Int32 count) {
+	for (Int32 i = 0; i < count; i++) names[baseIndex + i] = Value::Null;
+}
+void VMStorage::UndoManualPush(Int32 callStackTopBefore,Boolean outerHasManual,Int32 outerManualDepth,Value outerManualResult) {
+	if (callStackTop > callStackTopBefore) {
+		CallInfo pushed = callStack[callStackTopBefore];
+		PC = pushed.ReturnPC;
+		BaseIndex = pushed.ReturnBase;
+		CurrentFunction = pushed.ReturnFunc;
+		callStackTop = callStackTopBefore;
+	}
+	_hasPendingManualCall = outerHasManual;
+	_pendingManualCallDepth = outerManualDepth;
+	ManualCallResult = outerManualResult;
+}
 bool VMStorage::InvokeNativeCallback(NativeCallbackDelegate callback,FuncDef callee,Int32 calleeBase,Int32 argCount,IntrinsicResult partialResult,Int32 absoluteResultIndex) {
 	if (partialResult.done) {
-		// A first call, not a continuation: refuse any unwanted error argument.
+		// A first call, not a continuation.  Erase the register names that
+		// argument setup gave the intrinsic's frame: an intrinsic pushes no
+		// call frame, so its registers commonly lie within the calling
+		// script frame, whose locals VarMap scans names[] over that whole
+		// frame -- and would pick these up as variables (`print locals`
+		// showing a `delimiter` left by an earlier print).  Nothing needs
+		// them: Context reads arguments by position, and GetVar by the
+		// intrinsic's declared parameter names.
+		ClearNames(calleeBase, callee.MaxRegs());
+		// Refuse any unwanted error argument.
 		Value refused = RefusedErrorArg(callee, calleeBase);
 		if (!refused.IsNull()) {
 			stack[absoluteResultIndex] = callee.AffectsState() ? Value::Null : refused;
@@ -746,10 +937,13 @@ bool VMStorage::InvokeNativeCallback(NativeCallbackDelegate callback,FuncDef cal
 		calleeBase,
 		argCount,
 		callee.ParamNames());
-	// Record this intrinsic's frame top so a re-entrant RunFunction made from
-	// within the callback lands above it.  Save/restore for nested callbacks.
+	// Record this intrinsic's frame so a re-entrant RunFunction or PushCall
+	// made from within the callback lands above it.  Save/restore for nested
+	// callbacks.
 	Int32 savedNativeTop = _nativeFrameTop;
+	Int32 savedNativeCallStackTop = _nativeCallStackTop;
 	_nativeFrameTop = calleeBase + callee.MaxRegs();
+	_nativeCallStackTop = callStackTop;
 	// Bracket the callback with a CStrArena mark/reset so any Value::c_str()
 	// the intrinsic makes is freed when it returns (C++ only; see cstr_arena.h).
 	CStrArena::Mark _cstrArenaMark = CStrArena::GetMark();
@@ -762,11 +956,48 @@ bool VMStorage::InvokeNativeCallback(NativeCallbackDelegate callback,FuncDef cal
 	Int32 outerManualDepth = _pendingManualCallDepth;
 	Value outerManualResult = ManualCallResult;
 	Int32 callStackTopBefore = callStackTop;
+	_pushedCallDone = Boolean(false);
 	IntrinsicResult ir = callback(context, partialResult);
+	// If the callback's PushCall finished on the spot (a native callee, whose
+	// result is already in ManualCallResult), there is nothing to wait for:
+	// re-invoke it right away, as Run would have done later.
+	while (!ir.done && _pushedCallDone) {
+		_pushedCallDone = Boolean(false);
+		stack[absoluteResultIndex] = ir.result;	// (keep it where the GC can see it)
+		ir = callback(context, IntrinsicResult(ir.result, Boolean(false)));
+	}
+	_pushedCallDone = Boolean(false);
 	CStrArena::Reset(_cstrArenaMark);
 	_nativeFrameTop = savedNativeTop;
+	_nativeCallStackTop = savedNativeCallStackTop;
 	stack[absoluteResultIndex] = ir.result;
-	if (ir.done) return Boolean(true);
+	if (ir.done) {
+		// A callback that pushed a call must return not-done, so as to be
+		// re-invoked with its result; returning done would orphan the frame.
+		// (If an error was already raised, e.g. by a failed second PushCall,
+		// just undo the push and let that error stand.)
+		if (callStackTop > callStackTopBefore) {
+			UndoManualPush(callStackTopBefore, outerHasManual, outerManualDepth, outerManualResult);
+			stack[absoluteResultIndex] = Value::Null;
+			if (IsRunning) RaiseRuntimeError(StringUtils::Format(
+				"{0} pushed a call (PushCall) but then returned a done result", callee.Name()));
+		}
+		return Boolean(true);
+	}
+	if (_runFunctionDepth > 0) {
+		// Inside RunFunction, nothing will ever resume this continuation (see
+		// _runFunctionDepth).  Undo any manual call the callback pushed (e.g.
+		// import's module frame, or a PushCall), record no pending state, and
+		// stop with an error.  Returning true sends the caller down its
+		// ordinary completed-call path, which then sees the VM is no longer
+		// running.
+		UndoManualPush(callStackTopBefore, outerHasManual, outerManualDepth, outerManualResult);
+		stack[absoluteResultIndex] = Value::Null;
+		RaiseRuntimeError(StringUtils::Format(
+			"{0} can't be used inside a synchronous callback (RunFunction), since it needs to wait",
+			callee.Name()));
+		return Boolean(true);
+	}
 	if (firstCall) {
 		// A first call going pending: push the outer pending state, so that
 		// completing this continuation restores it (see Run).
@@ -796,6 +1027,8 @@ bool VMStorage::InvokeNativeCallback(NativeCallbackDelegate callback,FuncDef cal
 	// pushed a manual call (e.g. `import`): that code is meant to run inline,
 	// right now.  (A set _hasPendingManualCall here is either that, or
 	// RunFunction's sentinel, which also must not yield.)
+	// (Inside RunFunction, where _hasPendingManualCall is also set as its
+	// sentinel, we never get here; see above.)
 	if (!_hasPendingManualCall) yielding = Boolean(true);
 	return Boolean(false);
 }
@@ -828,30 +1061,35 @@ Value VMStorage::Run(UInt32 maxCycles) {
 			// Normal case: re-invoke the pending intrinsic callback.
 			IntrinsicResult partialResult = IntrinsicResult(stack[_pendingResultIndex], Boolean(false));
 			if (!InvokeNativeCallback(_pendingCallback, _pendingCallee, _pendingCalleeBase, _pendingArgCount, partialResult, _pendingResultIndex)) {
-				// Still not done; return without running any bytecode
-				_activeVM = previousVM;
-				return Value::Null;
-			}
-			// The continuation completed.  Restore the outer pending state we
-			// saved when its first call went pending, so that if this call was
-			// nested inside an import, the outer import resumes (its module
-			// keeps running, then its own continuation fires).  Otherwise
-			// (nothing was saved), just clear.
-			if (_pendingOwnsSavedState && _pendingCallStack.Count() > 0) {
-				PendingCallState saved = _pendingCallStack[_pendingCallStack.Count() - 1];
-				_pendingCallStack.RemoveAt(_pendingCallStack.Count() - 1);
-				_pendingCallback = saved.Callback;
-				_pendingCallee = saved.Callee;
-				_pendingCalleeBase = saved.CalleeBase;
-				_pendingArgCount = saved.ArgCount;
-				_pendingResultIndex = saved.ResultIndex;
-				_pendingOwnsSavedState = saved.OwnsSavedState;
-				_hasPendingManualCall = saved.HasManual;
-				_pendingManualCallDepth = saved.ManualDepth;
-				ManualCallResult = saved.ManualResult;
+				// Still not done.  If it pushed another call (PushCall, e.g.
+				// an intrinsic calling a callback once per list element), run
+				// that now; otherwise return without running any bytecode.
+				if (!_hasPendingManualCall) {
+					_activeVM = previousVM;
+					return Value::Null;
+				}
 			} else {
-				_pendingCallback = nullptr;
-				_pendingOwnsSavedState = Boolean(false);
+				// The continuation completed.  Restore the outer pending state we
+				// saved when its first call went pending, so that if this call was
+				// nested inside an import, the outer import resumes (its module
+				// keeps running, then its own continuation fires).  Otherwise
+				// (nothing was saved), just clear.
+				if (_pendingOwnsSavedState && _pendingCallStack.Count() > 0) {
+					PendingCallState saved = _pendingCallStack[_pendingCallStack.Count() - 1];
+					_pendingCallStack.RemoveAt(_pendingCallStack.Count() - 1);
+					_pendingCallback = saved.Callback;
+					_pendingCallee = saved.Callee;
+					_pendingCalleeBase = saved.CalleeBase;
+					_pendingArgCount = saved.ArgCount;
+					_pendingResultIndex = saved.ResultIndex;
+					_pendingOwnsSavedState = saved.OwnsSavedState;
+					_hasPendingManualCall = saved.HasManual;
+					_pendingManualCallDepth = saved.ManualDepth;
+					ManualCallResult = saved.ManualResult;
+				} else {
+					_pendingCallback = nullptr;
+					_pendingOwnsSavedState = Boolean(false);
+				}
 			}
 		}
 	}
@@ -1026,8 +1264,16 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 					FuncDef autoCallee = nullptr;
 					Int32 status = AutoInvokeFuncRef(valB, a, pc, baseIndex, currentFunc, &autoCallee);
 					if (status == -2) {
-						// Native callback pending — exit RunInner
-						cyclesLeft = 0;
+						// Native callback pending.  If it pushed a call (PushCall), resync
+						// to the pushed frame and run it inline; otherwise exit RunInner.
+						if (_hasPendingManualCall) {
+							pc = PC;
+							baseIndex = BaseIndex;
+							currentFunc = CurrentFunction;
+							SwitchFrame(currentFunc, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack, stackPtr);
+						} else {
+							cyclesLeft = 0;
+						}
 					} else if (status == 0) {
 						// Frame was pushed — switch to callee
 						baseIndex += curFuncRaw->MaxRegs;
@@ -1089,8 +1335,16 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 					FuncDef autoCallee = nullptr;
 					Int32 status = AutoInvokeFuncRef(valB, a, pc, baseIndex, currentFunc, &autoCallee);
 					if (status == -2) {
-						// Native callback pending — exit RunInner
-						cyclesLeft = 0;
+						// Native callback pending.  If it pushed a call (PushCall), resync
+						// to the pushed frame and run it inline; otherwise exit RunInner.
+						if (_hasPendingManualCall) {
+							pc = PC;
+							baseIndex = BaseIndex;
+							currentFunc = CurrentFunction;
+							SwitchFrame(currentFunc, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack, stackPtr);
+						} else {
+							cyclesLeft = 0;
+						}
 					} else if (status == 0) {
 						// Frame was pushed — switch to callee
 						baseIndex += curFuncRaw->MaxRegs;
@@ -1452,8 +1706,16 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 					FuncDef autoCallee = nullptr;
 					Int32 status = AutoInvokeFuncRef(valB, a, pc, baseIndex, currentFunc, &autoCallee);
 					if (status == -2) {
-						// Native callback pending — exit RunInner
-						cyclesLeft = 0;
+						// Native callback pending.  If it pushed a call (PushCall), resync
+						// to the pushed frame and run it inline; otherwise exit RunInner.
+						if (_hasPendingManualCall) {
+							pc = PC;
+							baseIndex = BaseIndex;
+							currentFunc = CurrentFunction;
+							SwitchFrame(currentFunc, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack, stackPtr);
+						} else {
+							cyclesLeft = 0;
+						}
 					} else if (status == 0) {
 						// Frame was pushed — switch to callee
 						baseIndex += curFuncRaw->MaxRegs;
@@ -2212,8 +2474,16 @@ Value VMStorage::RunInner(UInt32 maxCycles) {
 				FuncDef autoCallee = nullptr;
 				Int32 status = AutoInvokeFuncRef(val, a, pc, baseIndex, currentFunc, &autoCallee);
 				if (status == -2) {
-					// Native callback pending — exit RunInner
-					cyclesLeft = 0;
+					// Native callback pending.  If it pushed a call (PushCall), resync
+					// to the pushed frame and run it inline; otherwise exit RunInner.
+					if (_hasPendingManualCall) {
+						pc = PC;
+						baseIndex = BaseIndex;
+						currentFunc = CurrentFunction;
+						SwitchFrame(currentFunc, baseIndex, curFuncRaw, codeCount, curCode, curConstants, localStack, stackPtr);
+					} else {
+						cyclesLeft = 0;
+					}
 				} else if (status == 0) {
 					// Frame was pushed — switch to callee
 					baseIndex += curFuncRaw->MaxRegs;

@@ -8324,6 +8324,39 @@ print empty.len
 --------------------------------
 []
 0
+================================
+==== Calling an intrinsic leaves no trace in `locals`.  An intrinsic pushes no
+==== frame, so its argument registers lie within the caller's; their names
+==== (here abs's `x`, and print's `delimiter`) used to show up as variables.
+================================
+f = function
+	y = 1
+	x = abs(-3) + round(2.5, 0)
+	print "hi"
+	print locals
+	print locals.indexes
+end function
+f
+--------------------------------
+hi
+{"y": 1, "x": 6}
+["y", "x"]
+================================
+==== ...nor in `outer`, as seen by a closure.
+================================
+f = function
+	c = 7
+	print "hi"
+	d = str(c)
+	inner = function
+		return outer.indexes
+	end function
+	return inner
+end function
+print f
+--------------------------------
+hi
+["c", "d", "inner"]
 ================================================================================
 ==== SECTION: INDEXOF WITH AN EMPTY NEEDLE
 ================================================================================

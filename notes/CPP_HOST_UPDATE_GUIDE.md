@@ -545,6 +545,69 @@ it must run to completion in place — that's what `RunFunction` does.  Don't re
 for `RunFunction` when a deferred `IntrinsicResult` would do; it's specifically
 for the can't-unwind case.
 
+For the same reason, the callee itself cannot wait: there is no later in which to
+resume it.  If it calls `yield`, or any intrinsic that returns a not-done result
+(`wait`, `exec` on a process still running, `import`, or a host intrinsic of
+your own), `RunFunction` raises a runtime error ("... can't be used inside a
+synchronous callback") and returns null, leaving the VM stopped with that error.
+`RunFunction` does not disturb the outer script's `vm.yielding` flag, so it is
+fine to call between frames while the script is paused at a `yield`.
+
+## Calling a script function from an intrinsic, asynchronously (`PushCall`)
+
+When the caller *is* an intrinsic (a sort with a key function, a map/filter
+helper, an event dispatcher), don't use `RunFunction`; use `PushCall`, which
+lets the callback run as ordinary script code: it may `yield`, `wait` or
+`import`, and its instructions count against the host's time slice.
+
+```cpp
+bool vm.PushCall(Value funcRef, ValueList args);                    // plain call
+bool vm.PushCall(Value funcRef, ValueList args, Value self);         // as a method; super = self.__isa
+bool vm.PushCall(Value funcRef, ValueList args, Value self, Value super);
+bool vm.PushMethodCall(Value obj, String methodName, ValueList args);  // obj.methodName(args)
+```
+
+The pattern is the same one `import` uses: push the call, return a **not-done**
+result, and you will be re-invoked (with that partial result) once the callee
+returns, finding its return value in `vm.ManualCallResult`.  You may then push
+another call, or finish.  For example, calling `func` on each element of a list:
+
+```cpp
+Value items = ctx.GetArg(1);
+Value results;
+if (partialResult.done) {                  // first call
+    results = Value::make_list(4);
+} else {                                   // a pushed call has returned
+    results = partialResult.result;
+    results.Push(ctx.vm.ManualCallResult);
+}
+int i = results.ListCount();
+if (i >= items.ListCount()) return IntrinsicResult(results);
+ValueList args;  args.Add(items.ListGet(i));
+if (!ctx.vm.PushCall(ctx.GetArg(0), args)) return IntrinsicResult::Null;  // error raised
+return IntrinsicResult(results, false);
+```
+
+Details:
+
+- Any function value works, closures included; missing arguments take the
+  callee's defaults, and extra ones are a runtime error.
+- `PushMethodCall` finds the method as a dot-call would (up the `__isa` chain,
+  or in the type map for a list, string, number or map) and binds `self` and
+  `super` to match.  If the member is not a function, its value is the result.
+  With `PushCall`, a `self` without a `super` gets the `super` a dot-call would
+  bind: the `__isa` of whichever map in `self`'s `__isa` chain (starting with
+  `self` itself) holds `funcRef`.  Function values are matched by identity, so
+  this works for one fetched from the object or its class; if `funcRef` is not
+  found there, `super` is `self.__isa`.
+- If the callee is itself an intrinsic (`@abs`), it is simply called, and you
+  are re-invoked at once with its result.
+- Push only one call per invocation, and always return not-done after a push;
+  otherwise you get a runtime error.  The `bool` result is false only if the
+  call could not be made, in which case a runtime error has been raised.
+- Inside `RunFunction` nothing can be resumed, so pushing a call to a *script*
+  function there is a runtime error (an intrinsic callee still works).
+
 ## Opaque Handles (wrapping native pointers)
 
 MS1 wrapped native resources with a `RefCountedStorage` subclass and

@@ -34,6 +34,12 @@ InterpreterStorage::InterpreterStorage(List<String> sourceList,TextOutputMethod 
 	String source = String::Join("\n", sourceList);
 	Init(source, standardOutput, errorOutput);
 }
+void InterpreterStorage::ReleaseGlobals() {
+	if (!IsNull(_globals)) {
+		_globals.Release();
+		_globals = nullptr;
+	}
+}
 void InterpreterStorage::Stop() {
 	if (!IsNull(vm)) vm.Stop();
 	_pendingSource = nullptr;	// discard any partial REPL input
@@ -47,10 +53,7 @@ void InterpreterStorage::Reset(String _source) {
 	// A new program gets a new namespace.  Releasing the old one drops the GC
 	// root its map holds; anything still referring to it (a function compiled
 	// by the old program and handed to a host, say) keeps it alive normally.
-	if (!IsNull(_globals)) {
-		_globals.Release();
-		_globals = nullptr;
-	}
+	ReleaseGlobals();
 }
 void InterpreterStorage::ResetPreservingGlobals(String _source) {
 	if (!IsNull(vm)) vm.Stop();
@@ -68,10 +71,7 @@ void InterpreterStorage::Reset(List<FuncDef> functions) {
 	Error = Value::Null;
 
 	// A new program gets a new namespace, as in Reset(String).
-	if (!IsNull(_globals)) {
-		_globals.Release();
-		_globals = nullptr;
-	}
+	ReleaseGlobals();
 
 	// Create and configure VM
 	vm =  VM::New();

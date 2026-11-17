@@ -125,9 +125,15 @@ class InterpreterStorage : public std::enable_shared_from_this<InterpreterStorag
 	// Constructor taking source code in the form of a list of strings.
 	// 
 	public: InterpreterStorage(List<String> sourceList, TextOutputMethod standardOutput=nullptr, TextOutputMethod errorOutput=nullptr);
-	public: virtual ~InterpreterStorage() = default;
+	public: virtual ~InterpreterStorage() { ReleaseGlobals(); }
 	
 	
+
+	// Drop this interpreter's global namespace, releasing the GC root its map
+	// holds.  Called by Reset (a new program gets a new namespace) and by the
+	// C++ destructor, so an interpreter discarded without a Reset does not leave
+	// its globals -- and everything reachable from them -- rooted forever.
+	private: void ReleaseGlobals();
 
 	// 
 	// Stop the virtual machine, and jump to the end of the program code.
@@ -442,9 +448,15 @@ struct Interpreter {
 	public: static Interpreter New(List<String> sourceList, TextOutputMethod standardOutput=nullptr, TextOutputMethod errorOutput=nullptr) {
 		return Interpreter(std::make_shared<InterpreterStorage>(sourceList, standardOutput, errorOutput));
 	}
+	
+	
+
+	// Drop this interpreter's global namespace, releasing the GC root its map
+	// holds.  Called by Reset (a new program gets a new namespace) and by the
+	// C++ destructor, so an interpreter discarded without a Reset does not leave
+	// its globals -- and everything reachable from them -- rooted forever.
+	private: inline void ReleaseGlobals();
 	public: InterpreterStorage* get_storage() const { return storage.get(); }
-	
-	
 
 	// 
 	// Stop the virtual machine, and jump to the end of the program code.
@@ -662,6 +674,7 @@ inline void Interpreter::set__globals(Globals _v) { get()->_globals = _v; }
 inline void Interpreter::Init(String _source,TextOutputMethod _standardOutput,TextOutputMethod _errorOutput) { return get()->Init(_source, _standardOutput, _errorOutput); }
 inline Globals Interpreter::GetGlobals() { return get()->GetGlobals(); }
 inline void Interpreter::ClearGlobals() { return get()->ClearGlobals(); }
+inline void Interpreter::ReleaseGlobals() { return get()->ReleaseGlobals(); }
 inline void Interpreter::Stop() { return get()->Stop(); }
 inline void Interpreter::Reset(String _source) { return get()->Reset(_source); }
 inline void Interpreter::ResetPreservingGlobals(String _source) { return get()->ResetPreservingGlobals(_source); }

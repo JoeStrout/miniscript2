@@ -167,7 +167,20 @@ public class Interpreter {
 	}
 	//*** END CS_ONLY ***
 	
-	// H: public: virtual ~InterpreterStorage() = default;
+	// H: public: virtual ~InterpreterStorage() { ReleaseGlobals(); }
+
+	//
+	// Drop this interpreter's global namespace, releasing the GC root its map
+	// holds.  Called by Reset (a new program gets a new namespace) and by the
+	// C++ destructor, so an interpreter discarded without a Reset does not leave
+	// its globals -- and everything reachable from them -- rooted forever.
+	//
+	private void ReleaseGlobals() {
+		if (_globals != null) {
+			_globals.Release();
+			_globals = null;
+		}
+	}
 
 	// H_WRAPPER: public: InterpreterStorage* get_storage() const { return storage.get(); }
 
@@ -192,10 +205,7 @@ public class Interpreter {
 		// A new program gets a new namespace.  Releasing the old one drops the GC
 		// root its map holds; anything still referring to it (a function compiled
 		// by the old program and handed to a host, say) keeps it alive normally.
-		if (_globals != null) {
-			_globals.Release();
-			_globals = null;
-		}
+		ReleaseGlobals();
 	}
 
 	//
@@ -236,10 +246,7 @@ public class Interpreter {
 		Error = Value.Null;
 
 		// A new program gets a new namespace, as in Reset(String).
-		if (_globals != null) {
-			_globals.Release();
-			_globals = null;
-		}
+		ReleaseGlobals();
 
 		// Create and configure VM
 		vm = new VM();

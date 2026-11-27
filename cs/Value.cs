@@ -1686,8 +1686,7 @@ public readonly struct Value {
 
 	private int HashToDepth(int depth) {
 		if (IsString()) {
-			string s = GCManager.GetStringContent(this);
-			return s.GetHashCode(System.StringComparison.Ordinal);
+			return Fnv1a(GCManager.GetStringContent(this));
 		}
 		unchecked {
 			if (IsList()) {
@@ -1717,8 +1716,39 @@ public readonly struct Value {
 			// (Only zero is normalized: masking the sign bit of every number
 			// would make each x collide with -x.)
 			ulong u = (_u == 0x8000000000000000UL) ? 0UL : _u;
-			return (int)(u ^ (u >> 32));
+			Span<byte> bits = stackalloc byte[8];
+			System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(bits, u);
+			return Fnv1aBytes(bits);
 		}
+	}
+
+	// The C++ core hashes a string's UTF-8 bytes with 32-bit FNV-1a, and a number by
+	// handing its eight bytes to that same hash (cpp/core/hashing.cpp). The two builds
+	// have to agree: hash() is a function of its value alone, and what is stored under
+	// its answer -- a key, an id -- is only found again if the same value answers the
+	// same in every run and in both builds. .NET's own string hash is randomized per
+	// process, so it cannot stand in.
+	private const uint FnvOffsetBasis = 0x811C9DC5;
+	private const uint FnvPrime = 0x01000193;
+
+	private static int Fnv1a(string text) {
+		// Identifiers are short, and most of what is hashed here is one: keep their
+		// bytes on the stack rather than allocating for every map lookup.
+		if (text.Length <= 64) {
+			Span<byte> buffer = stackalloc byte[64 * 3];
+			return Fnv1aBytes(buffer.Slice(0, Encoding.UTF8.GetBytes(text, buffer)));
+		}
+		return Fnv1aBytes(Encoding.UTF8.GetBytes(text));
+	}
+
+	private static int Fnv1aBytes(ReadOnlySpan<byte> bytes) {
+		uint hash = FnvOffsetBasis;
+		foreach (byte b in bytes) {
+			hash ^= b;
+			hash *= FnvPrime;
+		}
+		// 0 is reserved by the C++ core to mean "not computed yet".
+		return (int)(hash == 0 ? 1u : hash);
 	}
 	
 	// And Hash, provided for compatibility with 1.0.

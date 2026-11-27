@@ -2632,6 +2632,7 @@ public static class ShellIntrinsics {
 			List<String> libDirs = SplitImportPath(searchPath);
 			// Find and read the module source file.
 			String source = "";
+			String sourceFile = null;
 			Boolean found = false;
 			for (Int32 i = 0; i < libDirs.Count; i++) {
 				String dir = libDirs[i];
@@ -2641,15 +2642,19 @@ public static class ShellIntrinsics {
 				String src = TryReadSource(path);
 				if (src == null) continue; // CPP: if (src.LengthB() == 0) continue;
 				source = src;
+				sourceFile = path;
 				found = true;
 				break;
 			}
 			if (!found) {
 				return new IntrinsicResult(ErrorTypes.FileError(StringUtils.Format("import: library not found: {0}", libname)));
 			}
-			// Parse and compile the module to its @main FuncDef.
+			// Parse and compile the module to its @main FuncDef.  The name it is compiled under is the
+			// path it was read from, not the name it was imported by: that name becomes every one of
+			// its functions' source locations, and a module that finds a data file beside itself has
+			// only that location to go on.
 			Value compileErr;
-			FuncDef moduleMain = Interpreter.CompileToFunc(source, libname + ".ms", out compileErr);
+			FuncDef moduleMain = Interpreter.CompileToFunc(source, sourceFile, out compileErr);
 			if (moduleMain == null) {
 				// Return the error as our result: as a bare statement (the usual
 				// form) the discarded value halts the program via ERRCHK, while

@@ -1611,7 +1611,10 @@ public static class CoreIntrinsics {
 		f.AddParam("obj", Value.Null, true);
 		f.Code = (Context ctx, IntrinsicResult partialResult) => {
 			Value v = ctx.GetArg(0);
-			return new IntrinsicResult(new Value(v.Hash()));
+			// The C++ core answers the whole unsigned 32-bit hash. A signed int would turn
+			// every hash with the top bit set negative, and a caller reading the number as
+			// hex digits would see a minus sign where a digit belongs.
+			return new IntrinsicResult(new Value((double)(uint)v.Hash()));
 		};
 
 		// refEquals(a, b)
